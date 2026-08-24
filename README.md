@@ -152,7 +152,7 @@ Any change that fails any gate is **blocked from merge to main**.
 | **L0** Very Low | No logic change (docs, comments, formatting) | Roles may merge | Not required | No |
 | **L1** Low | Non-core modules, no external interfaces | Separate sub-tasks | Not required | No |
 | **L2** Medium (default) | Core business logic, P0/P1 priority | Separate execution entities | Recommended | No |
-| **L3** High | Patient PII, auth, prod DB, AI/Prompt, breaking API changes, P0 hotfix | Mandatory cross-platform/cross-model | **Mandatory** (≥2 model vendors) | **Mandatory** |
+| **L3** High | sensitive personal data (PII), auth, prod DB, AI/Prompt, breaking API changes, P0 hotfix | Mandatory cross-platform/cross-model | **Mandatory** (≥2 model vendors) | **Mandatory** |
 
 ---
 
