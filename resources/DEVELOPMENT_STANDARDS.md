@@ -875,4 +875,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v2.16.0 | 更新时间：2026-08-24 | 全局维护责任人：AI Assistant & Architecture Team*
+*规范版本：v2.16.0 | 更新时间：2026-08-24 | 全局维护责任人：geekma (geekma@gmail.com)*

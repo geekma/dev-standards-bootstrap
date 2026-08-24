@@ -1,4 +1,5 @@
 <!-- markdownlint-disable MD033 MD041 MD013 -->
+
 <div align="center">
 
 # dev-standards-bootstrap
@@ -74,7 +75,17 @@ This Skill leverages the `AGENTS.md` open standard, which is natively supported 
 
 ### Install the Skill
 
-Copy this repository (or the `SKILL.md` + `resources/` directory) into your personal or organizational Skill directory.
+Clone the repository into your personal or organizational Skill directory:
+
+```bash
+git clone https://github.com/geekma/dev-standards-bootstrap.git
+```
+
+Or add it as a submodule to your Skill collection:
+
+```bash
+git submodule add https://github.com/geekma/dev-standards-bootstrap.git
+```
 
 ### Bootstrap a Repository
 
@@ -95,7 +106,7 @@ The Skill will:
 
 ## Repository Structure
 
-```
+```ini
 dev-standards-bootstrap/
 ├── SKILL.md                                # Skill manifest (trigger, execution steps, red lines)
 ├── README.md                               # English documentation (this file)
@@ -114,7 +125,7 @@ dev-standards-bootstrap/
 
 ## The Five Quality Gates
 
-```
+```ini
 [ Gate 1: Doc-First ]      Requirements/design must exist before any code change
         │
         ▼
@@ -167,7 +178,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v2.16.0 | **Last Updated:** 2026-08-24 | **Maintainer:** AI Assistant & Architecture Team
+**Standards Version:** v2.16.0 | **Last Updated:** 2026-08-24 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 

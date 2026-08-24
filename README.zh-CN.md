@@ -1,4 +1,5 @@
 <!-- markdownlint-disable MD033 MD041 MD013 -->
+
 <div align="center">
 
 # dev-standards-bootstrap
@@ -74,7 +75,17 @@
 
 ### 安装 Skill
 
-将本仓库（或 `SKILL.md` + `resources/` 目录）复制到你的个人或组织 Skill 目录中。
+将仓库克隆到你的个人或组织 Skill 目录中：
+
+```bash
+git clone https://github.com/geekma/dev-standards-bootstrap.git
+```
+
+或者作为子模块添加到你的 Skill 集合中：
+
+```bash
+git submodule add https://github.com/geekma/dev-standards-bootstrap.git
+```
 
 ### 初始化仓库
 
@@ -95,7 +106,7 @@ Skill 将自动执行：
 
 ## 仓库结构
 
-```
+```ini
 dev-standards-bootstrap/
 ├── SKILL.md                                # Skill 清单（触发条件、执行步骤、红线）
 ├── README.md                               # 英文文档
@@ -114,7 +125,7 @@ dev-standards-bootstrap/
 
 ## 五道质量门禁
 
-```
+```ini
 [ 门禁 1：文档先行 ]      需求/设计必须先于代码变更存在
         │
         ▼
@@ -167,7 +178,7 @@ Pull Request 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)
 
 <div align="center">
 
-**规范版本：** v2.16.0 | **更新时间：** 2026-08-24 | **维护者：** AI Assistant & Architecture Team
+**规范版本：** v2.16.0 | **更新时间：** 2026-08-24 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告 Bug](../../issues) | [功能需求](../../issues) | [阅读规范全文](resources/DEVELOPMENT_STANDARDS.md)
 
