@@ -1,0 +1,18 @@
+# Copy this file as .agent-governance.yml and adapt the paths for the project.
+# The shell gate uses the environment variable below so it remains dependency-free.
+change_root: docs/changes
+required_before_source_write:
+  - 00-governance.json
+  - 01-spec.md
+  - 03-modification-plan.md
+  - 04-test-scripts.md
+required_before_merge:
+  - 05-test-results.md
+  - 09-changelog.md
+ci:
+  # Configure the actual project command in CI. The gate does not invent one.
+  verification_command: "<replace-with-project-test-command>"
+stop_hook:
+  # Set AGENT_GUARD_VERIFY_COMMAND in a client adapter when a fast deterministic
+  # test command is safe to run at the end of every agent turn.
+  verification_command_environment_variable: AGENT_GUARD_VERIFY_COMMAND

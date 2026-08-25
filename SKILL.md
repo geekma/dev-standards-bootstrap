@@ -7,7 +7,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 ## 这个 Skill 做什么
 
-把一套完整的、已经打磨过的团队开发治理规范（文档先行、测试先行、五道门禁、四维追踪矩阵、Agent 角色独立性、风险分级、防遗漏防跳过执行规则）**一次性**接入任意代码仓库，且只在仓库里落一个内容文件（`AGENTS.md`），不需要为 Cursor / Codex / Windsurf / Gemini CLI / Qoder / Trae / OpenCode 等每个工具分别写一份——这些工具在 2026 年已经普遍原生支持读取 `AGENTS.md`（Linux 基金会 Agentic AI Foundation 治理的开放标准）。
+把一套完整的团队开发治理规范（文档先行、测试先行、五道门禁、四维追踪矩阵、Agent 角色独立性、风险分级、防遗漏防跳过执行规则）**一次性**接入任意代码仓库。`AGENTS.md` 负责向 Agent 提供统一上下文；可选的 `agent-gate` 负责在支持 Hook 的客户端写入前阻断，并由 Git/CI 对所有客户端兜底。
 
 本 Skill 本身是可复用的：装一次（放在你的个人/组织 Skill 目录），以后每个新项目只需要跟 Claude 说一句"用 dev-standards-bootstrap 初始化这个仓库"，不必再手写或复制粘贴任何文件。
 
@@ -31,15 +31,23 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
    - 是否要工程化兜底（不完全依赖 AI 自觉遵守）？→
      - 复制 `resources/templates/PULL_REQUEST_TEMPLATE.md` 到 `.github/PULL_REQUEST_TEMPLATE.md`
      - 复制 `resources/templates/check-standards-compliance.sh` 到 `scripts/check-standards-compliance.sh` 并 `chmod +x`，提示用户接入 CI（给出一个最小 GitHub Actions 示例：在 PR 触发时执行该脚本）。
+   - 是否要安装**强制执行包**？→ 先展示将写入的文件并确认，再复制下列文件：
+     - `resources/templates/agent-gate.sh` → `scripts/agent-gate`，并 `chmod +x`
+     - `resources/templates/governance-state.json` → `docs/changes/<变更号>/00-governance.json`；必须由用户/编排者填写真实风险等级与不同执行主体，不能保留模板占位符。
+     - `resources/templates/pre-commit`、`pre-push` → `.githooks/`，并 `chmod +x`；指导执行 `git config core.hooksPath .githooks`
+     - `resources/templates/github-agent-governance.yml` → `.github/workflows/agent-governance.yml`
+     - 复制 `resources/templates/install-hook-adapter.sh` → `scripts/install-hook-adapter` 并 `chmod +x`，然后执行它：自动检测当前客户端（`CLAUDECODE` / `CURSOR_AGENT` / `GEMINI_CLI` 环境变量）或接受 `claude|cursor|gemini` 参数，生成对应 Hook 配置（Claude Code → `.claude/settings.json`，Cursor → `.cursor/hooks.json`，Gemini CLI → `.gemini/settings.json`）。目标文件已存在且内容不同时，脚本会展示 diff 并拒绝覆盖（除非 `--force`）。未列出的客户端（Codex、Windsurf、Qoder、Trae、OpenCode 等）没有可生成的 Hook schema，不臆造配置；它们的强制执行由 Git Hook 与 CI workflow 兜底——二者校验仓库而非编辑器。
+     - `resources/templates/agent-governance.yml` → `.agent-governance.yml`，作为团队可审阅的配置记录；不臆造项目测试命令，要求用户在 GitHub Actions repository variable 中设置真实的 `AGENT_GUARD_VERIFY_COMMAND`。
+     - 明确说明：本地 Hook 可被直接编辑器、shell 或禁用 hooks 绕过；必须在 Git 托管平台将 `agent-governance` 与项目测试设为 Required Status Check、禁止直接推送受保护分支，并为 L3 配置 CODEOWNERS/人工审批。
 5. **初始化第一个功能目录骨架**（可选，询问用户是否现在就要开始第一个变更）：
    - 若用户已有具体功能要开发，按 `DEVELOPMENT_STANDARDS.md` §1.1 在 `docs/<feature>/` 下创建空的 `01-spec.md` 骨架（仅标题与章节占位，不臆造需求内容）。
-6. **完成后回执**：列出本次实际写入/跳过的文件清单，并提醒用户："以后任何工具打开这个仓库，都会自动读取 AGENTS.md；不需要再为新工具单独配置。"
+6. **完成后回执**：列出本次实际写入/跳过的文件清单、启用的客户端适配器和仍需用户在托管平台配置的 Required Checks。不得声称“所有工具均在改前强制受控”；应说明 `AGENTS.md` 是上下文层，受保护分支的 CI 才是跨客户端的最终信任边界。
 
 ## 红线
 
 - 不覆盖用户已有的、内容不同的 `AGENTS.md` 或 `DEVELOPMENT_STANDARDS.md`，一律先展示差异再询问。
 - 不臆造项目特定内容（技术栈、构建命令等）——`resources/AGENTS.md` 是通用治理规范，不含具体项目的构建/测试命令；如需补充这类项目专属信息，在写入后追加提示，请用户自行在 `AGENTS.md` 末尾补充"项目速览"小节（Dev environment / Build & Test 命令），本 Skill 不代为编造。
-- 不在多个工具专属文件里复制正文内容；除 §步骤4 明确列出的一行导入文件外，不再新增任何其他工具的指针文件。
+- 不在多个工具专属文件里复制规范正文；工具专属文件只允许引用同一 `scripts/agent-gate`，不得分叉校验逻辑。
 
 ## 版本同步
 

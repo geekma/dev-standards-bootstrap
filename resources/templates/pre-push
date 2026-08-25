@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Git hooks are a fast local signal. CI remains the authoritative merge gate.
+scripts/agent-gate --stage staged

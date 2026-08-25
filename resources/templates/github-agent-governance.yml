@@ -1,0 +1,29 @@
+name: Agent governance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  agent-governance:
+    name: agent-governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Verify change-governance artifacts
+        run: scripts/agent-gate --stage ci --base "origin/${{ github.base_ref || 'main' }}"
+      - name: Run deterministic project verification
+        env:
+          AGENT_GUARD_VERIFY_COMMAND: ${{ vars.AGENT_GUARD_VERIFY_COMMAND }}
+        run: |
+          test -n "$AGENT_GUARD_VERIFY_COMMAND" || {
+            echo "Set repository variable AGENT_GUARD_VERIFY_COMMAND to the build/lint/test/security command." >&2
+            exit 1
+          }
+          bash -lc "$AGENT_GUARD_VERIFY_COMMAND"

@@ -21,7 +21,7 @@
 
 **dev-standards-bootstrap** 是一个可复用的 AI Agent Skill，能够用一条指令将一套完整的、经过实战打磨的**软件开发与变更治理规范体系**注入到任意代码仓库中。
 
-它只在目标仓库中写入**一个内容文件**（`AGENTS.md`）——所有主流 AI 编程工具（Claude Code、Cursor、Codex、Windsurf、Gemini CLI、Qoder、Trae、OpenCode）在 2026 年已普遍原生支持读取 `AGENTS.md`（Linux 基金会 Agentic AI Foundation 治理的开放标准）。无需为每个工具单独配置，无需复制多份文件，无需额外维护成本。
+`AGENTS.md` 为兼容的 Agent 提供统一指令层。若要强制执行，可选强制执行包会增加一个确定性校验器，由本地 Hook、Git Hook 与 CI 共同调用；规范逻辑不重复，CI 则保留为所有客户端共同的信任边界。
 
 ### 为什么需要它
 
@@ -48,13 +48,15 @@
 | **10 阶段开发生命周期** | 从需求定义到记忆沉淀与持续改进 |
 | **AI 防漏防跳过规则** | 专门约束 AI Agent 静默跳步、用摘要代替逐项清单、提前标记完成等行为 |
 | **CI/PR 工程化兜底** | GitHub PR 模板和 Bash 合规检查脚本，CI 流水线自动拦截 |
+| **确定性 Agent 门禁** | 一套零第三方依赖校验器，供写前 Hook、Git Hook 与 CI 共同调用 |
+| **客户端适配层** | 一个生成器按当前工具自动生成 Claude Code / Cursor / Gemini CLI 的 Hook 配置，其余客户端由 Git Hook + CI 兜底 |
 | **专项规范** | 覆盖部署、配置/数据库变更、AI/LLM 链路、测试数据隔离、紧急热修复、发布上线、监控告警、供应链依赖管理 |
 
 ---
 
 ## 支持的 AI 编程工具
 
-本 Skill 基于各工具原生支持的 `AGENTS.md` 开放标准，无需额外配置：
+`AGENTS.md` 是上下文机制，而非强制执行机制。各工具对其支持与加载行为会随版本不同，须在组织环境中验证；真正跨客户端的最终控制点是受保护分支和 Required CI Check。
 
 | 工具 | 状态 |
 |---|---|
@@ -67,7 +69,7 @@
 | Trae | 原生读取 `AGENTS.md` |
 | OpenCode | 原生读取 `AGENTS.md` |
 
-> 无需为每个工具单独写配置文件。一个 `AGENTS.md` 入口文件即可治理所有工具。
+> 用 `AGENTS.md` 统一上下文；只有需要写前拦截的客户端才安装相应 Hook 适配器。
 
 ---
 
@@ -100,7 +102,8 @@ Skill 将自动执行：
 3. 将 `DEVELOPMENT_STANDARDS.md` 写入 `docs/` 目录
 4. 可选：为 Claude Code 添加一行导入文件（`CLAUDE.md`）
 5. 可选：添加 PR 模板和 CI 合规检查脚本
-6. 可选：在 `docs/<feature>/` 下创建第一个功能目录骨架
+6. 可选：添加确定性门禁、Git Hook、CI workflow、治理配置记录与 Hook 适配器生成器
+7. 可选：在 `docs/<feature>/` 下创建第一个功能目录骨架
 
 ---
 
@@ -118,8 +121,38 @@ dev-standards-bootstrap/
     └── templates/
         ├── CLAUDE.md                       # Claude Code 一行导入文件
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR 模板（含门禁自查）
-        └── check-standards-compliance.sh   # CI 合规检查脚本
+        ├── check-standards-compliance.sh   # CI 合规检查脚本
+        ├── agent-gate.sh                   # 共享写前 / Git / CI 校验器
+        ├── governance-state.json           # 每个变更 00-governance.json 的模板（风险等级与执行主体）
+        ├── agent-governance.yml            # 团队可审阅的治理配置记录（复制为 .agent-governance.yml）
+        ├── pre-commit、pre-push            # Git Hook 模板
+        ├── install-hook-adapter.sh         # 按检测到的工具生成 Hook 适配器（claude/cursor/gemini）
+        └── github-agent-governance.yml     # Required Check workflow 模板
 ```
+
+### 可选强制执行包
+
+将 `agent-gate.sh` 复制为 `scripts/agent-gate` 并赋予可执行权限。Agent 首次写入源码前，必须先创建已填写的 `docs/changes/CHG-123/00-governance.json`，以及非空的 `01-spec.md`、`03-modification-plan.md`、`04-test-scripts.md`，再执行：
+
+```bash
+scripts/agent-gate begin CHG-123
+```
+
+门禁是一个零依赖的 Bash 脚本，所有适配器共用同一套命令面：
+
+| 命令 | 作用 |
+|---|---|
+| `begin <变更号>` / `end` | 激活或清除活跃变更；`begin` 要求四份变更产物已存在且非空 |
+| `--stage pre-write` | Agent 写源码前校验活跃变更的产物与治理状态；无法从 Hook 入参解析目标路径时按失败处理（fail-closed） |
+| `--stage staged` | 已暂存的源码变更必须携带对应变更产物，否则拒绝提交 |
+| `--stage stop` | 源码改动后结束回复，必须具备 `05-test-results.md` 与 `09-changelog.md`；配置了 `AGENT_GUARD_VERIFY_COMMAND` 时还须通过该命令 |
+| `--stage ci [--base <ref>]` | 在分支/PR 差异上重新校验，并执行真实的验证命令 |
+
+将 `agent-governance.yml` 复制为仓库根目录的 `.agent-governance.yml`，作为团队可审阅的治理配置记录；设置 `AGENT_GUARD_CHANGE_ROOT` 可重定位默认的 `docs/changes` 根目录。
+
+执行 `scripts/install-hook-adapter` 可为当前客户端生成 Hook 适配器——通过 `CLAUDECODE` / `CURSOR_AGENT` / `GEMINI_CLI` 自动检测，或显式传入 `claude|cursor|gemini`。所有客户端 schema 都内嵌在这一个生成器里，不再维护每工具一份 JSON；目标文件已存在且内容不同时会展示 diff 并拒绝静默覆盖（`--force` 可覆盖）。没有已知 Hook schema 的客户端（Codex、Windsurf、Qoder、Trae、OpenCode）不会得到臆造的配置：它们的强制执行路径是 Git Hook 与 CI workflow——二者校验的是仓库而非编辑器。
+
+结构化状态会记录风险和执行主体；L2/L3 的开发、测试、Review 主体必须不同。工具的 `PreToolUse` Hook 会在受支持 Agent 写源码前阻断；`Stop` Hook 会在源码已变更但测试证据或 Changelog 缺失时阻止 Agent 结束回复；Git Hook 会拒绝不合规的本地提交；GitHub workflow 会在 PR 上重新校验。用 `git config core.hooksPath .githooks` 安装 Git Hook，在仓库变量 `AGENT_GUARD_VERIFY_COMMAND` 中设置真实构建/lint/测试/安全命令，最后把 workflow 设为分支保护 Required Check。状态文件与复选框只是声明，不是证据：CI 会重新执行真实命令，必须启用 Required CI 才能强制执行。
 
 ---
 

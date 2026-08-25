@@ -20,6 +20,16 @@
 - 严禁因为大部分完成就整体标记完成；任一清单项缺失即视为未完成，必须继续执行或明确报告阻塞原因。
 - 高风险变更（命中 §0 门禁5 清单）必须获得人类 Release Owner 明确授权，AI 不得替代该授权。
 
+## 可执行门禁（仓库启用时同样不可跳过）
+
+若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
+
+1. 在 `docs/changes/<变更号>/` 创建并完成 `00-governance.json`、`01-spec.md`、`03-modification-plan.md`、`04-test-scripts.md`；JSON 必须声明风险等级和执行主体，L2/L3 的开发、测试、Review 主体必须不同。
+2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。
+3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog。启用 Stop Hook 时，源码改动后的结束回复同样会自动检查这些产物。
+
+不得删除、禁用或修改 Hook、CI workflow、Required Check、`scripts/agent-gate` 以绕过本规范。无法通过门禁时，必须报告阻塞原因并等待授权；不得以“仅是小改动”为由绕过。
+
 ## 常用锚点（无需通读全文时，任务型 Agent 可按需跳转）
 
 | 我要做什么 | 读哪一节 |
