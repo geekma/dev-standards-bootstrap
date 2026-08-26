@@ -34,6 +34,12 @@ When multiple AI agents work on the same codebase, chaos is inevitable without g
 
 This Skill solves all of the above by installing **five mandatory quality gates**, a **risk classification matrix**, an **agent role independence framework**, and **anti-skip execution rules** into your repository-once, permanently.
 
+### The Research Behind It
+
+These failure modes are measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows Claude Code's production `/compact` prompt retains only **53% of safety rules after one compaction round, 10% after five**--agent memory silently loses the rules it was told to keep, and self-reported success diverges from what is actually on disk. The [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents the process side: intent drift in long sessions, decision paths no reviewer can follow, and incidents that never feed back into process.
+
+This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 32 golden-case assertions.
+
 ---
 
 ## Key Features
