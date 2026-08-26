@@ -1,0 +1,160 @@
+# Incident-to-intent: 事故自动重入变更管线（autonomous loop entry point）
+#
+# 设计原则（对应规范 §2.17.2）：
+#   1. 确定性触发：监控系统（Prometheus/Grafana/云告警等）通过 repository_dispatch
+#      webhook 调用本 workflow，不存在任何自然语言判断环节；
+#   2. 只创建 BUG-xxx/00-intent.md 骨架并预填告警元数据（指标/阈值/时间/来源），
+#      不做诊断、不改代码--诊断与填写由 Agent/人按规范 §2.5 阶段 6 执行；
+#   3. 一切经 PR 审查合入，不绕过门禁（生产事故修复仍受 §2.11 热修通道约束）；
+#   4. 频控：同一变更骨架只创建一次（远程分支存在即跳过），防告警风暴刷屏。
+#
+# 监控系统接入示例（需仓库 admin 权限配置 PAT 后调用）：
+#   curl -XPOST -H "Authorization: token <PAT>" \
+#     https://api.github.com/repos/<owner>/<repo>/dispatches \
+#     -d '{"event_type":"incident","client_payload":{
+#            "source":"grafana","metric":"error_rate","current":"5.2%",
+#            "threshold":"1.0%","severity":"P0","triggered_at":"2026-08-26T10:00:00+08:00",
+#            "detail_link":"https://grafana/..."}}'
+#
+# payload 中所有字段均为可选；缺省时骨架对应字段写 "unknown"。
+# 分环境自主权约束见规范 §2.17.3：本 workflow 只产文档骨架，属于任何环境都允许的 A2 级动作。
+
+name: Incident to intent
+
+on:
+  repository_dispatch:
+    types: [incident]
+  workflow_dispatch:
+    inputs:
+      source:
+        description: '告警来源系统'
+        default: 'manual'
+      metric:
+        description: '告警指标名'
+        default: ''
+      current:
+        description: '当前值'
+        default: ''
+      threshold:
+        description: '阈值'
+        default: ''
+      severity:
+        description: '严重度 P0/P1/P2'
+        default: ''
+      triggered_at:
+        description: '告警触发时间'
+        default: ''
+      detail_link:
+        description: '告警详情链接'
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: incident-to-intent
+  cancel-in-progress: false
+
+jobs:
+  create-intent:
+    name: Create BUG intent skeleton
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Derive change id
+        id: id
+        run: |
+          set -eu
+          id="BUG-$(date -u +%Y%m%d%H%M%S)"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "branch=incident/${id}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if skeleton already exists
+        id: skip
+        env:
+          BRANCH: ${{ steps.id.outputs.branch }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create intent skeleton with alert metadata
+        if: steps.skip.outputs.exists == 'false'
+        env:
+          CHANGE_ID: ${{ steps.id.outputs.id }}
+          INCIDENT_SOURCE: ${{ github.event.client_payload.source || inputs.source }}
+          INCIDENT_METRIC: ${{ github.event.client_payload.metric || inputs.metric }}
+          INCIDENT_CURRENT: ${{ github.event.client_payload.current || inputs.current }}
+          INCIDENT_THRESHOLD: ${{ github.event.client_payload.threshold || inputs.threshold }}
+          INCIDENT_SEVERITY: ${{ github.event.client_payload.severity || inputs.severity }}
+          INCIDENT_TRIGGERED_AT: ${{ github.event.client_payload.triggered_at || inputs.triggered_at }}
+          INCIDENT_DETAIL_LINK: ${{ github.event.client_payload.detail_link || inputs.detail_link }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          git checkout -b "incident/${CHANGE_ID}"
+          mkdir -p "docs/changes/${CHANGE_ID}"
+          cat > "docs/changes/${CHANGE_ID}/00-intent.md" <<'EOF'
+          # 00-intent.md - 变更意图（事故自动创建）
+
+          > 本文件由监控告警经 Incident-to-intent workflow 自动创建（规范 §2.17.2）。
+          > 元数据由告警系统确定性注入；"问题/预期结果"等节由接手的 Agent/人填写。
+          > 追加式更新（§2.15），预填元数据不得删除。
+
+          ## 事故元数据（自动注入，勿删）
+
+          EOF
+          # printf 参数不会被 shell 二次求值，告警值仅作为文本写入文档
+          printf '%s\n' \
+            "- 来源系统：${INCIDENT_SOURCE:-unknown}" \
+            "- 告警指标：${INCIDENT_METRIC:-unknown}" \
+            "- 当前值：${INCIDENT_CURRENT:-unknown}" \
+            "- 阈值：${INCIDENT_THRESHOLD:-unknown}" \
+            "- 严重度：${INCIDENT_SEVERITY:-unknown}" \
+            "- 触发时间：${INCIDENT_TRIGGERED_AT:-unknown}" \
+            "- 详情链接：${INCIDENT_DETAIL_LINK:-unknown}" \
+            "" >> "docs/changes/${CHANGE_ID}/00-intent.md"
+          cat >> "docs/changes/${CHANGE_ID}/00-intent.md" <<'EOF'
+
+          ## 1. 问题（Problem）
+
+          [待填写] 基于上方告警元数据描述用户/系统可感知的异常与影响面。
+
+          ## 2. 预期结果（Expected Outcome）
+
+          [待填写] 指标应恢复到的可验证状态。
+
+          ## 3. 受影响用户与系统（Affected Users & Systems）
+
+          [待填写]
+
+          ## 4. 约束（Constraints）
+
+          [待填写] 命中 §2.11（生产 P0）时走热修复快速通道，但日志留痕/回滚预案/根因分析不可豁免。
+
+          ## 5. 开放问题（Open Questions）
+
+          [待填写]
+
+          ## 6. 意图澄清记录（Append-only）
+
+          [追加式]
+          EOF
+          git add "docs/changes/${CHANGE_ID}"
+          git commit -m "incident: create intent skeleton for ${CHANGE_ID}"
+          git push origin "incident/${CHANGE_ID}"
+          gh pr create --title "incident: ${CHANGE_ID} intent (auto-created)" --body \
+            "由监控告警自动创建（规范 §2.17.2 事故重入）。接手者：按 §2.5 阶段 6 诊断根因、补全 00-governance.json 与其余四项产物后执行 scripts/agent-gate begin ${CHANGE_ID}。生产事故须遵守 §2.11 热修通道。"
+
+      - name: Summary
+        if: steps.skip.outputs.exists == 'false'
+        env:
+          CHANGE_ID: ${{ steps.id.outputs.id }}
+        run: echo "created intent skeleton docs/changes/${CHANGE_ID}/00-intent.md"

@@ -24,9 +24,11 @@
 
 若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
 
-1. 在 `docs/changes/<变更号>/` 创建并完成 `00-governance.json`、`01-spec.md`、`03-modification-plan.md`、`04-test-scripts.md`；JSON 必须声明风险等级和执行主体，L2/L3 的开发、测试、Review 主体必须不同。
+1. 在 `docs/changes/<变更号>/` 创建并完成 `00-intent.md`、`00-governance.json`、`01-spec.md`、`03-modification-plan.md`、`04-test-scripts.md`；`00-intent.md` 是变更管线入口（问题/预期结果/约束，§2.17），JSON 必须声明风险等级和执行主体，L2/L3 的开发、测试、Review 主体必须不同。
 2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。
 3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog。启用 Stop Hook 时，源码改动后的结束回复同样会自动检查这些产物。
+4. 传动与事故重入（§2.17.1/§2.17.2）：`01-spec.md` 合入会自动派发 03/04 骨架 PR，`09-changelog.md` 合入会自动开发布检查单 issue；生产事故经 incident 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架，接手者须走完整变更流程，禁止"修完不留痕"。
+5. `scripts/agent-gate metrics` 只读输出管线度量（§2.17.5），不得用度量数值替代 DoD 判定。
 
 不得删除、禁用或修改 Hook、CI workflow、Required Check、`scripts/agent-gate` 以绕过本规范。无法通过门禁时，必须报告阻塞原因并等待授权；不得以“仅是小改动”为由绕过。
 

@@ -13,7 +13,9 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "run inside a Git 
 cd "$repo_root"
 
 change_root="${AGENT_GUARD_CHANGE_ROOT:-docs/changes}"
-required_docs=(00-governance.json 01-spec.md 03-modification-plan.md 04-test-scripts.md)
+# 00-intent.md is the pipeline entry point (problem / expected outcome / constraints);
+# a change without a recorded intent is treated as undocumented work.
+required_docs=(00-intent.md 00-governance.json 01-spec.md 03-modification-plan.md 04-test-scripts.md)
 active_file=$(git rev-parse --git-path agent-governance/active-change)
 
 is_code_path() {
@@ -110,6 +112,28 @@ changed_files() {
   esac
 }
 
+complete_valid_change_exists() {
+  # True when at least one change directory carries the full required artifact
+  # set with a valid governance state. Local staged commits rely on this when
+  # code is committed after the artifacts landed in an earlier commit of the
+  # same change (the documented workflow: artifacts first, implementation later).
+  local dir id doc complete
+  [[ -d "$change_root" ]] || return 1
+  for dir in "$change_root"/*/; do
+    [[ -d "$dir" ]] || continue
+    id=$(basename "$dir")
+    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    complete=true
+    for doc in "${required_docs[@]}"; do
+      [[ -s "$dir/$doc" ]] || { complete=false; break; }
+    done
+    if [[ "$complete" == true ]] && ( validate_governance_state "$id" ) >/dev/null 2>&1; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 validate_diff() {
   local mode="$1" base="${2:-}" files code_changed docs_changed f
   files=$(changed_files "$mode" "$base")
@@ -127,8 +151,90 @@ validate_diff() {
   done <<< "$files"
 
   if [[ "$code_changed" == true && "$docs_changed" != true ]]; then
+    # Staged is a local hook: repo state is authoritative, so code may follow an
+    # earlier artifacts-only commit of the same change. CI keeps the stricter
+    # rule: the branch diff itself must carry the artifact changes.
+    if [[ "$mode" == staged ]] && complete_valid_change_exists; then
+      return 0
+    fi
     die "source changes require change artifacts under $change_root/<change-id>/ (spec, plan, test plan, evidence)"
   fi
+}
+
+# --- metrics ---------------------------------------------------------------
+# Pipeline metrics derived purely from git history (JSON Lines, one object per
+# change). Zero third-party dependencies: timestamps come from git, values are
+# either numbers or null. Semantics:
+#   *_ts           epoch seconds of the commit that first added the artifact
+#   first_code_commit_ts  earliest commit whose message references the change id
+#   *_s            stage interval in seconds (null when either endpoint is missing)
+first_commit_ts() {
+  local out
+  out=$(git log --format=%ct --diff-filter=A -- "$1" 2>/dev/null | tail -n 1)
+  printf '%s' "$out"
+}
+
+first_commit_referencing() {
+  local line
+  line=$(git log --reverse --format='%ct|%s' | grep -F -m1 -- "$1" || true)
+  [[ -n "$line" ]] && printf '%s' "${line%%|*}"
+}
+
+ts_or_null() {
+  [[ -n "${1:-}" ]] && printf '%s' "$1" || printf 'null'
+}
+
+delta_or_null() {
+  local newer="${1:-}" older="${2:-}"
+  if [[ -n "$newer" && -n "$older" && "$newer" =~ ^[0-9]+$ && "$older" =~ ^[0-9]+$ && "$newer" -ge "$older" ]]; then
+    printf '%s' "$(( newer - older ))"
+  else
+    printf 'null'
+  fi
+}
+
+delivery_ready() {
+  local d="$1"
+  if [[ -s "$d/05-test-results.md" && -s "$d/07-review-report.md" && -s "$d/09-changelog.md" ]]; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
+emit_metrics() {
+  local dir id risk t_intent t_gov t_spec t_plan t_test t_chg t_code
+  [[ -d "$change_root" ]] || exit 0
+  for dir in "$change_root"/*/; do
+    [[ -d "$dir" ]] || continue
+    id=$(basename "$dir")
+    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    if [[ -s "$dir/00-governance.json" ]]; then
+      risk=$(json_string "$dir/00-governance.json" risk_level)
+      # Emit a valid JSON string value; null stays unquoted.
+      if [[ "$risk" =~ ^L[0-3]$ ]]; then risk="\"$risk\""; else risk=null; fi
+    else
+      risk=null
+    fi
+    t_intent=$(first_commit_ts "$dir/00-intent.md")
+    t_gov=$(first_commit_ts "$dir/00-governance.json")
+    t_spec=$(first_commit_ts "$dir/01-spec.md")
+    t_plan=$(first_commit_ts "$dir/03-modification-plan.md")
+    t_test=$(first_commit_ts "$dir/05-test-results.md")
+    t_chg=$(first_commit_ts "$dir/09-changelog.md")
+    t_code=$(first_commit_referencing "$id")
+    printf '{"change_id":"%s","risk_level":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
+      "$id" "$risk" \
+      "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
+      "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
+      "$(ts_or_null "$t_chg")" \
+      "$(delta_or_null "$t_spec" "$t_intent")" \
+      "$(delta_or_null "$t_plan" "$t_spec")" \
+      "$(delta_or_null "$t_code" "$t_plan")" \
+      "$(delta_or_null "$t_test" "$t_code")" \
+      "$(delta_or_null "$t_chg" "$t_intent")" \
+      "$(delivery_ready "$dir")"
+  done
 }
 
 command="${1:-help}"
@@ -137,6 +243,7 @@ case "$command" in
     id="${2:-}"
     [[ -n "$id" ]] || die "usage: scripts/agent-gate begin <change-id>"
     required_docs_present "$id"
+    validate_governance_state "$id"
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     echo "agent-gate: active change is $id"
@@ -144,6 +251,9 @@ case "$command" in
   end)
     rm -f "$active_file"
     echo "agent-gate: active change cleared"
+    ;;
+  metrics)
+    emit_metrics
     ;;
   --stage)
     stage="${2:-}"; shift 2
@@ -155,7 +265,9 @@ case "$command" in
         # A hook that cannot identify a path must fail closed: otherwise a
         # client schema change silently turns this policy into a no-op.
         [[ -n "$file" ]] || die "cannot determine the target file from hook input"
-        is_code_path "$file" && validate_active_change
+        if is_code_path "$file"; then
+          validate_active_change
+        fi
         ;;
       staged) validate_diff staged ;;
       stop) validate_stop ;;
@@ -172,10 +284,18 @@ case "$command" in
 Usage:
   scripts/agent-gate begin <change-id>
   scripts/agent-gate end
+  scripts/agent-gate metrics
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop
   scripts/agent-gate --stage ci [--base ref]
+
+begin requires five non-empty artifacts under the change root:
+00-intent.md, 00-governance.json, 01-spec.md, 03-modification-plan.md,
+04-test-scripts.md.
+
+metrics prints one JSON object per change (JSON Lines) with stage timestamps
+and intervals derived from git history; pipe it to a CI artifact for trending.
 
 Configuration: set AGENT_GUARD_CHANGE_ROOT to change the default docs/changes root.
 EOF

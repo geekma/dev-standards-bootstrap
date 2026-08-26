@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v2.17.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v2.18.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -27,12 +27,12 @@
 When multiple AI agents work on the same codebase, chaos is inevitable without governance:
 
 - Agents skip documentation and jump straight to code
-- Tests are an afterthought—or missing entirely
+- Tests are an afterthought-or missing entirely
 - No traceability between requirements, design, code, and tests
 - The same agent writes, tests, and approves its own work
 - Silent step-skipping disguised as "summaries"
 
-This Skill solves all of the above by installing **five mandatory quality gates**, a **risk classification matrix**, an **agent role independence framework**, and **anti-skip execution rules** into your repository—once, permanently.
+This Skill solves all of the above by installing **five mandatory quality gates**, a **risk classification matrix**, an **agent role independence framework**, and **anti-skip execution rules** into your repository-once, permanently.
 
 ---
 
@@ -40,15 +40,21 @@ This Skill solves all of the above by installing **five mandatory quality gates*
 
 | Feature | Description |
 |---|---|
-| **5 Quality Gates** | Doc-First, Test-First, Evidence-Before-Assertions, Traceability, and Independent Verification—non-bypassable |
+| **5 Quality Gates** | Doc-First, Test-First, Evidence-Before-Assertions, Traceability, and Independent Verification-non-bypassable |
 | **Risk Classification (L0–L3)** | Determines agent independence requirements and cross-platform/cross-model verification rules |
 | **Agent Role Independence** | Orchestrator, Requirements, Architecture/Planning, Development, Testing, and Review roles must be separate execution entities |
-| **4-Dimensional RTVM** | Requirement (REQ) → Design (DES) → Task (TASK) → Test Case (TC) full-chain traceability matrix |
+| **4-Dimensional RTVM** | Requirement (REQ) -> Design (DES) -> Task (TASK) -> Test Case (TC) full-chain traceability matrix |
 | **10-Stage Development Lifecycle** | From requirements definition through memory sedimentation and continuous improvement |
 | **AI Anti-Skip Rules** | Specifically designed to prevent AI agents from silently skipping steps, using summaries instead of checklists, or marking tasks complete prematurely |
 | **CI/PR Guardrails** | GitHub PR template and bash compliance script for automated baseline checks |
 | **Deterministic Agent Gate** | One dependency-free validator shared by write-time hooks, Git hooks, and CI |
 | **Client Adapters** | One generator emits the Claude Code / Cursor / Gemini CLI hook adapter for the tool in use; other clients fall back to Git hooks + CI |
+| **Intent Layer (`00-intent.md`)** | Every change starts from a recorded intent (problem / expected outcome / constraints); changes without intent are rejected at `begin` (§2.17) |
+| **Artifact Pipeline** | Merging `01-spec.md` auto-dispatches plan/test skeletons; merging `09-changelog.md` auto-opens a release checklist issue-skeletons only, no fabricated content |
+| **Incident-to-Intent Loop** | Production alerts auto-create a `BUG-<timestamp>` intent skeleton PR via `repository_dispatch`; no silent fixes without a trace |
+| **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines with per-stage timestamps, stage intervals, and `delivery_ready`-derived purely from git history, zero dependencies |
+| **A0–A4 Autonomy Matrix** | Environment-scoped authorization for automated actions; hosted workflows cap at A2 (skeletons + PRs), merge gates never waived |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (32 assertions) in throwaway git repos-bash + git only |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -102,7 +108,8 @@ The Skill will:
 4. Optionally add Claude Code one-line import (`CLAUDE.md`)
 5. Optionally add PR template and CI compliance script
 6. Optionally add the deterministic gate, Git hooks, CI workflow, governance config record, and tool-specific hook adapters
-7. Optionally scaffold the first feature directory under `docs/<feature>/`
+7. Optionally install pipeline automation: the intent template, artifact-pipeline workflow, incident-to-intent workflow, and golden-case test suite
+8. Optionally scaffold the first feature directory under `docs/<feature>/`
 
 ---
 
@@ -114,24 +121,30 @@ dev-standards-bootstrap/
 ├── README.md                               # English documentation (this file)
 ├── README.zh-CN.md                         # Chinese documentation
 ├── LICENSE                                 # MIT License
+├── screenshots/                            # README screenshots (gate blocking, change artifacts)
+├── tests/
+│   └── run-tests.sh                        # Golden-case regression suite for the gate itself (32 assertions)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.17.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.18.0 (copied to docs/)
     └── templates/
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
         ├── check-standards-compliance.sh   # CI compliance check script
-        ├── agent-gate.sh                   # Shared pre-write / Git / CI validator
+        ├── agent-gate.sh                   # Shared pre-write / Git / CI validator (+ metrics)
+        ├── intent.md                       # Pipeline entry template for each change's 00-intent.md
         ├── governance-state.json           # Template for each change's 00-governance.json (risk level + execution owners)
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
         ├── pre-commit, pre-push            # Git hook templates
         ├── install-hook-adapter.sh         # Generates the hook adapter for the detected tool (claude/cursor/gemini)
-        └── github-agent-governance.yml     # Required-check workflow template
+        ├── github-agent-governance.yml     # Required-check workflow template
+        ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 03/04 skeletons PR; changelog merged -> release checklist issue
+        └── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
 ```
 
 ### Optional Enforcement Package
 
-Copy `agent-gate.sh` to `scripts/agent-gate` and make it executable. Before an agent writes source code, create `docs/changes/CHG-123/` with a completed `00-governance.json`, plus non-empty `01-spec.md`, `03-modification-plan.md`, and `04-test-scripts.md`, then run:
+Copy `agent-gate.sh` to `scripts/agent-gate` and make it executable. Before an agent writes source code, create `docs/changes/CHG-123/` with a completed `00-intent.md` (recorded intent: problem / expected outcome / constraints) and `00-governance.json`, plus non-empty `01-spec.md`, `03-modification-plan.md`, and `04-test-scripts.md`, then run:
 
 ```bash
 scripts/agent-gate begin CHG-123
@@ -141,21 +154,44 @@ The gate is one dependency-free Bash script; every adapter reuses the same comma
 
 | Command | Purpose |
 |---|---|
-| `begin <change-id>` / `end` | Activate or clear the active change; `begin` requires the four change artifacts to exist and be non-empty |
+| `begin <change-id>` / `end` | Activate or clear the active change; `begin` requires the five change artifacts (including `00-intent.md`) to exist and be non-empty, and validates the governance state |
 | `--stage pre-write` | Validates the active change's artifacts and governance state before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts and a valid governance state, otherwise the commit is rejected |
 | `--stage stop` | Ending a turn after source edits requires `05-test-results.md` and `09-changelog.md`, plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state) and runs the real verification command |
+| `metrics` | Read-only pipeline metrics as JSON Lines: per-stage timestamps, stage intervals, `delivery_ready`-observations only, never a substitute for DoD |
 
-Copy `agent-governance.yml` to the repo root as `.agent-governance.yml`—a team-reviewable record of the required artifacts and the verification command. Set `AGENT_GUARD_CHANGE_ROOT` to relocate the default `docs/changes` root.
+What the required artifact set looks like on disk for a fresh change:
 
-Run `scripts/install-hook-adapter` to generate the hook adapter for the client in use—auto-detected from `CLAUDECODE` / `CURSOR_AGENT` / `GEMINI_CLI`, or passed as `claude|cursor|gemini`. All client schemas live in that one generator; there are no per-tool JSON files to maintain, and an existing config with different content is never overwritten silently (diff shown, `--force` to override). Clients without a known hook schema (Codex, Windsurf, Qoder, Trae, OpenCode) get no fabricated config: their enforcement path is the Git hooks and CI workflow, which validate the repository rather than the editor.
+![The required artifact set of a new change: 00-governance.json, 01-spec.md, 03-modification-plan.md, 04-test-scripts.md staged as new files](screenshots/change-artifacts-required-set.png)
+
+Copy `agent-governance.yml` to the repo root as `.agent-governance.yml`-a team-reviewable record of the required artifacts and the verification command. Set `AGENT_GUARD_CHANGE_ROOT` to relocate the default `docs/changes` root.
+
+Run `scripts/install-hook-adapter` to generate the hook adapter for the client in use-auto-detected from `CLAUDECODE` / `CURSOR_AGENT` / `GEMINI_CLI`, or passed as `claude|cursor|gemini`. All client schemas live in that one generator; there are no per-tool JSON files to maintain, and an existing config with different content is never overwritten silently (diff shown, `--force` to override). Clients without a known hook schema (Codex, Windsurf, Qoder, Trae, OpenCode) get no fabricated config: their enforcement path is the Git hooks and CI workflow, which validate the repository rather than the editor.
 
 The structured state records risk and responsible execution identities; for L2/L3, implementation, test, and review owners must differ. Tool `PreToolUse` hooks block supported agents before a source edit, while `Stop` hooks block an agent from ending after source edits until test evidence and a changelog exist. Git hooks reject a non-compliant local commit, and the GitHub workflow rechecks the pull request. Install Git hooks with `git config core.hooksPath .githooks`, set the repository variable `AGENT_GUARD_VERIFY_COMMAND` to the real build/lint/test/security command, then mark the workflow as a required branch-protection check. State files and checkboxes are declarations, not proof: CI re-runs the real command and is mandatory for enforcement.
+
+The gate blocking in practice--a commit of source changes without matching change artifacts is rejected right in the IDE:
+
+![agent-gate blocking a non-compliant commit of source changes in an IDE](screenshots/agent-gate-blocked-in-trae.png)
+
+### Optional Pipeline Automation (§2.17)
+
+Hosted-platform layer, independent of any coding client:
+
+- **Artifact pipeline** (`github-artifact-pipeline.yml`): merging `01-spec.md` into main auto-creates an `automation/<change-id>-scaffold` branch with `03`/`04` skeletons and a PR; merging `09-changelog.md` auto-opens a release-checklist issue. Skeletons contain headings and to-fill comments only-no fabricated content; all gates still apply before merge.
+- **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` with type `incident` (a one-line `curl` with alert metadata); the workflow creates a `BUG-<UTC-timestamp>` change with an intent skeleton PR. Every incident re-enters the pipeline as recorded intent-no silent fixes. Skips if the branch already exists (alert-storm protection).
+- **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues). Content (A3) and execution (A4) stay local; merge gates are never waived by automation.
+- **Portability**: the reference implementation uses GitHub Actions; GitLab and other platforms implement the same semantics with their CI rules + API (notes in each workflow's header). Semantics are defined by the standards §2.17, not by any platform.
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-32 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
 
 ---
 
 ## The Five Quality Gates
+
+A change passing through the gates accumulates its full artifact chain, from `01-spec.md` all the way to `08-supplement.md`:
+
+![Full artifact lifecycle of a change: 01-spec, 01.5-rtvm-matrix, 02-code-impact-analysis, 03-modification-plan, 03.5-tasks, 04-test-scripts, 05-test-results, 06-delivery-summary, 06.5-deployment-config, 07-review-report, 08-supplement](screenshots/change-artifacts-full-lifecycle.png)
 
 ```
 [ Gate 1: Doc-First ]      Requirements/design must exist before any code change
@@ -164,7 +200,7 @@ The structured state records risk and responsible execution identities; for L2/L
 [ Gate 2: Test-First ]     Test cases (TDD red-green) must exist before implementation
         │
         ▼
-[ Gate 3: Evidence ]       Real test output required—no verbal claims of "done"
+[ Gate 3: Evidence ]       Real test output required-no verbal claims of "done"
         │
         ▼
 [ Gate 4: Traceability ]   RTVM must be closed: REQ ↔ DES ↔ CODE ↔ TC
@@ -210,7 +246,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v2.17.0 | **Last Updated:** 2026-08-24 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v2.18.0 | **Last Updated:** 2026-08-26 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 
