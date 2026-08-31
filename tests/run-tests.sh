@@ -53,14 +53,19 @@ new_repo() {
   git commit -qm init
 }
 
-# 创建合规五产物（L1：无需独立 test/review owner）
+# 创建合规五产物（L1：无需独立 test/review owner；内容满足 §2.5 A 层验收标记）
 seed_artifacts() { # id risk implementation [test] [review]
   local id="$1" risk="$2" impl="$3" test="${4:-}" review="${5:-}"
   local d="docs/changes/$id"
   mkdir -p "$d"
   cat > "$d/00-intent.md" <<'EOF'
 # 00-intent.md
+## 问题
 problem: x
+## 预期结果
+expected: y
+## 开放问题
+open: none
 EOF
   if [[ -n "$test" && -n "$review" ]]; then
     printf '{"change_id":"%s","risk_level":"%s","implementation_owner":"%s","test_owner":"%s","review_owner":"%s"}\n' \
@@ -69,9 +74,18 @@ EOF
     printf '{"change_id":"%s","risk_level":"%s","implementation_owner":"%s"}\n' \
       "$id" "$risk" "$impl" > "$d/00-governance.json"
   fi
-  echo spec > "$d/01-spec.md"
-  echo plan > "$d/03-modification-plan.md"
-  echo tests > "$d/04-test-scripts.md"
+  cat > "$d/01-spec.md" <<'EOF'
+# spec
+- REQ-001: sample requirement
+EOF
+  cat > "$d/03-modification-plan.md" <<'EOF'
+# plan
+- DES-001: sample design
+EOF
+  cat > "$d/04-test-scripts.md" <<'EOF'
+# tests
+- TC-001: sample case
+EOF
 }
 
 commit_all() { # message
@@ -86,9 +100,35 @@ rm docs/changes/CHG-100/00-intent.md   # 缺 intent：begin 必须拒绝
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
 report "begin rejects missing 00-intent.md" 2 $?
 
-echo intent > docs/changes/CHG-100/00-intent.md
+printf '## 问题\nx\n## 预期结果\ny\n## 开放问题\nz\n' > docs/changes/CHG-100/00-intent.md
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
 report "begin accepts five complete artifacts (L1)" 0 $?
+
+# ------------------------------------------------- T1b A 层内容校验（§2.5）
+new_repo
+seed_artifacts CHG-110 L1 claude/s-1
+echo "no numbering here" > docs/changes/CHG-110/01-spec.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects spec without REQ- numbering" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+echo "no numbering" > docs/changes/CHG-110/03-modification-plan.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects plan without DES- numbering" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+echo "no numbering" > docs/changes/CHG-110/04-test-scripts.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects tests without TC- numbering" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+printf '## 问题\nx\n## 开放问题\nz\n' > docs/changes/CHG-110/00-intent.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects intent missing expected-outcome section" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin accepts compliant A-layer content markers" 0 $?
 
 # ---------------------------------------------------------------- T2 治理状态校验
 new_repo
@@ -237,11 +277,18 @@ report "metrics outputs nothing for empty repo" 0 $?
 new_repo
 mkdir -p changes/CUSTOM-1
 export AGENT_GUARD_CHANGE_ROOT=changes
-echo i > changes/CUSTOM-1/00-intent.md
+cat > changes/CUSTOM-1/00-intent.md <<'EOF'
+## 问题
+i
+## 预期结果
+e
+## 开放问题
+o
+EOF
 printf '{"change_id":"CUSTOM-1","risk_level":"L0","implementation_owner":"a"}\n' > changes/CUSTOM-1/00-governance.json
-echo s > changes/CUSTOM-1/01-spec.md
-echo p > changes/CUSTOM-1/03-modification-plan.md
-echo t > changes/CUSTOM-1/04-test-scripts.md
+echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
+echo "DES-001 p" > changes/CUSTOM-1/03-modification-plan.md
+echo "TC-001 t" > changes/CUSTOM-1/04-test-scripts.md
 scripts/agent-gate begin CUSTOM-1 >/dev/null 2>&1
 report "begin honors AGENT_GUARD_CHANGE_ROOT" 0 $?
 unset AGENT_GUARD_CHANGE_ROOT

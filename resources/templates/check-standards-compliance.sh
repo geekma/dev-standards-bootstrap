@@ -32,6 +32,17 @@ if [[ -n "$DOCS_CHANGED" ]]; then
       fi
     done
   done
+
+  # A 层验收（§2.5 验收标准总则）：更新过的产物必须含编号体系，防空洞骨架冒充成品
+  for f in $(echo "$DOCS_CHANGED" | grep '01-spec.md' || true); do
+    grep -q 'REQ-' "$f" || { echo "❌ A 层验收拦截：$f 不含 REQ- 编号体系（§2.5 阶段1 验收标准 A 层）"; exit 1; }
+  done
+  for f in $(echo "$DOCS_CHANGED" | grep '03-modification-plan.md' || true); do
+    grep -q 'DES-' "$f" || { echo "❌ A 层验收拦截：$f 不含 DES- 编号体系（§2.5 阶段3 验收标准 A 层）"; exit 1; }
+  done
+  for f in $(echo "$DOCS_CHANGED" | grep '04-test-scripts.md' || true); do
+    grep -q 'TC-' "$f" || { echo "❌ A 层验收拦截：$f 不含 TC- 编号体系（§2.5 阶段4 验收标准 A 层）"; exit 1; }
+  done
 fi
 
-echo "✅ 基础合规检查通过（仅检查产物存在性，内容质量仍需门禁5人工/独立 Agent Review）。"
+echo "✅ 基础合规检查通过（存在性 + A 层内容标记；内容质量仍需门禁5人工/独立 Agent Review）。"

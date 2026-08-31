@@ -25,3 +25,9 @@ yarn-error.log*
 
 # Private notes (kept local, never committed)
 docs/ai-development-problems-and-solutions.zh-CN.md
+cover-image/
+docs/ai-native-sdlc-implementation-report.md
+docs/ai-native-sdlc-implementation-report.zh-CN.md
+docs/why-i-built-dev-standards-bootstrap.md
+docs/incubation-story.zh-CN.md
+.workbuddy/

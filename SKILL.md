@@ -58,4 +58,4 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 ## 版本同步
 
-`resources/DEVELOPMENT_STANDARDS.md` 与 `resources/AGENTS.md` 应随规范正文迭代更新（当前携带版本 v2.18.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进--改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）。每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程。
+`resources/DEVELOPMENT_STANDARDS.md` 与 `resources/AGENTS.md` 应随规范正文迭代更新（当前携带版本 v2.19.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进--改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）。每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程。

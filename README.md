@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v2.18.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v2.19.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -132,7 +132,7 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # Golden-case regression suite for the gate itself (32 assertions)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.18.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.19.0 (copied to docs/)
     └── templates/
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -252,7 +252,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v2.18.0 | **Last Updated:** 2026-08-26 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v2.19.0 | **Last Updated:** 2026-08-31 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 

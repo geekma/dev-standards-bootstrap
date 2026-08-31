@@ -6,7 +6,7 @@
 ### 一键为任意代码仓库注入 AI Agent 开发治理与质量门禁体系
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![规范版本](https://img.shields.io/badge/规范版本-v2.18.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![规范版本](https://img.shields.io/badge/规范版本-v2.19.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/入口文件-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -132,7 +132,7 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # 门禁自身的 Golden-Case 回归套件（32 项断言）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v2.18.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v2.19.0（复制到 docs/）
     └── templates/
         ├── CLAUDE.md                       # Claude Code 一行导入文件
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR 模板（含门禁自查）
@@ -252,7 +252,7 @@ Pull Request 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)
 
 <div align="center">
 
-**规范版本：** v2.18.0 | **更新时间：** 2026-08-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v2.19.0 | **更新时间：** 2026-08-31 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告 Bug](../../issues) | [功能需求](../../issues) | [阅读规范全文](resources/DEVELOPMENT_STANDARDS.md)
 

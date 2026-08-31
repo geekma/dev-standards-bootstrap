@@ -30,6 +30,25 @@ required_docs_present() {
   for doc in "${required_docs[@]}"; do
     [[ -s "$change_root/$id/$doc" ]] || die "missing required artifact: $change_root/$id/$doc"
   done
+  validate_artifact_content "$id"
+}
+
+# --- A-layer artifact content checks (DEVELOPMENT_STANDARDS §2.5) -----------
+# Presence alone is not acceptance: a hollow skeleton with no numbering system
+# must not pass as a complete artifact set. These checks are deterministic
+# greps; quality judgment (B layer) stays with independent roles.
+validate_artifact_content() {
+  local id="$1" d="$change_root/$id"
+  grep -q "预期结果" "$d/00-intent.md" \
+    || die "$d/00-intent.md missing expected-outcome section (A-layer acceptance, standards §2.5)"
+  grep -q "开放问题" "$d/00-intent.md" \
+    || die "$d/00-intent.md missing open-questions section (A-layer acceptance, standards §2.5)"
+  grep -q "REQ-" "$d/01-spec.md" \
+    || die "$d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
+  grep -q "DES-" "$d/03-modification-plan.md" \
+    || die "$d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
+  grep -q "TC-" "$d/04-test-scripts.md" \
+    || die "$d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
 }
 
 json_string() {
@@ -127,7 +146,9 @@ complete_valid_change_exists() {
     for doc in "${required_docs[@]}"; do
       [[ -s "$dir/$doc" ]] || { complete=false; break; }
     done
-    if [[ "$complete" == true ]] && ( validate_governance_state "$id" ) >/dev/null 2>&1; then
+    if [[ "$complete" == true ]] \
+       && ( validate_governance_state "$id" ) >/dev/null 2>&1 \
+       && ( validate_artifact_content "$id" ) >/dev/null 2>&1; then
       return 0
     fi
   done
@@ -292,7 +313,10 @@ Usage:
 
 begin requires five non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 01-spec.md, 03-modification-plan.md,
-04-test-scripts.md.
+04-test-scripts.md. It also enforces A-layer content checks (standards §2.5):
+00-intent.md must contain the expected-outcome and open-questions sections;
+01-spec.md must use REQ- numbering; 03-modification-plan.md must use DES-
+numbering; 04-test-scripts.md must use TC- numbering. Hollow skeletons fail.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.
