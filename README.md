@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v2.19.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v2.22.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -31,6 +31,7 @@ When multiple AI agents work on the same codebase, chaos is inevitable without g
 - No traceability between requirements, design, code, and tests
 - The same agent writes, tests, and approves its own work
 - Silent step-skipping disguised as "summaries"
+- Changes shipped without analyzing impact on other code, flows, or business
 
 This Skill solves all of the above by installing **five mandatory quality gates**, a **risk classification matrix**, an **agent role independence framework**, and **anti-skip execution rules** into your repository-once, permanently.
 
@@ -38,7 +39,7 @@ This Skill solves all of the above by installing **five mandatory quality gates*
 
 These failure modes are measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows Claude Code's production `/compact` prompt retains only **53% of safety rules after one compaction round, 10% after five**--agent memory silently loses the rules it was told to keep, and self-reported success diverges from what is actually on disk. The [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents the process side: intent drift in long sessions, decision paths no reviewer can follow, and incidents that never feed back into process.
 
-This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 32 golden-case assertions.
+This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 46 golden-case assertions.
 
 ---
 
@@ -52,15 +53,18 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **4-Dimensional RTVM** | Requirement (REQ) -> Design (DES) -> Task (TASK) -> Test Case (TC) full-chain traceability matrix |
 | **10-Stage Development Lifecycle** | From requirements definition through memory sedimentation and continuous improvement |
 | **AI Anti-Skip Rules** | Specifically designed to prevent AI agents from silently skipping steps, using summaries instead of checklists, or marking tasks complete prematurely |
+| **Two-Layer Acceptance (A/B)** | Every stage deliverable passes machine-verifiable markers (A: numbering, required sections) plus independent role judgment (B)-developers can never self-assess layer B (§2.5) |
+| **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT); nine test coverage dimensions with no silent tailoring |
+| **ReAct Execution Rule** | Every step and every code edit runs Thought -> Action -> Observation; acting without prior global-impact analysis is a severe violation (§2.16.2) |
 | **CI/PR Guardrails** | GitHub PR template and bash compliance script for automated baseline checks |
 | **Deterministic Agent Gate** | One dependency-free validator shared by write-time hooks, Git hooks, and CI |
 | **Client Adapters** | One generator emits the Claude Code / Cursor / Gemini CLI hook adapter for the tool in use; other clients fall back to Git hooks + CI |
 | **Intent Layer (`00-intent.md`)** | Every change starts from a recorded intent (problem / expected outcome / constraints); changes without intent are rejected at `begin` (§2.17) |
-| **Artifact Pipeline** | Merging `01-spec.md` auto-dispatches plan/test skeletons; merging `09-changelog.md` auto-opens a release checklist issue-skeletons only, no fabricated content |
+| **Artifact Pipeline** | Merging `01-spec.md` auto-dispatches impact/plan/test skeletons; merging `09-changelog.md` auto-opens a release checklist issue-skeletons only, no fabricated content |
 | **Incident-to-Intent Loop** | Production alerts auto-create a `BUG-<timestamp>` intent skeleton PR via `repository_dispatch`; no silent fixes without a trace |
 | **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines with per-stage timestamps, stage intervals, and `delivery_ready`-derived purely from git history, zero dependencies |
 | **A0–A4 Autonomy Matrix** | Environment-scoped authorization for automated actions; hosted workflows cap at A2 (skeletons + PRs), merge gates never waived |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (32 assertions) in throwaway git repos-bash + git only |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (46 assertions) in throwaway git repos-bash + git only |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -129,10 +133,10 @@ dev-standards-bootstrap/
 ├── LICENSE                                 # MIT License
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   └── run-tests.sh                        # Golden-case regression suite for the gate itself (32 assertions)
+│   └── run-tests.sh                        # Golden-case regression suite for the gate itself (46 assertions)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.19.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.22.0 (copied to docs/)
     └── templates/
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -144,13 +148,13 @@ dev-standards-bootstrap/
         ├── pre-commit, pre-push            # Git hook templates
         ├── install-hook-adapter.sh         # Generates the hook adapter for the detected tool (claude/cursor/gemini)
         ├── github-agent-governance.yml     # Required-check workflow template
-        ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 03/04 skeletons PR; changelog merged -> release checklist issue
+        ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/04 skeletons PR; changelog merged -> release checklist issue
         └── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
 ```
 
 ### Optional Enforcement Package
 
-Copy `agent-gate.sh` to `scripts/agent-gate` and make it executable. Before an agent writes source code, create `docs/changes/CHG-123/` with a completed `00-intent.md` (recorded intent: problem / expected outcome / constraints) and `00-governance.json`, plus non-empty `01-spec.md`, `03-modification-plan.md`, and `04-test-scripts.md`, then run:
+Copy `agent-gate.sh` to `scripts/agent-gate` and make it executable. Before an agent writes source code, create `docs/changes/CHG-123/` with a completed `00-intent.md` (recorded intent: problem / expected outcome / constraints) and `00-governance.json`, plus non-empty `01-spec.md`, `02-code-impact-analysis.md`, `03-modification-plan.md`, `03.5-tasks.md`, and `04-test-scripts.md`, then run:
 
 ```bash
 scripts/agent-gate begin CHG-123
@@ -160,14 +164,14 @@ The gate is one dependency-free Bash script; every adapter reuses the same comma
 
 | Command | Purpose |
 |---|---|
-| `begin <change-id>` / `end` | Activate or clear the active change; `begin` requires the five change artifacts (including `00-intent.md`) to exist and be non-empty, and validates the governance state |
+| `begin <change-id>` / `end` | Activate or clear the active change; `begin` requires the seven change artifacts (including `00-intent.md`, the `02` impact analysis, and the `03.5` task breakdown) to exist and be non-empty, and validates the governance state plus A-layer content markers |
 | `--stage pre-write` | Validates the active change's artifacts and governance state before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts and a valid governance state, otherwise the commit is rejected |
-| `--stage stop` | Ending a turn after source edits requires `05-test-results.md` and `09-changelog.md`, plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured |
+| `--stage stop` | Ending a turn after source edits requires `05-test-results.md`, `09-changelog.md` (with ReAct Observation records, §2.16.2), plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state) and runs the real verification command |
 | `metrics` | Read-only pipeline metrics as JSON Lines: per-stage timestamps, stage intervals, `delivery_ready`-observations only, never a substitute for DoD |
 
-What the required artifact set looks like on disk for a fresh change:
+What the required artifact set looks like on disk for a fresh change (screenshot from an earlier version; the current gate additionally requires `02-code-impact-analysis.md` and `03.5-tasks.md`):
 
 ![The required artifact set of a new change: 00-governance.json, 01-spec.md, 03-modification-plan.md, 04-test-scripts.md staged as new files](screenshots/change-artifacts-required-set.png)
 
@@ -185,11 +189,11 @@ The gate blocking in practice--a commit of source changes without matching chang
 
 Hosted-platform layer, independent of any coding client:
 
-- **Artifact pipeline** (`github-artifact-pipeline.yml`): merging `01-spec.md` into main auto-creates an `automation/<change-id>-scaffold` branch with `03`/`04` skeletons and a PR; merging `09-changelog.md` auto-opens a release-checklist issue. Skeletons contain headings and to-fill comments only-no fabricated content; all gates still apply before merge.
+- **Artifact pipeline** (`github-artifact-pipeline.yml`): merging `01-spec.md` into main auto-creates an `automation/<change-id>-scaffold` branch with `02`/`03`/`04` skeletons and a PR; merging `09-changelog.md` auto-opens a release-checklist issue. Skeletons contain headings and to-fill comments only-no fabricated content; all gates still apply before merge.
 - **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` with type `incident` (a one-line `curl` with alert metadata); the workflow creates a `BUG-<UTC-timestamp>` change with an intent skeleton PR. Every incident re-enters the pipeline as recorded intent-no silent fixes. Skips if the branch already exists (alert-storm protection).
 - **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues). Content (A3) and execution (A4) stay local; merge gates are never waived by automation.
 - **Portability**: the reference implementation uses GitHub Actions; GitLab and other platforms implement the same semantics with their CI rules + API (notes in each workflow's header). Semantics are defined by the standards §2.17, not by any platform.
-- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-32 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-46 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
 
 ---
 
@@ -252,7 +256,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v2.19.0 | **Last Updated:** 2026-08-31 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v2.22.0 | **Last Updated:** 2026-09-04 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 

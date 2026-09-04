@@ -41,7 +41,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
      - `resources/templates/agent-governance.yml` -> `.agent-governance.yml`，作为团队可审阅的配置记录；不臆造项目测试命令，要求用户在 GitHub Actions repository variable 中设置真实的 `AGENT_GUARD_VERIFY_COMMAND`。
      - 明确说明：本地 Hook 可被直接编辑器、shell 或禁用 hooks 绕过；必须在 Git 托管平台将 `agent-governance` 与项目测试设为 Required Status Check、禁止直接推送受保护分支，并为 L3 配置 CODEOWNERS/人工审批。
    - 是否要启用**管线自动化**（规范 §2.17，托管平台层，与客户端无关）？->
-     - `resources/templates/github-artifact-pipeline.yml` -> `.github/workflows/artifact-pipeline.yml`（传动机制 §2.17.1：`01-spec.md` 合入自动派发 03/04 骨架 PR、`09-changelog.md` 合入自动开发布检查单 issue；骨架只含待填注释，workflow 自主权上限 A2）。
+     - `resources/templates/github-artifact-pipeline.yml` -> `.github/workflows/artifact-pipeline.yml`（传动机制 §2.17.1：`01-spec.md` 合入自动派发 02/03/04 骨架 PR、`09-changelog.md` 合入自动开发布检查单 issue；骨架只含待填注释，workflow 自主权上限 A2）。
      - `resources/templates/github-incident-to-intent.yml` -> `.github/workflows/incident-to-intent.yml`（事故重入 §2.17.2：监控告警经 `repository_dispatch` 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架 PR；给出监控系统 curl 接入示例）。
      - 复制本仓库 `tests/run-tests.sh` -> 目标仓库 `tests/run-tests.sh`（治理配置 golden-case 自测试 §2.17.4：修改 `agent-gate`/hooks/workflow 前必须先跑通，零依赖 bash+git）。
      - GitLab 等平台：按两个 workflow 文件头部注释中的等价实现思路（CI 触发规则 + 平台 API）落地，语义以规范 §2.17 为准。
@@ -58,4 +58,4 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 ## 版本同步
 
-`resources/DEVELOPMENT_STANDARDS.md` 与 `resources/AGENTS.md` 应随规范正文迭代更新（当前携带版本 v2.19.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进--改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）。每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程。
+`resources/DEVELOPMENT_STANDARDS.md` 与 `resources/AGENTS.md` 应随规范正文迭代更新（当前携带版本 v2.22.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进--改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）。每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程。

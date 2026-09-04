@@ -15,7 +15,7 @@ cd "$repo_root"
 change_root="${AGENT_GUARD_CHANGE_ROOT:-docs/changes}"
 # 00-intent.md is the pipeline entry point (problem / expected outcome / constraints);
 # a change without a recorded intent is treated as undocumented work.
-required_docs=(00-intent.md 00-governance.json 01-spec.md 03-modification-plan.md 04-test-scripts.md)
+required_docs=(00-intent.md 00-governance.json 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md)
 active_file=$(git rev-parse --git-path agent-governance/active-change)
 
 is_code_path() {
@@ -49,6 +49,27 @@ validate_artifact_content() {
     || die "$d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
   grep -q "TC-" "$d/04-test-scripts.md" \
     || die "$d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
+  # v2.20.0 professional-role markers: option comparison in the plan and a
+  # coverage-dimension column in the test matrix (standards §2.5 stages 3-4).
+  grep -qE "备选|选型" "$d/03-modification-plan.md" \
+    || die "$d/03-modification-plan.md has no option-comparison (备选/选型) content (A-layer, standards §2.5 stage 3)"
+  grep -q "覆盖维度" "$d/04-test-scripts.md" \
+    || die "$d/04-test-scripts.md has no coverage-dimension (覆盖维度) column (A-layer, standards §2.5 stage 4)"
+  # Stage 2 is unconditional: "analyze before designing" (standards §2.5
+  # stage 2) is a hard gate, not an optional extra. 03.5 may alternatively
+  # carry an explicit no-breakdown exemption marker instead of task rows.
+  grep -q "业务影响" "$d/02-code-impact-analysis.md" \
+    || die "$d/02-code-impact-analysis.md missing business-impact (业务影响) section (A-layer, standards §2.5 stage 2)"
+  grep -q "风险" "$d/02-code-impact-analysis.md" \
+    || die "$d/02-code-impact-analysis.md missing risk (风险) content (A-layer, standards §2.5 stage 2)"
+  grep -q "回滚策略" "$d/02-code-impact-analysis.md" \
+    || die "$d/02-code-impact-analysis.md missing rollback (回滚策略) content (A-layer, standards §2.5 stage 2)"
+  if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
+    grep -q "依赖" "$d/03.5-tasks.md" \
+      || die "$d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
+    grep -q "里程碑" "$d/03.5-tasks.md" \
+      || die "$d/03.5-tasks.md missing milestone (里程碑) info (A-layer, standards §2.5 stage 3)"
+  fi
 }
 
 json_string() {
@@ -115,6 +136,10 @@ validate_stop() {
   id=$(active_change)
   [[ -s "$change_root/$id/05-test-results.md" ]] || die "cannot finish: missing test evidence $change_root/$id/05-test-results.md"
   [[ -s "$change_root/$id/09-changelog.md" ]] || die "cannot finish: missing changelog $change_root/$id/09-changelog.md"
+  # v2.21.0 ReAct gate (standards §2.16.2): every executed stage must leave an
+  # Observation record (verification command + actual output) in the changelog.
+  grep -q "Observation" "$change_root/$id/09-changelog.md" \
+    || die "cannot finish: changelog missing ReAct Observation records (standards §2.16.2)"
   if [[ -n "${AGENT_GUARD_VERIFY_COMMAND:-}" ]]; then
     bash -lc "$AGENT_GUARD_VERIFY_COMMAND" || die "cannot finish: AGENT_GUARD_VERIFY_COMMAND failed"
   fi
@@ -311,12 +336,16 @@ Usage:
   scripts/agent-gate --stage stop
   scripts/agent-gate --stage ci [--base ref]
 
-begin requires five non-empty artifacts under the change root:
-00-intent.md, 00-governance.json, 01-spec.md, 03-modification-plan.md,
-04-test-scripts.md. It also enforces A-layer content checks (standards §2.5):
-00-intent.md must contain the expected-outcome and open-questions sections;
-01-spec.md must use REQ- numbering; 03-modification-plan.md must use DES-
-numbering; 04-test-scripts.md must use TC- numbering. Hollow skeletons fail.
+begin requires seven non-empty artifacts under the change root:
+00-intent.md, 00-governance.json, 01-spec.md, 02-code-impact-analysis.md,
+03-modification-plan.md, 03.5-tasks.md, 04-test-scripts.md. It also enforces
+A-layer content checks (standards §2.5): 00-intent.md must contain the
+expected-outcome and open-questions sections; 01-spec.md must use REQ-
+numbering; 02 must cover business impact, risk and rollback; 03-modification-
+plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
+carry dependencies/milestones or an explicit no-breakdown exemption; 04-test-
+scripts.md must use TC- numbering and a coverage-dimension column. Hollow
+skeletons fail.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.

@@ -12,7 +12,7 @@ BASE_REF="${1:-origin/main}"
 CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD)
 
 CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(java|py|ts|tsx|js|go)$' || true)
-DOCS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^docs/.*/(01-spec|03-modification-plan|04-test-scripts|05-test-results|09-changelog)\.md$' || true)
+DOCS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^docs/.*/(01-spec|02-code-impact-analysis|03-modification-plan|03\.5-tasks|04-test-scripts|05-test-results|09-changelog)\.md$' || true)
 
 if [[ -n "$CODE_CHANGED" && -z "$DOCS_CHANGED" ]]; then
   echo "❌ 门禁拦截：检测到源码变更，但未发现 docs/<feature>/ 下对应的规范文档更新。"
@@ -31,6 +31,7 @@ if [[ -n "$DOCS_CHANGED" ]]; then
         exit 1
       fi
     done
+    grep -q 'Observation' "$f" || { echo "❌ ReAct 拦截：$f 缺「执行记录（ReAct）」Observation 记录（§2.16.2 铁律）"; exit 1; }
   done
 
   # A 层验收（§2.5 验收标准总则）：更新过的产物必须含编号体系，防空洞骨架冒充成品

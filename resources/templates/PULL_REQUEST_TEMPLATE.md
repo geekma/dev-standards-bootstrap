@@ -11,6 +11,7 @@ CHG-xxx（关联 `docs/<feature>/09-changelog.md`）
 - [ ] 门禁3：`05-test-results.md` 有本批次真实测试输出（非口头声明）
 - [ ] 门禁4：`09-changelog.md` 与 `docs/<feature>/01.5-rtvm-matrix.md` 均已回填
 - [ ] 门禁5：测试与 Review 由与开发不同的执行主体完成（角色签署表已附），L3 变更已获 Release Owner 授权
+- [ ] ReAct 记录：`09-changelog.md` 含「执行记录（ReAct）」（每个已执行阶段 Observation 附命令与实际输出，§2.16.2）
 
 ## 独立性证据（命中 L2/L3 时必填）
 | 环节 | 执行主体/Agent 标识 | 结论 |

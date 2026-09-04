@@ -2,7 +2,8 @@
 #
 # 设计原则（对应规范 §2.17.1）：
 #   1. 产物被接受即触发下一阶段——01-spec.md 合入 main 后，自动为该变更创建
-#      03-modification-plan.md 与 04-test-scripts.md **骨架** 并开 PR 派发方案/测试角色；
+#      02-code-impact-analysis.md、03-modification-plan.md 与 04-test-scripts.md
+#      **骨架** 并开 PR 派发影响分析/方案/测试角色（阶段顺序 01→02→03→04）；
 #      09-changelog.md 合入后自动创建发布检查单 issue（§2.7.1 六项）。
 #   2. 只创建"骨架"（标题 + 指向规范必含清单的待填项），绝不臆造项目特定内容；
 #   3. 一切经 PR/issue 走人工或 Agent 审查，不绕过任何治理门禁（CI 仍是信任边界）；
@@ -51,7 +52,7 @@ jobs:
           echo "specs=$(wc -l < /tmp/new-specs.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
           echo "changelogs=$(wc -l < /tmp/new-changelogs.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
 
-      - name: Scaffold plan and test scripts for accepted specs
+      - name: Scaffold impact, plan and test scripts for accepted specs
         if: steps.detect.outputs.specs != '0'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -67,6 +68,25 @@ jobs:
             fi
             git checkout -b "$branch"
             mkdir -p "docs/changes/$id"
+            if [ ! -s "docs/changes/$id/02-code-impact-analysis.md" ]; then
+          cat > "docs/changes/$id/02-code-impact-analysis.md" <<'EOF'
+          # 02-code-impact-analysis.md（骨架，由传动机制自动创建）
+
+          > 由 01-spec.md 合入自动派发。按 `docs/DEVELOPMENT_STANDARDS.md` §2.5 阶段 2 必含清单填写；本骨架只列待填项，不含任何预生成内容。先分析后方案：本文件完成前不得进入阶段 3。
+
+          ## 业务影响
+          <!-- 受影响业务流程/用户场景、上下游系统与数据流、行业与合规约束、SLA -->
+
+          ## 技术影响
+          <!-- 调用拓扑（入口→链路→出口）、受影响类/文件清单、爆炸半径 -->
+
+          ## 风险
+          <!-- 风险矩阵（概率 × 影响）与缓解措施 -->
+
+          ## 回滚策略
+          <!-- 回滚触发条件、步骤与验证 -->
+          EOF
+            fi
             if [ ! -s "docs/changes/$id/03-modification-plan.md" ]; then
           cat > "docs/changes/$id/03-modification-plan.md" <<'EOF'
           # 03-modification-plan.md（骨架，由传动机制自动创建）
@@ -86,7 +106,7 @@ jobs:
           <!-- 表结构、索引、缓存策略、事务边界 -->
 
           ## 技术选型与决策记录（ADR）
-          <!-- 为什么选此方案，备选对比 -->
+          <!-- ≥2 候选方案对比矩阵 + 为何最适配当前业务场景 -->
 
           ## 兼容性与影响
           <!-- 对既有调用方的兼容措施 -->
@@ -105,7 +125,7 @@ jobs:
           <!-- 全量套件命令（JDK/Maven 等） -->
 
           ## 用例矩阵
-          <!-- TC 编号 / 场景 / 输入 / 期望断言 / 覆盖的 REQ-DES；正常流 + 边界 + 异常兜底 -->
+          <!-- TC 编号 / 场景 / 输入 / 期望断言 / 覆盖维度 / 覆盖的 REQ-DES；九类覆盖维度逐维设计或显式标注不适用 -->
 
           ## TDD 红->绿运行方式
           <!-- 先红后绿的执行步骤 -->
@@ -120,10 +140,10 @@ jobs:
               continue
             fi
             git add "docs/changes/$id"
-            git commit -m "chore(pipeline): scaffold plan/test artifacts for $id"
+            git commit -m "chore(pipeline): scaffold impact/plan/test artifacts for $id"
             git push origin "$branch"
             gh pr create --title "pipeline: scaffold artifacts for $id" --body \
-              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由方案/测试角色填写 03 与 04，经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
+              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03 与 04，经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
             git checkout "$DEFAULT_BRANCH"
           done < /tmp/new-specs.txt
 

@@ -53,7 +53,7 @@ new_repo() {
   git commit -qm init
 }
 
-# 创建合规五产物（L1：无需独立 test/review owner；内容满足 §2.5 A 层验收标记）
+# 创建合规七产物（L1：无需独立 test/review owner；内容满足 §2.5 A 层验收标记）
 seed_artifacts() { # id risk implementation [test] [review]
   local id="$1" risk="$2" impl="$3" test="${4:-}" review="${5:-}"
   local d="docs/changes/$id"
@@ -78,13 +78,32 @@ EOF
 # spec
 - REQ-001: sample requirement
 EOF
+  cat > "$d/02-code-impact-analysis.md" <<'EOF'
+# impact
+## 业务影响
+business: b
+## 技术影响
+call chain: c
+## 风险
+risk: r
+## 回滚策略
+rollback: ok
+EOF
   cat > "$d/03-modification-plan.md" <<'EOF'
 # plan
 - DES-001: sample design
+## 技术选型
+备选方案对比: A vs B
+EOF
+  cat > "$d/03.5-tasks.md" <<'EOF'
+# tasks
+- T-001: do something（依赖: 无；里程碑: M1）
 EOF
   cat > "$d/04-test-scripts.md" <<'EOF'
 # tests
 - TC-001: sample case
+## 用例矩阵
+覆盖维度: 正常流 / 边界 / 异常
 EOF
 }
 
@@ -102,7 +121,7 @@ report "begin rejects missing 00-intent.md" 2 $?
 
 printf '## 问题\nx\n## 预期结果\ny\n## 开放问题\nz\n' > docs/changes/CHG-100/00-intent.md
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
-report "begin accepts five complete artifacts (L1)" 0 $?
+report "begin accepts seven complete artifacts (L1)" 0 $?
 
 # ------------------------------------------------- T1b A 层内容校验（§2.5）
 new_repo
@@ -125,6 +144,48 @@ seed_artifacts CHG-110 L1 claude/s-1
 printf '## 问题\nx\n## 开放问题\nz\n' > docs/changes/CHG-110/00-intent.md
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects intent missing expected-outcome section" 2 $?
+
+# v2.20.0 专业角色标记负例：选型对比 / 覆盖维度 / 02 三维 / 03.5 依赖里程碑
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# plan\n- DES-001: sample design\n' > docs/changes/CHG-110/03-modification-plan.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects plan without option-comparison markers" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# tests\n- TC-001: sample case\n' > docs/changes/CHG-110/04-test-scripts.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects tests without coverage-dimension column" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# impact\n## 技术影响\ncall chain only\n' > docs/changes/CHG-110/02-code-impact-analysis.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects impact doc without business-impact section" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# impact\n## 业务影响\nx\n## 风险\ny\n' > docs/changes/CHG-110/02-code-impact-analysis.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects impact doc without rollback strategy" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# tasks\n- T-001: do something\n' > docs/changes/CHG-110/03.5-tasks.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects tasks doc without dependency/milestone markers" 2 $?
+
+# v2.22.0：豁免路径 / 缺 02 / 缺 03.5
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# tasks\nCHG 直接实施（未拆任务，理由: trivial）\n' > docs/changes/CHG-110/03.5-tasks.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin accepts tasks doc with explicit exemption" 0 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+rm docs/changes/CHG-110/02-code-impact-analysis.md   # 缺影响分析：先分析后方案必须拒绝
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects missing impact analysis doc" 2 $?
+
+seed_artifacts CHG-110 L1 claude/s-1
+rm docs/changes/CHG-110/03.5-tasks.md   # 缺任务拆解：必须拒绝
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects missing tasks doc" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
@@ -216,6 +277,10 @@ report "stop blocks finish without changelog" 2 $?
 
 echo chg > docs/changes/CHG-500/09-changelog.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop blocks finish without ReAct Observation records" 2 $?
+
+printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-500/09-changelog.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop passes with evidence and changelog" 0 $?
 
 AGENT_GUARD_VERIFY_COMMAND='false' scripts/agent-gate --stage stop >/dev/null 2>&1
@@ -287,8 +352,10 @@ o
 EOF
 printf '{"change_id":"CUSTOM-1","risk_level":"L0","implementation_owner":"a"}\n' > changes/CUSTOM-1/00-governance.json
 echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
-echo "DES-001 p" > changes/CUSTOM-1/03-modification-plan.md
-echo "TC-001 t" > changes/CUSTOM-1/04-test-scripts.md
+printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > changes/CUSTOM-1/02-code-impact-analysis.md
+printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > changes/CUSTOM-1/03-modification-plan.md
+printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n' > changes/CUSTOM-1/03.5-tasks.md
+printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n' > changes/CUSTOM-1/04-test-scripts.md
 scripts/agent-gate begin CUSTOM-1 >/dev/null 2>&1
 report "begin honors AGENT_GUARD_CHANGE_ROOT" 0 $?
 unset AGENT_GUARD_CHANGE_ROOT
