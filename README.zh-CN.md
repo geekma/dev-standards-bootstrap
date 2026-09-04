@@ -6,7 +6,7 @@
 ### 一键为任意代码仓库注入 AI Agent 开发治理与质量门禁体系
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![规范版本](https://img.shields.io/badge/规范版本-v2.22.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![规范版本](https://img.shields.io/badge/规范版本-v3.0.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/入口文件-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -56,6 +56,7 @@
 | **两层验收标准（A/B）** | 每个阶段产物须过机器可验标记（A 层：编号体系/必含节）+ 独立角色判定（B 层）——开发 Agent 不得自评 B 层（§2.5） |
 | **专业角色标准** | 变更前背景调研；方案前业务/技术/风险三维影响分析；≥2 候选选型对比；PM 标准任务拆分（关键路径/里程碑/DoT）；九类测试覆盖维度、禁止静默裁剪 |
 | **ReAct 执行铁律** | 每步与每次改码均按 Thought → Action → Observation 推进；未经全局影响分析直接动手属严重违规（§2.16.2） |
+| **方法论选型层（M0–M3）** | `METHODOLOGY.md` 以"阶段 × 方法论 × 适用条件 × 不适用场景"主表回答"允许用哪些、禁止用哪些"（含 L1 CRUD 反向判定示例）；`methodologies/development.md` 与 `data-structures.md` 给出编码与数据建模的逐条决策依据（弱类型穿层禁令、LLM 输入输出结构分离）——AGENTS.md 仅做路由指针 |
 | **CI/PR 工程化兜底** | GitHub PR 模板和 Bash 合规检查脚本，CI 流水线自动拦截 |
 | **确定性 Agent 门禁** | 一套零第三方依赖校验器，供写前 Hook、Git Hook 与 CI 共同调用 |
 | **客户端适配层** | 一个生成器按当前工具自动生成 Claude Code / Cursor / Gemini CLI 的 Hook 配置，其余客户端由 Git Hook + CI 兜底 |
@@ -114,7 +115,7 @@ Skill 将自动执行：
 
 1. 检测已有文件，避免覆盖（先展示差异再询问）
 2. 将 `AGENTS.md` 写入仓库根目录
-3. 将 `DEVELOPMENT_STANDARDS.md` 写入 `docs/` 目录
+3. 将 `DEVELOPMENT_STANDARDS.md`、`METHODOLOGY.md` 与 `methodologies/` 写入 `docs/` 目录
 4. 可选：为 Claude Code 添加一行导入文件（`CLAUDE.md`）
 5. 可选：添加 PR 模板和 CI 合规检查脚本
 6. 可选：添加确定性门禁、Git Hook、CI workflow、治理配置记录与 Hook 适配器生成器
@@ -136,7 +137,11 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # 门禁自身的 Golden-Case 回归套件（46 项断言）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v2.22.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.0.0（复制到 docs/）
+    ├── METHODOLOGY.md                       # 方法论选型总纲：M0-M3 分级 + 阶段×方法论×适用/不适用主表（复制到 docs/）
+    ├── methodologies/
+    │   ├── development.md                   # 代码规范：SOLID/DRY/KISS/YAGNI 适用与豁免 + 七大工程维度
+    │   └── data-structures.md               # 数据结构设计规范：六类模型 + 弱类型禁令 + LLM 输入输出专项
     └── templates/
         ├── CLAUDE.md                       # Claude Code 一行导入文件
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR 模板（含门禁自查）
@@ -256,7 +261,7 @@ Pull Request 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)
 
 <div align="center">
 
-**规范版本：** v2.22.0 | **更新时间：** 2026-09-04 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.0.0 | **更新时间：** 2026-09-05 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告 Bug](../../issues) | [功能需求](../../issues) | [阅读规范全文](resources/DEVELOPMENT_STANDARDS.md)
 

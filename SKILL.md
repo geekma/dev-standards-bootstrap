@@ -26,6 +26,8 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 3. **写入核心文件**（无冲突时直接写入）：
    - 复制 `resources/AGENTS.md` -> 目标仓库根目录 `AGENTS.md`
    - 复制 `resources/DEVELOPMENT_STANDARDS.md` -> 目标仓库 `docs/DEVELOPMENT_STANDARDS.md`
+   - 复制 `resources/METHODOLOGY.md` -> 目标仓库 `docs/METHODOLOGY.md`（方法论选型总纲：M0-M3 分级 + 阶段×方法论×适用/不适用主表；阶段 3 技术选型的决策依据，选型唯一权威表）
+   - 复制 `resources/methodologies/` 整个目录 -> 目标仓库 `docs/methodologies/`（含 `development.md` 代码规范与 `data-structures.md` 数据结构设计规范；AGENTS.md 锚点表已含路由）
 4. **询问是否需要可选增强**（不要求默认全装，分别询问）：
    - 是否要为 Claude Code 加一个一行导入文件？-> 复制 `resources/templates/CLAUDE.md`（内容仅一行 `@AGENTS.md`，不重复内容，只是让 Claude Code 也能拿到其专属的 hooks/subagent 富能力）到仓库根目录。
    - 是否要工程化兜底（不完全依赖 AI 自觉遵守）？->
@@ -58,4 +60,4 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 ## 版本同步
 
-`resources/DEVELOPMENT_STANDARDS.md` 与 `resources/AGENTS.md` 应随规范正文迭代更新（当前携带版本 v2.22.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进--改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）。每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程。
+`resources/DEVELOPMENT_STANDARDS.md`、`resources/AGENTS.md` 与方法论层（`resources/METHODOLOGY.md` + `resources/methodologies/`）应随规范正文迭代更新（当前携带版本 v3.0.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进--改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）。每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程（v3.0.0 升级须额外复制 `METHODOLOGY.md` 与 `methodologies/` 到目标仓库 `docs/`）。

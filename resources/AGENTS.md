@@ -42,12 +42,15 @@
 | 判断这次改动风险等级、要不要跨平台交叉验证 | §0.5 |
 | 新建功能，第一次接触本仓库 | §2.5 阶段 1-10 全部 |
 | 做影响分析 / 出方案 / 拆任务 | §2.5 阶段 2-3（三维影响 + ≥2 候选选型 + PM 拆分） |
+| 做技术/方法论选型（允许用哪些、禁止用哪些） | `docs/METHODOLOGY.md`（M0–M3 分级与适用/不适用主表，选型唯一权威）+ §2.5 阶段 3 |
+| 写代码前的工程决策（SOLID/DRY/KISS、复杂度、错误处理、日志、并发） | `docs/methodologies/development.md` |
+| 定义数据结构 / 接口字段 / LLM 输入输出契约 | `docs/methodologies/data-structures.md`（六类模型 + 弱类型禁令） |
 | 写测试用例 | §2.5 阶段 4 + §0 门禁 2（九类覆盖维度） |
 | 执行中如何留痕（Thought/Observation） | §2.16.2 ReAct 执行铁律 |
 | 只是改 bug | §2.5 阶段 6 + §0 门禁 |
 | 涉及配置文件/数据库变更 | §2.6 |
 | 要发布上线 | §2.7、§2.8 |
-| 涉及模型/Prompt/AI 链路 | §2.9 |
+| 涉及模型/Prompt/AI 链路 | §2.9 + `docs/methodologies/data-structures.md` §4（LLM 结构专项） |
 | 生产环境紧急热修复 | §2.11 |
 | 完成前最后自检 | §2.16.2、§2.16.3、§2.16.4、§2.16.6 |
 | 填写 Changelog | §4 |
@@ -58,4 +61,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v2.22.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.0.0_

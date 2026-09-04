@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v2.22.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.0.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -56,6 +56,7 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Two-Layer Acceptance (A/B)** | Every stage deliverable passes machine-verifiable markers (A: numbering, required sections) plus independent role judgment (B)-developers can never self-assess layer B (§2.5) |
 | **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT); nine test coverage dimensions with no silent tailoring |
 | **ReAct Execution Rule** | Every step and every code edit runs Thought -> Action -> Observation; acting without prior global-impact analysis is a severe violation (§2.16.2) |
+| **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden" via a stage x methodology x applicable / not-applicable table (with an L1 CRUD reverse-check example); `methodologies/development.md` and `data-structures.md` provide per-item engineering decision rationale (weak-typing ban across layers, LLM input/output schema separation)-AGENTS.md serves as routing pointers only |
 | **CI/PR Guardrails** | GitHub PR template and bash compliance script for automated baseline checks |
 | **Deterministic Agent Gate** | One dependency-free validator shared by write-time hooks, Git hooks, and CI |
 | **Client Adapters** | One generator emits the Claude Code / Cursor / Gemini CLI hook adapter for the tool in use; other clients fall back to Git hooks + CI |
@@ -114,7 +115,7 @@ The Skill will:
 
 1. Detect existing files and avoid overwriting (shows diffs first)
 2. Write `AGENTS.md` to the repo root
-3. Write `DEVELOPMENT_STANDARDS.md` to `docs/`
+3. Write `DEVELOPMENT_STANDARDS.md`, `METHODOLOGY.md`, and `methodologies/` to `docs/`
 4. Optionally add Claude Code one-line import (`CLAUDE.md`)
 5. Optionally add PR template and CI compliance script
 6. Optionally add the deterministic gate, Git hooks, CI workflow, governance config record, and tool-specific hook adapters
@@ -136,7 +137,11 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # Golden-case regression suite for the gate itself (46 assertions)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v2.22.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.0.0 (copied to docs/)
+    ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
+    ├── methodologies/
+    │   ├── development.md                   # Code standards: SOLID/DRY/KISS/YAGNI applicability & exemptions + 7 engineering dimensions
+    │   └── data-structures.md               # Data structure standards: 6 model types + weak-typing ban + LLM input/output specifics
     └── templates/
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -256,7 +261,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v2.22.0 | **Last Updated:** 2026-09-04 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.0.0 | **Last Updated:** 2026-09-05 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 
