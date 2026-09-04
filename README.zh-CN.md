@@ -56,7 +56,7 @@
 | **两层验收标准（A/B）** | 每个阶段产物须过机器可验标记（A 层：编号体系/必含节）+ 独立角色判定（B 层）——开发 Agent 不得自评 B 层（§2.5） |
 | **专业角色标准** | 变更前背景调研；方案前业务/技术/风险三维影响分析；≥2 候选选型对比；PM 标准任务拆分（关键路径/里程碑/DoT）；九类测试覆盖维度、禁止静默裁剪 |
 | **ReAct 执行铁律** | 每步与每次改码均按 Thought → Action → Observation 推进；未经全局影响分析直接动手属严重违规（§2.16.2） |
-| **方法论选型层（M0–M3）** | `METHODOLOGY.md` 以"阶段 × 方法论 × 适用条件 × 不适用场景"主表回答"允许用哪些、禁止用哪些"（含 L1 CRUD 反向判定示例）；`methodologies/development.md` 与 `data-structures.md` 给出编码与数据建模的逐条决策依据（弱类型穿层禁令、LLM 输入输出结构分离）——AGENTS.md 仅做路由指针 |
+| **方法论选型层（M0–M3）** | `METHODOLOGY.md` 主表回答"允许用哪些、禁止用哪些"（含 L1 CRUD 反向判定）；`methodologies/` 提供编码与数据建模的逐条决策依据（弱类型穿层禁令、LLM 输入输出结构分离）——AGENTS.md 仅做路由 |
 | **CI/PR 工程化兜底** | GitHub PR 模板和 Bash 合规检查脚本，CI 流水线自动拦截 |
 | **确定性 Agent 门禁** | 一套零第三方依赖校验器，供写前 Hook、Git Hook 与 CI 共同调用 |
 | **客户端适配层** | 一个生成器按当前工具自动生成 Claude Code / Cursor / Gemini CLI 的 Hook 配置，其余客户端由 Git Hook + CI 兜底 |
