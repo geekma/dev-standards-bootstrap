@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.0.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.1.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -57,6 +57,7 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT); nine test coverage dimensions with no silent tailoring |
 | **ReAct Execution Rule** | Every step and every code edit runs Thought -> Action -> Observation; acting without prior global-impact analysis is a severe violation (§2.16.2) |
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden" (with an L1 CRUD reverse-check); `methodologies/` provides per-item engineering rationale (weak-typing ban, LLM input/output schema separation)-AGENTS.md routes only |
+| **Bug Fix Log (`bugfix-log.md`)** | Repo-level append-only index: each bug registers symptom / root cause / fix / test evidence / affected files / doc-backfill checklist / linked REQ-CHG; full records live in 09-changelog (single source)-the log is index only (§2.5 Stage 6) |
 | **CI/PR Guardrails** | GitHub PR template and bash compliance script for automated baseline checks |
 | **Deterministic Agent Gate** | One dependency-free validator shared by write-time hooks, Git hooks, and CI |
 | **Client Adapters** | One generator emits the Claude Code / Cursor / Gemini CLI hook adapter for the tool in use; other clients fall back to Git hooks + CI |
@@ -115,7 +116,7 @@ The Skill will:
 
 1. Detect existing files and avoid overwriting (shows diffs first)
 2. Write `AGENTS.md` to the repo root
-3. Write `DEVELOPMENT_STANDARDS.md`, `METHODOLOGY.md`, and `methodologies/` to `docs/`
+3. Write `DEVELOPMENT_STANDARDS.md`, `METHODOLOGY.md`, `methodologies/`, and `bugfix-log.md` to `docs/`
 4. Optionally add Claude Code one-line import (`CLAUDE.md`)
 5. Optionally add PR template and CI compliance script
 6. Optionally add the deterministic gate, Git hooks, CI workflow, governance config record, and tool-specific hook adapters
@@ -137,7 +138,7 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # Golden-case regression suite for the gate itself (46 assertions)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.0.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.1.0 (copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
     │   ├── development.md                   # Code standards: SOLID/DRY/KISS/YAGNI applicability & exemptions + 7 engineering dimensions
@@ -148,6 +149,7 @@ dev-standards-bootstrap/
         ├── check-standards-compliance.sh   # CI compliance check script
         ├── agent-gate.sh                   # Shared pre-write / Git / CI validator (+ metrics)
         ├── intent.md                       # Pipeline entry template for each change's 00-intent.md
+        ├── bugfix-log.md                   # Repo-level bug-fix index template (copied to docs/bugfix-log.md)
         ├── governance-state.json           # Template for each change's 00-governance.json (risk level + execution owners)
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
         ├── pre-commit, pre-push            # Git hook templates
@@ -261,7 +263,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.0.0 | **Last Updated:** 2026-09-05 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.1.0 | **Last Updated:** 2026-09-07 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 

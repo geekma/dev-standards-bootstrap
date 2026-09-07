@@ -47,7 +47,7 @@
 | 定义数据结构 / 接口字段 / LLM 输入输出契约 | `docs/methodologies/data-structures.md`（六类模型 + 弱类型禁令） |
 | 写测试用例 | §2.5 阶段 4 + §0 门禁 2（九类覆盖维度） |
 | 执行中如何留痕（Thought/Observation） | §2.16.2 ReAct 执行铁律 |
-| 只是改 bug | §2.5 阶段 6 + §0 门禁 |
+| 只是改 bug | §2.5 阶段 6（含 `docs/bugfix-log.md` 双登记 + 「Bug 修复回填清单」）+ §0 门禁 |
 | 涉及配置文件/数据库变更 | §2.6 |
 | 要发布上线 | §2.7、§2.8 |
 | 涉及模型/Prompt/AI 链路 | §2.9 + `docs/methodologies/data-structures.md` §4（LLM 结构专项） |
@@ -61,4 +61,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.0.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.1.0_

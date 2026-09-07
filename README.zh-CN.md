@@ -6,7 +6,7 @@
 ### 一键为任意代码仓库注入 AI Agent 开发治理与质量门禁体系
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![规范版本](https://img.shields.io/badge/规范版本-v3.0.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![规范版本](https://img.shields.io/badge/规范版本-v3.1.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/入口文件-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -57,6 +57,7 @@
 | **专业角色标准** | 变更前背景调研；方案前业务/技术/风险三维影响分析；≥2 候选选型对比；PM 标准任务拆分（关键路径/里程碑/DoT）；九类测试覆盖维度、禁止静默裁剪 |
 | **ReAct 执行铁律** | 每步与每次改码均按 Thought → Action → Observation 推进；未经全局影响分析直接动手属严重违规（§2.16.2） |
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 主表回答"允许用哪些、禁止用哪些"（含 L1 CRUD 反向判定）；`methodologies/` 提供编码与数据建模的逐条决策依据（弱类型穿层禁令、LLM 输入输出结构分离）——AGENTS.md 仅做路由 |
+| **Bug 修复日志（`bugfix-log.md`）** | 仓库级追加式索引：每条 Bug 登记现象/根因/修复/测试证据/影响文件/文档回填清单/关联 REQ-CHG；完整记录在 09-changelog（单一权威），log 只做索引（§2.5 阶段 6） |
 | **CI/PR 工程化兜底** | GitHub PR 模板和 Bash 合规检查脚本，CI 流水线自动拦截 |
 | **确定性 Agent 门禁** | 一套零第三方依赖校验器，供写前 Hook、Git Hook 与 CI 共同调用 |
 | **客户端适配层** | 一个生成器按当前工具自动生成 Claude Code / Cursor / Gemini CLI 的 Hook 配置，其余客户端由 Git Hook + CI 兜底 |
@@ -115,7 +116,7 @@ Skill 将自动执行：
 
 1. 检测已有文件，避免覆盖（先展示差异再询问）
 2. 将 `AGENTS.md` 写入仓库根目录
-3. 将 `DEVELOPMENT_STANDARDS.md`、`METHODOLOGY.md` 与 `methodologies/` 写入 `docs/` 目录
+3. 将 `DEVELOPMENT_STANDARDS.md`、`METHODOLOGY.md`、`methodologies/` 与 `bugfix-log.md` 写入 `docs/` 目录
 4. 可选：为 Claude Code 添加一行导入文件（`CLAUDE.md`）
 5. 可选：添加 PR 模板和 CI 合规检查脚本
 6. 可选：添加确定性门禁、Git Hook、CI workflow、治理配置记录与 Hook 适配器生成器
@@ -137,7 +138,7 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # 门禁自身的 Golden-Case 回归套件（46 项断言）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.0.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.1.0（复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型总纲：M0-M3 分级 + 阶段×方法论×适用/不适用主表（复制到 docs/）
     ├── methodologies/
     │   ├── development.md                   # 代码规范：SOLID/DRY/KISS/YAGNI 适用与豁免 + 七大工程维度
@@ -148,6 +149,7 @@ dev-standards-bootstrap/
         ├── check-standards-compliance.sh   # CI 合规检查脚本
         ├── agent-gate.sh                   # 共享写前 / Git / CI 校验器（含 metrics）
         ├── intent.md                       # 每个变更 00-intent.md 的管线入口模板
+        ├── bugfix-log.md                   # 仓库级 Bug 修复索引模板（复制到 docs/bugfix-log.md）
         ├── governance-state.json           # 每个变更 00-governance.json 的模板（风险等级与执行主体）
         ├── agent-governance.yml            # 团队可审阅的治理配置记录（复制为 .agent-governance.yml）
         ├── pre-commit、pre-push            # Git Hook 模板
@@ -261,7 +263,7 @@ Pull Request 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)
 
 <div align="center">
 
-**规范版本：** v3.0.0 | **更新时间：** 2026-09-05 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.1.0 | **更新时间：** 2026-09-07 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告 Bug](../../issues) | [功能需求](../../issues) | [阅读规范全文](resources/DEVELOPMENT_STANDARDS.md)
 
