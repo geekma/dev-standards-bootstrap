@@ -104,6 +104,8 @@ EOF
 - TC-001: sample case
 ## 用例矩阵
 覆盖维度: 正常流 / 边界 / 异常
+## 业务场景清单
+- SC-001: sample scenario（覆盖: TC-001）
 EOF
 }
 
@@ -155,6 +157,12 @@ seed_artifacts CHG-110 L1 claude/s-1
 printf '# tests\n- TC-001: sample case\n' > docs/changes/CHG-110/04-test-scripts.md
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects tests without coverage-dimension column" 2 $?
+
+# v3.3.0：04 必含业务场景清单（SC- 编号），缺 SC 拒绝
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# tests\n- TC-001: sample case\n## 用例矩阵\n覆盖维度: 正常流\n' > docs/changes/CHG-110/04-test-scripts.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects tests without SC- scenario numbering" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# impact\n## 技术影响\ncall chain only\n' > docs/changes/CHG-110/02-code-impact-analysis.md
@@ -355,7 +363,7 @@ echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > changes/CUSTOM-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > changes/CUSTOM-1/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n' > changes/CUSTOM-1/03.5-tasks.md
-printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n' > changes/CUSTOM-1/04-test-scripts.md
+printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > changes/CUSTOM-1/04-test-scripts.md
 scripts/agent-gate begin CUSTOM-1 >/dev/null 2>&1
 report "begin honors AGENT_GUARD_CHANGE_ROOT" 0 $?
 unset AGENT_GUARD_CHANGE_ROOT

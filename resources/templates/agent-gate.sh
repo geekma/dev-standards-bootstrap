@@ -49,6 +49,10 @@ validate_artifact_content() {
     || die "$d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
   grep -q "TC-" "$d/04-test-scripts.md" \
     || die "$d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
+  # v3.3.0 scenario inventory: business scenarios enumerated with SC-
+  # numbering and mapped to TCs (standards §2.5 stage 4).
+  grep -q "SC-" "$d/04-test-scripts.md" \
+    || die "$d/04-test-scripts.md has no SC- scenario numbering (A-layer, standards §2.5 stage 4, v3.3.0)"
   # v2.20.0 professional-role markers: option comparison in the plan and a
   # coverage-dimension column in the test matrix (standards §2.5 stages 3-4).
   grep -qE "备选|选型" "$d/03-modification-plan.md" \
@@ -344,8 +348,8 @@ expected-outcome and open-questions sections; 01-spec.md must use REQ-
 numbering; 02 must cover business impact, risk and rollback; 03-modification-
 plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
 carry dependencies/milestones or an explicit no-breakdown exemption; 04-test-
-scripts.md must use TC- numbering and a coverage-dimension column. Hollow
-skeletons fail.
+scripts.md must use TC- numbering, a coverage-dimension column, and SC-
+scenario numbering. Hollow skeletons fail.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.

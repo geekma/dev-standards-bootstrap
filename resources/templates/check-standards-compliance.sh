@@ -43,6 +43,7 @@ if [[ -n "$DOCS_CHANGED" ]]; then
   done
   for f in $(echo "$DOCS_CHANGED" | grep '04-test-scripts.md' || true); do
     grep -q 'TC-' "$f" || { echo "❌ A 层验收拦截：$f 不含 TC- 编号体系（§2.5 阶段4 验收标准 A 层）"; exit 1; }
+  grep -q 'SC-' "$f" || { echo "❌ A 层验收拦截：$f 不含 SC- 业务场景清单（§2.5 阶段4，v3.3.0）"; exit 1; }
   done
 fi
 
