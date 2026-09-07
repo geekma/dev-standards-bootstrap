@@ -6,7 +6,7 @@
 ### 一键为任意代码仓库注入 AI Agent 开发治理与质量门禁体系
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![规范版本](https://img.shields.io/badge/规范版本-v3.1.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![规范版本](https://img.shields.io/badge/规范版本-v3.2.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/入口文件-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -54,7 +54,8 @@
 | **10 阶段开发生命周期** | 从需求定义到记忆沉淀与持续改进 |
 | **AI 防漏防跳过规则** | 专门约束 AI Agent 静默跳步、用摘要代替逐项清单、提前标记完成等行为 |
 | **两层验收标准（A/B）** | 每个阶段产物须过机器可验标记（A 层：编号体系/必含节）+ 独立角色判定（B 层）——开发 Agent 不得自评 B 层（§2.5） |
-| **专业角色标准** | 变更前背景调研；方案前业务/技术/风险三维影响分析；≥2 候选选型对比；PM 标准任务拆分（关键路径/里程碑/DoT）；九类测试覆盖维度、禁止静默裁剪 |
+| **专业角色标准** | 变更前背景调研；方案前业务/技术/风险三维影响分析；≥2 候选选型对比；PM 标准任务拆分（关键路径/里程碑/DoT） |
+| **测试覆盖标准（十一类）** | 功能正常流 / 业务场景 / 逻辑分支 / 边界与空值 / 异常与降级（含依赖故障注入、重放幂等）/ 数据组合 / 并发与竞态 / 安全 / 兼容性 / 性能与容量 / 回归——逐维设计或显式标注"不适用"（禁止静默裁剪）；新增代码**分支覆盖 ≥60%**（L2+ 强制出具报告）；L3 风险联动强制安全维度；LLM **评估集回归**（prompt/模型变更全量重跑） |
 | **ReAct 执行铁律** | 每步与每次改码均按 Thought → Action → Observation 推进；未经全局影响分析直接动手属严重违规（§2.16.2） |
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 主表回答"允许用哪些、禁止用哪些"（含 L1 CRUD 反向判定）；`methodologies/` 提供编码与数据建模的逐条决策依据（弱类型穿层禁令、LLM 输入输出结构分离）——AGENTS.md 仅做路由 |
 | **Bug 修复日志（`bugfix-log.md`）** | 仓库级追加式索引：每条 Bug 登记现象/根因/修复/测试证据/影响文件/文档回填清单/关联 REQ-CHG；完整记录在 09-changelog（单一权威），log 只做索引（§2.5 阶段 6） |
@@ -138,7 +139,7 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # 门禁自身的 Golden-Case 回归套件（46 项断言）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.1.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.2.0（复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型总纲：M0-M3 分级 + 阶段×方法论×适用/不适用主表（复制到 docs/）
     ├── methodologies/
     │   ├── development.md                   # 代码规范：SOLID/DRY/KISS/YAGNI 适用与豁免 + 七大工程维度
@@ -263,7 +264,7 @@ Pull Request 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)
 
 <div align="center">
 
-**规范版本：** v3.1.0 | **更新时间：** 2026-09-07 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.2.0 | **更新时间：** 2026-09-07 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告 Bug](../../issues) | [功能需求](../../issues) | [阅读规范全文](resources/DEVELOPMENT_STANDARDS.md)
 

@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.1.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.2.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -54,7 +54,8 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **10-Stage Development Lifecycle** | From requirements definition through memory sedimentation and continuous improvement |
 | **AI Anti-Skip Rules** | Specifically designed to prevent AI agents from silently skipping steps, using summaries instead of checklists, or marking tasks complete prematurely |
 | **Two-Layer Acceptance (A/B)** | Every stage deliverable passes machine-verifiable markers (A: numbering, required sections) plus independent role judgment (B)-developers can never self-assess layer B (§2.5) |
-| **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT); nine test coverage dimensions with no silent tailoring |
+| **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT) |
+| **Test Coverage Standard (11 dimensions)** | Happy path / business scenario / logic branch / boundary & null / exception & fallback (incl. fault injection, replay idempotency) / data combination / concurrency & race / security / compatibility / performance & capacity / regression -- design per dimension or explicitly mark N/A (no silent tailoring); **branch coverage >=60%** on new code (L2+); L3 risk-linked security enforcement; LLM **eval-set regression** (full rerun on prompt/model changes) |
 | **ReAct Execution Rule** | Every step and every code edit runs Thought -> Action -> Observation; acting without prior global-impact analysis is a severe violation (§2.16.2) |
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden" (with an L1 CRUD reverse-check); `methodologies/` provides per-item engineering rationale (weak-typing ban, LLM input/output schema separation)-AGENTS.md routes only |
 | **Bug Fix Log (`bugfix-log.md`)** | Repo-level append-only index: each bug registers symptom / root cause / fix / test evidence / affected files / doc-backfill checklist / linked REQ-CHG; full records live in 09-changelog (single source)-the log is index only (§2.5 Stage 6) |
@@ -138,7 +139,7 @@ dev-standards-bootstrap/
 │   └── run-tests.sh                        # Golden-case regression suite for the gate itself (46 assertions)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.1.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.2.0 (copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
     │   ├── development.md                   # Code standards: SOLID/DRY/KISS/YAGNI applicability & exemptions + 7 engineering dimensions
@@ -263,7 +264,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.1.0 | **Last Updated:** 2026-09-07 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.2.0 | **Last Updated:** 2026-09-07 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 
