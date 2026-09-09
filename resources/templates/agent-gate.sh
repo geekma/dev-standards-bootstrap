@@ -126,6 +126,18 @@ validate_governance_state() {
     [[ -n "$auth_at" ]] || die "$file must declare release_authorized_at for L3"
     [[ -n "$auth_ev" ]] || die "$file must declare release_authorization_evidence for L3"
   fi
+  # v3.6.0 bug document set: an optional flat bug_ref binds this change to a
+  # defect document group under docs/bugs/<bug_ref>/; when declared, the
+  # three-file set must exist and be non-empty (standards §2.5 stage 6).
+  local bug_ref bugs_root
+  bug_ref=$(json_string "$file" bug_ref)
+  if [[ -n "$bug_ref" ]]; then
+    [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
+    bugs_root="${AGENT_GUARD_BUGS_ROOT:-docs/bugs}"
+    for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md; do
+      [[ -s "$bugs_root/$bug_ref/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bugs_root/$bug_ref/$doc"
+    done
+  fi
 }
 
 active_change() {

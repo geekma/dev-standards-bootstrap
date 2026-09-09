@@ -453,6 +453,39 @@ check_output "metrics word-bounds id (CHG-71 keeps ts)" \
 check_output "metrics word-bounds id (CHG-7 stays null)" \
   '"change_id":"CHG-7","risk_level":"L1".*"first_code_commit_ts":null' "$out"
 
+# ------------------------------------------------ T7b bug_ref 缺陷文档组（v3.6.0）
+new_repo
+seed_artifacts CHG-800 L1 claude/s-1
+mkdir -p docs/bugs/BUG-042
+printf '# diagnosis\n' > docs/bugs/BUG-042/01-diagnosis.md
+printf '# impact\n' > docs/bugs/BUG-042/02-impact.md
+printf '# test plan\n' > docs/bugs/BUG-042/03-test-plan.md
+printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":"BUG-042"}\n' > docs/changes/CHG-800/00-governance.json
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin accepts bug_ref with complete defect doc set" 0 $?
+
+rm docs/bugs/BUG-042/02-impact.md
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin rejects bug_ref missing a defect doc" 2 $?
+
+rm docs/bugs/BUG-042/01-diagnosis.md
+out=$(scripts/agent-gate begin CHG-800 2>&1 || true)
+check_output "begin names the missing defect document" "missing defect document: docs/bugs/BUG-042/01-diagnosis.md" "$out"
+
+: > docs/bugs/BUG-042/01-diagnosis.md
+printf '# impact recreated\n' > docs/bugs/BUG-042/02-impact.md
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin rejects empty defect doc" 2 $?
+
+printf '# diagnosis restored\n' > docs/bugs/BUG-042/01-diagnosis.md
+printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":""}\n' > docs/changes/CHG-800/00-governance.json
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin skips bug_ref validation when empty" 0 $?
+
+printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":"../evil"}\n' > docs/changes/CHG-800/00-governance.json
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin rejects bug_ref with path-unsafe defect id" 2 $?
+
 # ---------------------------------------------------------------- T8 change_root 覆盖
 new_repo
 mkdir -p changes/CUSTOM-1

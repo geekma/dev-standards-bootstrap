@@ -110,6 +110,22 @@ for f in "$SKILL" "$RM_EN" "$RM_ZH"; do
   at_least "keyword commit-msg attribution gate in $(basename "$f")" 1 "$f" "commit-msg"
 done
 
+# ---------- v3.6.0 快照：一次变更一组文档 + 缺陷文档组三件套 ----------
+for f in "$STD" "$RM_EN" "$RM_ZH"; do
+  at_least "keyword 一次变更一组文档 in $(basename "$f")" 1 "$f" "一次变更一组文档"
+done
+for f in "$STD" "$BFLOG" "$SKILL"; do
+  at_least "keyword 缺陷文档组 in $(basename "$f")" 1 "$f" "缺陷文档组"
+done
+TPL="$ROOT/resources/templates"
+report "governance-state template declares empty bug_ref" 1 "$(grep_count "$TPL/governance-state.json" '"bug_ref": ""')"
+report "agent-gate names missing defect document" 1 "$(grep_count "$TPL/agent-gate.sh" "missing defect document")"
+tpl3=0
+for t in bug-diagnosis.md bug-impact.md bug-test-plan.md; do
+  [[ -s "$TPL/$t" ]] && tpl3=$(( tpl3 + 1 ))
+done
+report "bug doc-set templates present (3 files)" 3 "$tpl3"
+
 # ===================== PART A（续） =====================
 
 # ---------- §3 ↔ §4 执行清单同源（R-A 轮） ----------
@@ -147,12 +163,12 @@ report "2.17 governance definition present"  1 "$(grep_count "$STD" '管线治�
 at_least "2.17 dual-root convention present" 1 "$STD" '产物目录双轨约定'
 report "mainline starts with 00 files+begin" 1 "$(grep_count "$STD" '先落 00-intent.md / 00-governance.json（§2.17，变更目录）')"
 
-# ---------- bugfix 双登记 7+1 项对齐（R-A 轮） ----------
+# ---------- bugfix 双登记 8+1 项对齐（R-A 轮；v3.6.0 新增缺陷文档组项） ----------
 chg_backfill=$(awk '/^#### Bug 修复回填清单/,/^#### [^B]/' "$STD" | grep -cE '^- \[ \]')
-report "CHG backfill checklist == 8 items (log 7 + log itself)" 8 "$chg_backfill"
+report "CHG backfill checklist == 9 items (log 8 + log itself)" 9 "$chg_backfill"
 log_line=$(grep -E '^- \[ \] 01-spec' "$BFLOG" | head -1)
 log_items=$(printf '%s' "$log_line" | grep -oE '\[ \]' | wc -l | tr -d ' ')
-report "log-side backfill checklist == 7 items" 7 "$log_items"
+report "log-side backfill checklist == 8 items" 8 "$log_items"
 
 # ---------- 锚点章节存在性（子代理轮） ----------
 for h in '^## 0.5 ' '^## 2.6 ' '^## 2.7 ' '^## 2.8 ' '^## 2.9 ' '^## 2.11 ' '^#### 2.17.1' '^## 4. Changelog'; do
