@@ -13,6 +13,8 @@ CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD)
 
 # 代码路径定义必须与 agent-gate.sh is_code_path() 保持一致（同层守卫，单一口径）：
 # 之前只列 6 种后缀，漏 .sh/.sql/.kt/.rb/.php/.cs/.cpp 等 → 代码变更逃过文档检查。
+# 【同步义务】下方扩展名清单须与 resources/templates/agent-gate.sh 的 is_code_path()
+# 一致——机器双守护：源层 audit A2 + tests/run-tests.sh T12；改其一必须同步改另一。
 CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$' || true)
 DOCS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^docs/.*/(01-spec|02-code-impact-analysis|03-modification-plan|03\.5-tasks|04-test-scripts|05-test-results|09-changelog)\.md$' || true)
 

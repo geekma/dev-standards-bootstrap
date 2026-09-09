@@ -1,10 +1,15 @@
 # Copy this file as .agent-governance.yml and adapt the paths for the project.
 # The shell gate uses the environment variable below so it remains dependency-free.
+# NOTE: this is a team-reviewable SUMMARY. The authoritative artifact set is what
+# scripts/agent-gate begin enforces (7 non-empty files below); keep both in sync.
 change_root: docs/changes
 required_before_source_write:
+  - 00-intent.md
   - 00-governance.json
   - 01-spec.md
+  - 02-code-impact-analysis.md
   - 03-modification-plan.md
+  - 03.5-tasks.md
   - 04-test-scripts.md
 required_before_merge:
   - 05-test-results.md

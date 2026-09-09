@@ -2,9 +2,9 @@
 #
 # 设计原则（对应规范 §2.17.1）：
 #   1. 产物被接受即触发下一阶段——01-spec.md 合入 main 后，自动为该变更创建
-#      02-code-impact-analysis.md、03-modification-plan.md 与 04-test-scripts.md
-#      **骨架** 并开 PR 派发影响分析/方案/测试角色（阶段顺序 01→02→03→04）；
-#      09-changelog.md 合入后自动创建发布检查单 issue（§2.7.1 六项）。
+#      02-code-impact-analysis.md、03-modification-plan.md、03.5-tasks.md 与
+#      04-test-scripts.md **骨架** 并开 PR 派发影响分析/方案/测试角色（阶段顺序
+#      01→02→03→03.5→04）；09-changelog.md 合入后自动创建发布检查单 issue（§2.7.1 六项）。
 #   2. 只创建"骨架"（标题 + 指向规范必含清单的待填项），绝不臆造项目特定内容；
 #   3. 一切经 PR/issue 走人工或 Agent 审查，不绕过任何治理门禁（CI 仍是信任边界）；
 #   4. 确定性触发：基于 git diff 路径规则，不含任何自然语言判断。

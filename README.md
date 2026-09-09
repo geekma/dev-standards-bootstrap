@@ -39,7 +39,7 @@ This Skill solves all of the above by installing **five mandatory quality gates*
 
 These failure modes are measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows Claude Code's production `/compact` prompt retains only **53% of safety rules after one compaction round, 10% after five**--agent memory silently loses the rules it was told to keep, and self-reported success diverges from what is actually on disk. The [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents the process side: intent drift in long sessions, decision paths no reviewer can follow, and incidents that never feed back into process.
 
-This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 80 golden-case assertions.
+This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 102 golden-case assertions.
 
 ---
 
@@ -47,28 +47,17 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 
 | Feature | Description |
 |---|---|
-| **5 Quality Gates** | Doc-First, Test-First, Evidence-Before-Assertions, Traceability, and Independent Verification-non-bypassable |
-| **Risk Classification (L0–L3)** | Determines agent independence requirements and cross-platform/cross-model verification rules |
-| **Agent Role Independence** | Orchestrator, Requirements, Architecture/Planning, Development, Testing, and Review roles must be separate execution entities |
-| **4-Dimensional RTVM** | Requirement (REQ) -> Design (DES) -> Task (TASK) -> Test Case (TC) full-chain traceability matrix |
-| **10-Stage Development Lifecycle** | From requirements definition through memory sedimentation and continuous improvement |
-| **AI Anti-Skip Rules** | Specifically designed to prevent AI agents from silently skipping steps, using summaries instead of checklists, or marking tasks complete prematurely |
-| **Two-Layer Acceptance (A/B)** | Every stage deliverable passes machine-verifiable markers (A: numbering, required sections) plus independent role judgment (B)-developers can never self-assess layer B (§2.5) |
-| **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT) |
-| **Test Coverage Standard (11 dimensions)** | Happy path / business scenario / logic branch / boundary & null / exception & fallback (incl. fault injection, replay idempotency) / data combination / concurrency & race / security / compatibility / performance & capacity / regression -- design per dimension or explicitly mark N/A (no silent tailoring); **branch coverage >=60%** on new code (L2+); L3 risk-linked security enforcement; LLM **eval-set regression** (full rerun on prompt/model changes); **business-scenario coverage >=80%** (SC-xxx five-dimension enumeration, L3 >=90%, enforced by `agent-gate begin`) |
-| **ReAct Execution Rule** | Every step and every code edit runs Thought -> Action -> Observation; acting without prior global-impact analysis is a severe violation (§2.16.2) |
-| **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden" (with an L1 CRUD reverse-check); `methodologies/` provides per-item engineering rationale (weak-typing ban, LLM input/output schema separation), and `state-trigger-audit.md` the implicit-link audit & same-root-cause family scan method-AGENTS.md routes only |
-| **Bug Fix Log (`bugfix-log.md`)** | Repo-level append-only index: each bug registers symptom / root cause (incl. same-family scan disposition) / fix / test evidence / affected files / doc-backfill checklist / linked REQ-CHG; full records live in 09-changelog (single source)-the log is index only (§2.5 Stage 6) |
-| **One Change, One Document Set (v3.6.0, expanded v3.7.0)** | New changes always open a fresh `docs/changes/<new-id>/` group with a new CHG entry, satisfying the **eight-category** minimum document-set mapping (spec / design / tasks / coding record `04.5-coding-record.md` enforced at stop & ci / test scripts / test results / config change / traceability matrix, §1.1); defect fixes always open a fresh six-file bug document group under `docs/bugs/<BUG-id>/` (diagnosis / impact / test plan / traceability matrix / config DB / task breakdown) linked via the governance `bug_ref` field-append-only, never edit a closed group (一次变更一组文档, §2.15) |
-| **CI/PR Guardrails** | GitHub PR template and bash compliance script for automated baseline checks |
-| **Deterministic Agent Gate** | One dependency-free validator shared by write-time hooks, Git hooks, and CI |
-| **Client Adapters** | One generator emits the Claude Code / Cursor / Gemini CLI hook adapter for the tool in use; other clients fall back to Git hooks + CI |
-| **Intent Layer (`00-intent.md`)** | Every change starts from a recorded intent (problem / expected outcome / constraints); changes without intent are rejected at `begin` (§2.17) |
-| **Artifact Pipeline** | Merging `01-spec.md` auto-dispatches impact/plan/test skeletons; merging `09-changelog.md` auto-opens a release checklist issue-skeletons only, no fabricated content |
-| **Incident-to-Intent Loop** | Production alerts auto-create a `BUG-<timestamp>` intent skeleton PR via `repository_dispatch`; no silent fixes without a trace |
-| **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines with per-stage timestamps, stage intervals, and `delivery_ready`-derived purely from git history, zero dependencies |
-| **A0–A4 Autonomy Matrix** | Environment-scoped authorization for automated actions; hosted workflows cap at A2 (skeletons + PRs), merge gates never waived |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (80 assertions) in throwaway git repos-bash + git only |
+| **5 Quality Gates + Two-Layer Acceptance** | Doc-First, Test-First, Evidence, Traceability, and Independent Verification—non-bypassable; every stage passes machine-verifiable A-layer markers plus independent-role B-layer judgment (developers can never self-assess layer B, §2.5) |
+| **Risk Classification × Agent Role Independence** | L0–L3 risk matrix drives independence requirements: roles must be separate execution entities, L2/L3 require distinct platform/model vendors (L3 ≥2), high-risk needs human Release Owner approval (§0.5) |
+| **RTVM Traceability + One Change, One Document Set** | REQ→DES→TASK→TC full-chain matrix; every change opens a fresh `docs/changes/<new-id>/` group meeting the **eight-category** minimum document set (incl. `04.5-coding-record.md` enforced at stop/ci) and every defect a fresh six-file bug group linked via `bug_ref`—append-only, never edit a closed group (一次变更一组文档, §2.15) |
+| **10-Stage Lifecycle + AI Anti-Skip Rules** | Requirements through memory sedimentation; ReAct (Thought→Action→Observation) on every step; anti-skip rules ban summary-style "done", silent downgrades, and premature completion (§2.16) |
+| **Test Coverage Standard (11 dimensions)** | Happy path / business scenario / logic branch / boundary & null / exception & fallback (incl. fault injection, replay idempotency) / data combination / concurrency & race / security / compatibility / performance & capacity / regression—design per dimension or explicitly mark N/A; branch coverage ≥60% on new code (L2+); LLM eval-set regression; **business-scenario coverage ≥80%** (SC-xxx, L3 ≥90%) |
+| **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger audit) |
+| **Bug Fix Log + Same-Family Scan** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row ("which other paths share this root-cause pattern?")—fix without family scan is rejected (§2.5 Stage 6) |
+| **Deterministic Agent Gate + CI/PR Guardrails** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; client adapter generator for Claude Code/Cursor/Gemini CLI; Git hooks + CI workflow cover every other client (they validate the repo, not the editor) |
+| **Intent Layer + Pipeline Automation** | Every change starts from a recorded `00-intent.md` (rejected at `begin` without it); merging `01-spec.md` auto-dispatches impact/plan/test skeletons, merging `09-changelog.md` auto-opens a release checklist; incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (skeletons only, never content or merge) |
+| **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines (stage timestamps, intervals, `delivery_ready`) purely from git history—observation only, never a substitute for DoD (§2.17.5) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the `scripts/bootstrap.sh` installer (102 assertions) in throwaway git repos—bash + git only (§2.17.4) |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -118,11 +107,11 @@ The Skill will:
 
 1. Detect existing files and avoid overwriting (shows diffs first)
 2. Write `AGENTS.md` to the repo root
-3. Write `DEVELOPMENT_STANDARDS.md`, `METHODOLOGY.md`, `methodologies/`, and `bugfix-log.md` to `docs/`
+3. Write `DEVELOPMENT_STANDARDS.md`, `METHODOLOGY.md`, `methodologies/`, `bugfix-log.md`, the six-file bug template set (`docs/bugs/_templates/`), and the generic cross-doc audit script (`tests/audit-docs-consistency.sh`) to `docs/` and `tests/`
 4. Optionally add Claude Code one-line import (`CLAUDE.md`)
 5. Optionally add PR template and CI compliance script
-6. Optionally add the deterministic gate, Git hooks, CI workflow, governance config record, and tool-specific hook adapters
-7. Optionally install pipeline automation: the intent template, artifact-pipeline workflow, incident-to-intent workflow, and golden-case test suite
+6. Optionally add the deterministic gate, Git hooks, CI workflow, governance config record, tool-specific hook adapters, and the golden-case self-test suite
+7. Optionally install pipeline automation: the intent template, artifact-pipeline workflow, and incident-to-intent workflow
 8. Optionally scaffold the first feature directory under `docs/<feature>/`
 
 ---
@@ -135,10 +124,12 @@ dev-standards-bootstrap/
 ├── README.md                               # English documentation (this file)
 ├── README.zh-CN.md                         # Chinese documentation
 ├── LICENSE                                 # MIT License
+├── scripts/
+│   └── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer (--core/--claude/--ci/--guard/--pipeline), idempotent, conflict-safe
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate (80 assertions; copied to target tests/)
-│   └── audit-docs-consistency.sh           # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (102 assertions; copied to target tests/)
+│   └── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.7.0 (copied to docs/)
@@ -160,7 +151,7 @@ dev-standards-bootstrap/
         ├── pre-commit, pre-push, commit-msg  # Git hook templates (commit-msg: attribution gate)
         ├── install-hook-adapter.sh         # Generates the hook adapter for the detected tool (claude/cursor/gemini)
         ├── github-agent-governance.yml     # Required-check workflow template
-        ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/04 skeletons PR; changelog merged -> release checklist issue
+        ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/03.5/04 skeletons PR; changelog merged -> release checklist issue
         └── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
 ```
 
@@ -202,11 +193,11 @@ The gate blocking in practice--a commit of source changes without matching chang
 
 Hosted-platform layer, independent of any coding client:
 
-- **Artifact pipeline** (`github-artifact-pipeline.yml`): merging `01-spec.md` into main auto-creates an `automation/<change-id>-scaffold` branch with `02`/`03`/`04` skeletons and a PR; merging `09-changelog.md` auto-opens a release-checklist issue. Skeletons contain headings and to-fill comments only-no fabricated content; all gates still apply before merge.
+- **Artifact pipeline** (`github-artifact-pipeline.yml`): merging `01-spec.md` into main auto-creates an `automation/<change-id>-scaffold` branch with `02`/`03`/`03.5`/`04` skeletons and a PR; merging `09-changelog.md` auto-opens a release-checklist issue. Skeletons contain headings and to-fill comments only-no fabricated content; all gates still apply before merge.
 - **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` with type `incident` (a one-line `curl` with alert metadata); the workflow creates a `BUG-<UTC-timestamp>` change with an intent skeleton PR. Every incident re-enters the pipeline as recorded intent-no silent fixes. Skips if the branch already exists (alert-storm protection).
 - **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues). Content (A3) and execution (A4) stay local; merge gates are never waived by automation.
 - **Portability**: the reference implementation uses GitHub Actions; GitLab and other platforms implement the same semantics with their CI rules + API (notes in each workflow's header). Semantics are defined by the standards §2.17, not by any platform.
-- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-80 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-102 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
 
 ---
 

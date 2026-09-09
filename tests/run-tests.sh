@@ -544,7 +544,7 @@ report "unknown command exits 2" 2 $?
 # §2.17.4：治理配置模板自身必须可回归。对通用层 audit-docs-consistency.sh 构造
 # 目标仓库 fixture：合规态全绿 / 跳号 / 归档清单漂移 / BUG 未登记 三类负例 / 未接入仓库 SKIP。
 AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
-[[ -f "$AUDIT_SRC" ]] || AUDIT_SRC="$ROOT/tests/audit-docs-consistency.sh"
+[[ -f "$AUDIT_SRC" ]] || AUDIT_SRC="$ROOT/tests/audit-standards-src.sh"
 STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 [[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
 AG_SRC="$ROOT/resources/AGENTS.md"
@@ -605,6 +605,77 @@ SKIPD=$(mktemp -d)
 bash "$AUDIT_SRC" "$SKIPD" >/dev/null 2>&1
 report "audit skips repo without standards" 0 $?
 rm -rf "$FX" "$FX2" "$SKIPD"
+
+# ------------------------------------------------ T11 bootstrap.sh golden cases
+# §2.17.4 同精神：安装器自身必须可回归——清单驱动替代 SKILL.md 手工 17 步复制，
+# 防接入遗漏。覆盖：空仓库全落 / 幂等 / 冲突拒绝 / --force 覆盖 / guard 打包 /
+# pipeline 层 / 参数错误 / 非目录目标 / help。
+BOOT_SRC="$ROOT/scripts/bootstrap.sh"
+
+BT=$(mktemp -d)
+bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
+report "bootstrap core installs into empty repo" 0 $?
+[[ -s "$BT/AGENTS.md" ]]
+report "bootstrap core lands AGENTS.md" 0 $?
+[[ -s "$BT/docs/DEVELOPMENT_STANDARDS.md" ]]
+report "bootstrap core lands standards" 0 $?
+[[ -s "$BT/docs/METHODOLOGY.md" ]]
+report "bootstrap core lands methodology" 0 $?
+[[ -s "$BT/docs/methodologies/state-trigger-audit.md" ]]
+report "bootstrap core lands state-trigger-audit" 0 $?
+[[ -s "$BT/docs/bugfix-log.md" ]]
+report "bootstrap core lands bugfix-log" 0 $?
+[[ -s "$BT/docs/bugs/_templates/bug-tasks.md" ]]
+report "bootstrap core lands bug-tasks template" 0 $?
+[[ -s "$BT/tests/audit-docs-consistency.sh" ]]
+report "bootstrap core lands generic audit" 0 $?
+bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
+report "bootstrap rerun is idempotent (exit 0)" 0 $?
+out=$(bash "$BOOT_SRC" --core "$BT" 2>&1 || true)
+check_output "bootstrap rerun reports up to date" "up to date" "$out"
+
+printf '# different content\n' > "$BT/AGENTS.md"
+bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
+report "bootstrap rejects conflicting existing file" 2 $?
+out=$(bash "$BOOT_SRC" --core "$BT" 2>&1 || true)
+check_output "bootstrap names the conflicting file" "CONFLICT.*AGENTS.md" "$out"
+
+bash "$BOOT_SRC" --core --force "$BT" >/dev/null 2>&1
+report "bootstrap --force overwrites conflict" 0 $?
+grep -q "本文件是所有 AI Agent" "$BT/AGENTS.md"
+report "bootstrap --force restores template content" 0 $?
+
+BT2=$(mktemp -d)
+bash "$BOOT_SRC" --guard "$BT2" >/dev/null 2>&1
+report "bootstrap guard installs enforcement package" 0 $?
+[[ -x "$BT2/scripts/agent-gate" && -x "$BT2/.githooks/pre-commit" && -x "$BT2/tests/run-tests.sh" ]]
+report "bootstrap guard lands executable gate+hooks+self-tests" 0 $?
+
+BT3=$(mktemp -d)
+bash "$BOOT_SRC" --pipeline "$BT3" >/dev/null 2>&1
+report "bootstrap pipeline installs workflows" 0 $?
+[[ -s "$BT3/.github/workflows/artifact-pipeline.yml" && -s "$BT3/.github/workflows/incident-to-intent.yml" ]]
+report "bootstrap pipeline lands both workflows" 0 $?
+
+bash "$BOOT_SRC" --bogus "$BT" >/dev/null 2>&1
+report "bootstrap rejects unknown flag" 2 $?
+
+bash "$BOOT_SRC" --core "/nonexistent/path/xyz" >/dev/null 2>&1
+report "bootstrap rejects non-directory target" 2 $?
+
+bash "$BOOT_SRC" --help >/dev/null 2>&1
+report "bootstrap --help exits 0" 0 $?
+
+rm -rf "$BT" "$BT2" "$BT3"
+
+# ------------------------------------------------ T12 双校验器扩展名清单一致
+# compliance.sh 与 agent-gate is_code_path 共享"代码后缀"策略（工程兜底层须可独立
+# 安装，故不合并为单校验器）；漂移由源层 audit A2 + 本 T12 运行时双守护。
+# 任一处新增/删除代码后缀而不同步，本用例即红——从"发布前 audit 发现"提前到"改完即发现"。
+gate_ext=$(grep -E '\\\.\(c\|' "$GATE_SRC" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
+ci_src="$ROOT/resources/templates/check-standards-compliance.sh"
+ci_ext=$(grep -E '\\\.\(c\|' "$ci_src" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
+report "T12 code-extension list identical in gate and compliance.sh" "$gate_ext" "$ci_ext"
 
 # ---------------------------------------------------------------- 摘要
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
