@@ -221,6 +221,28 @@ seed_artifacts CHG-203 L9 claude/s-1
 scripts/agent-gate begin CHG-203 >/dev/null 2>&1
 report "begin rejects invalid risk_level" 2 $?
 
+# v3.5.0：占位 owner 与 L3 授权三字段
+new_repo
+seed_artifacts CHG-204 L1 PENDING
+scripts/agent-gate begin CHG-204 >/dev/null 2>&1
+report "begin rejects PENDING implementation owner" 2 $?
+
+seed_artifacts CHG-205 L2 gemini/m-1 TODO codex/x-7
+scripts/agent-gate begin CHG-205 >/dev/null 2>&1
+report "begin rejects TODO test owner at L2" 2 $?
+
+seed_artifacts CHG-206 L3 gemini/m-1 claude/c-9 codex/x-7
+printf '{"change_id":"CHG-206","risk_level":"L3","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7"}\n' \
+  > docs/changes/CHG-206/00-governance.json
+scripts/agent-gate begin CHG-206 >/dev/null 2>&1
+report "begin rejects L3 without release authorization fields" 2 $?
+
+seed_artifacts CHG-207 L3 gemini/m-1 claude/c-9 codex/x-7
+printf '{"change_id":"CHG-207","risk_level":"L3","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7","release_authorized_by":"tech-lead/h-1","release_authorized_at":"2026-09-09T00:00:00Z","release_authorization_evidence":"APPROVAL-001"}\n' \
+  > docs/changes/CHG-207/00-governance.json
+scripts/agent-gate begin CHG-207 >/dev/null 2>&1
+report "begin accepts L3 with complete release authorization" 0 $?
+
 # ---------------------------------------------------------------- T3 pre-write
 new_repo
 printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"src/app.py"}}' \
@@ -324,11 +346,60 @@ report "ci rejects code diff without artifact changes" 2 $?
 new_repo
 base=$(git rev-parse HEAD)
 seed_artifacts CHG-601 L1 claude/s-1
+# v3.5.0: branch-mode CI also enforces delivery evidence, so the accepts-case
+# must carry 05+09 with ReAct Observation records in the same diff.
+printf 'results\n' > docs/changes/CHG-601/05-test-results.md
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-601/09-changelog.md
 echo z > src/c.ts
 git add -A
 commit_all "feat: CHG-601 implement"
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
-report "ci accepts code diff committed with artifacts" 0 $?
+report "ci accepts code diff committed with artifacts and delivery evidence" 0 $?
+
+# v3.5.0：branch 模式对 diff 触及的变更目录追加 delivery 证据校验（与 stop 同口径）
+new_repo
+base=$(git rev-parse HEAD)
+seed_artifacts CHG-620 L1 claude/s-1
+commit_all "docs: CHG-620 artifacts"
+scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
+report "ci rejects docs-only diff whose change lacks delivery evidence" 2 $?
+printf 'results\n' > docs/changes/CHG-620/05-test-results.md
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-620/09-changelog.md
+commit_all "docs: CHG-620 delivery evidence"
+scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
+report "ci accepts docs-only diff after delivery evidence lands" 0 $?
+
+# ---------------------------------------------------------------- T6b commit-msg 归因（v3.5.0）
+new_repo
+seed_artifacts CHG-900 L1 claude/s-1
+commit_all "docs: CHG-900 artifacts"
+echo x > src/e.ts
+git add src/e.ts
+printf 'feat: implement without attribution\n' > commitmsg.txt
+scripts/agent-gate --stage commit-msg commitmsg.txt >/dev/null 2>&1
+report "commit-msg rejects staged code commit without change id" 2 $?
+
+printf 'feat: CHG-900 implement\n' > commitmsg.txt
+scripts/agent-gate --stage commit-msg commitmsg.txt >/dev/null 2>&1
+report "commit-msg accepts staged code commit referencing valid change" 0 $?
+
+printf 'Revert "feat: CHG-900 implement"\n' > commitmsg.txt
+scripts/agent-gate --stage commit-msg commitmsg.txt >/dev/null 2>&1
+report "commit-msg exempts revert commits" 0 $?
+
+: > "$(git rev-parse --git-path MERGE_HEAD)"
+printf 'merge: bring in feature branch\n' > commitmsg.txt
+scripts/agent-gate --stage commit-msg commitmsg.txt >/dev/null 2>&1
+report "commit-msg exempts merge commits" 0 $?
+rm -f "$(git rev-parse --git-path MERGE_HEAD)"
+
+git reset -q src/e.ts && rm -f src/e.ts
+echo more >> docs/changes/CHG-900/01-spec.md
+git add docs/changes/CHG-900/01-spec.md
+printf 'docs: extend spec\n' > commitmsg.txt
+scripts/agent-gate --stage commit-msg commitmsg.txt >/dev/null 2>&1
+report "commit-msg exempts artifact-only commits" 0 $?
+rm -f commitmsg.txt
 
 # ---------------------------------------------------------------- T7 metrics
 new_repo
@@ -366,6 +437,21 @@ out=$(scripts/agent-gate metrics)
 report "metrics exits 0 with uncommitted artifacts" 0 $?
 check_output "metrics emits null-filled line before first commit" \
   '"change_id":"CHG-701".*"first_code_commit_ts":null' "$out"
+
+# v3.5.0：metrics 词边界——提交只提到 CHG-71 时 CHG-7 不得子串误匹配取到 ts
+# （产物 commit 的 subject 不含变更 id，避免 first_commit_referencing 首匹配落空）
+new_repo
+seed_artifacts CHG-7 L1 claude/s-1
+seed_artifacts CHG-71 L1 claude/s-1
+commit_all "docs: seed both artifact sets"
+echo code > src/g.py
+git add src/g.py
+commit_all "feat: CHG-71 implement"
+out=$(scripts/agent-gate metrics)
+check_output "metrics word-bounds id (CHG-71 keeps ts)" \
+  '"change_id":"CHG-71","risk_level":"L1".*"first_code_commit_ts":[0-9]+' "$out"
+check_output "metrics word-bounds id (CHG-7 stays null)" \
+  '"change_id":"CHG-7","risk_level":"L1".*"first_code_commit_ts":null' "$out"
 
 # ---------------------------------------------------------------- T8 change_root 覆盖
 new_repo

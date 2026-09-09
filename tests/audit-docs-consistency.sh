@@ -102,6 +102,14 @@ for f in "$SKILL" "$RM_ZH" "$RM_EN" "$AGENTS" "$PIPE" "$STD" "$METH"; do
   at_least "route state-trigger-audit in $(basename "$f")" 1 "$f" "state-trigger-audit"
 done
 
+# ---------- v3.5.0 快照：占位符拒绝 + L3 释放授权 + commit-msg 归因闸门 ----------
+for f in "$STD" "$RM_EN" "$RM_ZH"; do
+  at_least "keyword release_authorized_by in $(basename "$f")" 1 "$f" "release_authorized_by"
+done
+for f in "$SKILL" "$RM_EN" "$RM_ZH"; do
+  at_least "keyword commit-msg attribution gate in $(basename "$f")" 1 "$f" "commit-msg"
+done
+
 # ===================== PART A（续） =====================
 
 # ---------- §3 ↔ §4 执行清单同源（R-A 轮） ----------

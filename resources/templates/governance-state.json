@@ -3,5 +3,8 @@
   "risk_level": "L2",
   "implementation_owner": "platform/model + session-or-task-id",
   "test_owner": "independent-platform/model + session-or-task-id",
-  "review_owner": "independent-platform/model + session-or-task-id"
+  "review_owner": "independent-platform/model + session-or-task-id",
+  "release_authorized_by": "authorizing role/model + session-or-task-id (L3 only)",
+  "release_authorized_at": "ISO-8601 timestamp (L3 only)",
+  "release_authorization_evidence": "approval record link or id (L3 only)"
 }

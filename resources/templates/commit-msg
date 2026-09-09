@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Attribution gate (standards v3.5.0): every code-bearing commit must
+# reference its change id so gates and pipeline metrics share one definition
+# of ownership. Merge commits, reverts and artifact-only commits are exempt
+# (ladder enforced inside agent-gate).
+scripts/agent-gate --stage commit-msg "$1"

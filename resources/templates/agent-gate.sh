@@ -84,6 +84,17 @@ json_string() {
   sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n 1
 }
 
+# Placeholder owner values are governance debt, not a real assignment: an
+# owner set to PENDING/TODO/TBD/待定 must fail the gate now instead of
+# silently passing role-independence checks later. (v3.5.0)
+reject_placeholder_owner() { # file field value
+  local file="$1" field="$2" value="$3" norm
+  norm=$(printf '%s' "$value" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+  case "$norm" in
+    PENDING|TODO|TBD|*待定*) die "$file field '$field' must name a concrete owner (placeholder '$value' rejected)" ;;
+  esac
+}
+
 validate_governance_state() {
   local id="$1" file risk implementation test_owner review_owner declared_id
   file="$change_root/$id/00-governance.json"
@@ -94,11 +105,26 @@ validate_governance_state() {
   [[ "$risk" =~ ^L[0-3]$ ]] || die "$file must declare risk_level L0, L1, L2, or L3"
   implementation=$(json_string "$file" implementation_owner)
   [[ -n "$implementation" ]] || die "$file must declare implementation_owner"
+  reject_placeholder_owner "$file" implementation_owner "$implementation"
   if [[ "$risk" == L2 || "$risk" == L3 ]]; then
     test_owner=$(json_string "$file" test_owner)
     review_owner=$(json_string "$file" review_owner)
     [[ -n "$test_owner" && -n "$review_owner" ]] || die "$file must declare test_owner and review_owner for $risk"
+    reject_placeholder_owner "$file" test_owner "$test_owner"
+    reject_placeholder_owner "$file" review_owner "$review_owner"
     [[ "$implementation" != "$test_owner" && "$implementation" != "$review_owner" && "$test_owner" != "$review_owner" ]] || die "$file requires distinct implementation, test, and review owners for $risk"
+  fi
+  # v3.5.0 L3 release authorization: flat string fields, not a nested object —
+  # json_string extracts with a single-line sed, so nested JSON cannot parse.
+  if [[ "$risk" == L3 ]]; then
+    local auth_by auth_at auth_ev
+    auth_by=$(json_string "$file" release_authorized_by)
+    auth_at=$(json_string "$file" release_authorized_at)
+    auth_ev=$(json_string "$file" release_authorization_evidence)
+    [[ -n "$auth_by" ]] || die "$file must declare release_authorized_by for L3"
+    reject_placeholder_owner "$file" release_authorized_by "$auth_by"
+    [[ -n "$auth_at" ]] || die "$file must declare release_authorized_at for L3"
+    [[ -n "$auth_ev" ]] || die "$file must declare release_authorization_evidence for L3"
   fi
 }
 
@@ -136,17 +162,26 @@ working_code_changed() {
   return 1
 }
 
+# Delivery evidence a change must carry before it may leave the machine:
+# test results, a changelog, and the v2.21.0 ReAct Observation records in it
+# (standards §2.16.2). Shared by --stage stop and branch-mode CI so both
+# enforcement lines hold the same bar. (v3.5.0)
+validate_delivery() { # change-id
+  local id="$1" d="$change_root/$id"
+  [[ -s "$d/05-test-results.md" ]] || die "cannot finish: missing test evidence $d/05-test-results.md"
+  [[ -s "$d/09-changelog.md" ]] || die "cannot finish: missing changelog $d/09-changelog.md"
+  # Every executed stage must leave an Observation record (verification
+  # command + actual output) in the changelog.
+  grep -q "Observation" "$d/09-changelog.md" \
+    || die "cannot finish: changelog missing ReAct Observation records (standards §2.16.2)"
+}
+
 validate_stop() {
   local id
   working_code_changed || return 0
   validate_active_change
   id=$(active_change)
-  [[ -s "$change_root/$id/05-test-results.md" ]] || die "cannot finish: missing test evidence $change_root/$id/05-test-results.md"
-  [[ -s "$change_root/$id/09-changelog.md" ]] || die "cannot finish: missing changelog $change_root/$id/09-changelog.md"
-  # v2.21.0 ReAct gate (standards §2.16.2): every executed stage must leave an
-  # Observation record (verification command + actual output) in the changelog.
-  grep -q "Observation" "$change_root/$id/09-changelog.md" \
-    || die "cannot finish: changelog missing ReAct Observation records (standards §2.16.2)"
+  validate_delivery "$id"
   if [[ -n "${AGENT_GUARD_VERIFY_COMMAND:-}" ]]; then
     bash -lc "$AGENT_GUARD_VERIFY_COMMAND" || die "cannot finish: AGENT_GUARD_VERIFY_COMMAND failed"
   fi
@@ -168,9 +203,11 @@ complete_valid_change_exists() {
   # set with a valid governance state. Local staged commits rely on this when
   # code is committed after the artifacts landed in an earlier commit of the
   # same change (the documented workflow: artifacts first, implementation later).
-  # KNOWN LIMITATION: gate cannot attribute code to a specific change id, so a
-  # complete set of ANY change satisfies staged mode — cross-change attribution
-  # is a B-layer (review) responsibility. Documented deliberately, not an oversight.
+  # KNOWN LIMITATION (narrowed in v3.5.0): staged mode still cannot attribute
+  # code to a specific change id — a complete set of ANY change satisfies it.
+  # --stage commit-msg now pins per-commit attribution and branch-mode CI
+  # (pre-push) enforces delivery evidence per touched change; residual
+  # cross-change drift stays a B-layer (review) responsibility.
   local dir id doc complete
   [[ -d "$change_root" ]] || return 1
   for dir in "$change_root"/*/; do
@@ -191,20 +228,36 @@ complete_valid_change_exists() {
 }
 
 validate_diff() {
-  local mode="$1" base="${2:-}" files code_changed docs_changed f
+  local mode="$1" base="${2:-}" files code_changed docs_changed f id seen_ids
   files=$(changed_files "$mode" "$base")
   [[ -n "$files" ]] || exit 0
   code_changed=false
   docs_changed=false
+  seen_ids=""
   while IFS= read -r f; do
     is_code_path "$f" && code_changed=true
     if [[ "$f" =~ ^${change_root}/([A-Za-z0-9._-]+)/[A-Za-z0-9._-]+$ ]]; then
       docs_changed=true
+      id="${BASH_REMATCH[1]}"
+      case " $seen_ids " in
+        *" $id "*) ;;
+        *) seen_ids="$seen_ids $id" ;;
+      esac
       # Staged/CI diffs are the only enforcement line for clients without
       # pre-write hooks, so the governance state must be validated here too.
-      validate_governance_state "${BASH_REMATCH[1]}"
+      validate_governance_state "$id"
     fi
   done <<< "$files"
+
+  # v3.5.0: branch-mode CI additionally requires delivery evidence (test
+  # results + changelog with ReAct Observation) for every change touched by
+  # the diff — the same bar --stage stop holds. Staged stays lenient: it is a
+  # local fast signal over repo state; stop/ci close the evidence loop.
+  if [[ "$mode" == branch ]]; then
+    for id in $seen_ids; do
+      validate_delivery "$id"
+    done
+  fi
 
   if [[ "$code_changed" == true && "$docs_changed" != true ]]; then
     # Staged is a local hook: repo state is authoritative, so code may follow an
@@ -215,6 +268,35 @@ validate_diff() {
     fi
     die "source changes require change artifacts under $change_root/<change-id>/ (spec, plan, test plan, evidence)"
   fi
+}
+
+# Attribution gate (v3.5.0): a code-bearing commit must reference its change
+# id so the gate and the pipeline metrics share one definition of ownership.
+# Exemption ladder: merge commits (MERGE_HEAD present), reverts, and commits
+# touching no code path pass without an id. An id-bearing code commit must
+# point at a change that exists with a valid governance state.
+validate_commit_msg() { # message-file
+  local msgfile="$1" msg f id files code_found=false
+  [[ -s "$msgfile" ]] || die "commit message file is empty"
+  msg=$(cat "$msgfile")
+  # Ladder written in if-form: a bare `[[ x ]] && return` leaves the whole
+  # statement returning 1 on the fall-through path, which a commit-msg hook
+  # would read as rejection.
+  if [[ -f "$(git rev-parse --git-path MERGE_HEAD)" ]]; then return 0; fi
+  if [[ "$msg" =~ ^Revert ]]; then return 0; fi
+  files=$(git diff --cached --name-only --diff-filter=ACMR)
+  while IFS= read -r f; do
+    if is_code_path "$f"; then code_found=true; fi
+  done <<< "$files"
+  if [[ "$code_found" != true ]]; then return 0; fi
+  # `|| true` guards the pipefail case: grep exits 1 when the message carries
+  # no id, and the assignment must not abort the gate before the die below.
+  id=$(printf '%s\n' "$msg" | grep -Eo '[A-Z][A-Z0-9_]*-[0-9]+' | head -n 1 || true)
+  if [[ -z "$id" ]]; then
+    die "code commit must reference its change id (e.g. 'feat: CHG-123 implement ...')"
+  fi
+  required_docs_present "$id"
+  validate_governance_state "$id"
 }
 
 # --- metrics ---------------------------------------------------------------
@@ -231,11 +313,11 @@ first_commit_ts() {
 }
 
 first_commit_referencing() {
-  local line
-  # KNOWN LIMITATION: fixed-string subject match, so id "CUSTOM-1" also matches
-  # a subject mentioning "CUSTOM-10" (prefix collision). Change ids should be
-  # self-delimiting (e.g. trailing separators) for exact attribution.
-  line=$(git log --reverse --format='%ct|%s' | grep -F -m1 -- "$1" || true)
+  local line esc
+  # v3.5.0: word-boundary match so id "CUSTOM-1" cannot match a subject
+  # mentioning "CUSTOM-10" (prefix collision); the id is regex-escaped first.
+  esc=$(printf '%s' "$1" | sed 's/[][\.*^$]/\\&/g')
+  line=$(git log --reverse --format='%ct|%s' | grep -E -m1 -- "(^|[^A-Za-z0-9])${esc}([^A-Za-z0-9]|$)" || true)
   [[ -n "$line" ]] && printf '%s' "${line%%|*}"
   # 空匹配时上面 [[ ]] 返回 1；显式 return 0，防止调用方 $( ) 赋值在 set -e 下中断
   # （真实场景：变更产物尚未提交时跑 metrics，T7 golden case 覆盖）。
@@ -335,8 +417,15 @@ case "$command" in
       stop) validate_stop ;;
       ci)
         base=""
-        [[ "${1:-}" == "--base" ]] && base="${2:-}"
+        if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
         validate_diff branch "$base"
+        ;;
+      commit-msg)
+        msgfile="${1:-}"
+        if [[ -z "$msgfile" ]]; then
+          die "usage: scripts/agent-gate --stage commit-msg <message-file>"
+        fi
+        validate_commit_msg "$msgfile"
         ;;
       *) die "unknown stage '$stage'" ;;
     esac
@@ -351,6 +440,7 @@ Usage:
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop
   scripts/agent-gate --stage ci [--base ref]
+  scripts/agent-gate --stage commit-msg <message-file>
 
 begin requires seven non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 01-spec.md, 02-code-impact-analysis.md,
@@ -362,6 +452,11 @@ plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
 carry dependencies/milestones or an explicit no-breakdown exemption; 04-test-
 scripts.md must use TC- numbering, a coverage-dimension column, and SC-
 scenario numbering. Hollow skeletons fail.
+
+commit-msg attribution (v3.5.0): a code-bearing commit message must
+reference its change id (e.g. 'feat: CHG-123 implement ...'); the referenced
+change must exist with a valid governance state. Merge commits, reverts, and
+commits that touch no code path are exempt.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.

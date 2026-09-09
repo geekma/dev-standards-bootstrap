@@ -6,7 +6,7 @@
 ### 一键为任意代码仓库注入 AI Agent 开发治理与质量门禁体系
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![规范版本](https://img.shields.io/badge/规范版本-v3.4.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![规范版本](https://img.shields.io/badge/规范版本-v3.5.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/入口文件-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![欢迎 PR](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -39,7 +39,7 @@
 
 这些失败模式是被测量过的，不是假设。CIKM '26 对生产级 Agent 记忆的研究（[arXiv:2608.22752](https://arxiv.org/abs/2608.22752)）表明：Claude Code 的生产 `/compact` 提示词一轮压缩后安全规则仅存 **53%，五轮后 10%**--Agent 记忆会静默丢失被要求保留的规则，且「自我报告成功」与磁盘实态背离。[AI 原生 SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) 则记录了流程侧的问题：长会话意图漂移、无人能复盘的决策路径、不回流流程的事故。
 
-本项目的答案是架构级而非提示词级：**从不信任 Agent 记忆与自我报告**。治理状态以版本化产物落盘；零依赖门禁在每次写入时读的是文件系统（而非对话）；CI 是最终仲裁者；治理包自身通过 55 项 golden-case 断言自测试。
+本项目的答案是架构级而非提示词级：**从不信任 Agent 记忆与自我报告**。治理状态以版本化产物落盘；零依赖门禁在每次写入时读的是文件系统（而非对话）；CI 是最终仲裁者；治理包自身通过 68 项 golden-case 断言自测试。
 
 ---
 
@@ -67,7 +67,7 @@
 | **事故重入闭环** | 生产告警经 `repository_dispatch` 自动创建 `BUG-<时间戳>` 意图骨架 PR；禁止“修完不留痕” |
 | **管线度量** | `agent-gate metrics` 输出 JSON Lines：各阶段时间戳、阶段间隔、`delivery_ready`--纯 git 历史推导，零依赖 |
 | **A0–A4 自主权矩阵** | 自动化动作按环境分级授权；托管 workflow 上限 A2（骨架 + PR），合入门禁不因自动化豁免 |
-| **Golden-Case 自测试** | `tests/run-tests.sh` 用临时 git 仓库对门禁自身做回归测试（55 项断言），仅需 bash + git |
+| **Golden-Case 自测试** | `tests/run-tests.sh` 用临时 git 仓库对门禁自身做回归测试（68 项断言），仅需 bash + git |
 | **专项规范** | 覆盖部署、配置/数据库变更、AI/LLM 链路、测试数据隔离、紧急热修复、发布上线、监控告警、供应链依赖管理 |
 
 ---
@@ -136,11 +136,11 @@ dev-standards-bootstrap/
 ├── LICENSE                                 # MIT 开源协议
 ├── screenshots/                            # README 截图（门禁拦截、变更产物）
 ├── tests/
-│   ├── run-tests.sh                        # 治理模板（含门禁）的 Golden-Case 回归套件（55 项断言；复制到目标仓库 tests/）
+│   ├── run-tests.sh                        # 治理模板（含门禁）的 Golden-Case 回归套件（68 项断言；复制到目标仓库 tests/）
 │   └── audit-docs-consistency.sh           # 规范源层专用（不随 Skill 分发）：审计规范文本自身——版本链 / 关键词落点矩阵 / 清单同源 / 编号体系 / 防恒真断言
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.4.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.5.0（复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型总纲：M0-M3 分级 + 阶段×方法论×适用/不适用主表（复制到 docs/）
     ├── methodologies/
     │   ├── development.md                   # 代码规范：SOLID/DRY/KISS/YAGNI 适用与豁免 + 七大工程维度
@@ -150,13 +150,13 @@ dev-standards-bootstrap/
         ├── CLAUDE.md                       # Claude Code 一行导入文件
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR 模板（含门禁自查）
         ├── check-standards-compliance.sh   # CI 合规检查脚本
-        ├── agent-gate.sh                   # 共享写前 / Git / CI 校验器（含 metrics）
+        ├── agent-gate.sh                   # 共享写前 / commit-msg / Git / CI 校验器（含 metrics）
         ├── intent.md                       # 每个变更 00-intent.md 的管线入口模板
         ├── bugfix-log.md                   # 仓库级 Bug 修复索引模板（复制到 docs/bugfix-log.md）
         ├── audit-docs-consistency.sh       # 跨文档一致性审计：版本链 / 编号连续 / 清单同源 / bugfix 双登记互证 / RTVM 回填一致（复制到 tests/）
         ├── governance-state.json           # 每个变更 00-governance.json 的模板（风险等级与执行主体）
         ├── agent-governance.yml            # 团队可审阅的治理配置记录（复制为 .agent-governance.yml）
-        ├── pre-commit、pre-push            # Git Hook 模板
+        ├── pre-commit、pre-push、commit-msg  # Git Hook 模板（commit-msg：归因闸门）
         ├── install-hook-adapter.sh         # 按检测到的工具生成 Hook 适配器（claude/cursor/gemini）
         ├── github-agent-governance.yml     # Required Check workflow 模板
         ├── github-artifact-pipeline.yml    # 变更管线：spec 合入 -> 02/03/04 骨架 PR；changelog 合入 -> 发布检查单 issue
@@ -178,8 +178,9 @@ scripts/agent-gate begin CHG-123
 | `begin <变更号>` / `end` | 激活或清除活跃变更；`begin` 要求七份变更产物（含 `00-intent.md`、`02` 影响分析与 `03.5` 任务拆解）已存在且非空，并校验治理状态与 A 层内容标记 |
 | `--stage pre-write` | Agent 写源码前校验活跃变更的产物与治理状态；无法从 Hook 入参解析目标路径时按失败处理（fail-closed） |
 | `--stage staged` | 已暂存的源码变更必须携带对应变更产物，否则拒绝提交 |
+| `--stage commit-msg <msgfile>` | 归因闸门：暂存区含代码文件的提交消息必须引用有效变更号（豁免合并 / Revert / 纯文档提交） |
 | `--stage stop` | 源码改动后结束回复，必须具备 `05-test-results.md` 与 `09-changelog.md`（含 ReAct Observation 记录，§2.16.2）；配置了 `AGENT_GUARD_VERIFY_COMMAND` 时还须通过该命令 |
-| `--stage ci [--base <ref>]` | 在分支/PR 差异上重新校验，并执行真实的验证命令 |
+| `--stage ci [--base <ref>]` | 在分支/PR 差异上重新校验（含触及变更的 delivery 证据），并执行真实的验证命令 |
 | `metrics` | 只读输出管线度量（JSON Lines）：各阶段时间戳、阶段间隔、`delivery_ready`--仅作观察，不替代 DoD 判定 |
 
 新变更的必要产物集在磁盘上的样子（截图为较早版本；当前门禁另要求 `02-code-impact-analysis.md` 与 `03.5-tasks.md`）：
@@ -190,7 +191,7 @@ scripts/agent-gate begin CHG-123
 
 执行 `scripts/install-hook-adapter` 可为当前客户端生成 Hook 适配器--通过 `CLAUDECODE` / `CURSOR_AGENT` / `GEMINI_CLI` 自动检测，或显式传入 `claude|cursor|gemini`。所有客户端 schema 都内嵌在这一个生成器里，不再维护每工具一份 JSON；目标文件已存在且内容不同时会展示 diff 并拒绝静默覆盖（`--force` 可覆盖）。没有已知 Hook schema 的客户端（Codex、Windsurf、Qoder、Trae、OpenCode）不会得到臆造的配置：它们的强制执行路径是 Git Hook 与 CI workflow--二者校验的是仓库而非编辑器。
 
-结构化状态会记录风险和执行主体；L2/L3 的开发、测试、Review 主体必须不同。工具的 `PreToolUse` Hook 会在受支持 Agent 写源码前阻断；`Stop` Hook 会在源码已变更但测试证据或 Changelog 缺失时阻止 Agent 结束回复；Git Hook 会拒绝不合规的本地提交；GitHub workflow 会在 PR 上重新校验。用 `git config core.hooksPath .githooks` 安装 Git Hook，在仓库变量 `AGENT_GUARD_VERIFY_COMMAND` 中设置真实构建/lint/测试/安全命令，最后把 workflow 设为分支保护 Required Check。状态文件与复选框只是声明，不是证据：CI 会重新执行真实命令，必须启用 Required CI 才能强制执行。
+结构化状态会记录风险和执行主体；L2/L3 的开发、测试、Review 主体必须不同。占位符执行主体（`PENDING`/`TODO`/`TBD`/`待定`）会被拒绝，L3 另须含释放授权三字段 `release_authorized_by`/`release_authorized_at`/`release_authorization_evidence`。工具的 `PreToolUse` Hook 会在受支持 Agent 写源码前阻断；`Stop` Hook 会在源码已变更但测试证据或 Changelog 缺失时阻止 Agent 结束回复；Git Hook 会拒绝不合规的本地提交；GitHub workflow 会在 PR 上重新校验。用 `git config core.hooksPath .githooks` 安装 Git Hook，在仓库变量 `AGENT_GUARD_VERIFY_COMMAND` 中设置真实构建/lint/测试/安全命令，最后把 workflow 设为分支保护 Required Check。状态文件与复选框只是声明，不是证据：CI 会重新执行真实命令，必须启用 Required CI 才能强制执行。
 
 门禁的实际拦截效果--在 IDE 中提交缺少变更产物的源码改动会被当场拒绝：
 
@@ -204,7 +205,7 @@ scripts/agent-gate begin CHG-123
 - **事故闭环**（`github-incident-to-intent.yml`）：监控系统调用 `repository_dispatch`（类型 `incident`，一行 `curl` 附带告警元数据）；workflow 自动创建 `BUG-<UTC 时间戳>` 变更与意图骨架 PR。任何事故都以记录意图重入管线，禁止“修完不留痕”；分支已存在即跳过（防告警风暴）。
 - **自主权上限**：托管 workflow 上限 A2（分支、骨架、PR、issue）；A3（内容）/A4（执行）仅在本地，合入门禁不因自动化豁免。
 - **平台可移植**：参考实现为 GitHub Actions；GitLab 等平台用其 CI 规则 + 平台 API 实现同一语义（各 workflow 头部注释有思路）。语义以规范 §2.17 为准，不绑定平台。
-- **自测试**：修改 `agent-gate.sh`、Hook 或 workflow 前，先跑 `bash tests/run-tests.sh`--55 项 Golden-Case 断言在临时 git 仓库中执行，仅需 bash 与 git（macOS/Linux、任意 IDE 终端）。
+- **自测试**：修改 `agent-gate.sh`、Hook 或 workflow 前，先跑 `bash tests/run-tests.sh`--68 项 Golden-Case 断言在临时 git 仓库中执行，仅需 bash 与 git（macOS/Linux、任意 IDE 终端）。
 
 ---
 
@@ -267,7 +268,7 @@ Pull Request 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)
 
 <div align="center">
 
-**规范版本：** v3.4.0 | **更新时间：** 2026-09-08 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.5.0 | **更新时间：** 2026-09-09 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告 Bug](../../issues) | [功能需求](../../issues) | [阅读规范全文](resources/DEVELOPMENT_STANDARDS.md)
 

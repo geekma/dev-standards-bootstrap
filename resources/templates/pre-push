@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Git hooks are a fast local signal. CI remains the authoritative merge gate.
-scripts/agent-gate --stage staged
+# v3.5.0: pre-push runs the strict branch gate over outgoing commits
+# ($base...HEAD, i.e. merge-base semantics): delivery evidence must travel
+# with the change it justifies. Without an upstream, the gate degrades to an
+# empty diff (no-op) instead of blocking the very first push.
+base="$(git rev-parse -q --verify '@{upstream}' 2>/dev/null || echo HEAD)"
+scripts/agent-gate --stage ci --base "$base"

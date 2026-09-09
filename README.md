@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.4.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.5.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -39,7 +39,7 @@ This Skill solves all of the above by installing **five mandatory quality gates*
 
 These failure modes are measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows Claude Code's production `/compact` prompt retains only **53% of safety rules after one compaction round, 10% after five**--agent memory silently loses the rules it was told to keep, and self-reported success diverges from what is actually on disk. The [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents the process side: intent drift in long sessions, decision paths no reviewer can follow, and incidents that never feed back into process.
 
-This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 55 golden-case assertions.
+This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 68 golden-case assertions.
 
 ---
 
@@ -67,7 +67,7 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Incident-to-Intent Loop** | Production alerts auto-create a `BUG-<timestamp>` intent skeleton PR via `repository_dispatch`; no silent fixes without a trace |
 | **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines with per-stage timestamps, stage intervals, and `delivery_ready`-derived purely from git history, zero dependencies |
 | **A0–A4 Autonomy Matrix** | Environment-scoped authorization for automated actions; hosted workflows cap at A2 (skeletons + PRs), merge gates never waived |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (55 assertions) in throwaway git repos-bash + git only |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (68 assertions) in throwaway git repos-bash + git only |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -136,11 +136,11 @@ dev-standards-bootstrap/
 ├── LICENSE                                 # MIT License
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate (55 assertions; copied to target tests/)
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate (68 assertions; copied to target tests/)
 │   └── audit-docs-consistency.sh           # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.4.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.5.0 (copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
     │   ├── development.md                   # Code standards: SOLID/DRY/KISS/YAGNI applicability & exemptions + 7 engineering dimensions
@@ -150,13 +150,13 @@ dev-standards-bootstrap/
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
         ├── check-standards-compliance.sh   # CI compliance check script
-        ├── agent-gate.sh                   # Shared pre-write / Git / CI validator (+ metrics)
+        ├── agent-gate.sh                   # Shared pre-write / commit-msg / Git / CI validator (+ metrics)
         ├── intent.md                       # Pipeline entry template for each change's 00-intent.md
         ├── bugfix-log.md                   # Repo-level bug-fix index template (copied to docs/bugfix-log.md)
         ├── audit-docs-consistency.sh       # Cross-doc consistency audit: version chain / numbering continuity / checklist sync / bugfix cross-registration / RTVM backfill (copied to tests/)
         ├── governance-state.json           # Template for each change's 00-governance.json (risk level + execution owners)
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
-        ├── pre-commit, pre-push            # Git hook templates
+        ├── pre-commit, pre-push, commit-msg  # Git hook templates (commit-msg: attribution gate)
         ├── install-hook-adapter.sh         # Generates the hook adapter for the detected tool (claude/cursor/gemini)
         ├── github-agent-governance.yml     # Required-check workflow template
         ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/04 skeletons PR; changelog merged -> release checklist issue
@@ -178,8 +178,9 @@ The gate is one dependency-free Bash script; every adapter reuses the same comma
 | `begin <change-id>` / `end` | Activate or clear the active change; `begin` requires the seven change artifacts (including `00-intent.md`, the `02` impact analysis, and the `03.5` task breakdown) to exist and be non-empty, and validates the governance state plus A-layer content markers |
 | `--stage pre-write` | Validates the active change's artifacts and governance state before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts and a valid governance state, otherwise the commit is rejected |
+| `--stage commit-msg <msgfile>` | Attribution gate: a commit that stages code files must reference a valid change id (waived for merge / revert / docs-only commits) |
 | `--stage stop` | Ending a turn after source edits requires `05-test-results.md`, `09-changelog.md` (with ReAct Observation records, §2.16.2), plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured |
-| `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state) and runs the real verification command |
+| `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state + delivery evidence for touched changes) and runs the real verification command |
 | `metrics` | Read-only pipeline metrics as JSON Lines: per-stage timestamps, stage intervals, `delivery_ready`-observations only, never a substitute for DoD |
 
 What the required artifact set looks like on disk for a fresh change (screenshot from an earlier version; the current gate additionally requires `02-code-impact-analysis.md` and `03.5-tasks.md`):
@@ -190,7 +191,7 @@ Copy `agent-governance.yml` to the repo root as `.agent-governance.yml`-a team-r
 
 Run `scripts/install-hook-adapter` to generate the hook adapter for the client in use-auto-detected from `CLAUDECODE` / `CURSOR_AGENT` / `GEMINI_CLI`, or passed as `claude|cursor|gemini`. All client schemas live in that one generator; there are no per-tool JSON files to maintain, and an existing config with different content is never overwritten silently (diff shown, `--force` to override). Clients without a known hook schema (Codex, Windsurf, Qoder, Trae, OpenCode) get no fabricated config: their enforcement path is the Git hooks and CI workflow, which validate the repository rather than the editor.
 
-The structured state records risk and responsible execution identities; for L2/L3, implementation, test, and review owners must differ. Tool `PreToolUse` hooks block supported agents before a source edit, while `Stop` hooks block an agent from ending after source edits until test evidence and a changelog exist. Git hooks reject a non-compliant local commit, and the GitHub workflow rechecks the pull request. Install Git hooks with `git config core.hooksPath .githooks`, set the repository variable `AGENT_GUARD_VERIFY_COMMAND` to the real build/lint/test/security command, then mark the workflow as a required branch-protection check. State files and checkboxes are declarations, not proof: CI re-runs the real command and is mandatory for enforcement.
+The structured state records risk and responsible execution identities; for L2/L3, implementation, test, and review owners must differ. Placeholder owner values (`PENDING`/`TODO`/`TBD`) are rejected, and L3 additionally requires the three release-authorization fields `release_authorized_by`/`release_authorized_at`/`release_authorization_evidence`. Tool `PreToolUse` hooks block supported agents before a source edit, while `Stop` hooks block an agent from ending after source edits until test evidence and a changelog exist. Git hooks reject a non-compliant local commit, and the GitHub workflow rechecks the pull request. Install Git hooks with `git config core.hooksPath .githooks`, set the repository variable `AGENT_GUARD_VERIFY_COMMAND` to the real build/lint/test/security command, then mark the workflow as a required branch-protection check. State files and checkboxes are declarations, not proof: CI re-runs the real command and is mandatory for enforcement.
 
 The gate blocking in practice--a commit of source changes without matching change artifacts is rejected right in the IDE:
 
@@ -204,7 +205,7 @@ Hosted-platform layer, independent of any coding client:
 - **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` with type `incident` (a one-line `curl` with alert metadata); the workflow creates a `BUG-<UTC-timestamp>` change with an intent skeleton PR. Every incident re-enters the pipeline as recorded intent-no silent fixes. Skips if the branch already exists (alert-storm protection).
 - **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues). Content (A3) and execution (A4) stay local; merge gates are never waived by automation.
 - **Portability**: the reference implementation uses GitHub Actions; GitLab and other platforms implement the same semantics with their CI rules + API (notes in each workflow's header). Semantics are defined by the standards §2.17, not by any platform.
-- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-55 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-68 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
 
 ---
 
@@ -267,7 +268,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.4.0 | **Last Updated:** 2026-09-08 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.5.0 | **Last Updated:** 2026-09-09 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 
