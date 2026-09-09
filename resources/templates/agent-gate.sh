@@ -134,7 +134,7 @@ validate_governance_state() {
   if [[ -n "$bug_ref" ]]; then
     [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
     bugs_root="${AGENT_GUARD_BUGS_ROOT:-docs/bugs}"
-    for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md; do
+    for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
       [[ -s "$bugs_root/$bug_ref/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bugs_root/$bug_ref/$doc"
     done
   fi
@@ -174,12 +174,15 @@ working_code_changed() {
   return 1
 }
 
-# Delivery evidence a change must carry before it may leave the machine:
-# test results, a changelog, and the v2.21.0 ReAct Observation records in it
-# (standards §2.16.2). Shared by --stage stop and branch-mode CI so both
-# enforcement lines hold the same bar. (v3.5.0)
+# Delivery evidence a change must carry before it may leave the machine: the
+# v3.7.0 coding record, test results, a changelog, and the v2.21.0 ReAct
+# Observation records in it (standards §2.16.2). Shared by --stage stop and
+# branch-mode CI so both enforcement lines hold the same bar. (v3.5.0)
 validate_delivery() { # change-id
   local id="$1" d="$change_root/$id"
+  # v3.7.0: the coding record (changed-file list, CHG-xxx anchors, WHY
+  # decisions) is part of the delivery bar (standards §2.5 stage 5).
+  [[ -s "$d/04.5-coding-record.md" ]] || die "cannot finish: missing coding record $d/04.5-coding-record.md"
   [[ -s "$d/05-test-results.md" ]] || die "cannot finish: missing test evidence $d/05-test-results.md"
   [[ -s "$d/09-changelog.md" ]] || die "cannot finish: missing changelog $d/09-changelog.md"
   # Every executed stage must leave an Observation record (verification

@@ -120,11 +120,26 @@ done
 TPL="$ROOT/resources/templates"
 report "governance-state template declares empty bug_ref" 1 "$(grep_count "$TPL/governance-state.json" '"bug_ref": ""')"
 report "agent-gate names missing defect document" 1 "$(grep_count "$TPL/agent-gate.sh" "missing defect document")"
-tpl3=0
-for t in bug-diagnosis.md bug-impact.md bug-test-plan.md; do
-  [[ -s "$TPL/$t" ]] && tpl3=$(( tpl3 + 1 ))
+tpl6=0
+for t in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-config.md bug-tasks.md; do
+  [[ -s "$TPL/$t" ]] && tpl6=$(( tpl6 + 1 ))
 done
-report "bug doc-set templates present (3 files)" 3 "$tpl3"
+report "bug doc-set templates present (6 files)" 6 "$tpl6"
+
+# ---------- v3.7.0 快照：最低文档集八类映射 + 编码记录 04.5 + 缺陷六件套 ----------
+at_least "keyword 最低文档集八类映射 in DEVELOPMENT_STANDARDS" 1 "$STD" "最低文档集八类映射"
+at_least "keyword eight-category in README en" 1 "$RM_EN" "eight-category"
+at_least "keyword 六件套 in DEVELOPMENT_STANDARDS" 1 "$STD" "六件套"
+at_least "keyword 六件套 in SKILL" 1 "$SKILL" "六件套"
+at_least "keyword 04.5-coding-record in DEVELOPMENT_STANDARDS" 1 "$STD" "04.5-coding-record"
+at_least "keyword 04.5-coding-record in README zh" 1 "$RM_ZH" "04.5-coding-record"
+at_least "keyword 04.5-coding-record in README en" 1 "$RM_EN" "04.5-coding-record"
+at_least "keyword 04.5-coding-record in SKILL" 1 "$SKILL" "04.5-coding-record"
+at_least "keyword 04.5-coding-record in agent-gate" 1 "$TPL/agent-gate.sh" "04.5-coding-record"
+at_least "keyword 04.5-coding-record in run-tests" 1 "$ROOT/tests/run-tests.sh" "04.5-coding-record"
+at_least "keyword bug-matrix.md in SKILL" 1 "$SKILL" "bug-matrix.md"
+at_least "keyword coding-record template in SKILL" 1 "$SKILL" "coding-record.md"
+at_least "keyword 06-tasks in agent-gate" 1 "$TPL/agent-gate.sh" "06-tasks"
 
 # ===================== PART A（续） =====================
 
@@ -163,12 +178,12 @@ report "2.17 governance definition present"  1 "$(grep_count "$STD" '管线治�
 at_least "2.17 dual-root convention present" 1 "$STD" '产物目录双轨约定'
 report "mainline starts with 00 files+begin" 1 "$(grep_count "$STD" '先落 00-intent.md / 00-governance.json（§2.17，变更目录）')"
 
-# ---------- bugfix 双登记 8+1 项对齐（R-A 轮；v3.6.0 新增缺陷文档组项） ----------
+# ---------- bugfix 双登记 9+1 项对齐（R-A 轮；v3.6.0 缺陷文档组 + v3.7.0 矩阵/配置/任务拆分项） ----------
 chg_backfill=$(awk '/^#### Bug 修复回填清单/,/^#### [^B]/' "$STD" | grep -cE '^- \[ \]')
-report "CHG backfill checklist == 9 items (log 8 + log itself)" 9 "$chg_backfill"
+report "CHG backfill checklist == 10 items (log 9 + log itself)" 10 "$chg_backfill"
 log_line=$(grep -E '^- \[ \] 01-spec' "$BFLOG" | head -1)
 log_items=$(printf '%s' "$log_line" | grep -oE '\[ \]' | wc -l | tr -d ' ')
-report "log-side backfill checklist == 8 items" 8 "$log_items"
+report "log-side backfill checklist == 9 items" 9 "$log_items"
 
 # ---------- 锚点章节存在性（子代理轮） ----------
 for h in '^## 0.5 ' '^## 2.6 ' '^## 2.7 ' '^## 2.8 ' '^## 2.9 ' '^## 2.11 ' '^#### 2.17.1' '^## 4. Changelog'; do

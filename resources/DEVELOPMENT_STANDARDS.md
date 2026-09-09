@@ -121,14 +121,16 @@
 | **任务拆解 (Task)** | `TASK-xxx`（或沿用 `T1/T2/...`） | WBS 原子任务，每项可独立提交/回滚，标注依赖 | `03.5-tasks.md` |
 | **代码实现 (Code / Change)** | `CHG-xxx` 或 `类名:行号` | 具体的源码类、方法、配置文件改动 | 源码 + `09-changelog.md` |
 | **测试用例 (Test Case)** | `TC-xxx` | 单元测试、集成测试、回归测试用例 | `04-test-scripts.md` / `*Test.java` |
-| **缺陷 (Bug)** | `BUG-xxx` / `BUG-<时间戳>`（见 §2.5 阶段 6） | Bug 修复**必编**：人工缺陷连续递增；生产事故重入用时间戳（§2.17.2 自动生成） | `docs/bugfix-log.md`（仓库级索引）+ `docs/bugs/<BUG-xxx>/`（缺陷文档组三件套，每次缺陷新起一组，v3.6.0）+ `09-changelog.md`（完整记录） |
+| **缺陷 (Bug)** | `BUG-xxx` / `BUG-<时间戳>`（见 §2.5 阶段 6） | Bug 修复**必编**：人工缺陷连续递增；生产事故重入用时间戳（§2.17.2 自动生成） | `docs/bugfix-log.md`（仓库级索引）+ `docs/bugs/<BUG-xxx>/`（缺陷文档组六件套：诊断/影响/测试计划/追踪矩阵/配置DB/任务拆分，每次缺陷新起一组；v3.6.0 建组、v3.7.0 扩六件）+ `09-changelog.md`（完整记录） |
 | **业务场景 (Scenario)** | `SC-xxx` | 业务场景清单枚举编号（测试 Agent 业务专家视角五维枚举，映射覆盖 TC，§2.5 阶段 4） | `04-test-scripts.md`「业务场景清单」节 |
 | **配置变更 (Config)** | `CFG-xxx` | 配置项/中间件/依赖参数变更（见 §2.6） | `06.5-deployment-config.md` |
 | **数据库变更 (Database)** | `DB-xxx` | DDL/DML/索引/数据订正脚本（见 §2.6） | `06.5-deployment-config.md` |
 | **遗留项 (Follow-up)** | `FU-xxx` | 待办/技术债（见 §2.12） | `06-delivery-summary.md` |
 
 > **功能文档编号清单**（`docs/<feature>/` 统一前缀，缺号不补、新号递增）：
-> `01-spec.md` / `01.5-rtvm-matrix.md`（四维 RTVM 总表）/ `02-code-impact-analysis.md` / `03-modification-plan.md` / `03.5-tasks.md` / `04-test-scripts.md` / `05-test-results.md` / `06-delivery-summary.md`（必含清单见 §2.5 阶段9.5）/ `06.5-deployment-config.md` / `07-review-report.md` / `08-supplement.md`（必含清单见 §2.5 阶段9.6）/ `09-changelog.md`
+> `01-spec.md` / `01.5-rtvm-matrix.md`（四维 RTVM 总表）/ `02-code-impact-analysis.md` / `03-modification-plan.md` / `03.5-tasks.md` / `04-test-scripts.md` / `04.5-coding-record.md`（编码记录，v3.7.0，§2.5 阶段 5）/ `05-test-results.md` / `06-delivery-summary.md`（必含清单见 §2.5 阶段9.5）/ `06.5-deployment-config.md` / `07-review-report.md` / `08-supplement.md`（必含清单见 §2.5 阶段9.6）/ `09-changelog.md`
+>
+> **最低文档集八类映射（v3.7.0，每次需求/变更至少齐备）**：需求规格 = `01-spec.md`；设计 = `02-code-impact-analysis.md` + `03-modification-plan.md`；任务 = `03.5-tasks.md`；编码 = `04.5-coding-record.md`；测试脚本 = `04-test-scripts.md`；测试结果 = `05-test-results.md`；配置变更 = `06.5-deployment-config.md`（未命中显式标注"未命中，不适用"）；矩阵 = `01.5-rtvm-matrix.md`——八类缺一按 §2.16.6 第 2 条判未完成。
 >
 > **变更管线入口件**：`00-intent.md` / `00-governance.json` 落变更目录 `docs/changes/<变更号>/`（§2.17，不占用功能文档编号序列、不使用编号前缀）；**新变更必须分配新变更号、新建独立变更目录**（如最新已用 CHG-041，新变更取 CHG-042 并新建 `docs/changes/CHG-042/`），禁止在既有变更目录追加或改写（§2.15 硬性规则 4，v3.6.0）；功能文档与变更目录的双轨关系见 §2.17「产物目录双轨约定」。
 >
@@ -220,7 +222,7 @@
 | **2. 业务与技术影响分析** | 业务/技术/风险三维影响（§2.5 阶段 2），先分析后方案 | `understand` + `architecture-review` + `codebase-design` (配合 MCP `code-review-graph`) | 知识图谱调用分析与 Deep Module（深模块）原则交叉核对，评估变更爆炸半径（Blast Radius）。 | `02-code-impact-analysis.md` |
 | **3. 方案设计与任务拆解** | ≥2 候选选型对比 + PM 标准任务拆解（关键路径/里程碑/DoT） | `writing-plans-2` + `planning-and-task-breakdown` + `using-git-worktrees` | 任务 WBS 拆解与状态机追踪，结合 Git 工作区物理隔离，确保方案步骤原子化、可执行、可回滚。 | `03-modification-plan.md`（含 `DES-xxx`）+ `03.5-tasks.md` |
 | **4. 测试脚本先行编写** | 十一类覆盖维度逐维设计用例与断言（含性能/并发，不适用须显式标注） | `test-driven-development-2` (或 `tdd`) + `verification-before-completion` | TDD 确保测试先行，明确输入、期望输出与边界断言，防止编码漫无目的。 | `04-test-scripts.md`（含 `TC-xxx`） |
-| **5. 代码实现与防御性重构** | 增量编写、防范脆弱代码与坏味道 | `code` + `incremental-implementation` + `code-simplification` + `security-and-hardening` | 增量小步前进（防大爆炸破坏）+ 复杂度精简（防过度设计）+ 安全防护（防注入/越权/异常泄露）。 | 源码（含 `// CHG-xxx` 注释） |
+| **5. 代码实现与防御性重构** | 增量编写、防范脆弱代码与坏味道 | `code` + `incremental-implementation` + `code-simplification` + `security-and-hardening` | 增量小步前进（防大爆炸破坏）+ 复杂度精简（防过度设计）+ 安全防护（防注入/越权/异常泄露）。 | 源码（含 `// CHG-xxx` 注释）+ `04.5-coding-record.md`（编码记录，v3.7.0） |
 | **6. 缺陷诊断与根因推导** | (Bug 专用) 严谨推导机理，拒绝瞎猜 | `systematic-debugging-2` + `diagnosing-bugs` + `debug-pro` | 4 阶段调试法（重现-隔离-假设-验证）与运行时调用栈分析双重验证，必须形成完整因果证据链。 | 诊断分析报告 / Changelog 分析节 |
 | **7. 运行测试与证据闭环** | 命令行实测，证据先于断言 | `verification-before-completion` + `test-driven-development-2` | 必须抓取真实测试命令输出、退出码与断言数据，严禁无证据空口宣称成功。 | `05-test-results.md` + 真实日志 |
 | **8. 代码审查与安全门禁** | 多角度、多模型代码质量把关 | `code-review-and-quality` + `code-reviewer` + `autoreview` + `requesting-code-review-2` | 静态结构审计 + 动态风险扫描 + 自动化跨视角 Review，提交前实施质量门禁自检。 | `07-review-report.md` |
@@ -289,7 +291,7 @@
 
 ### 阶段 5：代码实现（Coding）
 
-- **产物**：源码（在关键改动处标注 `CHG-xxx`）+ 对应测试类 `*Test.java`
+- **产物**：源码（在关键改动处标注 `CHG-xxx`）+ 对应测试类 `*Test.java` + **编码记录 `04.5-coding-record.md`（v3.7.0，gate stop/CI 校验存在且非空）**——必含：改动文件清单（文件 / TASK / 改动类型 / CHG-xxx 标注落点 / 说明）、WHY 决策记录、ReAct 编码段（可指向 09）、新增依赖与理由。
 - **中文注释规格（强制，逐条执行）**：
    1. **类/接口注释**：`@author` + 类职责一句话说明（如 `/** 必填信息收集收敛拦截（CHG-006 R1）：... */`）。
    2. **方法注释**：对公共 API、复杂业务逻辑或契约变化的方法说明职责、`@param`、`@return`、`@throws` 与业务约束；不要求为简单私有方法机械补全 Javadoc。改动处以最小必要范围标注 `CHG-xxx`。
@@ -299,14 +301,14 @@
 
 - **编码约定**：沿用既有代码风格；防御性编程（判空/异常不吞掉）；敏感信息不入日志；新增依赖需说明理由并做供应链审核（§2.13.2）。工程决策细则见 `docs/methodologies/development.md`（M0/M1 基线）；数据结构建模见 `docs/methodologies/data-structures.md`（M0 基线，含弱类型穿层禁令）。
 - **ReAct 微循环（v2.21.0，每次源码修改强制）**：每次改动前 **Thought**——分析当前状态、修改目标与影响面（引用 02 三维影响分析，含被波及的调用方与共享组件，§2.16.2 铁律）；改动后 **Observation**——运行受影响测试与验证命令并记录实际输出。**禁止"上来就改代码"**（§5 严重违规）。
-- **验收标准**：A 层——关键改动处含 `CHG-xxx` 标注（`grep -rn 'CHG-' <变更源码>` 有输出）；B 层——Review Agent 审查："无 WHY 注释"或"注释只复述代码"一律打回（见 §5 Anti-Patterns），留 Agent 标识（§2.1.7）。
+- **验收标准**：A 层——关键改动处含 `CHG-xxx` 标注（`grep -rn 'CHG-' <变更源码>` 有输出），且 `04.5-coding-record.md` 存在且非空（gate stop/CI 机器校验，v3.7.0）；B 层——Review Agent 审查："无 WHY 注释"或"注释只复述代码"一律打回（见 §5 Anti-Patterns），留 Agent 标识（§2.1.7）。
 
 ### 阶段 6：缺陷诊断与根因推导（Bug 专用）
 
-- **产物**：**缺陷文档组三件套** `docs/bugs/<BUG-xxx>/`（v3.6.0，每次缺陷处置**新起一组**：`01-diagnosis.md` 诊断——现象/复现/完整调用链与分歧点/代码行列级根因表含「同族推演」行；`02-impact.md` 影响关联矩阵——受影响 REQ/DES/CHG/文档逐项处置，含「关联缺陷」引用旧组；`03-test-plan.md` 测试计划——新建防回归 TC + 需复跑回归 TC 清单）+ 诊断分析报告（可并入 `09-changelog.md` 的"分析/根因"节）+ **仓库级索引 `docs/bugfix-log.md` 登记**（模板见 skill 资源 `bugfix-log.md`，追加式，索引行含「文档组落点」）；缺陷编号 `BUG-xxx`（人工缺陷，连续递增）或 `BUG-<UTC 时间戳>`（事故重入，§2.17.2），标注严重度 P0/P1/P2；禁止在既有缺陷文档组目录内改写或追加。**Bug 修复必须双登记**：log 索引行 + CHG 完整条目，缺一判未闭环（§5）
-- **必含清单**：复现步骤、完整调用链（入口→类→方法→分歧点）、正常 vs 异常链路对比、代码行列级根因表、排除其他假设的理由、**同族推演**（"还有哪些路径共享此根因模式？"——逐条处置：已同批修复 / 登记 FU-xxx / 确认无同族）、**影响关联矩阵**（受影响 REQ/DES/CHG/文档与逐项处置，落缺陷文档组 `02-impact.md`）、**测试计划**（新建防回归 TC + 需复跑回归 TC 清单，落缺陷文档组 `03-test-plan.md`）。
-- **Bug 修复记录七要素（v3.1.0，双落点）**：①现象（记录 Bug）②根因（分析原因，含同族推演）③方案（修复）④测试证据（含防回归 TC）⑤影响文件清单⑥**文档回填清单**（须更新的 md：01-spec / 03-plan / 04-test / 05-results / 01.5-rtvm / 06.5 / 06-delivery，逐项勾选或显式标"未命中"）⑦关联需求/设计/变更（REQ/DES/CHG，无关联须说明）。①–⑤⑦ 落 CHG 条目（§4 模板已含）；⑥ 以「Bug 修复回填清单」节落 CHG 并同步 log 索引行（log 侧为除"log 本身"外的 8 项，两处逐项一致）。
-- **验收标准**：A 层——09 CHG「分析/根因」节含代码行列级根因表（含「同族推演」行）与 BUG 编号，CHG 含「Bug 修复回填清单」节且逐项勾选，缺陷文档组三件套存在且非空（`00-governance.json` 声明 `bug_ref` 时 `agent-gate begin` 机器校验，§2.17），`grep -cE '^### BUG-[0-9]' docs/bugfix-log.md` 有输出（统计真实数字编号，模板占位 BUG-xxx 不参与匹配）；B 层——测试/Review 角色复核根因含"排除其他假设"论证与同族推演处置（无扫描过程按「修完即收工」反模式退回）、复现步骤可独立重放、log 索引行与 CHG 内容一致且回填清单与实际文档状态相符。
+- **产物**：**缺陷文档组六件套** `docs/bugs/<BUG-xxx>/`（v3.6.0 建组、v3.7.0 扩六件，每次缺陷处置**新起一组**：`01-diagnosis.md` 诊断——现象/复现/完整调用链与分歧点/代码行列级根因表含「同族推演」行；`02-impact.md` 影响关联矩阵——受影响 REQ/DES/CHG/文档逐项处置，含「关联缺陷」引用旧组；`03-test-plan.md` 测试计划——新建防回归 TC + 需复跑回归 TC 清单；`04-matrix.md` 追踪矩阵——BUG ↔ REQ/DES/CHG/文档/TC 映射与验证状态（v3.7.0）；`05-config.md` 配置/DB 影响——未命中显式声明"无配置/DB 影响"（v3.7.0）；`06-tasks.md` 修复任务拆分——修复任务/依赖/复跑 TC 归属（v3.7.0））+ 诊断分析报告（可并入 `09-changelog.md` 的"分析/根因"节）+ **仓库级索引 `docs/bugfix-log.md` 登记**（模板见 skill 资源 `bugfix-log.md`，追加式，索引行含「文档组落点」）；缺陷编号 `BUG-xxx`（人工缺陷，连续递增）或 `BUG-<UTC 时间戳>`（事故重入，§2.17.2），标注严重度 P0/P1/P2；禁止在既有缺陷文档组目录内改写或追加。**Bug 修复必须双登记**：log 索引行 + CHG 完整条目，缺一判未闭环（§5）
+- **必含清单**：复现步骤、完整调用链（入口→类→方法→分歧点）、正常 vs 异常链路对比、代码行列级根因表、排除其他假设的理由、**同族推演**（"还有哪些路径共享此根因模式？"——逐条处置：已同批修复 / 登记 FU-xxx / 确认无同族）、**影响关联矩阵**（受影响 REQ/DES/CHG/文档与逐项处置，落缺陷文档组 `02-impact.md`）、**测试计划**（新建防回归 TC + 需复跑回归 TC 清单，落缺陷文档组 `03-test-plan.md`）、**追踪矩阵**（BUG ↔ REQ/DES/CHG/文档/TC 映射与验证状态，落 `04-matrix.md`）、**配置/DB 影响**（含"未命中"显式声明，落 `05-config.md`）、**修复任务拆分**（修复任务/依赖/复跑 TC 归属，落 `06-tasks.md`）。
+- **Bug 修复记录七要素（v3.1.0，双落点）**：①现象（记录 Bug）②根因（分析原因，含同族推演）③方案（修复）④测试证据（含防回归 TC）⑤影响文件清单⑥**文档回填清单**（须更新的 md：01-spec / 03-plan / 04-test / 04.5-coding-record / 05-results / 01.5-rtvm / 06.5 / 06-delivery，逐项勾选或显式标"未命中"）⑦关联需求/设计/变更（REQ/DES/CHG，无关联须说明）。①–⑤⑦ 落 CHG 条目（§4 模板已含）；⑥ 以「Bug 修复回填清单」节落 CHG 并同步 log 索引行（log 侧为除"log 本身"外的 9 项，两处逐项一致）。
+- **验收标准**：A 层——09 CHG「分析/根因」节含代码行列级根因表（含「同族推演」行）与 BUG 编号，CHG 含「Bug 修复回填清单」节且逐项勾选，缺陷文档组六件套存在且非空（`00-governance.json` 声明 `bug_ref` 时 `agent-gate begin` 机器校验六件，§2.17；v3.6.0 三件、v3.7.0 扩六件），`grep -cE '^### BUG-[0-9]' docs/bugfix-log.md` 有输出（统计真实数字编号，模板占位 BUG-xxx 不参与匹配）；B 层——测试/Review 角色复核根因含"排除其他假设"论证与同族推演处置（无扫描过程按「修完即收工」反模式退回）、复现步骤可独立重放、log 索引行与 CHG 内容一致且回填清单与实际文档状态相符。
 
 ### 阶段 7：运行测试与证据闭环
 
@@ -579,7 +581,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 1. **批次绑定变更**：`05-test-results.md` 每个批次小节标题必须标注对应 CHG / 变更编号（如 `§N：CHG-XXX`）；里程碑批次（如首次 Maven 套件）标注 TASK 里程碑。
 2. **可改 ≠ 可丢**：活文档（01.5/03/03.5/06）允许更新状态/正文，但**任何状态翻转或正文覆盖都必须能在 changelog 或维护记录中追溯到**；否则视为覆盖丢失（§5 拦截）。
 3. **配置记录只增**：06.5 配置/DB 记录表**只追加**，同一 key 再变更新增 CFG 行（`CFG-next`），旧行保留（前值→后值对照），禁止原地改旧行。
-4. **一次变更一组文档（v3.6.0，强隔离）**：新变更必须分配**新变更号**（连续递增）并**新建独立变更目录** `docs/changes/<新变更号>/`，同时新增新 CHG 条目——如最新已用 CHG-041，下一个变更取 CHG-042，禁止在 CHG-041 的目录或条目上改写/追加；已闭合 CHG 与已登记 BUG 条目**完全只读**（无「修订说明」例外），勘误、补充、衍生修复一律开新组，经 CHG「追踪矩阵映射」关联旧变更与 BUG-xxx、缺陷文档组「关联缺陷」字段引用旧组；缺陷修复同理：每次缺陷处置在 `docs/bugs/` 下**新建缺陷文档组**（`01-diagnosis.md`/`02-impact.md`/`03-test-plan.md`，§2.5 阶段 6），禁止在既有缺陷目录内改写。
+4. **一次变更一组文档（v3.6.0，强隔离）**：新变更必须分配**新变更号**（连续递增）并**新建独立变更目录** `docs/changes/<新变更号>/`，同时新增新 CHG 条目——如最新已用 CHG-041，下一个变更取 CHG-042，禁止在 CHG-041 的目录或条目上改写/追加；已闭合 CHG 与已登记 BUG 条目**完全只读**（无「修订说明」例外），勘误、补充、衍生修复一律开新组，经 CHG「追踪矩阵映射」关联旧变更与 BUG-xxx、缺陷文档组「关联缺陷」字段引用旧组；缺陷修复同理：每次缺陷处置在 `docs/bugs/` 下**新建缺陷文档组**（六件套：`01-diagnosis.md`/`02-impact.md`/`03-test-plan.md`/`04-matrix.md`/`05-config.md`/`06-tasks.md`，§2.5 阶段 6；v3.6.0 三件、v3.7.0 扩六件），禁止在既有缺陷目录内改写。
 
 ---
 
@@ -600,14 +602,14 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 ### 2.16.2 执行主线（AI 按序，勿跳步）
 
 ```
-前置(§2.16.1，含背景调研与风险分级 §0.5)；**新变更先取新变更号并新建变更目录（禁止复用既有 CHG 目录，§2.15 硬性规则 4）**；先落 00-intent.md / 00-governance.json（§2.17，变更目录）→ agent-gate begin（Bug 修复另建缺陷文档组 docs/bugs/<BUG-xxx>/ 三件套并在 00-governance.json 声明 bug_ref，§2.5 阶段 6）
+前置(§2.16.1，含背景调研与风险分级 §0.5)；**新变更先取新变更号并新建变更目录（禁止复用既有 CHG 目录，§2.15 硬性规则 4）**；先落 00-intent.md / 00-governance.json（§2.17，变更目录）→ agent-gate begin（Bug 修复另建缺陷文档组 docs/bugs/<BUG-xxx>/ 六件套并在 00-governance.json 声明 bug_ref，§2.5 阶段 6）
  → 阶段1 需求(门禁1)  → 01-spec：REQ 追加式(§2.15) + 需求来源/评审
  → 阶段2 影响         → 02：业务+技术+风险三维(先分析后方案)，时点快照不改写(§2.15)，回滚策略必含；命中状态/触发链路时含「隐式链路三向遍历」
  → 阶段3 方案+任务(门禁1) → 03 正文(DES+选型≥2候选对比)+03.5(T 任务含依赖/里程碑 或 CHG 豁免)
  → 阶段4 测试(门禁2)  → 测试 Agent(按§0.5.2独立性)：04 TC 覆盖维度矩阵 + SC 场景清单(覆盖率≥80%) + 复用/新增判定 + 打点断言
- → 阶段5 编码         → 开发 Agent：源码(CHG-xxx 注释/WHY/契约/降级) + 供应链
+ → 阶段5 编码         → 开发 Agent：源码(CHG-xxx 注释/WHY/契约/降级) + 04.5-coding-record.md(编码记录，v3.7.0) + 供应链
  → [命中时] 配置/DB §2.6(06.5 只增) · AI/LLM §2.9 · 测试隔离 §2.10 · 发布 §2.7
- → 阶段6 缺陷(Bug 专用) → 缺陷文档组 docs/bugs/<BUG-xxx>/ 三件套(诊断含同族推演/影响关联/测试计划) + 根因表(含「同族推演」行) + BUG-xxx 双登记(bugfix-log 索引 + CHG 条目)
+ → 阶段6 缺陷(Bug 专用) → 缺陷文档组 docs/bugs/<BUG-xxx>/ 六件套(诊断含同族推演/影响关联/测试计划/追踪矩阵/配置DB/任务拆分) + 根因表(含「同族推演」行) + BUG-xxx 双登记(bugfix-log 索引 + CHG 条目)
  → 阶段7 证据(门禁3)  → 测试 Agent：05 新批次 §N(绑定 CHG + 四要素 + 覆盖率)，历史批次不可覆盖
  → 阶段8 审查         → 独立 Review Agent(按§0.5.2独立性)：07-review-report
  → 门禁5 独立验证       → 角色签署(含Agent标识§2.1.7) + Release Owner 授权（高风险）
@@ -672,11 +674,11 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 | 阶段3 方案 | DES 登记 + 正文修改点 | 03 | 活文档（回写，历史在 changelog） |
 | 阶段3 任务 | T 任务行（或 CHG 豁免） | 03.5 | 追加 + 状态列 |
 | 阶段4 测试 | TC + SC 场景清单登记 | 04 | 追加 + TC/SC 状态 |
-| 阶段5 编码 | 源码 | 源码 | 活文档 |
+| 阶段5 编码 | 源码 + 04.5-coding-record.md（编码记录，v3.7.0） | 源码 + 变更目录/功能目录 04.5 | 源码活文档 + 04.5 随批次归档 |
 | 配置/DB | CFG/DB 行 | 06.5 | **只增**（同 key 新行） |
 | AI/LLM | prompt 版本/endpoint 验证 | 06.5 + 09 | 只增 / 随 CHG |
 | 测试隔离 | 数据脚本声明 | 04 + 06.5 | 追加 |
-| 阶段6 缺陷 | 缺陷文档组三件套（诊断/影响关联/测试计划）+ 根因表 / BUG-xxx | `docs/bugs/<BUG-xxx>/`（每次缺陷新建，只读不回改）+ 09 CHG 分析/根因 | 缺陷组闭合只读 + 随 CHG 不可变 |
+| 阶段6 缺陷 | 缺陷文档组六件套（诊断/影响关联/测试计划/追踪矩阵/配置DB/任务拆分）+ 根因表 / BUG-xxx | `docs/bugs/<BUG-xxx>/`（每次缺陷新建，只读不回改）+ 09 CHG 分析/根因 | 缺陷组闭合只读 + 随 CHG 不可变 |
 | 阶段7 证据 | 测试批次 §N（绑 CHG+四要素） | 05 | **批次追加**（历史不可覆盖） |
 | 阶段8 审查 | 审查节（范围/问题分级/结论/独立性） | 07 | 追加（旧结论保留） |
 | 阶段9 交付 | CHG 条目（§4 必填字段+追踪矩阵） | 09 | 不可变（只增） |
@@ -713,7 +715,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 > **管线入口产物 `00-intent.md`**：每个变更在进入阶段 1 之前必须先落 `00-intent.md`（问题 / 预期结果 / 受影响用户与系统 / 约束 / 开放问题 / 意图澄清记录，模板见 skill 资源 `intent.md`）。阶段 1（门禁 1）将其转写为 `01-spec.md` 的 `REQ-xxx`；无 `00-intent.md` 的变更视为无意图变更，可执行门禁（`agent-gate begin`）拒绝放行。`00-intent.md` 为追加式文档（§2.15），可由需求角色、人类或监控系统创建；开放问题未全部关闭前不得进入阶段 3。
 
-> **管线治理声明 `00-governance.json`**：与 `00-intent.md` 同目录创建，声明本次变更治理元数据——`change_id`（与变更目录名一致）、`risk_level`（L0-L3，§0.5.1）、`implementation_owner` / `test_owner` / `review_owner`（执行主体标识，§2.1.7 格式）；**L2/L3 变更 `test_owner` 与 `review_owner` 必须与 `implementation_owner` 互异**（§0.5.2/门禁 5），否则 `agent-gate begin` 拒绝放行。执行主体标识不得为占位符（`PENDING`/`TODO`/`TBD`/`待定`；`implementation_owner` 恒检，`test_owner`/`review_owner` 按 L2/L3 检查，v3.5.0）；**L3 变更另须含释放授权三字段** `release_authorized_by` / `release_authorized_at` / `release_authorization_evidence`（全部非空，缺失即 `agent-gate begin` 拒绝放行）。**缺陷修复变更须声明 `bug_ref`**（v3.6.0，可选字段，值为本次处置的缺陷编号如 `BUG-042`）——非空时 `agent-gate begin` 校验 `docs/bugs/<bug_ref>/` 下缺陷文档组三件（`01-diagnosis.md`/`02-impact.md`/`03-test-plan.md`）存在且非空（根目录 `AGENT_GUARD_BUGS_ROOT` 可覆盖，默认 `docs/bugs`），缺失即拒绝放行；非缺陷修复留空字符串跳过校验。创建后不可变（§2.15）；风险等级修订（§0.5 降级判定禁令）记录到 09 CHG「重要上下文」，不改写本文件。模板见 skill 资源 `governance-state.json`。
+> **管线治理声明 `00-governance.json`**：与 `00-intent.md` 同目录创建，声明本次变更治理元数据——`change_id`（与变更目录名一致）、`risk_level`（L0-L3，§0.5.1）、`implementation_owner` / `test_owner` / `review_owner`（执行主体标识，§2.1.7 格式）；**L2/L3 变更 `test_owner` 与 `review_owner` 必须与 `implementation_owner` 互异**（§0.5.2/门禁 5），否则 `agent-gate begin` 拒绝放行。执行主体标识不得为占位符（`PENDING`/`TODO`/`TBD`/`待定`；`implementation_owner` 恒检，`test_owner`/`review_owner` 按 L2/L3 检查，v3.5.0）；**L3 变更另须含释放授权三字段** `release_authorized_by` / `release_authorized_at` / `release_authorization_evidence`（全部非空，缺失即 `agent-gate begin` 拒绝放行）。**缺陷修复变更须声明 `bug_ref`**（v3.6.0，可选字段，值为本次处置的缺陷编号如 `BUG-042`）——非空时 `agent-gate begin` 校验 `docs/bugs/<bug_ref>/` 下缺陷文档组六件（`01-diagnosis.md`/`02-impact.md`/`03-test-plan.md`/`04-matrix.md`/`05-config.md`/`06-tasks.md`；v3.6.0 三件、v3.7.0 扩六件）存在且非空（根目录 `AGENT_GUARD_BUGS_ROOT` 可覆盖，默认 `docs/bugs`），缺失即拒绝放行；非缺陷修复留空字符串跳过校验。创建后不可变（§2.15）；风险等级修订（§0.5 降级判定禁令）记录到 09 CHG「重要上下文」，不改写本文件。模板见 skill 资源 `governance-state.json`。
 
 > **产物目录双轨约定**：变更管线产物（`00-intent.md`/`00-governance.json` 及 `agent-gate begin` 必检 7 件）落**变更目录** `docs/changes/<变更号>/`（默认根；`AGENT_GUARD_CHANGE_ROOT` 可覆盖），gate 以该目录为核对根；`docs/<feature>/` 为功能级长期文档（05/06/07/09、01.5 矩阵、06.5 等）的权威落点（§2.5）。变更目录中的 01-spec/02/03/03.5/04 为门禁入口件，与功能目录同名文档须为同一内容（同文件或同步回填），禁止两处分叉；05/09 因 gate stop 在变更目录核证（05/09 存在性），同样双落点同步；§2.5 各阶段校验命令中的 `docs/<feature>/` 路径在管线启用时按变更目录对应解释。**治理工具自身**（scripts/agent-gate、scripts/install-hook-adapter、scripts/check-standards-compliance.sh、tests/run-tests.sh、tests/audit-docs-consistency.sh、.githooks/、hook 适配器配置）不视为产品代码——安装/升级它们的提交不需要变更产物，由 §2.17.4 golden-case 回归背书。
 
@@ -788,7 +790,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - [ ] 【门禁 2·阶段 4 测试用例先行】加载: `test-driven-development-2`
       -> 产出 `04-test-scripts.md`（定义 `TC-xxx` 测试命令与期望断言，用例矩阵含覆盖维度列，十一类维度逐维设计或显式标注不适用（含性能与容量、并发与竞态）；业务场景清单 SC-xxx 五维全景枚举、场景覆盖率 ≥80%（L0 无业务逻辑时单条 SC 标注"无业务场景影响"））；变更按"复用 vs 新增"判定（门禁 2），打点必须断言内容。
 - [ ] 【阶段 5 编码与安全防护】加载: `incremental-implementation` + `security-and-hardening` + `code-simplification`
-      -> 增量编码，遵循 WHY 注释规范（标注 `// CHG-xxx`），做好安全与异常处理；每次修改按 ReAct 微循环（Thought→Action→Observation，§2.16.2）留痕。
+      -> 增量编码，遵循 WHY 注释规范（标注 `// CHG-xxx`），做好安全与异常处理；每次修改按 ReAct 微循环（Thought→Action→Observation，§2.16.2）留痕；产出 `04.5-coding-record.md` 编码记录（改动文件清单/CHG-xxx 标注落点/WHY 决策/新增依赖理由，v3.7.0）。
 - [ ] 【配置/DB 变更】(命中 §2.6.1 任一类别时必选)
       -> 维护 `06.5-deployment-config.md`（配置记录表 + 迁移及回滚/前向修复方案），并同步 CFG/DB 映射矩阵（§2.6.3）。
 - [ ] 【AI/LLM 专项】(命中 §2.9 时必选)
@@ -798,7 +800,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - [ ] 【发布与上线】(进入发布时必选)
       -> 过 §2.7 发布检查单（含冒烟验证 + 监控告警有数据 + 回滚预案）；遗留项登记 FU-xxx（§2.12）。
 - [ ] 【阶段 6 缺陷诊断与推导】(Bug 修复专用) 加载: `systematic-debugging-2` + `diagnosing-bugs`
-      -> 4 阶段推导，绘制完整调用链与分歧点，定位代码行列级根本原因；根因表必含「同族推演」行（"还有哪些路径共享此根因模式？"，方法见 `docs/methodologies/state-trigger-audit.md`）；新建缺陷文档组 `docs/bugs/<BUG-xxx>/` 三件套（诊断/影响关联/测试计划，§2.5 阶段 6），禁止改写既有缺陷目录。
+      -> 4 阶段推导，绘制完整调用链与分歧点，定位代码行列级根本原因；根因表必含「同族推演」行（"还有哪些路径共享此根因模式？"，方法见 `docs/methodologies/state-trigger-audit.md`）；新建缺陷文档组 `docs/bugs/<BUG-xxx>/` 六件套（诊断/影响关联/测试计划/追踪矩阵/配置DB/任务拆分，§2.5 阶段 6），禁止改写既有缺陷目录。
 - [ ] 【门禁 3·阶段 7 运行测试与证据】加载: `verification-before-completion`
       -> 执行测试命令，获取控制台输出与测试报告（产出 `05-test-results.md`）。
 - [ ] 【阶段产物必含项验收】每个阶段产物除"存在"外，按 §2.5 必含清单**逐项核对**（如 02 必须有业务影响/风险/回滚策略、03 须含 ≥2 候选选型对比、03.5 须含依赖与里程碑、04 须含覆盖维度矩阵、05 批次含四要素），缺失即打回。
@@ -873,16 +875,17 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 5. **业务场景覆盖率（v3.3.0）**：SC 已覆盖 x / 枚举总数 y（门槛 ≥80%，L3 ≥90%）；未覆盖 SC 清单与理由（对齐 04「业务场景清单」）
 
 #### Bug 修复回填清单（Bug 修复类 CHG 必填，§2.5 阶段 6；非缺陷类删除本节）
-[条件必填] 逐项勾选（`[x]` 已更新 / `[ ] 未命中`并写理由）；须与 `docs/bugfix-log.md` 索引行的回填清单逐项一致（log 侧为除"log 本身"外的 8 项——log 自身的登记确认仅落本清单第 1 项）：
+[条件必填] 逐项勾选（`[x]` 已更新 / `[ ] 未命中`并写理由）；须与 `docs/bugfix-log.md` 索引行的回填清单逐项一致（log 侧为除"log 本身"外的 9 项——log 自身的登记确认仅落本清单第 1 项）：
 - [ ] `docs/bugfix-log.md`：本 BUG 索引行已登记（日期/严重度/关联 CHG/影响文件/测试证据/回填清单）
 - [ ] `01-spec.md`：需求受影响时追加 REQ（未影响标"未命中"）
 - [ ] `03-modification-plan.md`：设计受影响时回写正文（根因为设计遗漏时回补 DES）
 - [ ] `04-test-scripts.md`：防回归 TC 已新增/扩展
+- [ ] `04.5-coding-record.md`：编码记录已落（改动文件清单/CHG-xxx 标注/WHY，v3.7.0）
 - [ ] `05-test-results.md`：本批次测试证据已追加（§N 绑定 CHG）
 - [ ] `01.5-rtvm-matrix.md`：TC 行已回填
 - [ ] `06.5-deployment-config.md`：配置/DB 受影响时已记录（未命中标注）
 - [ ] `06-delivery-summary.md`：延期修复/遗留已登记 FU（如有）
-- [ ] `docs/bugs/<BUG-xxx>/`：缺陷文档组三件套（01-diagnosis / 02-impact / 03-test-plan）已新建并互链，测试计划含新建 TC 与需复跑回归 TC（v3.6.0，§2.5 阶段 6）
+- [ ] `docs/bugs/<BUG-xxx>/`：缺陷文档组六件套（01-diagnosis / 02-impact / 03-test-plan / 04-matrix / 05-config / 06-tasks）已新建并互链，测试计划含新建 TC 与需复跑回归 TC（v3.6.0 建组、v3.7.0 扩六件，§2.5 阶段 6）
 
 #### 角色签署与独立性（门禁 5）
 [必填] 执行主体可以是人类或 Cursor/Codex/Claude Code/Gemini 等独立 Agent；须按 §2.1 判断独立性：
@@ -910,12 +913,12 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - [ ] 【阶段 2 业务与技术影响分析】产出 02（业务影响/技术拓扑与爆炸半径/风险矩阵与**回滚策略**，三维缺一不可）；命中状态/触发链路时含「隐式链路三向遍历」或显式"未命中"说明
 - [ ] 【阶段 3 方案设计与拆解】产出 03（接口字段表/流程/数据/**≥2 候选选型对比**/ADR/兼容）+ 03.5（T 任务含依赖/关键路径/里程碑/DoT，或 CHG 豁免标注）
 - [ ] 【门禁 2·阶段 4 测试用例先行】产出 04（TC-xxx + SC-xxx 业务场景清单五维枚举；**覆盖维度矩阵**逐维标注；场景覆盖率 ≥80%；复用 vs 新增判定；打点必须断言内容）
-- [ ] 【阶段 5 编码与安全防护】源码（CHG-xxx 注释/WHY/契约/降级）+ 供应链审核 + ReAct 微循环留痕（§2.16.2）
+- [ ] 【阶段 5 编码与安全防护】源码（CHG-xxx 注释/WHY/契约/降级）+ `04.5-coding-record.md` 编码记录（v3.7.0）+ 供应链审核 + ReAct 微循环留痕（§2.16.2）
 - [ ] 【配置/DB 变更】06.5（CFG/DB 记录 + 迁移及回滚/前向修复方案 + 映射矩阵 + 敏感红线）
 - [ ] 【AI/LLM 专项】模型/endpoint 目标环境验证 + prompt 走库升版本 + 敏感数据脱敏
 - [ ] 【测试数据隔离】测试脚本声明环境/幂等/清理，禁写生产库
 - [ ] 【发布与上线】§2.7 发布检查单（冒烟 + 监控有数据 + 回滚预案）；遗留项登记 FU-xxx
-- [ ] 【阶段 6 缺陷诊断与推导】(Bug 专用) 复现/调用链/根因表（含「同族推演」行）/缺陷文档组三件套 docs/bugs/<BUG-xxx>/（新建只读）/BUG-xxx
+- [ ] 【阶段 6 缺陷诊断与推导】(Bug 专用) 复现/调用链/根因表（含「同族推演」行）/缺陷文档组六件套 docs/bugs/<BUG-xxx>/（新建只读）/BUG-xxx
 - [ ] 【门禁 3·阶段 7 运行测试与证据】05 批次（§N 不覆盖历史 + 四要素：变更前后/受影响/新增/复用 + 覆盖率三指标：行 ≥70%/分支 ≥60%/业务场景 ≥80%）
 - [ ] 【阶段产物必含项验收】按 §2.5 必含清单逐项核对（02 有回滚、03 正文含最新 CHG、05 批次四要素）
 - [ ] 【阶段两层验收（§2.5 总则）】各阶段「验收标准」逐条抄录并勾选（A 层附校验命令与输出，B 层附独立角色签署）
@@ -988,7 +991,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 | **Bug 修复未登记 `docs/bugfix-log.md` / CHG 无「Bug 修复回填清单」** | 🟡 中度违规 | 违反 §2.5 阶段 6：log 索引行与回填清单任一缺失即判未闭环，退回补齐；回填清单勾选与实际文档状态不符的，按 §2.16.6（用摘要代替逐项核对）同级处理。 |
 | **Bug 修复根因表无「同族推演」行 / 同族行空口写"无"而无扫描过程** | 🟡 中度违规 | 违反 §2.5 阶段 6 与 `docs/methodologies/state-trigger-audit.md` §4「修完即收工」：退回补同族扫描过程与逐条处置（已同批修复/登记 FU-xxx/确认无同族）；阶段 8 Review 按同表反模式核对。 |
 | **新变更复用既有变更目录/CHG 条目改写（未新起一组文档）** | 🔴 严重违规 | 违反 §2.15 硬性规则 4「一次变更一组文档」（v3.6.0）：新变更必须分配新变更号并新建 `docs/changes/<新变更号>/` 与新 CHG 条目；在已闭合 CHG（含最新条目）上追加/改写或加「修订说明」一律退回重开新组。 |
-| **缺陷处置未新起缺陷文档组 / 改写既有缺陷目录** | 🟡 中度违规 | 违反 §2.5 阶段 6（v3.6.0）：每次缺陷处置在 `docs/bugs/` 下新建 `<BUG-xxx>/` 三件套（01-diagnosis/02-impact/03-test-plan）并在 `00-governance.json` 声明 `bug_ref`；在既有缺陷目录上改写即退回。 |
+| **缺陷处置未新起缺陷文档组 / 改写既有缺陷目录** | 🟡 中度违规 | 违反 §2.5 阶段 6（v3.6.0）：每次缺陷处置在 `docs/bugs/` 下新建 `<BUG-xxx>/` 六件套（01-diagnosis/02-impact/03-test-plan/04-matrix/05-config/06-tasks）并在 `00-governance.json` 声明 `bug_ref`；在既有缺陷目录上改写即退回。 |
 | **遗留项超期不闭环** | 🟡 中度违规 | 违反 §2.12：遗留项超 2 版本未处理必须说明理由或转需求。 |
 | **Changelog 遗漏“未动项”** | 🟡 中度违规 | 要求补充说明为什么某些关联组件未动，防止后续开发者重复排查。 |
 | **用摘要/总结代替逐项清单勾选（如"以上均已完成"）** | 🔴 严重违规 | 违反 §2.16.6 第 1/6 条：DoD、自检、阶段清单必须逐条列出并标注 `[x]`/`[ ]`，退回补齐逐项证据后方可宣称完成。 |
@@ -1005,6 +1008,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 | 版本 | 日期 | 变更条款 | 影响既有文档（须回填） |
 |---|---|---|---|
+| v3.7.0 | 2026-09-09 | 需求/变更最低文档集八类 + 缺陷文档组六件套 + 编码记录门禁：①§1.1 功能文档编号清单新增 `04.5-coding-record.md`（编码记录）与「**最低文档集八类映射**」（需求规格=01-spec / 设计=02+03 / 任务=03.5 / 编码=04.5 / 测试脚本=04 / 测试结果=05 / 配置变更=06.5 / 矩阵=01.5，缺一判未完成）；②变更组编码落文档：§2.5 阶段 5 产物与验收、§2.1 矩阵、§2.16.2 主线、§2.16.5 落点、§3 清单、§4 归档清单同步 04.5；`validate_delivery`（gate stop 与 branch CI 同层）新增 04.5 存在且非空校验；③缺陷文档组三件套扩**六件套**：新增 `04-matrix.md`（BUG↔REQ/DES/CHG/文档/TC 追踪矩阵+验证状态）/`05-config.md`（配置/DB 影响，未命中显式声明）/`06-tasks.md`（修复任务拆分+依赖+复跑 TC 归属）——§1.1/§2.5 阶段 6/§2.15 硬性规则 4/§2.16.2/§2.16.5/§2.17/§3/§5 全部三件套引用点同步；`00-governance.json` `bug_ref` 校验扩为六件；④回填清单双侧联动：CHG 侧 §4 清单 9→10 项、log 侧 8→9 项（均插入 04.5-coding-record 项），「缺陷文档组三件套」项改六件套；⑤新增模板 `coding-record.md`/`bug-matrix.md`/`bug-config.md`/`bug-tasks.md`，旧 bug 三模板定位块与验收同步；golden cases 74→80，源层审计 v3.7.0 快照同步 | 新接入项目随 Skill 复制 4 个新模板（`coding-record.md` → `docs/changes/<变更号>/` 起编时使用、`bug-matrix.md`/`bug-config.md`/`bug-tasks.md` → `docs/bugs/_templates/`）；已接入项目同步 `scripts/agent-gate` 与 `tests/run-tests.sh`；存量已闭合变更/缺陷不回溯，新变更/新缺陷从本版起执行 |
 | v3.6.0 | 2026-09-09 | 变更/缺陷文档组强隔离：①§2.15 硬性规则 4 重写为「一次变更一组文档」——新变更必须分配新变更号并新建独立变更目录 `docs/changes/<新变更号>/`（如最新已用 CHG-041，新变更取 CHG-042），禁止在既有变更目录/CHG 条目上改写或追加；已闭合 CHG 与已登记 BUG 条目**完全只读**（删除「修订说明」逃生门；05-test-results 批次修订标注不受影响），勘误/补充/衍生修复一律新开一组，经 CHG「追踪矩阵映射」与缺陷组「关联缺陷」引用旧组；②缺陷文档组三件套：§2.5 阶段 6 产物升级为 `docs/bugs/<BUG-xxx>/`（`01-diagnosis.md` 诊断含同族推演 / `02-impact.md` 影响关联矩阵 / `03-test-plan.md` 测试计划），每次缺陷处置新起一组、新增模板 `bug-diagnosis.md`/`bug-impact.md`/`bug-test-plan.md`，bugfix-log 索引行加「文档组落点」列，§4「Bug 修复回填清单」7→8 项（log 侧同步 8 项）；③门禁最小增量：`00-governance.json` 新增可选 `bug_ref` 字段（缺陷修复须声明，非空时 `agent-gate begin` 校验缺陷组三件存在且非空；根目录 `AGENT_GUARD_BUGS_ROOT` 可覆盖默认 `docs/bugs`；id 正则 `^[A-Za-z0-9._-]+$` 防路径穿越），golden cases 68→74；④§5 新增两条拦截（新变更复用既有变更目录 / 缺陷未新起文档组）并收口「覆盖丢历史」行，§1.1/§2.16.2/§2.16.5/§2.17/§3/§4 联动 | 新接入项目随 Skill 复制 3 个 bug 模板到 `docs/bugs/_templates/`（每次缺陷组从模板复制）；已接入项目同步 `scripts/agent-gate` 与 `tests/run-tests.sh`；存量已闭合变更/缺陷不回溯，新变更/新缺陷从本版起执行 |
 | v3.5.0 | 2026-09-09 | 治理闭环三改造：①`validate_governance_state` 拒占位符执行主体（`PENDING`/`TODO`/`TBD`/`待定`——`implementation_owner` 恒检、`test_owner`/`review_owner` 按 L2/L3），L3 新增释放授权三字段 `release_authorized_by`/`release_authorized_at`/`release_authorization_evidence`（缺一即 `agent-gate begin` 拒绝放行）；②`validate_delivery` 提取复用，branch 模式（`--stage ci --base <ref>`）对 diff 触及的变更追加 delivery 证据核验（05+09+Observation），`pre-push` 模板接线 `--stage ci`（base 取 upstream，无则退化 HEAD）；③新增 `commit-msg` 归因闸门（暂存代码文件的提交消息必须引用有效变更号；豁免：合并提交/以 Revert 开头/纯文档产物提交）+ 新模板 `commit-msg`，metrics `first_commit_referencing` 改词边界匹配（防 CHG-7/CHG-71 前缀碰撞）；④golden cases 55→68（占位符拒绝 ×3、L3 授权 ×2、branch delivery ×2、commit-msg ×5、词边界 ×2）；⑤文档同步：双 README（徽标/断言数/目录树/命令表/授权句）、SKILL 复制清单与升级流程、DS §2.17 两处与 §2.17.4；源层审计 PART B 追加 v3.5.0 快照 6 条（72→78） | 复制 `commit-msg` 模板到 `.githooks/`；更新 `pre-push` 与 `scripts/agent-gate` |
 | v3.4.0 | 2026-09-08 | 融入「状态/触发链路审计」方法论：①§2.5 阶段 2 技术影响新增**隐式链路三向遍历**（正向调用点/反向隐式边 watcher·事件总线·钩子/事件源×归宿矩阵，落 02「隐式链路三向遍历」节或显式"未命中"；登记 METHODOLOGY §3.2 M0 条件命中）；②§2.5 阶段 6 Bug 修复新增**同族推演**（根因表「同族推演」行 + 「根因·同族推演」节，三处置：已同批修复/登记 FU-xxx/确认无同族；登记 METHODOLOGY §3.6 M0）；③修复防回归统计恒真缺陷：`grep -c 'BUG-'` → `grep -cE '^### BUG-[0-9]'`（模板占位 BUG-xxx 不参与统计）；④新增方法论文档 `docs/methodologies/state-trigger-audit.md`（六条教训+六步清单+收敛信号+三个反模式）；⑤同步：AGENTS 锚点（"只是改 bug"+"做影响分析"行）与 AGENTS 页脚/SKILL 复制清单/双 README（版本徽标·目录树·特性表·页脚）/bugfix-log 模板（BUG-xxx 占位注释 + 根因摘要含同族推演字段）/方法论详情文档（development·data-structures）页脚/pipeline 02 骨架注释（隐式链路提示）；阶段 8 必含清单补缺陷修复类专项核对（三反模式即退回）；⑥全局一致性收口：§2.16.2 主线代码块补阶段 2 隐式链路/阶段 6 同族推演与双登记、阶段 2 A 层 grep 收紧为「隐式链路三向遍历」单关键词（防无关"未命中"字样绕过，与③同族缺陷）、§2.15 补 00-intent/00-governance 行、§2.17 补 00-governance.json 权威定义与「产物目录双轨约定」、§2.5 总则/§1.1 补变更目录注记、§5 补同族推演拦截行、METHODOLOGY §4 L1 必须列补业务场景清单；⑦收敛审计（按本版方法论自审）：bugfix-log 占位标题改 `BUG-xxx`（③ 断言成真——原占位 BUG-001 仍匹配 `^### BUG-[0-9]`，空 log 恒真计数）、pipeline 02 注释避开 A 层关键词原文（防空骨架绕过阶段 2 验收）、§4 归档清单补角色分派项与编号顺序核对（与 §3 严格同源）、§2.16.5 落点总表补管线入口行、§2.16.2 主线补 00-intent/00-governance 与 gate begin 步骤、METHODOLOGY §4 补条件命中注记；⑧编号体系维度补漏（v3.3.0 SC 遗留漂移）：§1.1 前缀计数 9→10、§1.2 编号顺序规则与核对表补 SC/BUG、§2.16.4 自检第 3 条补 SC；⑨审计流程自身收尾三件套：升级日志重排为严格新→旧（原升序段+降序段拼接，新条目置顶对齐 bugfix-log/changelog 惯例）、新增 `tests/audit-docs-consistency.sh`（把本轮全部审计不变量固化为 50+ 机器断言：版本链/关键词落点矩阵/§3↔§4 同源/编号体系/占位 vs A 层断言防恒真/骨架 vs A 层关键词/00 管线件落点/bugfix 双登记 7+1 对齐/锚点章节/README 树↔磁盘/日志排序）并接线 SKILL 版本同步红线与双 README 目录树；脚本适用范围分层（规范源层专用、不入 SKILL 复制清单，与 agent-gate/run-tests 通用层互斥）与断言分区（PART A 永久结构不变量 / PART B 版本快照随升级更新）防误复制与脚本腐烂；⑩审计能力下沉通用层：新增模板 `resources/templates/audit-docs-consistency.sh`（复制到目标仓库 tests/，G1-G6 跨文档一致性：版本链/编号连续/§3↔§4 归档同源/bugfix 双登记互证+陈旧占位检测/RTVM 回填一致/§4 必填节完整；§2.13.4/§3 同源声明/§1.1 编号规则三处接线；fixture 正例 21 项+负例 4 类拦截验证），并修正源层审计脚本 §3↔§4 校验按 fence 序号取块导致的恒真空转（改章节标题锚定+非空断言）；⑪分层收口：run-tests.sh 扩至 52 项断言（新增 audit 模板 fixture 正例+三类负例+SKIP，§2.17.4 落实到通用审计模板）、AGENTS 锚点表新增「交付前文档互证」行、README 源层脚本条目标注"规范源层专用（不随 Skill 分发）"；⑫实现层功能审查（通读 agent-gate/compliance 全文找运行时缺陷，区别于文本一致性审查）：compliance.sh 代码扩展名清单与 agent-gate is_code_path 对齐（原 6 种漏 .sh/.sql/.kt 等 14 种——同层守卫口径分叉导致代码变更逃过文档检查）+ 误导缩进修正、通用审计器空格路径健壮化（while-read 迭代 + 引号包裹，兼容含空格目录名）、run-tests fixture 迁移 mktemp（防 repo 内残留临时目录）、agent-gate 补两条已知局限注释（staged 模式无法归属代码到具体 change、metrics 子串匹配前缀碰撞）；⑬管线-门禁闭环缺口修复：传动机制派发骨架集原缺 `03.5-tasks.md`（gate begin 必检七件之差集未覆盖，spec 合入后 begin 必失败）——pipeline yml 补 03.5 骨架（注释避开门禁关键词原文）、PR 文案改四件、§2.17.1 正文同步"骨架集=必检差集"原则；附带核查：run-tests 旧 47 断言无恒真、install-hook-adapter/pre-commit/pre-push/incident workflow 通过、development/data-structures 全部章节引用（§3.6/§3.4/§3.2/§5/§2/§4）存在且内容声明与规范一致（裁决顺序、弱类型两类例外）；⑭E2E 集成测试（SKILL 全流程装进空白仓库走 install→intent→begin→写码→staged→stop→auditor→metrics）暴露并修复两处单元测试盖不住的接缝缺陷：①治理包安装提交被自家 pre-commit 死锁（scripts/agent-gate、tests/*.sh、.githooks/ 等治理件被判产品代码，鸡生蛋）——is_code_path 增治理工具排除清单，双轨约定补声明，run-tests T4b 锁定；②metrics 在产物未提交态被 set -e 击杀（first_commit_referencing 空匹配返回 1）——显式 return 0，T7 补未提交态 golden case；断言 52→55；双轨约定补 05/09 双落点同步说明；⑮防复发收口（本项目八轮漏检类别逐条核验通用层防护，缺口补机器断言）：源层审计新增 A1（pipeline 派发骨架集必须覆盖 gate begin 必检差集，防 ⑬ 类断点复发）、A2（compliance.sh 与 agent-gate 代码扩展名口径一致，防 ⑫ 类分叉复发）、A3（README 声称断言数==run-tests 静态调用数且唯一，防 47→52→55 式多处数字漂移复发——上线即抓到目录树 1 处残留）；审计 68→72。治理元结论：规范强制力覆盖"接入仓库变更流程"，规范源仓库演进无机器拦截是本轮多轮返工根因，源仓库以三套验证+升级日志对账承担等效强度（不装 full gate：治理件全被 is_code_path 排除会空转） | 新接入项目随 Skill 复制 `state-trigger-audit.md`；已接入项目升级时同步复制（v3.3.0+ 升级流程已含 methodologies/ 目录）；bugfix-log 模板变更只影响新登记条目 |
@@ -1029,4 +1033,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.6.0 | 更新时间：2026-09-09 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.7.0 | 更新时间：2026-09-09 | 全局维护责任人：geekma (geekma@gmail.com)*

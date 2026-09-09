@@ -312,6 +312,10 @@ commit_all "docs: CHG-500 artifacts"
 scripts/agent-gate begin CHG-500 >/dev/null 2>&1
 echo y > src/b.js   # 未跟踪文件计入工作区代码变更
 scripts/agent-gate --stage stop >/dev/null 2>&1
+out=$(scripts/agent-gate --stage stop 2>&1 || true)   # v3.7.0：delivery 首查编码记录
+check_output "stop blocks finish without coding record" "cannot finish: missing coding record docs/changes/CHG-500/04.5-coding-record.md" "$out"
+printf 'cr\n' > docs/changes/CHG-500/04.5-coding-record.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop blocks finish without test evidence" 2 $?
 
 echo results > docs/changes/CHG-500/05-test-results.md
@@ -325,6 +329,11 @@ report "stop blocks finish without ReAct Observation records" 2 $?
 printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-500/09-changelog.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop passes with evidence and changelog" 0 $?
+
+rm docs/changes/CHG-500/04.5-coding-record.md   # v3.7.0：编码记录删除后回拦
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop re-blocks when coding record removed" "cannot finish: missing coding record docs/changes/CHG-500/04.5-coding-record.md" "$out"
+printf 'cr\n' > docs/changes/CHG-500/04.5-coding-record.md
 
 AGENT_GUARD_VERIFY_COMMAND='false' scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop runs AGENT_GUARD_VERIFY_COMMAND and fails on it" 2 $?
@@ -353,6 +362,10 @@ printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n
 echo z > src/c.ts
 git add -A
 commit_all "feat: CHG-601 implement"
+out=$(scripts/agent-gate --stage ci --base "$base" 2>&1 || true)   # v3.7.0：编码记录缺失先拦
+check_output "ci names missing coding record in code diff" "cannot finish: missing coding record docs/changes/CHG-601/04.5-coding-record.md" "$out"
+printf 'cr\n' > docs/changes/CHG-601/04.5-coding-record.md
+commit_all "docs: CHG-601 coding record"
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts code diff committed with artifacts and delivery evidence" 0 $?
 
@@ -363,6 +376,9 @@ seed_artifacts CHG-620 L1 claude/s-1
 commit_all "docs: CHG-620 artifacts"
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci rejects docs-only diff whose change lacks delivery evidence" 2 $?
+out=$(scripts/agent-gate --stage ci --base "$base" 2>&1 || true)   # v3.7.0：delivery 首查编码记录
+check_output "ci names the missing coding record" "cannot finish: missing coding record docs/changes/CHG-620/04.5-coding-record.md" "$out"
+printf 'cr\n' > docs/changes/CHG-620/04.5-coding-record.md
 printf 'results\n' > docs/changes/CHG-620/05-test-results.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-620/09-changelog.md
 commit_all "docs: CHG-620 delivery evidence"
@@ -460,6 +476,9 @@ mkdir -p docs/bugs/BUG-042
 printf '# diagnosis\n' > docs/bugs/BUG-042/01-diagnosis.md
 printf '# impact\n' > docs/bugs/BUG-042/02-impact.md
 printf '# test plan\n' > docs/bugs/BUG-042/03-test-plan.md
+printf '# matrix\n' > docs/bugs/BUG-042/04-matrix.md
+printf '# config\n' > docs/bugs/BUG-042/05-config.md
+printf '# tasks\n' > docs/bugs/BUG-042/06-tasks.md
 printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":"BUG-042"}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin accepts bug_ref with complete defect doc set" 0 $?
@@ -478,6 +497,12 @@ scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin rejects empty defect doc" 2 $?
 
 printf '# diagnosis restored\n' > docs/bugs/BUG-042/01-diagnosis.md
+rm docs/bugs/BUG-042/04-matrix.md   # v3.7.0：六件套缺一件同样拦截
+out=$(scripts/agent-gate begin CHG-800 2>&1 || true)
+check_output "begin names a v3.7.0 defect doc when missing" "missing defect document: docs/bugs/BUG-042/04-matrix.md" "$out"
+printf '# matrix recreated\n' > docs/bugs/BUG-042/04-matrix.md
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin accepts bug_ref after all six defect docs land" 0 $?
 printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":""}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin skips bug_ref validation when empty" 0 $?
