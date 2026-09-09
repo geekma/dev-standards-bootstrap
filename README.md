@@ -128,7 +128,7 @@ dev-standards-bootstrap/
 │   └── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer (--core/--claude/--ci/--guard/--pipeline), idempotent, conflict-safe
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (102 assertions; copied to target tests/)
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (102 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
 │   └── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)

@@ -128,7 +128,7 @@ dev-standards-bootstrap/
 │   └── bootstrap.sh                        # 清单驱动安装器（不随 Skill 分发）：按分层把 resources/ 复制进目标仓库（--core/--claude/--ci/--guard/--pipeline），幂等、冲突保护
 ├── screenshots/                            # README 截图（门禁拦截、变更产物）
 ├── tests/
-│   ├── run-tests.sh                        # 治理模板（含门禁与 bootstrap 安装器）的 Golden-Case 回归套件（102 项断言；复制到目标仓库 tests/）
+│   ├── run-tests.sh                        # 治理模板（含门禁与 bootstrap 安装器）的 Golden-Case 回归套件（102 项断言；复制到目标仓库 tests/，目标仓库自适应：未装层用例自动跳过）
 │   └── audit-standards-src.sh              # 规范源层专用（不随 Skill 分发）：审计规范文本自身——版本链 / 关键词落点矩阵 / 清单同源 / 编号体系 / 防恒真断言
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）

@@ -5,11 +5,26 @@
 # 合规/违规的暂存区与工作区状态，断言 agent-gate 的退出码与输出。
 # 零依赖：bash 3.2+（macOS/Linux 均可）、git。
 #
+# 双布局自适应：Skill 仓库内直接跑（全 102 用例）；bootstrap --guard 复制到目标
+# 仓库后跑——源路径自动回退到 scripts/agent-gate / tests/audit-docs-consistency.sh，
+# Skill 仓库专属用例（T11 安装器、依赖未装层的 T10/T12）自动 SKIP，已装层全部回归。
+#
 # Usage: tests/run-tests.sh
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# 源位置回退：Skill 仓库内为 resources/templates/（原样），bootstrap --core/--guard 落地的
+# 目标仓库为 tests/audit-docs-consistency.sh 与 scripts/agent-gate——同一份 run-tests.sh
+# 必须在两种布局都可用。
 GATE_SRC="$ROOT/resources/templates/agent-gate.sh"
+[[ -f "$GATE_SRC" ]] || GATE_SRC="$ROOT/scripts/agent-gate"
+BOOT_SRC="$ROOT/scripts/bootstrap.sh"
+AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
+[[ -f "$AUDIT_SRC" ]] || AUDIT_SRC="$ROOT/tests/audit-docs-consistency.sh"
+STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
+[[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
+AG_SRC="$ROOT/resources/AGENTS.md"
+[[ -f "$AG_SRC" ]] || AG_SRC="$ROOT/AGENTS.md"
 
 pass=0
 fail=0
@@ -543,12 +558,9 @@ report "unknown command exits 2" 2 $?
 # ------------------------------------------------ T10 audit-docs-consistency golden cases
 # §2.17.4：治理配置模板自身必须可回归。对通用层 audit-docs-consistency.sh 构造
 # 目标仓库 fixture：合规态全绿 / 跳号 / 归档清单漂移 / BUG 未登记 三类负例 / 未接入仓库 SKIP。
-AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
-[[ -f "$AUDIT_SRC" ]] || AUDIT_SRC="$ROOT/tests/audit-standards-src.sh"
-STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
-[[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
-AG_SRC="$ROOT/resources/AGENTS.md"
-[[ -f "$AG_SRC" ]] || AG_SRC="$ROOT/AGENTS.md"
+# 源位置回退：Skill 仓库为 resources/templates/，bootstrap --core 落地目标仓库为
+# tests/audit-docs-consistency.sh（v3.7 规范位置）；未安装 --core 时整节跳过。
+if [[ -f "$AUDIT_SRC" ]]; then
 
 audit_fixture() { # dest -> 构造合规目标仓库 fixture
   local dest="$1"
@@ -606,12 +618,17 @@ bash "$AUDIT_SRC" "$SKIPD" >/dev/null 2>&1
 report "audit skips repo without standards" 0 $?
 rm -rf "$FX" "$FX2" "$SKIPD"
 
+else
+  echo "SKIP T10: audit-docs-consistency.sh absent (bootstrap --core 未安装) — 跳过通用审计 golden cases"
+fi
+
 # ------------------------------------------------ T11 bootstrap.sh golden cases
 # §2.17.4 同精神：安装器自身必须可回归——清单驱动替代 SKILL.md 手工 17 步复制，
 # 防接入遗漏。覆盖：空仓库全落 / 幂等 / 冲突拒绝 / --force 覆盖 / guard 打包 /
 # pipeline 层 / 参数错误 / 非目录目标 / help。
-BOOT_SRC="$ROOT/scripts/bootstrap.sh"
-
+# bootstrap.sh 仅在 Skill 仓库存在（不随 --guard 落地到目标仓库），目标仓库运行
+# 本套件时整节跳过。
+if [[ -f "$BOOT_SRC" ]]; then
 BT=$(mktemp -d)
 bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
 report "bootstrap core installs into empty repo" 0 $?
@@ -667,6 +684,9 @@ bash "$BOOT_SRC" --help >/dev/null 2>&1
 report "bootstrap --help exits 0" 0 $?
 
 rm -rf "$BT" "$BT2" "$BT3"
+else
+  echo "SKIP T11: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——目标仓库跳过安装器 golden cases"
+fi
 
 # ------------------------------------------------ T12 双校验器扩展名清单一致
 # compliance.sh 与 agent-gate is_code_path 共享"代码后缀"策略（工程兜底层须可独立
@@ -674,8 +694,13 @@ rm -rf "$BT" "$BT2" "$BT3"
 # 任一处新增/删除代码后缀而不同步，本用例即红——从"发布前 audit 发现"提前到"改完即发现"。
 gate_ext=$(grep -E '\\\.\(c\|' "$GATE_SRC" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
 ci_src="$ROOT/resources/templates/check-standards-compliance.sh"
+[[ -f "$ci_src" ]] || ci_src="$ROOT/scripts/check-standards-compliance.sh"
+if [[ -f "$ci_src" ]]; then
 ci_ext=$(grep -E '\\\.\(c\|' "$ci_src" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
 report "T12 code-extension list identical in gate and compliance.sh" "$gate_ext" "$ci_ext"
+else
+  echo "SKIP T12: check-standards-compliance.sh 未安装（bootstrap --ci 未运行）——跳过双校验器一致用例"
+fi
 
 # ---------------------------------------------------------------- 摘要
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
