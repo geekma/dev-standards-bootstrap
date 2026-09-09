@@ -21,6 +21,9 @@ active_file=$(git rev-parse --git-path agent-governance/active-change)
 is_code_path() {
   local path="$1"
   [[ "$path" =~ ^(docs/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
+  # 治理工具自身不是产品代码：安装/升级治理包的提交不需要变更产物（否则新仓库
+  # 第一次 commit 即死锁——鸡生蛋）。它们由 §2.17.4 golden-case 回归背书。
+  [[ "$path" =~ ^(\.githooks/|\.claude/|\.cursor/|\.gemini/|\.agent-governance\.yml$|scripts/agent-gate$|scripts/install-hook-adapter$|scripts/check-standards-compliance\.sh$|tests/run-tests\.sh$|tests/audit-docs-consistency\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -165,6 +168,9 @@ complete_valid_change_exists() {
   # set with a valid governance state. Local staged commits rely on this when
   # code is committed after the artifacts landed in an earlier commit of the
   # same change (the documented workflow: artifacts first, implementation later).
+  # KNOWN LIMITATION: gate cannot attribute code to a specific change id, so a
+  # complete set of ANY change satisfies staged mode — cross-change attribution
+  # is a B-layer (review) responsibility. Documented deliberately, not an oversight.
   local dir id doc complete
   [[ -d "$change_root" ]] || return 1
   for dir in "$change_root"/*/; do
@@ -226,8 +232,14 @@ first_commit_ts() {
 
 first_commit_referencing() {
   local line
+  # KNOWN LIMITATION: fixed-string subject match, so id "CUSTOM-1" also matches
+  # a subject mentioning "CUSTOM-10" (prefix collision). Change ids should be
+  # self-delimiting (e.g. trailing separators) for exact attribution.
   line=$(git log --reverse --format='%ct|%s' | grep -F -m1 -- "$1" || true)
   [[ -n "$line" ]] && printf '%s' "${line%%|*}"
+  # 空匹配时上面 [[ ]] 返回 1；显式 return 0，防止调用方 $( ) 赋值在 set -e 下中断
+  # （真实场景：变更产物尚未提交时跑 metrics，T7 golden case 覆盖）。
+  return 0
 }
 
 ts_or_null() {

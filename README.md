@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.3.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.4.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -39,7 +39,7 @@ This Skill solves all of the above by installing **five mandatory quality gates*
 
 These failure modes are measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows Claude Code's production `/compact` prompt retains only **53% of safety rules after one compaction round, 10% after five**--agent memory silently loses the rules it was told to keep, and self-reported success diverges from what is actually on disk. The [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents the process side: intent drift in long sessions, decision paths no reviewer can follow, and incidents that never feed back into process.
 
-This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 47 golden-case assertions.
+This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 55 golden-case assertions.
 
 ---
 
@@ -57,8 +57,8 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Professional Role Standards** | Background research before any change; business/tech/risk three-dimensional impact analysis before design; >=2-option comparison; PM-grade task breakdown (critical path / milestones / DoT) |
 | **Test Coverage Standard (11 dimensions)** | Happy path / business scenario / logic branch / boundary & null / exception & fallback (incl. fault injection, replay idempotency) / data combination / concurrency & race / security / compatibility / performance & capacity / regression -- design per dimension or explicitly mark N/A (no silent tailoring); **branch coverage >=60%** on new code (L2+); L3 risk-linked security enforcement; LLM **eval-set regression** (full rerun on prompt/model changes); **business-scenario coverage >=80%** (SC-xxx five-dimension enumeration, L3 >=90%, enforced by `agent-gate begin`) |
 | **ReAct Execution Rule** | Every step and every code edit runs Thought -> Action -> Observation; acting without prior global-impact analysis is a severe violation (§2.16.2) |
-| **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden" (with an L1 CRUD reverse-check); `methodologies/` provides per-item engineering rationale (weak-typing ban, LLM input/output schema separation)-AGENTS.md routes only |
-| **Bug Fix Log (`bugfix-log.md`)** | Repo-level append-only index: each bug registers symptom / root cause / fix / test evidence / affected files / doc-backfill checklist / linked REQ-CHG; full records live in 09-changelog (single source)-the log is index only (§2.5 Stage 6) |
+| **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden" (with an L1 CRUD reverse-check); `methodologies/` provides per-item engineering rationale (weak-typing ban, LLM input/output schema separation), and `state-trigger-audit.md` the implicit-link audit & same-root-cause family scan method-AGENTS.md routes only |
+| **Bug Fix Log (`bugfix-log.md`)** | Repo-level append-only index: each bug registers symptom / root cause (incl. same-family scan disposition) / fix / test evidence / affected files / doc-backfill checklist / linked REQ-CHG; full records live in 09-changelog (single source)-the log is index only (§2.5 Stage 6) |
 | **CI/PR Guardrails** | GitHub PR template and bash compliance script for automated baseline checks |
 | **Deterministic Agent Gate** | One dependency-free validator shared by write-time hooks, Git hooks, and CI |
 | **Client Adapters** | One generator emits the Claude Code / Cursor / Gemini CLI hook adapter for the tool in use; other clients fall back to Git hooks + CI |
@@ -67,7 +67,7 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Incident-to-Intent Loop** | Production alerts auto-create a `BUG-<timestamp>` intent skeleton PR via `repository_dispatch`; no silent fixes without a trace |
 | **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines with per-stage timestamps, stage intervals, and `delivery_ready`-derived purely from git history, zero dependencies |
 | **A0–A4 Autonomy Matrix** | Environment-scoped authorization for automated actions; hosted workflows cap at A2 (skeletons + PRs), merge gates never waived |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (47 assertions) in throwaway git repos-bash + git only |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate itself (55 assertions) in throwaway git repos-bash + git only |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -136,14 +136,16 @@ dev-standards-bootstrap/
 ├── LICENSE                                 # MIT License
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   └── run-tests.sh                        # Golden-case regression suite for the gate itself (47 assertions)
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate (55 assertions; copied to target tests/)
+│   └── audit-docs-consistency.sh           # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.3.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.4.0 (copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
     │   ├── development.md                   # Code standards: SOLID/DRY/KISS/YAGNI applicability & exemptions + 7 engineering dimensions
-    │   └── data-structures.md               # Data structure standards: 6 model types + weak-typing ban + LLM input/output specifics
+    │   ├── data-structures.md               # Data structure standards: 6 model types + weak-typing ban + LLM input/output specifics
+    │   └── state-trigger-audit.md           # State/trigger-link audit: 6 lessons + 6-step checklist + 3 anti-patterns (v3.4.0)
     └── templates/
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -151,6 +153,7 @@ dev-standards-bootstrap/
         ├── agent-gate.sh                   # Shared pre-write / Git / CI validator (+ metrics)
         ├── intent.md                       # Pipeline entry template for each change's 00-intent.md
         ├── bugfix-log.md                   # Repo-level bug-fix index template (copied to docs/bugfix-log.md)
+        ├── audit-docs-consistency.sh       # Cross-doc consistency audit: version chain / numbering continuity / checklist sync / bugfix cross-registration / RTVM backfill (copied to tests/)
         ├── governance-state.json           # Template for each change's 00-governance.json (risk level + execution owners)
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
         ├── pre-commit, pre-push            # Git hook templates
@@ -201,7 +204,7 @@ Hosted-platform layer, independent of any coding client:
 - **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` with type `incident` (a one-line `curl` with alert metadata); the workflow creates a `BUG-<UTC-timestamp>` change with an intent skeleton PR. Every incident re-enters the pipeline as recorded intent-no silent fixes. Skips if the branch already exists (alert-storm protection).
 - **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues). Content (A3) and execution (A4) stay local; merge gates are never waived by automation.
 - **Portability**: the reference implementation uses GitHub Actions; GitLab and other platforms implement the same semantics with their CI rules + API (notes in each workflow's header). Semantics are defined by the standards §2.17, not by any platform.
-- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-47 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-55 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
 
 ---
 
@@ -264,7 +267,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.3.0 | **Last Updated:** 2026-09-07 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.4.0 | **Last Updated:** 2026-09-08 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 

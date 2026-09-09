@@ -254,6 +254,19 @@ git add src/a.go
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "staged rejects code change without artifacts" 2 $?
 
+# E2E 回归（v3.4.0 ⑭）：治理包安装提交不得被自家门禁死锁（scripts/tests/.githooks 为治理件非产品代码）
+git reset -q src/a.go && rm -f src/a.go   # 清掉上一负例的暂存，隔离本用例
+mkdir -p tests .githooks
+cp "$GATE_SRC" scripts/agent-gate 2>/dev/null || true
+printf '#!/usr/bin/env bash\nscripts/agent-gate --stage staged\n' > .githooks/pre-commit
+printf '#!/usr/bin/env bash\nscripts/agent-gate --stage staged\n' > .githooks/pre-push
+printf '#!/usr/bin/env bash\necho golden\n' > tests/run-tests.sh
+git add scripts .githooks tests
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "staged accepts governance-bootstrap commit (no deadlock)" 0 $?
+rm -rf .githooks tests
+git rm -rq --cached .githooks tests >/dev/null 2>&1 || true
+
 new_repo
 seed_artifacts CHG-400 L1 claude/s-1
 commit_all "docs: CHG-400 artifacts"
@@ -346,6 +359,14 @@ report "metrics exits 0 with no change root" 0 $?
 [[ -z "$out" ]]
 report "metrics outputs nothing for empty repo" 0 $?
 
+# v3.4.0 ⑭：未提交产物状态下 metrics 不得被 set -e 击杀（first_commit_referencing 空匹配回 1）
+new_repo
+seed_artifacts CHG-701 L1 claude/s-1
+out=$(scripts/agent-gate metrics)
+report "metrics exits 0 with uncommitted artifacts" 0 $?
+check_output "metrics emits null-filled line before first commit" \
+  '"change_id":"CHG-701".*"first_code_commit_ts":null' "$out"
+
 # ---------------------------------------------------------------- T8 change_root 覆盖
 new_repo
 mkdir -p changes/CUSTOM-1
@@ -374,6 +395,72 @@ scripts/agent-gate help >/dev/null 2>&1
 report "help exits 0" 0 $?
 scripts/agent-gate bogus >/dev/null 2>&1
 report "unknown command exits 2" 2 $?
+
+# ------------------------------------------------ T10 audit-docs-consistency golden cases
+# §2.17.4：治理配置模板自身必须可回归。对通用层 audit-docs-consistency.sh 构造
+# 目标仓库 fixture：合规态全绿 / 跳号 / 归档清单漂移 / BUG 未登记 三类负例 / 未接入仓库 SKIP。
+AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
+[[ -f "$AUDIT_SRC" ]] || AUDIT_SRC="$ROOT/tests/audit-docs-consistency.sh"
+STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
+[[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
+AG_SRC="$ROOT/resources/AGENTS.md"
+[[ -f "$AG_SRC" ]] || AG_SRC="$ROOT/AGENTS.md"
+
+audit_fixture() { # dest -> 构造合规目标仓库 fixture
+  local dest="$1"
+  rm -rf "$dest"; mkdir -p "$dest/docs/feata"
+  cp "$STD_SRC" "$dest/docs/DEVELOPMENT_STANDARDS.md"
+  cp "$AG_SRC" "$dest/AGENTS.md"
+  printf -- '- REQ-001 用户故事A（DoD: x）\n- REQ-002 用户故事B（DoD: y）\n' > "$dest/docs/feata/01-spec.md"
+  printf '# plan\n\nDES-001 设计\n' > "$dest/docs/feata/03-modification-plan.md"
+  printf '# tests\n\n| TC | 场景 | 覆盖维度 | 覆盖的 REQ-DES |\n|---|---|---|---|\n| TC-001 | a | 正常流 | REQ-001 |\n| TC-002 | b | 边界 | REQ-002 |\n\n## 业务场景清单\n\nSC-001 场景（覆盖: TC-001）\n' > "$dest/docs/feata/04-test-scripts.md"
+  printf '| REQ-001 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n| REQ-002 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n' > "$dest/docs/feata/01.5-rtvm-matrix.md"
+  { echo "### BUG-001：现象（严重度 P1）"; echo; echo "| 字段 | 内容 |"; echo "|---|---|"; echo "| 关联变更 | CHG-001 |"; } > "$dest/docs/bugfix-log.md"
+  awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD_SRC" > "$dest/s3block.md"
+  { echo '## 2026-09-09'; echo; echo '任务编号：CHG-001 / TASK-001   日期：2026-09-09   执行者：dev'; echo;
+    echo '#### 追踪矩阵映射 (Traceability)';
+    echo '- 对应需求：`REQ-001`、`REQ-002`（见 01-spec.md）';
+    echo '- 对应设计：`DES-001`（见 03-modification-plan.md）';
+    echo '- 对应测试：`TC-001`（见 04-test-scripts.md）';
+    echo '- 对应缺陷：`BUG-001`（索引见 docs/bugfix-log.md）';
+    echo '- 完整矩阵：回填 docs/feata/01.5-rtvm-matrix.md'; echo;
+    echo '#### 现象'; echo '背景'; echo; echo '#### 分析'; echo '分析'; echo;
+    echo '#### 根因'; echo '| 编号 | 描述 |'; echo '|---|---|'; echo;
+    echo '#### 方案'; echo '方案'; echo; echo '#### 测试脚本与结论'; echo 'TC-001 通过'; echo;
+    echo '#### 角色签署与独立性（门禁 5）'; echo '签署'; echo;
+    echo '#### 执行记录（ReAct，§2.16.2 铁律）'; echo '记录'; echo;
+    echo '#### 变更执行检查清单（§3）'; cat "$dest/s3block.md"; echo;
+    echo '#### 未动项'; echo '- 无'; } > "$dest/docs/feata/09-changelog.md"
+  rm -f "$dest/s3block.md"
+}
+
+FX=$(mktemp -d)
+audit_fixture "$FX"
+bash "$AUDIT_SRC" "$FX" >/dev/null 2>&1
+report "audit fixture compliant repo passes" 0 $?
+
+FX2=$(mktemp -d)
+audit_fixture "$FX2"
+printf -- '- REQ-004 用户故事D（DoD: z）\n' >> "$FX2/docs/feata/01-spec.md"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit rejects numbering gap (REQ-003 missing)" 1 $?
+
+audit_fixture "$FX2"
+sed -i '' '/【角色分派与独立性】/d' "$FX2/docs/feata/09-changelog.md" 2>/dev/null \
+  || sed -i '/【角色分派与独立性】/d' "$FX2/docs/feata/09-changelog.md"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit rejects archived checklist drift vs §3" 1 $?
+
+audit_fixture "$FX2"
+sed -i '' 's/`BUG-001`（索引见 docs\/bugfix-log.md）/`BUG-001`、`BUG-009`（索引见 docs\/bugfix-log.md）/' "$FX2/docs/feata/09-changelog.md" 2>/dev/null \
+  || sed -i 's/`BUG-001`（索引见 docs\/bugfix-log.md）/`BUG-001`、`BUG-009`（索引见 docs\/bugfix-log.md）/' "$FX2/docs/feata/09-changelog.md"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit rejects unregistered BUG in CHG" 1 $?
+
+SKIPD=$(mktemp -d)
+bash "$AUDIT_SRC" "$SKIPD" >/dev/null 2>&1
+report "audit skips repo without standards" 0 $?
+rm -rf "$FX" "$FX2" "$SKIPD"
 
 # ---------------------------------------------------------------- 摘要
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

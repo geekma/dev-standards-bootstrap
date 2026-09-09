@@ -78,7 +78,7 @@ jobs:
           <!-- 受影响业务流程/用户场景、上下游系统与数据流、行业与合规约束、SLA -->
 
           ## 技术影响
-          <!-- 调用拓扑（入口→链路→出口）、受影响类/文件清单、爆炸半径 -->
+          <!-- 调用拓扑（入口→链路→出口）、受影响类/文件清单、爆炸半径；命中状态/触发链路时补「隐式链路」三向遍历节（正向调用点/反向隐式边/事件源×归宿矩阵，方法见 docs/methodologies/state-trigger-audit.md），未命中须显式标注。注意：本注释刻意不使用 A 层校验关键词原文，空骨架不得绕过阶段 2 验收 -->
 
           ## 风险
           <!-- 风险矩阵（概率 × 影响）与缓解措施 -->
@@ -134,6 +134,17 @@ jobs:
           <!-- 执行主体标识（§2.1.7 格式）、与开发主体不同的证明 -->
           EOF
             fi
+            if [ ! -s "docs/changes/$id/03.5-tasks.md" ]; then
+          cat > "docs/changes/$id/03.5-tasks.md" <<'EOF'
+          # 03.5-tasks.md（骨架，由传动机制自动创建）
+
+          > 由 01-spec.md 合入自动派发。按 `docs/DEVELOPMENT_STANDARDS.md` §2.5 阶段 3 必含清单填写；每条 T 任务可独立提交/回滚，须含先后顺序与阶段性交付点标记（或按规范使用显式豁免标注替代拆分）。注：本注释刻意避开门禁 A 层关键词原文，空骨架不得绕过 begin 校验。
+
+          | 任务 | 内容 | 先后顺序 | 阶段性交付点 |
+          |---|---|---|---|
+          | <!-- T-001 --> | | | |
+          EOF
+            fi
             if git diff --quiet; then
               echo "skip $id: scaffolds already present"
               git checkout "$DEFAULT_BRANCH"
@@ -143,7 +154,7 @@ jobs:
             git commit -m "chore(pipeline): scaffold impact/plan/test artifacts for $id"
             git push origin "$branch"
             gh pr create --title "pipeline: scaffold artifacts for $id" --body \
-              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03 与 04，经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
+              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03、03.5 与 04（gate begin 必检七件），经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
             git checkout "$DEFAULT_BRANCH"
           done < /tmp/new-specs.txt
 

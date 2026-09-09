@@ -11,7 +11,9 @@ set -euo pipefail
 BASE_REF="${1:-origin/main}"
 CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD)
 
-CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(java|py|ts|tsx|js|go)$' || true)
+# 代码路径定义必须与 agent-gate.sh is_code_path() 保持一致（同层守卫，单一口径）：
+# 之前只列 6 种后缀，漏 .sh/.sql/.kt/.rb/.php/.cs/.cpp 等 → 代码变更逃过文档检查。
+CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$' || true)
 DOCS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^docs/.*/(01-spec|02-code-impact-analysis|03-modification-plan|03\.5-tasks|04-test-scripts|05-test-results|09-changelog)\.md$' || true)
 
 if [[ -n "$CODE_CHANGED" && -z "$DOCS_CHANGED" ]]; then
@@ -43,7 +45,7 @@ if [[ -n "$DOCS_CHANGED" ]]; then
   done
   for f in $(echo "$DOCS_CHANGED" | grep '04-test-scripts.md' || true); do
     grep -q 'TC-' "$f" || { echo "❌ A 层验收拦截：$f 不含 TC- 编号体系（§2.5 阶段4 验收标准 A 层）"; exit 1; }
-  grep -q 'SC-' "$f" || { echo "❌ A 层验收拦截：$f 不含 SC- 业务场景清单（§2.5 阶段4，v3.3.0）"; exit 1; }
+    grep -q 'SC-' "$f" || { echo "❌ A 层验收拦截：$f 不含 SC- 业务场景清单（§2.5 阶段4，v3.3.0）"; exit 1; }
   done
 fi
 
