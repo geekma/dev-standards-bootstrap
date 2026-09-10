@@ -345,6 +345,15 @@ printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop passes with evidence and changelog" 0 $?
 
+# v3.7.0：Gate 4 —— changelog 引用的 REQ 必须回填 docs/<feature>/01.5-rtvm-matrix.md
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n\n- 对应需求：`REQ-101`（见 01-spec.md）\n' > docs/changes/CHG-500/09-changelog.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop blocks changelog REQ not backfilled in 01.5 matrix" 2 $?
+mkdir -p docs/feata
+printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/feata/01.5-rtvm-matrix.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop passes once REQ rows backfilled in matrix" 0 $?
+
 rm docs/changes/CHG-500/04.5-coding-record.md   # v3.7.0：编码记录删除后回拦
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
 check_output "stop re-blocks when coding record removed" "cannot finish: missing coding record docs/changes/CHG-500/04.5-coding-record.md" "$out"
@@ -383,6 +392,19 @@ printf 'cr\n' > docs/changes/CHG-601/04.5-coding-record.md
 commit_all "docs: CHG-601 coding record"
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts code diff committed with artifacts and delivery evidence" 0 $?
+
+# v3.7.0：branch CI 同口径执行 Gate 4（changelog 引用的 REQ 须回填矩阵）
+new_repo
+base=$(git rev-parse HEAD)
+seed_artifacts CHG-602 L1 claude/s-1
+printf 'results\n' > docs/changes/CHG-602/05-test-results.md
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n\n- 对应需求：`REQ-201`\n' > docs/changes/CHG-602/09-changelog.md
+printf 'cr\n' > docs/changes/CHG-602/04.5-coding-record.md
+echo z > src/c.ts
+git add -A
+commit_all "feat: CHG-602 implement"
+scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
+report "ci blocks changelog REQ not backfilled in 01.5 matrix" 2 $?
 
 # v3.5.0：branch 模式对 diff 触及的变更目录追加 delivery 证据校验（与 stop 同口径）
 new_repo
@@ -612,6 +634,19 @@ sed -i '' 's/`BUG-001`（索引见 docs\/bugfix-log.md）/`BUG-001`、`BUG-009`�
   || sed -i 's/`BUG-001`（索引见 docs\/bugfix-log.md）/`BUG-001`、`BUG-009`（索引见 docs\/bugfix-log.md）/' "$FX2/docs/feata/09-changelog.md"
 bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
 report "audit rejects unregistered BUG in CHG" 1 $?
+
+# v3.7.0：G5 —— CHG 引用 REQ 而矩阵缺失判败；最新 CHG 无 REQ 引用时豁免
+audit_fixture "$FX2"
+rm -f "$FX2/docs/feata/01.5-rtvm-matrix.md"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit rejects CHG REQ refs without 01.5 matrix" 1 $?
+
+audit_fixture "$FX2"
+rm -f "$FX2/docs/feata/01.5-rtvm-matrix.md"
+sed -i '' 's/REQ-00[12]//g' "$FX2/docs/feata/09-changelog.md" 2>/dev/null \
+  || sed -i 's/REQ-00[12]//g' "$FX2/docs/feata/09-changelog.md"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit exempts matrix when latest CHG has no REQ refs" 0 $?
 
 SKIPD=$(mktemp -d)
 bash "$AUDIT_SRC" "$SKIPD" >/dev/null 2>&1

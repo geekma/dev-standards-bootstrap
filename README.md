@@ -39,7 +39,7 @@ This Skill solves all of the above by installing **five mandatory quality gates*
 
 These failure modes are measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows Claude Code's production `/compact` prompt retains only **53% of safety rules after one compaction round, 10% after five**--agent memory silently loses the rules it was told to keep, and self-reported success diverges from what is actually on disk. The [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents the process side: intent drift in long sessions, decision paths no reviewer can follow, and incidents that never feed back into process.
 
-This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 102 golden-case assertions.
+This project's answer is architectural, not prompt-level: **never trust agent memory or self-reports**. Governance state lives on disk as versioned artifacts; a dependency-free gate reads the filesystem (not the conversation) at every write; CI is the final arbiter; and the governance package tests itself with 107 golden-case assertions.
 
 ---
 
@@ -57,7 +57,7 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Deterministic Agent Gate + CI/PR Guardrails** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; client adapter generator for Claude Code/Cursor/Gemini CLI; Git hooks + CI workflow cover every other client (they validate the repo, not the editor) |
 | **Intent Layer + Pipeline Automation** | Every change starts from a recorded `00-intent.md` (rejected at `begin` without it); merging `01-spec.md` auto-dispatches impact/plan/test skeletons, merging `09-changelog.md` auto-opens a release checklist; incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (skeletons only, never content or merge) |
 | **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines (stage timestamps, intervals, `delivery_ready`) purely from git history—observation only, never a substitute for DoD (§2.17.5) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the `scripts/bootstrap.sh` installer (102 assertions) in throwaway git repos—bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the `scripts/bootstrap.sh` installer (107 assertions) in throwaway git repos—bash + git only (§2.17.4) |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -128,7 +128,7 @@ dev-standards-bootstrap/
 │   └── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer (--core/--claude/--ci/--guard/--pipeline), idempotent, conflict-safe
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (102 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (107 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
 │   └── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
@@ -171,13 +171,17 @@ The gate is one dependency-free Bash script; every adapter reuses the same comma
 | `--stage pre-write` | Validates the active change's artifacts and governance state before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts and a valid governance state, otherwise the commit is rejected |
 | `--stage commit-msg <msgfile>` | Attribution gate: a commit that stages code files must reference a valid change id (waived for merge / revert / docs-only commits) |
-| `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md` (coding record, new in v3.7.0, checked first), `05-test-results.md`, `09-changelog.md` (with ReAct Observation records, §2.16.2), plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured |
+| `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md` (coding record, new in v3.7.0, checked first), `05-test-results.md`, `09-changelog.md` (with ReAct Observation records, §2.16.2), plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured; REQ ids referenced by the changelog must be backfilled as rows in `docs/<feature>/01.5-rtvm-matrix.md` (Gate 4 RTVM closure, v3.7.0; exempt when no REQ references) |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state + delivery evidence for touched changes) and runs the real verification command |
 | `metrics` | Read-only pipeline metrics as JSON Lines: per-stage timestamps, stage intervals, `delivery_ready`-observations only, never a substitute for DoD |
 
 What the required artifact set looks like on disk for a fresh change (screenshot from an earlier version; the current gate additionally requires `02-code-impact-analysis.md` and `03.5-tasks.md`):
 
 ![The required artifact set of a new change: 00-governance.json, 01-spec.md, 03-modification-plan.md, 04-test-scripts.md staged as new files](screenshots/change-artifacts-required-set.png)
+
+The same set being produced by an agent in a real session--the current full change group (including `02-code-impact-analysis.md` and `03.5-tasks.md`) plus the companion defect groups under `docs/bugs/`, all landed before any source edit (Gate 1 Doc-First, §2.15 one-change-one-document-set):
+
+![Agent writing 00-intent.md, 00-governance.json, 01-spec.md, 02-code-impact-analysis.md, 03-modification-plan.md, 03.5-tasks.md, 04-test-scripts.md into docs/changes/CHG-044/ and 01-diagnosis.md, 02-impact.md into docs/bugs/BUG-016/](screenshots/agent-writing-change-artifacts.png)
 
 Copy `agent-governance.yml` to the repo root as `.agent-governance.yml`-a team-reviewable record of the required artifacts and the verification command. Set `AGENT_GUARD_CHANGE_ROOT` to relocate the default `docs/changes` root.
 
@@ -189,6 +193,10 @@ The gate blocking in practice--a commit of source changes without matching chang
 
 ![agent-gate blocking a non-compliant commit of source changes in an IDE](screenshots/agent-gate-blocked-in-trae.png)
 
+The compliant counterpart--before a turn may end, the agent walks the DoD item by item (§2.16.3, every row bound to concrete artifact ids) and runs the seven-point self-check (§2.16.4); a summary-style "done" never passes the stop gate:
+
+![Item-by-item DoD checklist per §2.16.3 with every row checked against concrete artifact ids, followed by the seven-point self-check of §2.16.4](screenshots/dod-item-by-item-checklist.png)
+
 ### Optional Pipeline Automation (§2.17)
 
 Hosted-platform layer, independent of any coding client:
@@ -197,7 +205,7 @@ Hosted-platform layer, independent of any coding client:
 - **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` with type `incident` (a one-line `curl` with alert metadata); the workflow creates a `BUG-<UTC-timestamp>` change with an intent skeleton PR. Every incident re-enters the pipeline as recorded intent-no silent fixes. Skips if the branch already exists (alert-storm protection).
 - **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues). Content (A3) and execution (A4) stay local; merge gates are never waived by automation.
 - **Portability**: the reference implementation uses GitHub Actions; GitLab and other platforms implement the same semantics with their CI rules + API (notes in each workflow's header). Semantics are defined by the standards §2.17, not by any platform.
-- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-102 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh`-107 golden-case assertions in throwaway git repos; requires only bash and git (macOS/Linux, any IDE terminal).
 
 ---
 
@@ -224,6 +232,16 @@ A change passing through the gates accumulates its full artifact chain, from `01
 ```
 
 Any change that fails any gate is **blocked from merge to main**.
+
+Gate 4 in practice: the traceability matrix is not an illustration but a real file--`docs/<feature>/01.5-rtvm-matrix.md` closes the loop row by row, each REQ traced through DES → TASK → TC with an explicit verification status:
+
+![RTVM traceability matrix: REQ-074~080 mapped row by row to DES-096~101, tasks T120~T126, and test cases TC-112~122 with scenario coverage SC-001~014, each row carrying a verification status](screenshots/rtvm-matrix-full-chain.png)
+
+Gate 5 in practice:blocked from merge to main**.
+
+Gate 5 in practice: once the machine gates pass, independent test-review and code-review subtasks are dispatched to separate agents (role independence, §0.5)--and an independent review genuinely rejects work: here the change came back with an S-1 blocker plus S-2/M-1~M-5 findings instead of a rubber stamp:
+
+![After gates pass, independent test-review and code-review subtasks are dispatched to separate agents; the independent review returned the change with an S-1 blocker](screenshots/independent-review-rejection.png)
 
 ---
 

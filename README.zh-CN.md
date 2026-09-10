@@ -39,7 +39,7 @@
 
 这些失败模式是被测量过的，不是假设。CIKM '26 对生产级 Agent 记忆的研究（[arXiv:2608.22752](https://arxiv.org/abs/2608.22752)）表明：Claude Code 的生产 `/compact` 提示词一轮压缩后安全规则仅存 **53%，五轮后 10%**--Agent 记忆会静默丢失被要求保留的规则，且「自我报告成功」与磁盘实态背离。[AI 原生 SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) 则记录了流程侧的问题：长会话意图漂移、无人能复盘的决策路径、不回流流程的事故。
 
-本项目的答案是架构级而非提示词级：**从不信任 Agent 记忆与自我报告**。治理状态以版本化产物落盘；零依赖门禁在每次写入时读的是文件系统（而非对话）；CI 是最终仲裁者；治理包自身通过 102 项 golden-case 断言自测试。
+本项目的答案是架构级而非提示词级：**从不信任 Agent 记忆与自我报告**。治理状态以版本化产物落盘；零依赖门禁在每次写入时读的是文件系统（而非对话）；CI 是最终仲裁者；治理包自身通过 107 项 golden-case 断言自测试。
 
 ---
 
@@ -57,7 +57,7 @@
 | **确定性 Agent 门禁 + CI/PR 兜底** | 一套零依赖校验器供写前 Hook、Git Hook 与 CI 共用；客户端适配生成器（Claude Code/Cursor/Gemini CLI），其余客户端由 Git Hook + CI 兜底（校验仓库而非编辑器） |
 | **意图层 + 管线自动化** | 每个变更从 `00-intent.md` 记录意图开始（无意图 `begin` 拒绝）；`01-spec.md` 合入自动派发骨架 PR、`09-changelog.md` 合入自动开发布检查单；告警自动创建事故 intent；自主权上限 A2（只建骨架，不碰正文/合并） |
 | **管线度量** | `agent-gate metrics` 输出 JSON Lines（阶段时间戳/间隔/`delivery_ready`），纯 git 历史推导——只观察，不替代 DoD（§2.17.5） |
-| **Golden-Case 自测试** | `tests/run-tests.sh` 对门禁与 `scripts/bootstrap.sh` 安装器做回归测试（102 项断言），仅需 bash + git（§2.17.4） |
+| **Golden-Case 自测试** | `tests/run-tests.sh` 对门禁与 `scripts/bootstrap.sh` 安装器做回归测试（107 项断言），仅需 bash + git（§2.17.4） |
 | **专项规范** | 覆盖部署、配置/数据库变更、AI/LLM 链路、测试数据隔离、紧急热修复、发布上线、监控告警、供应链依赖管理 |
 
 ---
@@ -128,7 +128,7 @@ dev-standards-bootstrap/
 │   └── bootstrap.sh                        # 清单驱动安装器（不随 Skill 分发）：按分层把 resources/ 复制进目标仓库（--core/--claude/--ci/--guard/--pipeline），幂等、冲突保护
 ├── screenshots/                            # README 截图（门禁拦截、变更产物）
 ├── tests/
-│   ├── run-tests.sh                        # 治理模板（含门禁与 bootstrap 安装器）的 Golden-Case 回归套件（102 项断言；复制到目标仓库 tests/，目标仓库自适应：未装层用例自动跳过）
+│   ├── run-tests.sh                        # 治理模板（含门禁与 bootstrap 安装器）的 Golden-Case 回归套件（107 项断言；复制到目标仓库 tests/，目标仓库自适应：未装层用例自动跳过）
 │   └── audit-standards-src.sh              # 规范源层专用（不随 Skill 分发）：审计规范文本自身——版本链 / 关键词落点矩阵 / 清单同源 / 编号体系 / 防恒真断言
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
@@ -171,13 +171,17 @@ scripts/agent-gate begin CHG-123
 | `--stage pre-write` | Agent 写源码前校验活跃变更的产物与治理状态；无法从 Hook 入参解析目标路径时按失败处理（fail-closed） |
 | `--stage staged` | 已暂存的源码变更必须携带对应变更产物，否则拒绝提交 |
 | `--stage commit-msg <msgfile>` | 归因闸门：暂存区含代码文件的提交消息必须引用有效变更号（豁免合并 / Revert / 纯文档提交） |
-| `--stage stop` | 源码改动后结束回复，必须具备 `04.5-coding-record.md`（编码记录，v3.7.0 新增且最先校验）、`05-test-results.md` 与 `09-changelog.md`（含 ReAct Observation 记录，§2.16.2）；配置了 `AGENT_GUARD_VERIFY_COMMAND` 时还须通过该命令 |
+| `--stage stop` | 源码改动后结束回复，必须具备 `04.5-coding-record.md`（编码记录，v3.7.0 新增且最先校验）、`05-test-results.md` 与 `09-changelog.md`（含 ReAct Observation 记录，§2.16.2）；配置了 `AGENT_GUARD_VERIFY_COMMAND` 时还须通过该命令；changelog 引用的 REQ 必须已回填 `docs/<feature>/01.5-rtvm-matrix.md`（门禁 4 RTVM 闭环，v3.7.0；无 REQ 引用豁免） |
 | `--stage ci [--base <ref>]` | 在分支/PR 差异上重新校验（含触及变更的 delivery 证据），并执行真实的验证命令 |
 | `metrics` | 只读输出管线度量（JSON Lines）：各阶段时间戳、阶段间隔、`delivery_ready`--仅作观察，不替代 DoD 判定 |
 
 新变更的必要产物集在磁盘上的样子（截图为较早版本；当前门禁另要求 `02-code-impact-analysis.md` 与 `03.5-tasks.md`）：
 
 ![新变更的必要产物集：00-governance.json、01-spec.md、03-modification-plan.md、04-test-scripts.md 全部为新增（A）](screenshots/change-artifacts-required-set.png)
+
+真实会话中 Agent 落盘当前完整产物组的实况（含 `02-code-impact-analysis.md` 与 `03.5-tasks.md`，并连带 `docs/bugs/` 下的缺陷组）--全部先于任何源码修改写入（门禁 1 文档先行，一次变更一组文档 §2.15）：
+
+![Agent 在 docs/changes/CHG-044/ 依次写入 00-intent.md、00-governance.json、01-spec.md、02-code-impact-analysis.md、03-modification-plan.md、03.5-tasks.md、04-test-scripts.md，并在 docs/bugs/BUG-016/ 写入缺陷组文件](screenshots/agent-writing-change-artifacts.png)
 
 将 `agent-governance.yml` 复制为仓库根目录的 `.agent-governance.yml`，作为团队可审阅的治理配置记录；设置 `AGENT_GUARD_CHANGE_ROOT` 可重定位默认的 `docs/changes` 根目录。
 
@@ -189,6 +193,10 @@ scripts/agent-gate begin CHG-123
 
 ![agent-gate 在 IDE 中拦截缺少变更产物的源码提交](screenshots/agent-gate-blocked-in-trae.png)
 
+合规一侧的对照--结束回复前必须逐条走完 DoD（§2.16.3，每条绑定具体产物编号）并完成七项自检（§2.16.4）；摘要式"完成"过不了 stop 门禁：
+
+![按 §2.16.3 逐条勾选且每条绑定具体产物编号的 DoD 检查单，随后为 §2.16.4 七项自检](screenshots/dod-item-by-item-checklist.png)
+
 ### 可选管线自动化（§2.17）
 
 托管平台层，与编程客户端无关：
@@ -197,7 +205,7 @@ scripts/agent-gate begin CHG-123
 - **事故闭环**（`github-incident-to-intent.yml`）：监控系统调用 `repository_dispatch`（类型 `incident`，一行 `curl` 附带告警元数据）；workflow 自动创建 `BUG-<UTC 时间戳>` 变更与意图骨架 PR。任何事故都以记录意图重入管线，禁止“修完不留痕”；分支已存在即跳过（防告警风暴）。
 - **自主权上限**：托管 workflow 上限 A2（分支、骨架、PR、issue）；A3（内容）/A4（执行）仅在本地，合入门禁不因自动化豁免。
 - **平台可移植**：参考实现为 GitHub Actions；GitLab 等平台用其 CI 规则 + 平台 API 实现同一语义（各 workflow 头部注释有思路）。语义以规范 §2.17 为准，不绑定平台。
-- **自测试**：修改 `agent-gate.sh`、Hook 或 workflow 前，先跑 `bash tests/run-tests.sh`--102 项 Golden-Case 断言在临时 git 仓库中执行，仅需 bash 与 git（macOS/Linux、任意 IDE 终端）。
+- **自测试**：修改 `agent-gate.sh`、Hook 或 workflow 前，先跑 `bash tests/run-tests.sh`--107 项 Golden-Case 断言在临时 git 仓库中执行，仅需 bash 与 git（macOS/Linux、任意 IDE 终端）。
 
 ---
 
@@ -224,6 +232,16 @@ scripts/agent-gate begin CHG-123
 ```
 
 任何未通过门禁的变更，**一律禁止合入主分支**。
+
+门禁 4 的实际运行：追踪矩阵不是示意图，而是一份真实落盘的文件--`docs/<feature>/01.5-rtvm-matrix.md` 逐行闭环，每条 REQ 沿 DES → TASK → TC 链路追溯并标注验证状态：
+
+![RTVM 追踪矩阵实表：REQ-074~080 逐行映射到 DES-096~101、任务 T120~T126 与测试用例 TC-112~122，并附场景覆盖 SC-001~014，每行带验证状态](screenshots/rtvm-matrix-full-chain.png)
+
+门禁 5 的实际运行：一律禁止合入主分支**。
+
+门禁 5 的实际运行：机器门禁通过后，独立测试复核与独立代码审查作为子任务派发给不同 Agent（角色独立性 §0.5）--独立 Review 不是走过场：本例变更被退回，附 S-1 阻断项与 S-2/M-1~M-5 问题，重新过门禁后方可合入：
+
+![门禁通过后向不同 Agent 派发独立测试复核与独立代码审查子任务，独立 Review 以 S-1 阻断项退回变更](screenshots/independent-review-rejection.png)
 
 ---
 

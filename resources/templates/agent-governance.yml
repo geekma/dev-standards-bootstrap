@@ -12,6 +12,7 @@ required_before_source_write:
   - 03.5-tasks.md
   - 04-test-scripts.md
 required_before_merge:
+  - 04.5-coding-record.md
   - 05-test-results.md
   - 09-changelog.md
 ci:

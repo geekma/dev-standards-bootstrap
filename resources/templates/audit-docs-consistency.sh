@@ -11,8 +11,8 @@
 #   G2 编号体系：REQ/DES/TC/SC/CHG/CFG/DB/FU 连续递增、无跳号、无重号（§1.2 / 自检第 3 条）
 #   G3 §3↔§4 同源：每个 09-changelog 最新 CHG 归档清单标签与规范 §3 完全一致（§3 同源声明）
 #   G4 bugfix 双登记互证：log 每条 BUG 有对应 CHG；每个 CHG 的 BUG 行已登记 log（§2.5 阶段 6）
-#   G5 RTVM 双落点：最新 CHG 追踪矩阵短引用中的 REQ 均已回填 01.5-rtvm-matrix（门禁 4）
-#   G6 §4 必填节完整：最新 CHG 含 现象/分析/根因/方案/测试结论/角色签署/ReAct/检查清单/未动项
+#   G5 RTVM 双落点：最新 CHG 追踪矩阵短引用中的 REQ 均已回填 01.5-rtvm-matrix（门禁 4；最新 CHG 无 REQ 引用时豁免建矩阵）
+#   G6 §4 必填节完整：最新 CHG 含 追踪矩阵映射/现象/分析/根因/方案/测试结论/角色签署/ReAct/检查清单/未动项
 #
 # 【更新语义】文档修订（活文档类）与批次保留冲突时以规范 §2.15 为准；存量仓库首跑
 # 可能大量失败——失败项即 §2.14 存量回填清单，逐项处置或在 §2.13.4 走例外留痕。
@@ -107,7 +107,7 @@ while IFS= read -r c; do
   CHG_BLOCK=$(mktemp)
   awk 'BEGIN{f=0} f==1 && /^## /{exit} /^## /{f=1} f==1{print}' "$chg" > "$CHG_BLOCK"
   # G6 §4 必填节
-  for sec in "#### 现象" "#### 分析" "#### 根因" "#### 方案" "#### 测试脚本与结论" "#### 角色签署与独立性" "#### 执行记录（ReAct" "#### 变更执行检查清单" "#### 未动项"; do
+  for sec in "#### 追踪矩阵映射" "#### 现象" "#### 分析" "#### 根因" "#### 方案" "#### 测试脚本与结论" "#### 角色签署与独立性" "#### 执行记录（ReAct" "#### 变更执行检查清单" "#### 未动项"; do
     grep -q "$sec" "$CHG_BLOCK" && report "G6 $fname latest CHG has '$sec'" ok ok \
       || report "G6 $fname latest CHG has '$sec'" ok missing
   done
@@ -123,15 +123,17 @@ while IFS= read -r c; do
   n3=$(wc -l < "$L4TMP" | tr -d ' ')
   report "G3 $fname archived checklist non-empty (防恒真空转)" 1 "$([[ "$n3" -gt 0 ]] && echo 1 || echo 0)"
   rm -f "$L4TMP"
-  # G5 RTVM 短引用 ⊆ 01.5 矩阵
+  # G5 RTVM 短引用 ⊆ 01.5 矩阵（门禁 4：只改 changelog 不回填矩阵视为未闭环）
   if [[ -f "$c/01.5-rtvm-matrix.md" ]]; then
     unreached=0
     for r in $(grep -oE 'REQ-[0-9]+' "$CHG_BLOCK" | sort -u); do
       grep -qE "^\| \`?${r}\`?" "$c/01.5-rtvm-matrix.md" || unreached=$(( unreached + 1 ))
     done
     report "G5 $fname CHG REQ rows all backfilled in 01.5 matrix" 0 "$unreached"
+  elif grep -qE 'REQ-[0-9]+' "$CHG_BLOCK"; then
+    report "G5 $fname CHG references REQ but 01.5-rtvm-matrix.md missing (gate 4 backfill)" 0 1
   else
-    report "G5 $fname 01.5-rtvm-matrix.md missing" ok missing
+    report "G5 $fname no REQ refs in latest CHG (matrix exempt)" ok ok
   fi
   rm -f "$CHG_BLOCK"
 done <<< "$feature_dirs"

@@ -189,6 +189,19 @@ validate_delivery() { # change-id
   # command + actual output) in the changelog.
   grep -q "Observation" "$d/09-changelog.md" \
     || die "cannot finish: changelog missing ReAct Observation records (standards §2.16.2)"
+  # Gate 4 (v3.7.0): every REQ id referenced by the changelog must be backfilled
+  # as a row in some docs/<feature>/01.5-rtvm-matrix.md. Changelogs without REQ
+  # references (pure fixes / docs changes) are exempt — same semantics as the
+  # consistency audit's G5. Updating the changelog alone never closes the loop.
+  local req hit
+  for req in $(grep -oE 'REQ-[0-9]+' "$d/09-changelog.md" | sort -u); do
+    hit=0
+    for m in docs/*/01.5-rtvm-matrix.md; do
+      [[ -f "$m" ]] || continue
+      grep -qE "^\| \`?${req}\`?" "$m" && { hit=1; break; }
+    done
+    [[ "$hit" == 1 ]] || die "cannot finish: REQ $req referenced in changelog but not backfilled in docs/<feature>/01.5-rtvm-matrix.md (gate 4)"
+  done
 }
 
 validate_stop() {
@@ -472,6 +485,12 @@ commit-msg attribution (v3.5.0): a code-bearing commit message must
 reference its change id (e.g. 'feat: CHG-123 implement ...'); the referenced
 change must exist with a valid governance state. Merge commits, reverts, and
 commits that touch no code path are exempt.
+
+stop and branch-mode CI enforce delivery evidence: 04.5-coding-record.md,
+05-test-results.md, and 09-changelog.md carrying ReAct Observation records.
+Gate 4 RTVM (v3.7.0): REQ ids referenced by the changelog must be backfilled
+as rows in docs/<feature>/01.5-rtvm-matrix.md; changelogs without REQ
+references (pure fixes / docs changes) are exempt.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.
