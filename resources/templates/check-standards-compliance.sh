@@ -5,10 +5,83 @@
 #
 # 用法：在 PR/CI 流水线中，对比目标分支与当前分支的改动文件，
 # 若命中 src/ 或 main 代码目录变更，则要求 docs/<feature>/ 下必须有对应更新。
+# 可选传入基线：scripts/check-standards-compliance.sh <base-ref>
+#
+# ── 基线（BASE_REF）为什么必须给，以及为什么不许写死 ──────────────────────────
+# 1. 必须给：下方用三点号 diff（BASE...HEAD），即 merge-base 语义，只算"本分支相对
+#    分叉点引入的改动"。去掉基线只剩 HEAD~1（多 commit 分支漏检）或工作区 diff
+#    （CI 无工作区），都会漏检。基线要指向"合入目标"，不是"当前所在分支"。
+# 2. 不许写死：写死 origin/main 在主线为 master 的仓库直接 fatal 退出（不可自愈）；
+#    更危险的是为绕过报错顺手补 `|| true` —— CHANGED_FILES 变空后脚本会打印
+#    "✅ 基础合规检查通过"：**检查没跑被伪装成检查通过**，比报错危险一个数量级。
+# 3. 因此：解析顺序为"权威来源在前、猜测在后"（见 resolve_base_ref），
+#    解析不出即 exit 2 拒绝放行（fail-closed），绝不退化为"空 diff 视为通过"。
+#
+# 环境变量：
+#   CI_BASE_REF  CI 平台注入的 PR 目标分支（最权威的自动化来源；未设置即跳过本级）
 
 set -euo pipefail
 
-BASE_REF="${1:-origin/main}"
+# 五级解析：1 显式参数 > 2 CI 注入 > 3 远端默认分支 > 4 常见远端候选 > 5 本地同名分支。
+# 返回 0 且 stdout 非空 = 命中；返回 1 = 五级全落空；返回 2 = 调用方显式声明了 CI 基线
+# 但该 ref 在本仓库不可解析（配置错误，须由调用方 fail-closed，不得静默降级到猜测——
+# 否则会选出一个"可解析但错误"的基线，使 diff 悄悄变窄而漏检）。
+resolve_base_ref() {
+  local c
+  if [[ -n "${1:-}" ]]; then
+    printf '%s' "$1"
+    return 0
+  fi
+  if [[ -n "${CI_BASE_REF:-}" ]]; then
+    if git rev-parse -q --verify "${CI_BASE_REF}^{commit}" >/dev/null 2>&1; then
+      printf '%s' "$CI_BASE_REF"
+      return 0
+    fi
+    return 2
+  fi
+  c=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null || true)
+  if [[ -n "$c" ]]; then
+    printf '%s' "$c"
+    return 0
+  fi
+  for c in origin/main origin/master origin/trunk origin/develop; do
+    if git rev-parse -q --verify "${c}^{commit}" >/dev/null 2>&1; then
+      printf '%s' "$c"
+      return 0
+    fi
+  done
+  for c in main master trunk develop; do
+    if git rev-parse -q --verify "${c}^{commit}" >/dev/null 2>&1; then
+      printf '%s' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+BASE_REF=""
+resolve_rc=0
+BASE_REF=$(resolve_base_ref "${1:-}") || resolve_rc=$?
+if [[ "$resolve_rc" -eq 2 ]]; then
+  echo "❌ CI_BASE_REF='${CI_BASE_REF}' 在本仓库不可解析，拒绝放行（fail-closed）。" >&2
+  echo "   CI 显式声明了基线即视为权威来源，不得静默降级到猜测（会选出错误基线而漏检）。" >&2
+  echo "   请检查变量取值是否正确、或 CI 是否因浅克隆未取全该分支的历史。" >&2
+  exit 2
+fi
+if [[ -z "$BASE_REF" ]]; then
+  echo "❌ 门禁无法确定基线分支，拒绝放行（fail-closed）。" >&2
+  echo "   显式传入：$0 <base-ref>（如 origin/master）" >&2
+  echo "   或在 CI 中把 CI_BASE_REF 设为本次 PR 的目标分支。" >&2
+  echo "   原因：基线未知时 diff 会退化为空，而空 diff 会被误读为「无变更」而放行。" >&2
+  exit 2
+fi
+if ! git rev-parse -q --verify "${BASE_REF}^{commit}" >/dev/null 2>&1; then
+  echo "❌ 门禁基线 '$BASE_REF' 在本仓库不可解析，拒绝放行（fail-closed）。" >&2
+  echo "   常见原因：本仓库主线是 master 而基线写成了 origin/main；或 CI 浅克隆未取全历史。" >&2
+  exit 2
+fi
+echo "基线（base ref）：$BASE_REF"
+
 CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD)
 
 # 代码路径定义必须与 agent-gate.sh is_code_path() 保持一致（同层守卫，单一口径）：

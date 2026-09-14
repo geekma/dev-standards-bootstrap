@@ -16,8 +16,28 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      # The diff baseline must come from the event itself, never from a literal
+      # branch name: hardcoding the mainline makes repositories whose mainline
+      # has another name fail outright, and a fallback to the mainline on push
+      # events leaves the diff empty — the gate would then report success while
+      # checking nothing. Refuse to run instead of running a no-op gate.
+      - name: Resolve diff baseline
+        id: baseline
+        env:
+          PR_BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [[ -n "$PR_BASE_REF" ]]; then
+            echo "ref=origin/$PR_BASE_REF" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$PUSH_BEFORE_SHA" && "$PUSH_BEFORE_SHA" != "0000000000000000000000000000000000000000" ]] \
+               && git cat-file -e "${PUSH_BEFORE_SHA}^{commit}" 2>/dev/null; then
+            echo "ref=$PUSH_BEFORE_SHA" >> "$GITHUB_OUTPUT"
+          else
+            echo "agent-governance: cannot determine a diff baseline for this event; refusing to run a no-op gate." >&2
+            exit 2
+          fi
       - name: Verify change-governance artifacts
-        run: scripts/agent-gate --stage ci --base "origin/${{ github.base_ref || 'main' }}"
+        run: scripts/agent-gate --stage ci --base "${{ steps.baseline.outputs.ref }}"
       - name: Run deterministic project verification
         env:
           AGENT_GUARD_VERIFY_COMMAND: ${{ vars.AGENT_GUARD_VERIFY_COMMAND }}

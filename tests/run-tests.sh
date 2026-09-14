@@ -737,6 +737,116 @@ else
   echo "SKIP T12: check-standards-compliance.sh 未安装（bootstrap --ci 未运行）——跳过双校验器一致用例"
 fi
 
+# ------------------------------------------------ T13 compliance 基线解析（CHG-002）
+# 旧版把 diff 基线写死为 origin/main：主线为 master 的仓库直接 fatal 128（不可自愈）；
+# 若被 `|| true` 绕过则 CHANGED_FILES 变空、脚本打印"✅ 基础合规检查通过"——检查没跑
+# 被伪装成检查通过（fail-open）。本段锁死两条不变式：基线不得硬编码；基线未知不得放行。
+if [[ -f "$ci_src" ]]; then
+  report "T13 compliance.sh has no hardcoded origin/* default baseline" 0 "$(grep -c -- ':-origin/' "$ci_src")"
+  report "T13 compliance.sh reads CI_BASE_REF" 1 "$(grep -c 'CI_BASE_REF:-' "$ci_src")"
+  report "T13 compliance.sh refuses to run without a baseline" 1 "$(grep -c '无法确定基线分支' "$ci_src")"
+
+  CIR_BASE=$(mktemp -d "${TMPDIR:-/tmp}/compliance-test.XXXXXX")
+  ci_repo() { # branch subdir
+    cd "$CIR_BASE"
+    rm -rf "$2"; mkdir -p "$2"; cd "$2"
+    git init -q -b "$1"
+    git config user.email test@example.invalid
+    git config user.name test
+    mkdir -p scripts src
+    cp "$ci_src" scripts/check-standards-compliance.sh
+    echo init > src/a.js
+    git add -A
+    git commit -qm init
+  }
+
+  # 主线为 master 且无 origin：自动解析 master 并真正执行检查（旧版此处 fatal）
+  ci_repo master a
+  git checkout -qb feature
+  echo b >> src/a.js
+  git add -A && git commit -qm "feat: code only"
+  out=$(bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 auto-resolves a master mainline baseline (no origin)" 1 "$rc"
+  check_output "T13 blocks code-only change on a master mainline" "门禁拦截" "$out"
+
+  out=$(bash scripts/check-standards-compliance.sh master 2>&1); rc=$?
+  report "T13 honors an explicit baseline argument" 1 "$rc"
+
+  out=$(bash scripts/check-standards-compliance.sh origin/nope 2>&1); rc=$?
+  report "T13 rejects an unresolvable explicit baseline (exit 2)" 2 "$rc"
+
+  mkdir -p docs/f1 && echo "REQ-1" > docs/f1/01-spec.md
+  git add -A && git commit -qm "docs: spec"
+  out=$(bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 passes once the docs land" 0 "$rc"
+
+  # 三点号 merge-base 语义：上游 master 的文档改动不得替本分支的代码改动背书
+  ci_repo master b
+  git checkout -qb feature
+  echo b >> src/a.js
+  git add -A && git commit -qm "feat: code only"
+  git checkout -q master
+  mkdir -p docs/f9 && echo "REQ-9" > docs/f9/01-spec.md
+  git add -A && git commit -qm "docs: upstream spec"
+  git checkout -q feature
+  out=$(bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 merge-base diff ignores upstream docs (code still blocked)" 1 "$rc"
+
+  # 解析级 2/3/4 的运行时覆盖（级 1/5 与全落空已在上文覆盖）：
+  # 级 2 CI 注入、级 3 origin/HEAD、级 4 远端候选——三者靠"只有该级能给出"的仓库构造区分，
+  # 避免"随便解析出一个就算过"的恒真断言。
+  ci_remote_repo() { # subdir
+    cd "$CIR_BASE"
+    rm -rf "$1" "$1-origin.git"
+    git init -q --bare -b master "$1-origin.git"
+    mkdir -p "$1"; cd "$1"
+    git init -q -b master
+    git config user.email test@example.invalid
+    git config user.name test
+    mkdir -p scripts src docs/f1
+    cp "$ci_src" scripts/check-standards-compliance.sh
+    echo init > src/a.js
+    echo "REQ-1" > docs/f1/01-spec.md
+    git add -A && git commit -qm init
+    git checkout -qb develop
+    echo d > d.js && git add -A && git commit -qm dev
+    git checkout -q master
+    git remote add origin "$CIR_BASE/$1-origin.git"
+    git push -q origin master develop
+    git fetch -q origin
+    git checkout -qb feature
+    git branch -qD master develop
+  }
+
+  ci_remote_repo d
+  out=$(bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 level 4: resolves without any local mainline" 0 "$rc"
+  check_output "T13 level 4: falls back to a remote candidate (origin/master)" "base ref）：origin/master" "$out"
+
+  git remote set-head origin develop
+  out=$(bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 level 3: origin/HEAD wins over remote candidates" 0 "$rc"
+  check_output "T13 level 3: resolves origin/develop from origin/HEAD" "base ref）：origin/develop" "$out"
+
+  out=$(CI_BASE_REF=feature bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 level 2: CI_BASE_REF wins over origin/HEAD" 0 "$rc"
+  check_output "T13 level 2: resolves the CI-injected baseline" "base ref）：feature" "$out"
+
+  out=$(CI_BASE_REF=origin/nope bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 rejects an unresolvable CI_BASE_REF (exit 2)" 2 "$rc"
+
+  # 无任何候选可解析：fail-closed，且绝不打印通过横幅
+  ci_repo weird-mainline c
+  out=$(bash scripts/check-standards-compliance.sh 2>&1); rc=$?
+  report "T13 fails closed when no baseline resolves" 2 "$rc"
+  report "T13 never prints the pass banner without a baseline" 0 "$(printf '%s' "$out" | grep -c '基础合规检查通过')"
+
+  cd "$ROOT"
+  rm -rf "$CIR_BASE"
+else
+  echo "SKIP T13: check-standards-compliance.sh 未安装（bootstrap --ci 未运行）——跳过基线解析 golden cases"
+fi
+
 # ---------------------------------------------------------------- 摘要
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

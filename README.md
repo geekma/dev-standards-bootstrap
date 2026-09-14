@@ -57,7 +57,7 @@ This project's answer is architectural, not prompt-level: **never trust agent me
 | **Deterministic Agent Gate + CI/PR Guardrails** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; client adapter generator for Claude Code/Cursor/Gemini CLI; Git hooks + CI workflow cover every other client (they validate the repo, not the editor) |
 | **Intent Layer + Pipeline Automation** | Every change starts from a recorded `00-intent.md` (rejected at `begin` without it); merging `01-spec.md` auto-dispatches impact/plan/test skeletons, merging `09-changelog.md` auto-opens a release checklist; incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (skeletons only, never content or merge) |
 | **Pipeline Metrics** | `agent-gate metrics` emits JSON Lines (stage timestamps, intervals, `delivery_ready`) purely from git history—observation only, never a substitute for DoD (§2.17.5) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the `scripts/bootstrap.sh` installer (107 assertions) in throwaway git repos—bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the `scripts/bootstrap.sh` installer (118 assertions) in throwaway git repos—bash + git only (§2.17.4) |
 | **Specialized Standards** | Coverage for deployment, config, DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain |
 
 ---
@@ -128,7 +128,7 @@ dev-standards-bootstrap/
 │   └── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer (--core/--claude/--ci/--guard/--pipeline), idempotent, conflict-safe
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (107 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (118 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
 │   └── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist sync / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
@@ -193,6 +193,10 @@ The gate blocking in practice--a commit of source changes without matching chang
 
 ![agent-gate blocking a non-compliant commit of source changes in an IDE](screenshots/agent-gate-blocked-in-trae.png)
 
+The same gate treats a change filed under a defect id no differently--a commit whose `docs/changes/BUG-021/` lacks `00-intent.md` is rejected on the spot, so a bug fix cannot skip change artifacts on the grounds that "it is only a bug fix":
+
+![agent-gate blocking a defect change missing 00-intent.md: Git reports agent-gate: missing required artifact: docs/changes/BUG-021/00-intent.md](screenshots/agent-gate-blocks-defect-doc-set.png)
+
 The compliant counterpart--before a turn may end, the agent walks the DoD item by item (§2.16.3, every row bound to concrete artifact ids) and runs the seven-point self-check (§2.16.4); a summary-style "done" never passes the stop gate:
 
 ![Item-by-item DoD checklist per §2.16.3 with every row checked against concrete artifact ids, followed by the seven-point self-check of §2.16.4](screenshots/dod-item-by-item-checklist.png)
@@ -237,11 +241,17 @@ Gate 4 in practice: the traceability matrix is not an illustration but a real fi
 
 ![RTVM traceability matrix: REQ-074~080 mapped row by row to DES-096~101, tasks T120~T126, and test cases TC-112~122 with scenario coverage SC-001~014, each row carrying a verification status](screenshots/rtvm-matrix-full-chain.png)
 
-Gate 5 in practice:blocked from merge to main**.
+Gate 5 in practice: once the machine gates pass, independent test-review and code-review subtasks are dispatched to separate agents (role independence, §0.5). The final baseline hash is pinned first, the machine suite re-runs green (PASS 24 / FAIL 0, EXIT=0), and only then are the two subtasks dispatched into separate contexts:
 
-Gate 5 in practice: once the machine gates pass, independent test-review and code-review subtasks are dispatched to separate agents (role independence, §0.5)--and an independent review genuinely rejects work: here the change came back with an S-1 blocker plus S-2/M-1~M-5 findings instead of a rubber stamp:
+![Gate 5 wrap-up: the final baseline hash is pinned, the machine suite re-runs green (PASS 24 / FAIL 0, EXIT=0), and two independent subtask contexts are dispatched for test review and code review](screenshots/gate5-green-evidence-and-review-dispatch.png)
+
+An independent review genuinely rejects work: here the change came back with an S-1 blocker plus S-2/M-1~M-5 findings instead of a rubber stamp:
 
 ![After gates pass, independent test-review and code-review subtasks are dispatched to separate agents; the independent review returned the change with an S-1 blocker](screenshots/independent-review-rejection.png)
+
+A review report needs independent evidence that the remediation was re-verified--the author cannot self-certify, so a fresh independent reviewer is dispatched to verify the fixes while the remaining documents are backfilled in parallel:
+
+![Gate 5 review report: independent evidence that the remediation was re-verified, dispatching a CHG-050-review-2 reviewer while the other documents are backfilled in parallel](screenshots/gate5-independent-recheck.png)
 
 ---
 

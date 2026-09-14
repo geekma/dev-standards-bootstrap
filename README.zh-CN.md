@@ -57,7 +57,7 @@
 | **确定性 Agent 门禁 + CI/PR 兜底** | 一套零依赖校验器供写前 Hook、Git Hook 与 CI 共用；客户端适配生成器（Claude Code/Cursor/Gemini CLI），其余客户端由 Git Hook + CI 兜底（校验仓库而非编辑器） |
 | **意图层 + 管线自动化** | 每个变更从 `00-intent.md` 记录意图开始（无意图 `begin` 拒绝）；`01-spec.md` 合入自动派发骨架 PR、`09-changelog.md` 合入自动开发布检查单；告警自动创建事故 intent；自主权上限 A2（只建骨架，不碰正文/合并） |
 | **管线度量** | `agent-gate metrics` 输出 JSON Lines（阶段时间戳/间隔/`delivery_ready`），纯 git 历史推导——只观察，不替代 DoD（§2.17.5） |
-| **Golden-Case 自测试** | `tests/run-tests.sh` 对门禁与 `scripts/bootstrap.sh` 安装器做回归测试（107 项断言），仅需 bash + git（§2.17.4） |
+| **Golden-Case 自测试** | `tests/run-tests.sh` 对门禁与 `scripts/bootstrap.sh` 安装器做回归测试（118 项断言），仅需 bash + git（§2.17.4） |
 | **专项规范** | 覆盖部署、配置/数据库变更、AI/LLM 链路、测试数据隔离、紧急热修复、发布上线、监控告警、供应链依赖管理 |
 
 ---
@@ -128,7 +128,7 @@ dev-standards-bootstrap/
 │   └── bootstrap.sh                        # 清单驱动安装器（不随 Skill 分发）：按分层把 resources/ 复制进目标仓库（--core/--claude/--ci/--guard/--pipeline），幂等、冲突保护
 ├── screenshots/                            # README 截图（门禁拦截、变更产物）
 ├── tests/
-│   ├── run-tests.sh                        # 治理模板（含门禁与 bootstrap 安装器）的 Golden-Case 回归套件（107 项断言；复制到目标仓库 tests/，目标仓库自适应：未装层用例自动跳过）
+│   ├── run-tests.sh                        # 治理模板（含门禁与 bootstrap 安装器）的 Golden-Case 回归套件（118 项断言；复制到目标仓库 tests/，目标仓库自适应：未装层用例自动跳过）
 │   └── audit-standards-src.sh              # 规范源层专用（不随 Skill 分发）：审计规范文本自身——版本链 / 关键词落点矩阵 / 清单同源 / 编号体系 / 防恒真断言
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口文件（复制到目标仓库根目录）
@@ -193,6 +193,10 @@ scripts/agent-gate begin CHG-123
 
 ![agent-gate 在 IDE 中拦截缺少变更产物的源码提交](screenshots/agent-gate-blocked-in-trae.png)
 
+同一门禁对**以缺陷编号起编的变更**一视同仁--`docs/changes/BUG-021/` 缺 `00-intent.md` 时提交同样被当场拒绝（缺陷修复不得以"只是修个 bug"为由跳过变更产物）：
+
+![agent-gate 拦截缺 00-intent.md 的缺陷变更：Git 报 agent-gate: missing required artifact: docs/changes/BUG-021/00-intent.md](screenshots/agent-gate-blocks-defect-doc-set.png)
+
 合规一侧的对照--结束回复前必须逐条走完 DoD（§2.16.3，每条绑定具体产物编号）并完成七项自检（§2.16.4）；摘要式"完成"过不了 stop 门禁：
 
 ![按 §2.16.3 逐条勾选且每条绑定具体产物编号的 DoD 检查单，随后为 §2.16.4 七项自检](screenshots/dod-item-by-item-checklist.png)
@@ -237,11 +241,17 @@ scripts/agent-gate begin CHG-123
 
 ![RTVM 追踪矩阵实表：REQ-074~080 逐行映射到 DES-096~101、任务 T120~T126 与测试用例 TC-112~122，并附场景覆盖 SC-001~014，每行带验证状态](screenshots/rtvm-matrix-full-chain.png)
 
-门禁 5 的实际运行：一律禁止合入主分支**。
+门禁 5 的实际运行：机器门禁通过后，独立测试复核与独立代码审查作为子任务派发给不同 Agent（角色独立性 §0.5）。先固定最终基线哈希，机器套件绿态复核（PASS 24 / FAIL 0，EXIT=0）通过，再向两个独立子任务上下文分别派发测试复核与代码审查：
 
-门禁 5 的实际运行：机器门禁通过后，独立测试复核与独立代码审查作为子任务派发给不同 Agent（角色独立性 §0.5）--独立 Review 不是走过场：本例变更被退回，附 S-1 阻断项与 S-2/M-1~M-5 问题，重新过门禁后方可合入：
+![门禁 5 收尾：先固定最终基线哈希，绿态复核 PASS 24 / FAIL 0（EXIT=0）通过后，派发两个独立子任务上下文分别执行测试复核与代码审查](screenshots/gate5-green-evidence-and-review-dispatch.png)
+
+独立 Review 不是走过场：本例变更被退回，附 S-1 阻断项与 S-2/M-1~M-5 问题，重新过门禁后方可合入：
 
 ![门禁通过后向不同 Agent 派发独立测试复核与独立代码审查子任务，独立 Review 以 S-1 阻断项退回变更](screenshots/independent-review-rejection.png)
+
+复核报告需要"整改后再验证"的独立证据--不能由开发方自证，故再派出一名新的独立复核方验证整改，同时并行推进其余文档回填：
+
+![门禁 5 复核报告：要求"整改后再验证"的独立证据，派发 CHG-050-review-2 独立复核方验证整改](screenshots/gate5-independent-recheck.png)
 
 ---
 

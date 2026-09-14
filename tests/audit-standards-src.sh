@@ -235,6 +235,17 @@ actual=$(grep -cE '^[[:space:]]*(report|check_output) ' "$ROOT/tests/run-tests.s
 report "A3 README assertion-count claims are a single consistent number" 1 "$(printf '%s' "$claims" | grep -c '^[0-9]*,$')"
 report "A3 claimed assertion count == run-tests static call count" "$actual" "${claims%,}"
 
+# A4 基线来源不得硬编码（CHG-002）——主线为 master 的仓库曾因写死 origin/main 直接
+#    fatal（不可自愈）；更危险的是为绕过报错补 `|| true`，空 diff 被读成"通过"。
+#    故：模板不得回退到字面分支名，且必须保留 fail-closed 拒绝路径。
+#    运行时行为由 run-tests T13 守护，本段是源层发布前拦截。
+CI_SCRIPT="$ROOT/resources/templates/check-standards-compliance.sh"
+GOV_WF="$ROOT/resources/templates/github-agent-governance.yml"
+report "A4 compliance.sh has no hardcoded origin/* default baseline" 0 "$(grep -c -- ':-origin/' "$CI_SCRIPT" || true)"
+report "A4 compliance.sh resolves its baseline dynamically" 1 "$(grep -c '^resolve_base_ref() {' "$CI_SCRIPT" || true)"
+report "A4 compliance.sh fails closed on an unknown baseline" 1 "$(grep -c '无法确定基线分支' "$CI_SCRIPT" || true)"
+report "A4 governance workflow has no literal branch fallback" 0 "$(grep -cF "|| 'main'" "$GOV_WF" || true)"
+
 echo
 echo "$pass passed, $fail failed"
 [[ "$fail" -eq 0 ]]
