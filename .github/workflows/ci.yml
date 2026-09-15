@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  source-audit:
+    name: Source-layer audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Run source-layer audit
+        run: bash tests/audit-standards-src.sh
+
+  golden-case:
+    name: Golden-case self-tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Run golden-case suite
+        run: bash tests/run-tests.sh

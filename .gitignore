@@ -23,11 +23,17 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Private notes (kept local, never committed)
-docs/
-cover-image/
-docs/ai-native-sdlc-implementation-report.md
-docs/ai-native-sdlc-implementation-report.zh-CN.md
+# Blog / narrative docs are local snapshots, not part of the audit chain.
+# Governance artifacts (docs/changes/, docs/bugs/, docs/bugfix-log.md,
+# docs/06-delivery-summary.md, docs/06.5-deployment-config.md, docs/review/)
+# are NOT ignored — the commit chain IS the audit trail (FU-007 closure).
 docs/why-i-built-dev-standards-bootstrap.md
 docs/incubation-story.zh-CN.md
+docs/ai-development-problems-and-solutions.zh-CN.md
+docs/ai-native-sdlc-implementation-report.md
+docs/ai-native-sdlc-implementation-report.zh-CN.md
+
+cover-image/
 .workbuddy/
+.workbuddy-ai
+docs

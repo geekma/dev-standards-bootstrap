@@ -26,8 +26,10 @@ usage() {
 Usage: scripts/bootstrap.sh [flags] [target_root]
 
 Flags (layers; default --core when none given):
-  --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, METHODOLOGY.md,
+  --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
                methodologies/, bugfix-log.md, docs/bugs/_templates/ (6),
+               docs/06.5-deployment-config.md, docs/06-delivery-summary.md
+               (八类最低文档集里原先无模板的两类，CHG-004),
                tests/audit-docs-consistency.sh (通用层审计)
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, scripts/check-standards-compliance.sh
@@ -103,6 +105,7 @@ run_layer() {
     core)
       install_file AGENTS.md resources/AGENTS.md
       install_file docs/DEVELOPMENT_STANDARDS.md resources/DEVELOPMENT_STANDARDS.md
+      install_file docs/STANDARDS_CHANGELOG.md resources/STANDARDS_CHANGELOG.md
       install_file docs/METHODOLOGY.md resources/METHODOLOGY.md
       for m in development.md data-structures.md state-trigger-audit.md; do
         install_file "docs/methodologies/$m" "resources/methodologies/$m"
@@ -110,6 +113,11 @@ run_layer() {
       install_file docs/bugfix-log.md resources/templates/bugfix-log.md
       for b in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-config.md bug-tasks.md; do
         install_file "docs/bugs/_templates/$b" "resources/templates/$b"
+      done
+      # 八类最低文档集（规范 §1.1）中此前既无模板、也无门禁的两类（CHG-004 / BUG-002）：
+      # 未命中时也必须存在并显式声明"未命中，不适用"——不能靠"不建文件"来表达不适用。
+      for t in 06.5-deployment-config.md 06-delivery-summary.md; do
+        install_file "docs/$t" "resources/templates/$t"
       done
       install_file tests/audit-docs-consistency.sh resources/templates/audit-docs-consistency.sh 755
       ;;

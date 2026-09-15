@@ -72,9 +72,26 @@ at_least() { # name min file pattern
 V=$(grep -oE '规范版本：v[0-9.]+' "$STD" | head -1 | grep -oE '[0-9.]+')
 [[ -n "$V" ]] || V="UNKNOWN"
 
-for f in "$AGENTS" "$METH" "$DEV" "$DS"; do
+for f in "$AGENTS" "$METH"; do
   report "version footer synced: $(basename "$f")" 1 "$(grep_count "$f" "当前对应规范版本：v${V}_")"
 done
+
+# 方法论层页脚：动态遍历 resources/methodologies/*.md，禁止写静态清单。
+#   CHG-004 / BUG-002：原实现为静态清单 "$AGENTS" "$METH" "$DEV" "$DS"——**漏了
+#   state-trigger-audit.md**（该文件也确实没有页脚，双缺）。根因与 BUG-001 同族：
+#   "方法论层版本页脚已同步"的语义覆盖面是"该目录下全部 .md"，而静态清单窄于语义
+#   → 新增方法论文件不会自动纳入校验，规范升级时该文件静默滞后。
+#   改为动态遍历后新增文件自动纳入；再加一条聚合断言防"遍历集本身漏文件"复发。
+for m in $(ls "$ROOT/resources/methodologies" | grep '\.md$' | sort); do
+  report "version footer synced: methodologies/$m" 1 \
+    "$(grep_count "$ROOT/resources/methodologies/$m" "当前对应规范版本：v${V}_")"
+done
+# fail-closed：目录为空/文件数异常少时不得静默通过
+m_all=$(ls "$ROOT"/resources/methodologies/*.md 2>/dev/null | wc -l | tr -d ' ')
+m_ok=$(grep -l "当前对应规范版本：v${V}_" "$ROOT"/resources/methodologies/*.md 2>/dev/null | wc -l | tr -d ' ')
+m_min=0; [[ "$m_all" -ge 3 ]] && m_min=1
+report "methodology layer file count >= 3 (fail-closed)" 1 "$m_min"
+report "methodology layer footer coverage == file count" "$m_all" "$m_ok"
 
 report "version badge zh"            1 "$(grep_count "$RM_ZH" "规范版本-v${V}-")"
 report "version badge en"            1 "$(grep_count "$RM_EN" "Standards-v${V}-")"
@@ -84,9 +101,15 @@ report "version tree zh"             1 "$(grep_count "$RM_ZH" "完整规范文�
 report "version tree en"             1 "$(grep_count "$RM_EN" "Full standards document v${V}")"
 report "skill carried version"       1 "$(grep_count "$SKILL" "当前携带版本 v${V}")"
 
-# 升级日志首行（新条目置顶）== 页脚版本
-log_head=$(awk '/^## 标准升级日志/,0' "$STD" | grep -m1 -oE '^\| v[0-9.]+' | grep -oE '[0-9.]+')
-report "upgrade log newest row == footer version" "$V" "$log_head"
+# 升级日志（v3.8.0 起外置 STANDARDS_CHANGELOG.md，CHG-005）：新文件存在、
+# 新条目置顶且首行版本 == 页脚版本、规范正文不再内嵌历史日志行
+SLOG="$ROOT/resources/STANDARDS_CHANGELOG.md"
+report "standards changelog file exists and non-empty" 1 "$([[ -s "$SLOG" ]] && echo 1 || echo 0)"
+log_head=$(grep -m1 -oE '^\| v[0-9.]+' "$SLOG" 2>/dev/null | grep -oE '[0-9.]+')
+report "standards changelog newest row == footer version" "$V" "$log_head"
+at_least "standards §2.14 rule points to STANDARDS_CHANGELOG" 1 "$STD" 'STANDARDS_CHANGELOG.md'
+std_log_rows=$(grep -cE '^\| v[0-9]+\.[0-9]+\.[0-9]+ \| 20[0-9]{2}-' "$STD")
+report "standards body carries no historical upgrade-log rows" 0 "$std_log_rows"
 
 # ===================== PART B：版本快照不变量（v<页脚版本> 特性落点，升级时随 §2.14 日志更新本区） =====================
 
@@ -143,16 +166,41 @@ at_least "keyword 06-tasks in agent-gate" 1 "$TPL/agent-gate.sh" "06-tasks"
 
 # ===================== PART A（续） =====================
 
-# ---------- §3 ↔ §4 执行清单同源（R-A 轮） ----------
-# 注意：标准全文有 4 个 ```markdown fence（§1.2/§2.6.3/§3/§4），必须按章节标题锚定，
-# 禁止按 fence 序号取（序号法取到 §1.2/§2.6.3 两个空清单 → 恒真 IDENTICAL，R-D 轮修正）。
+# ---------- §3 清单唯一性（CHG-005：v3.8.0 起 §3 为唯一权威，§4 只作归档引用） ----------
+# 注意：标准全文的 ```markdown fence 数量随结构变化，必须按章节标题锚定，
+# 禁止按 fence 序号取（序号法曾取到 §1.2/§2.6.3 两个空清单 → 恒真 IDENTICAL，R-D 轮修正；
+# v3.8.0 起 §4 归档节改为"逐字复制 §3"引用式，旧"§3↔§4 标签完全一致"断言会被双清单复活绕过，
+# 故反转为三条：§3 提取非空（防恒真）、§3 与 §4 标签集不相等（防重复清单复活）、§4 含引用锚点）。
 awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD" | grep -oE '【[^】]+】' | sort > /tmp/audit_s3.$$
-awk '/^## 4\. Changelog/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD" | grep -oE '【[^】]+】' | sort > /tmp/audit_s4.$$
-if diff -q /tmp/audit_s3.$$ /tmp/audit_s4.$$ >/dev/null 2>&1; then r=1; else r=0; fi
-report "section3 vs section4 checklist labels identical" 1 "$r"
+awk '/^## 4\. Changelog/{w=1} /^## 5\. /{exit} w{print}' "$STD" | grep -oE '【[^】]+】' | sort > /tmp/audit_s4.$$
 n3=$(wc -l < /tmp/audit_s3.$$ | tr -d ' ')
 report "section3 checklist extraction non-empty (防恒真空转)" 1 "$([[ "$n3" -gt 0 ]] && echo 1 || echo 0)"
+if diff -q /tmp/audit_s3.$$ /tmp/audit_s4.$$ >/dev/null 2>&1; then r=0; else r=1; fi
+report "section3 is the sole authority (section4 carries no duplicate checklist)" 1 "$r"
+report "section4 archive section references §3 verbatim-copy rule" 1 \
+  "$(awk '/^## 4\. Changelog/{w=1} /^## 5\. /{exit} w{print}' "$STD" | grep -cE '逐字复制 §3')"
 rm -f /tmp/audit_s3.$$ /tmp/audit_s4.$$
+
+# ---------- 双 README 结构一致性（CHG-005 / P2-6：正文靠手工同步，至少结构须机器互证） ----------
+#   ① 二级标题序列一致（EN/ZH 逐条对应）；② "仓库结构"树块逐行一致（文件名与树线同构，
+#   语言差异只在注释列）——树块锚定：从 'dev-standards-bootstrap/' 根行到收尾 fence
+#   （不能按 fence 序号取：README 还有 bash fence，序号法曾取空 → 防恒真断言拦截）。
+tree_block_lines() { # $1 = readme → 树块规范化行数（去注释、去尾空白）
+  awk 'f==1{ if(/^```$/){exit} print; next } /^dev-standards-bootstrap\/$/{f=1; print}' "$1" \
+    | sed -e 's/#.*$//' -e 's/[[:space:]]*$//' | grep -c .
+}
+h2_en=$(grep -c '^## ' "$RM_EN")
+h2_zh=$(grep -c '^## ' "$RM_ZH")
+report "README h2 heading count identical (en vs zh)" "$h2_en" "$h2_zh"
+tree_en=$(tree_block_lines "$RM_EN")
+tree_zh=$(tree_block_lines "$RM_ZH")
+report "README structure-tree line count identical (en vs zh)" "$tree_en" "$tree_zh"
+report "README structure-tree extraction non-empty (防恒真空转)" 1 "$([[ "$tree_en" -gt 10 ]] && echo 1 || echo 0)"
+
+# ---------- A7d 阶段验收 A 层命令速查表（CHG-006：命令唯一落点须机器守护） ----------
+at_least "stage A-layer command quickref table present" 1 "$STD" '阶段验收 A 层命令速查表'
+at_least "quickref carries stage-1 command anchor" 1 "$STD" "grep -c 'REQ-' docs/<feature>/01-spec.md"
+at_least "quickref carries stage-6 command anchor" 1 "$STD" 'BUG-\[0-9\]'
 
 # ---------- 编号体系收录（R-C 轮） ----------
 declared=$(grep -oE '以下 [0-9]+ 种前缀' "$STD" | grep -oE '[0-9]+')
@@ -196,6 +244,42 @@ for m in $(ls "$ROOT/resources/methodologies" | grep '\.md$'); do
   at_least "README zh mentions methodologies/$m" 1 "$RM_ZH" "$m"
 done
 
+# ---------- README 树 ↔ 磁盘：resources/templates/（CHG-004 / BUG-002） ----------
+#   本脚本头部注释早已声称 PART A 含"树↔磁盘"，但原实现**只校验 methodologies/ 的
+#   README 提及、未校验 templates/** → 双 README 的"仓库结构"树对称漏列 7 个模板
+#   （bug-diagnosis/impact/test-plan/matrix/config/tasks.md + coding-record.md）而长期
+#   无人发现。语义：README 树必须列出该目录下全部文件——检查只覆盖一半 = 又一处
+#   "检查的覆盖面窄于它声称的语义"（与 BUG-001 同族）。
+#   解析要点：ZH README 用中文顿号「、」并列、EN 用「, 」——两种分隔符都要覆盖
+#   （首版脚本只切逗号，误判 ZH 漏 3 个 Git Hook 文件；本轮实测踩过，故此处显式处理）。
+tree_names() { # $1 = readme → 输出树中 templates/ 段的文件名（去重排序）
+  awk '/└── templates\//{f=1;next} f && /^```/{exit} f{
+    line=$0
+    sub(/#.*$/,"",line)               # 去注释
+    gsub(/[、,]/," ",line)            # 归一化分隔符（逐字节替换，对 ASCII 文件名无害）
+    sub(/^[^A-Za-z0-9_.]*/,"",line)   # 去缩进与树线前缀
+    n=split(line,a," ")
+    for(i=1;i<=n;i++) if(a[i] ~ /^[A-Za-z0-9_.-]+$/) print a[i]
+  }' "$1" | sort -u
+}
+tmpl_disk=$(ls "$ROOT/resources/templates" | sort)
+for rmf in "$RM_EN" "$RM_ZH"; do
+  t_miss=$(comm -23 <(printf '%s\n' "$tmpl_disk") <(tree_names "$rmf") | tr '\n' ' ')
+  t_extra=$(comm -13 <(printf '%s\n' "$tmpl_disk") <(tree_names "$rmf") | tr '\n' ' ')
+  [[ -z "$t_miss" ]] || echo "audit: $(basename "$rmf") tree missing templates: $t_miss" >&2
+  [[ -z "$t_extra" ]] || echo "audit: $(basename "$rmf") tree lists non-existent templates: $t_extra" >&2
+  report "README $(basename "$rmf") tree covers all resources/templates" 0 "$(printf '%s' "$t_miss" | grep -c . || true)"
+  report "README $(basename "$rmf") tree has no phantom template" 0 "$(printf '%s' "$t_extra" | grep -c . || true)"
+done
+
+# ---------- 06.5 / 06-delivery-summary 模板存在性（CHG-004 / BUG-002） ----------
+#   §1.1「最低文档集八类」含 06.5-deployment-config.md 与 06-delivery-summary.md，
+#   但原模板目录**无对应模板**、门禁也不校验 → 目标仓库无处可复制、漏项无人拦。
+#   本断言保证"有模板可复制"；"门禁必检"由 agent-gate.sh 的 stop 分支承担。
+for t in 06.5-deployment-config.md 06-delivery-summary.md; do
+  report "template exists and non-empty: $t" 1 "$([[ -s "$ROOT/resources/templates/$t" ]] && echo 1 || echo 0)"
+done
+
 # ---------- 阶段 6/8 专项与 §5 拦截（v3.4.0 快照） ----------
 report "stage-8 defect-fix special check" 1 "$(grep_count "$STD" '缺陷修复类 CHG 专项')"
 at_least "section5 same-family interceptor" 1 "$STD" '同族推演」行 / 同族行空口'
@@ -230,10 +314,35 @@ report "A2 code-extension list identical in gate and compliance.sh" "$gate_ext" 
 
 # A3 README 声称的 golden-case 断言数必须 == run-tests 静态调用数——
 #    防"47→52→55 多处数字漂移"复发（本项目实际发生过）
-claims=$(grep -ohE '[0-9]+ (assertions|项断言|golden-case 断言|Golden-Case 断言)' "$RM_EN" "$RM_ZH" | grep -oE '[0-9]+' | sort -u | tr '\n' ',')
+#
+#    CHG-003 收紧取值正则，同时治两个方向的缺陷：
+#    ① 漏匹配（危险方向）：旧正则 '[0-9]+ (assertions|项断言|golden-case 断言|Golden-Case 断言)'
+#       要求数字后紧跟空格 + 关键词，于是 '107 golden-case assertions'（数字后跟 golden-case）
+#       不匹配 → claims 只剩 {118} → A3 误判"单一一致数字"通过。该盲区曾让双 README 同时残留
+#       107 与 118、而真值为 125，且这条 FAIL 在 main 上长期无人察觉。
+#    ② 假阳性（阻断方向）：若仅放宽为 '[0-9]+[^0-9]{0,20}'，版本号尾数会被卷进来——实测
+#       '见 §2.17.4 防恒真断言' 会命中 '4 防恒真断言'。
+#    故最终形态：(^|[^0-9.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)
+#       · 前导 '(^|[^0-9.])' 排除"前一个字符是数字或小数点"，避免版本号尾数被当成计数；
+#       · 上限 20 覆盖全部已知中英表述（最长 '项 golden-case ' 为 14 字符）并避免跨句误匹配；
+#       · 'assertions?' 兼顾单复数。
+#    须命中：'107 golden-case assertions' / '118 assertions' / '107 项 golden-case 断言'
+#    须不命中：'见 §2.17.4 防恒真断言'（版本号尾数）
+#    已知残余缺口（不阻断，登记 FU-009）：'assertions: 125'（数字在关键词之后）不命中。
+claims=$(grep -ohE '(^|[^0-9.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)' "$RM_EN" "$RM_ZH" | grep -oE '[0-9]+' | sort -u | tr '\n' ',')
 actual=$(grep -cE '^[[:space:]]*(report|check_output) ' "$ROOT/tests/run-tests.sh")
 report "A3 README assertion-count claims are a single consistent number" 1 "$(printf '%s' "$claims" | grep -c '^[0-9]*,$')"
 report "A3 claimed assertion count == run-tests static call count" "$actual" "${claims%,}"
+
+# A3c 生成器同步校验（CHG-007 / FU-005+009）：README 声称数必须与生成器 --check 一致——
+#    手工改数、漏改、或 run-tests 增删用例后未同步，都在这里红。
+GEN="$ROOT/scripts/update-assertion-count.sh"
+if [[ -f "$GEN" ]]; then
+  bash "$GEN" --check >/dev/null 2>&1
+  report "A3c README assertion claims match generated count (FU-005/009)" 0 "$?"
+else
+  report "A3c assertion generator script exists" 1 0
+fi
 
 # A4 基线来源不得硬编码（CHG-002）——主线为 master 的仓库曾因写死 origin/main 直接
 #    fatal（不可自愈）；更危险的是为绕过报错补 `|| true`，空 diff 被读成"通过"。
@@ -245,6 +354,151 @@ report "A4 compliance.sh has no hardcoded origin/* default baseline" 0 "$(grep -
 report "A4 compliance.sh resolves its baseline dynamically" 1 "$(grep -c '^resolve_base_ref() {' "$CI_SCRIPT" || true)"
 report "A4 compliance.sh fails closed on an unknown baseline" 1 "$(grep -c '无法确定基线分支' "$CI_SCRIPT" || true)"
 report "A4 governance workflow has no literal branch fallback" 0 "$(grep -cF "|| 'main'" "$GOV_WF" || true)"
+
+# A5 门禁"交付必检文档"必须随 bootstrap --core 下发模板（CHG-004 / FU-012 防复发）——
+#    根因：门禁要求某文档存在、而安装清单不提供模板 → 目标仓库无从落笔，只能靠人记；
+#    `06.5` 与 `06-delivery-summary` 长期处于此状态（八类中两类无守护），是 CHG-003
+#    差点漏交 06.5 的制度性原因。
+#    取值方式刻意用**动态派生**而非静态清单：从 agent-gate.sh 的 check_delivery_doc
+#    调用点提取文件名，再**真跑一次 --core 到临时目录**核对落点。
+#    为什么不 grep bootstrap.sh 的文本：首版就是这么写的，结果 install_file 写成
+#    `for t in ...; do install_file ...; done` 循环即漏判（假 FAIL），而等价改写又会
+#    假 PASS——**用文本形态代替行为，本身就是本族根因**。故此处验证产物，不验证写法。
+deliver_docs=$(grep -oE 'check_delivery_doc "\$d" [^ ]+' "$ROOT/resources/templates/agent-gate.sh" | awk '{print $3}' | sort -u)
+n_deliver=$(printf '%s\n' $deliver_docs | grep -c . || true)
+report "A5 gate delivery-doc extraction non-empty (防恒真空转)" 1 "$([[ "$n_deliver" -ge 2 ]] && echo 1 || echo 0)"
+A5_TMP=$(mktemp -d 2>/dev/null) || A5_TMP=""
+bs_missing=0
+if [[ -n "$A5_TMP" ]]; then
+  bash "$ROOT/scripts/bootstrap.sh" --core "$A5_TMP" >/dev/null 2>&1 || true
+  for t in $deliver_docs; do
+    [[ -s "$A5_TMP/docs/$t" ]] \
+      || { echo "audit: bootstrap --core does not ship a template for gate-required doc: $t" >&2; bs_missing=$(( bs_missing + 1 )); }
+  done
+  rm -rf "$A5_TMP"
+else
+  bs_missing=1
+  echo "audit: mktemp failed, cannot verify bootstrap --core delivery templates" >&2
+fi
+report "A5 bootstrap --core ships a template for every gate delivery doc" 0 "$bs_missing"
+
+# A5b 交付模板必须自带 TEMPLATE-MARKER 哨兵——门禁靠它区分"已填写的交付物"与
+#     "直接复制过来的空模板"。若模板不带哨兵，门禁就只剩"文件非空"这一条弱校验，
+#     等于"复制模板即算完成"重新可行。与 run-tests 的分工：模板侧由本断言守护，
+#     门禁的哨兵识别行为由 run-tests T5 守护（内联哨兵，与仓库布局无关）。
+for t in $deliver_docs; do
+  at_least "A5b delivery template carries TEMPLATE-MARKER sentinel: $t" 1 \
+    "$ROOT/resources/templates/$t" 'TEMPLATE-MARKER'
+done
+
+# ── PART A6: 本仓库自身治理产物审计（FU-013 闭环）──────────────────────────
+# 本仓库 dogfood 的治理产物此前无任何机器审计（FU-013）。以下断言校验本仓库
+# 自身的 docs/bugfix-log.md 双登记、docs/changes/CHG-*/ 编号连续性、
+# docs/bugs/BUG-*/ 六件套齐备——"规范仓库自己也要受规范审计"。
+REPO_BFLOG="$ROOT/docs/bugfix-log.md"
+REPO_CHANGES="$ROOT/docs/changes"
+REPO_BUGS="$ROOT/docs/bugs"
+
+# A6a bugfix-log.md 存在且含真实 BUG 条目（非占位模板）
+if [[ -f "$REPO_BFLOG" ]]; then
+  bug_count=$(grep -cE '^### BUG-[0-9]' "$REPO_BFLOG" || true)
+  report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
+    "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
+else
+  report "A6a repo bugfix-log exists" 1 0
+fi
+
+# A6b docs/changes/ 下每个 CHG 目录至少含 00-intent.md（门禁 1 最低要求）
+chg_dirs=$(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null || true)
+chg_missing_intent=0
+if [[ -n "$chg_dirs" ]]; then
+  for d in $chg_dirs; do
+    [[ -f "$d/00-intent.md" ]] || { echo "audit: $d missing 00-intent.md" >&2; chg_missing_intent=$(( chg_missing_intent + 1 )); }
+  done
+else
+  chg_missing_intent=1
+fi
+report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
+
+# A6c docs/changes/ 下 CHG 编号连续递增（CHG-001, CHG-002, ... 无跳号）
+chg_nums=$(basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/null | sed 's/CHG-//' | sort -n)
+if [[ -n "$chg_nums" ]]; then
+  chg_prev=0
+  chg_gap=0
+  for n in $chg_nums; do
+    if [[ "$n" -ne $(( chg_prev + 1 )) ]]; then
+      echo "audit: CHG numbering gap: expected $(( chg_prev + 1 )), got $n" >&2
+      chg_gap=1
+    fi
+    chg_prev=$n
+  done
+  report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
+else
+  report "A6c CHG numbering continuous (no gaps)" 1 0
+fi
+
+# A6d docs/bugs/ 下每个 BUG 目录含六件套（01~06）
+bug_dirs=$(ls -d "$REPO_BUGS"/BUG-* 2>/dev/null || true)
+bug_missing_files=0
+if [[ -n "$bug_dirs" ]]; then
+  for d in $bug_dirs; do
+    for f in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+      [[ -f "$d/$f" ]] || { echo "audit: $d missing $f" >&2; bug_missing_files=$(( bug_missing_files + 1 )); }
+    done
+  done
+else
+  # No bug dirs is valid (repo may not have bugs yet)
+  bug_missing_files=0
+fi
+report "A6d every BUG dir has six-file set (v3.7.0)" 0 "$bug_missing_files"
+
+# A6e 已闭合变更目录完整性（BUG-003 防复发）：目录含 09-changelog.md（闭合标志）则
+# 必须同时含其余编号产物——防"闭合变更被部分覆盖/破坏"再次静默发生（BUG-003 实际
+# 摧毁了 9 件产物而仅凭 A6b 检查 00-intent 无法发现）。
+closed_missing=0
+for d in $chg_dirs; do
+  [[ -f "$d/09-changelog.md" ]] || continue
+  for f in 00-intent.md 00-governance.json 01-spec.md 01.5-rtvm-matrix.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md 04.5-coding-record.md 05-test-results.md 07-review-report.md; do
+    [[ -f "$d/$f" ]] || { echo "audit: closed change $d missing $f" >&2; closed_missing=$(( closed_missing + 1 )); }
+  done
+done
+report "A6e closed change dirs are complete (BUG-003 guard)" 0 "$closed_missing"
+
+# ── PART A8: 门禁硬化形态锚点（CHG-007：FU-008/014/015/019 防复发）──────────────────
+#   门禁行为已由 run-tests golden case 守护；此处锁"实现形态"，防行为被静默回退成弱检查
+#   （BUG-001 同族：检查模式弱于其声称语义）。取值用 grep -F 固定串，防正则元字符歧义。
+GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
+report "A8 begin rejects closed change re-entry (FU-015)" 1 "$(grep -cF 'already closed' "$GATE_TPL")"
+report "A8 RTVM glob covers nested change-dir matrices (FU-019)" 1 "$(grep -cF 'docs/changes/*/01.5-rtvm-matrix.md' "$GATE_TPL")"
+# 说明：固定串在 gate 中天然多处命中（检查点 + 报文），故下两条用 ≥1 下界语义而非恒等
+ga_n=$(grep -cF 'REQ-[0-9]+' "$GATE_TPL")
+report "A8 numbering checks are digit-anchored (FU-008)" 1 "$([[ "$ga_n" -ge 1 ]] && echo 1 || echo 0)"
+ga_s=$(grep -cF '业务影响)' "$GATE_TPL")
+report "A8 stage-2 impact checks are structure-anchored (FU-008)" 1 "$([[ "$ga_s" -ge 1 ]] && echo 1 || echo 0)"
+report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-][[:space:]]*)*未命中' "$GATE_TPL")"
+
+# A9 规范条款存在性锚点（CHG-008 / FU-016）：防条款被静默移除
+at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
+
+# A11 规范体量上界（CHG-010 / FU-017）：≤115KB（117,760 字节）——防正文回弹
+std_bytes=$(wc -c < "$STD" | tr -d ' ')
+report "A11 standards body size <= 115KB (FU-017)" 1 "$([[ "$std_bytes" -le 117760 ]] && echo 1 || echo 0)"
+at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
+
+# ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
+# 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达
+# 死调用）而未同步基线 → 红；红即提示跑 scripts/update-assertion-count.sh 同步。
+# 不采用"静态调用数==执行数"口径：if/else 双分支站点使静态数天然≠执行数。
+# 基线文件随本变更入库；/tmp 计数文件为本轮运行现场（供生成器 --check 比对）。
+AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
+AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
+printf '%s\n' "$(( pass + fail ))" > "$AUDIT_LAST"
+if [[ -f "$AUDIT_BASELINE" ]]; then
+  expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')
+  report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail ))"
+else
+  report "A10 audit baseline exists (FU-022; run scripts/update-assertion-count.sh)" 1 0
+fi
 
 echo
 echo "$pass passed, $fail failed"

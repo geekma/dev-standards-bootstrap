@@ -214,6 +214,41 @@ seed_artifacts CHG-110 L1 claude/s-1
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin accepts compliant A-layer content markers" 0 $?
 
+# CHG-007 / FU-008：编号必须带数字——散文提及 "REQ-"（无编号）不再放行
+seed_artifacts CHG-110 L1 claude/s-1
+printf '# spec\n需求编号参见 REQ- 约定（无具体编号）。\n' > docs/changes/CHG-110/01-spec.md
+scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+report "begin rejects spec whose REQ- mention carries no number (FU-008)" 2 $?
+
+# CHG-007 / FU-015（BUG-003）：重开已闭合变更必须拒绝——以 09-changelog.md 为闭合标志
+new_repo
+seed_artifacts CHG-520 L1 claude/s-1
+printf '# CHG-520 changelog\nclosed\n' > docs/changes/CHG-520/09-changelog.md
+scripts/agent-gate begin CHG-520 >/dev/null 2>&1
+report "begin rejects re-opening a closed change dir" 2 $?
+out=$(scripts/agent-gate begin CHG-520 2>&1 || true)
+check_output "begin names the closed change and the one-change-one-doc-set rule" "already closed .*2[.]15" "$out"
+
+# CHG-009 / FU-023：id 边缘形态必须拒绝（首字符字母数字、无点号）
+new_repo
+seed_artifacts CHG-522 L1 claude/s-1
+for bad in -foo foo. a..b; do
+  rm -rf "docs/changes/$bad"
+  scripts/agent-gate begin "$bad" >/dev/null 2>&1
+  report "begin rejects edge change id: $bad (FU-023)" 2 $?
+done
+
+
+# CHG-007 / S1（独立评审）：零尺寸/软链 09 也必须视为闭合标志（-s 会漏，改 -e/-L）
+new_repo
+seed_artifacts CHG-521 L1 claude/s-1
+ln -s /dev/null docs/changes/CHG-521/09-changelog.md
+scripts/agent-gate begin CHG-521 >/dev/null 2>&1
+report "begin rejects a symlinked zero-size 09 marker (S1)" 2 $?
+rm docs/changes/CHG-521/09-changelog.md
+scripts/agent-gate begin CHG-521 >/dev/null 2>&1
+report "begin accepts the same dir once the symlink marker is removed" 0 $?
+
 # ---------------------------------------------------------------- T2 治理状态校验
 new_repo
 seed_artifacts CHG-200 L2 gemini/m-1 gemini/m-1 gemini/m-2   # test 与 impl 相同
@@ -342,8 +377,94 @@ scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop blocks finish without ReAct Observation records" 2 $?
 
 printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-500/09-changelog.md
+
+# CHG-004：八类最低文档集（规范 §1.1）的最后两类纳入交付门禁。
+#   此前 --stage stop 只查 04.5/05/09，06.5 与 06-delivery-summary 既无模板也无校验，
+#   "不适用"只能靠"不建文件"表达——这正是 CHG-003 差点漏交 06.5 的制度性原因。
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop blocks finish without 06.5 config record" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop names the missing 06.5 and the standards clause" "missing config/DB record [(]06[.]5-deployment-config[.]md[)].*standards §1[.]1" "$out"
+
+# 文件存在但内容空洞：必须显式声明"未命中，不适用"，空骨架不算交付。
+printf '# 06.5 部署/配置/DB 记录\n本变更未动配置。\n' > docs/changes/CHG-500/06.5-deployment-config.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects 06.5 that never declares not-applicable" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop demands explicit 未命中，不适用 declaration" "must declare '未命中，不适用'" "$out"
+
+# 直接把未填写的模板当交付（哨兵行未删）同样被拦——防"复制模板即算完成"。
+# 这里内联哨兵而不 cp 真实模板：目标仓库经 --guard 落地时 resources/templates/ 不在场，
+# 用例必须与布局无关；"真实模板确实带哨兵"由规范源层审计 A5 的哨兵断言守护。
+printf '<!-- TEMPLATE-MARKER: 填写完成后必须删除本行 -->\n# 06.5 部署/配置/DB 记录\n未命中，不适用\n' > docs/changes/CHG-500/06.5-deployment-config.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects the unfilled 06.5 template (sentinel)" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop tells the author to delete the TEMPLATE-MARKER line" "still the unfilled template" "$out"
+
+# CHG-007 / FU-014：声明必须行首锚定——句中提及"未命中"不再放行
+printf '# 06.5 部署/配置/DB 记录\n依据评审本变更未命中任何配置要求。\n' > docs/changes/CHG-500/06.5-deployment-config.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects a mid-sentence 未命中 mention in 06.5 (FU-014)" 2 $?
+
+printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更，依据见 02-code-impact-analysis.md。\n' > docs/changes/CHG-500/06.5-deployment-config.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop blocks finish without 06-delivery-summary" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop names the missing delivery summary" "missing delivery summary / FU ledger [(]06-delivery-summary[.]md[)]" "$out"
+
+# 注意：负例文本刻意避开"遗留"二字——首版写成"本变更无遗留事项"恰好命中内容正则
+# （正则只认关键词，不认否定语义），用例因此假绿。该"关键词可被否定句满足"的残余
+# 缺口已在 BUG-002 诊断中显式声明，此处只用不含关键词的文本走通分支。
+printf '# 06-delivery-summary\n本变更无未决事项。\n' > docs/changes/CHG-500/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects delivery summary without FU ledger or 遗留" 2 $?
+
+# CHG-007 / FU-014：BUG-002 的残余缺口闭环——否定句"无遗留事项"（句中）现在也必须红
+printf '# 06-delivery-summary\n本变更无遗留事项。\n' > docs/changes/CHG-500/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects a negated mid-line 遗留 mention (BUG-002 residual closed)" 2 $?
+
+# CHG-009 / FU-020：句中 "FU-901" 提及（无结构行）不再算登记
+printf '# 06-delivery-summary\n本变更无 FU-901 需要登记。\n' > docs/changes/CHG-500/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects a mid-sentence FU- mention with no structured row (FU-020)" 2 $?
+printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop still accepts a structured FU table row (FU-020 positive)" 0 $?
+
+printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop passes with evidence and changelog" 0 $?
+
+# CHG-004 独立复核发现并已修：候选落点不得用裸 glob `docs/*/`。
+#   原实现第三候选为 `docs/*/$name`，实测只要有人在 docs/ 下任意子目录（如 docs/unrelated/）
+#   放一个同名占位文件，**所有变更的交付门禁就永久放行**——覆盖面过宽比过窄更危险，
+#   因为它制造的是假绿（同族根因的反向形态）。现要求该目录须含 01-spec.md 或
+#   01.5-rtvm-matrix.md，即"看起来像功能目录"（§2.17 产物目录双轨约定）。
+mkdir -p docs/unrelated
+printf '# 06.5\n未命中，不适用：无配置变更。\n' > docs/unrelated/06.5-deployment-config.md
+printf '# 06-delivery\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | x | y | 2026-10-01 |\n' > docs/unrelated/06-delivery-summary.md
+rm -f docs/changes/CHG-500/06.5-deployment-config.md docs/changes/CHG-500/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects a same-named file in an unrelated docs subdir" 2 $?
+
+# 功能目录形态：目录本身须带功能文档标记，否则不算合法落点
+mkdir -p docs/featx
+printf '# 06.5\n未命中，不适用：无配置变更。\n' > docs/featx/06.5-deployment-config.md
+printf '# 06-delivery\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | x | y | 2026-10-01 |\n' > docs/featx/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop rejects a feature dir without 01-spec/01.5 marker" 2 $?
+printf '# spec\n- REQ-001: r\n' > docs/featx/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop accepts a real feature dir carrying 01-spec.md" 0 $?
+
+# 恢复常态（两件回到变更目录）
+rm -rf docs/unrelated docs/featx
+printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更，依据见 02-code-impact-analysis.md。\n' > docs/changes/CHG-500/06.5-deployment-config.md
+printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop passes again once artifacts return to the change dir" 0 $?
 
 # v3.7.0：Gate 4 —— changelog 引用的 REQ 必须回填 docs/<feature>/01.5-rtvm-matrix.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n\n- 对应需求：`REQ-101`（见 01-spec.md）\n' > docs/changes/CHG-500/09-changelog.md
@@ -353,6 +474,17 @@ mkdir -p docs/feata
 printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/feata/01.5-rtvm-matrix.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop passes once REQ rows backfilled in matrix" 0 $?
+
+# CHG-007 / FU-019：源头仓嵌套形态 docs/changes/<CHG>/01.5 也必须被 RTVM 检查接受
+rm -f docs/feata/01.5-rtvm-matrix.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop still blocks once the one-level matrix is removed" 2 $?
+mkdir -p docs/changes/CHG-901
+printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/changes/CHG-901/01.5-rtvm-matrix.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop accepts a nested docs/changes/<CHG>/01.5 matrix (FU-019)" 0 $?
+rm -rf docs/changes/CHG-901
+printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/feata/01.5-rtvm-matrix.md   # 恢复一层矩阵，后续用例依赖
 
 rm docs/changes/CHG-500/04.5-coding-record.md   # v3.7.0：编码记录删除后回拦
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
@@ -390,6 +522,12 @@ out=$(scripts/agent-gate --stage ci --base "$base" 2>&1 || true)   # v3.7.0：�
 check_output "ci names missing coding record in code diff" "cannot finish: missing coding record docs/changes/CHG-601/04.5-coding-record.md" "$out"
 printf 'cr\n' > docs/changes/CHG-601/04.5-coding-record.md
 commit_all "docs: CHG-601 coding record"
+# CHG-004：branch 模式与 stop 同口径执行八类最低文档集（06.5 / 06-delivery-summary）
+scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
+report "ci blocks code diff without 06.5 config record" 2 $?
+printf '# 06.5\n未命中，不适用：本变更无配置/DB 变更。\n' > docs/changes/CHG-601/06.5-deployment-config.md
+printf '# 06-delivery-summary\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-902 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-601/06-delivery-summary.md
+commit_all "docs: CHG-601 config + delivery summary"
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts code diff committed with artifacts and delivery evidence" 0 $?
 
@@ -418,6 +556,9 @@ check_output "ci names the missing coding record" "cannot finish: missing coding
 printf 'cr\n' > docs/changes/CHG-620/04.5-coding-record.md
 printf 'results\n' > docs/changes/CHG-620/05-test-results.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-620/09-changelog.md
+# CHG-004：docs-only 分支同样要求八类最低文档集齐备（与 stop 同口径）
+printf '# 06.5\n未命中，不适用：本变更无配置/DB 变更。\n' > docs/changes/CHG-620/06.5-deployment-config.md
+printf '# 06-delivery-summary\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-903 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-620/06-delivery-summary.md
 commit_all "docs: CHG-620 delivery evidence"
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts docs-only diff after delivery evidence lands" 0 $?

@@ -29,7 +29,9 @@ is_code_path() {
 
 required_docs_present() {
   local id="$1" doc
-  [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || die "invalid change id '$id'"
+  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
+  # (kills "-foo", "foo.", "a..b"; existing CHG-xxx / BUG-<ts> forms all pass).
+  [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
   for doc in "${required_docs[@]}"; do
     [[ -s "$change_root/$id/$doc" ]] || die "missing required artifact: $change_root/$id/$doc"
   done
@@ -46,15 +48,15 @@ validate_artifact_content() {
     || die "$d/00-intent.md missing expected-outcome section (A-layer acceptance, standards §2.5)"
   grep -q "开放问题" "$d/00-intent.md" \
     || die "$d/00-intent.md missing open-questions section (A-layer acceptance, standards §2.5)"
-  grep -q "REQ-" "$d/01-spec.md" \
+  grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
     || die "$d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
-  grep -q "DES-" "$d/03-modification-plan.md" \
+  grep -qE "DES-[0-9]+" "$d/03-modification-plan.md" \
     || die "$d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
-  grep -q "TC-" "$d/04-test-scripts.md" \
+  grep -qE "TC-[0-9]+" "$d/04-test-scripts.md" \
     || die "$d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
   # v3.3.0 scenario inventory: business scenarios enumerated with SC-
   # numbering and mapped to TCs (standards §2.5 stage 4).
-  grep -q "SC-" "$d/04-test-scripts.md" \
+  grep -qE "SC-[0-9]+" "$d/04-test-scripts.md" \
     || die "$d/04-test-scripts.md has no SC- scenario numbering (A-layer, standards §2.5 stage 4, v3.3.0)"
   # v2.20.0 professional-role markers: option comparison in the plan and a
   # coverage-dimension column in the test matrix (standards §2.5 stages 3-4).
@@ -65,11 +67,14 @@ validate_artifact_content() {
   # Stage 2 is unconditional: "analyze before designing" (standards §2.5
   # stage 2) is a hard gate, not an optional extra. 03.5 may alternatively
   # carry an explicit no-breakdown exemption marker instead of task rows.
-  grep -q "业务影响" "$d/02-code-impact-analysis.md" \
+  # FU-008: the keyword must sit in a structural position (heading / table row /
+  # bold list item), not anywhere in prose — a negated or passing mention like
+  # "本变更无业务影响" used to satisfy a bare substring grep.
+  grep -qE "^(#{1,6}[[:space:]].*业务影响|\|.*业务影响|[[:space:]]*[-*][[:space:]]+\*\*业务影响)" "$d/02-code-impact-analysis.md" \
     || die "$d/02-code-impact-analysis.md missing business-impact (业务影响) section (A-layer, standards §2.5 stage 2)"
-  grep -q "风险" "$d/02-code-impact-analysis.md" \
+  grep -qE "^(#{1,6}[[:space:]].*风险|\|.*风险|[[:space:]]*[-*][[:space:]]+\*\*风险)" "$d/02-code-impact-analysis.md" \
     || die "$d/02-code-impact-analysis.md missing risk (风险) content (A-layer, standards §2.5 stage 2)"
-  grep -q "回滚策略" "$d/02-code-impact-analysis.md" \
+  grep -qE "^(#{1,6}[[:space:]].*回滚策略|\|.*回滚策略|[[:space:]]*[-*][[:space:]]+\*\*回滚策略)" "$d/02-code-impact-analysis.md" \
     || die "$d/02-code-impact-analysis.md missing rollback (回滚策略) content (A-layer, standards §2.5 stage 2)"
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
@@ -174,6 +179,44 @@ working_code_changed() {
   return 1
 }
 
+# CHG-004 / REQ-022: the eight-category minimum doc set (standards §1.1) includes
+# 06.5-deployment-config.md and 06-delivery-summary.md. Neither had a template nor
+# any machine check, so "no config change" / "no follow-ups" were expressed by
+# *omitting the file* — the exact gap that let CHG-003 nearly ship without 06.5.
+# Both are delivery-bar items now. "Not hit" must be *declared*, and an unfilled
+# template must not pass: templates ship a TEMPLATE-MARKER sentinel line that must
+# be deleted once filled (same trick as bugfix-log.md's '### BUG-xxx' placeholder,
+# which deliberately fails the '[0-9]' count).
+check_delivery_doc() { # change-dir filename content-regex label
+  local d="$1" name="$2" pat="$3" label="$4" f="" cand pdir
+  # 落点三选一：① 变更目录（常态）② 仓库级 docs/（无功能目录的仓库，如本仓库）
+  # ③ 功能目录 docs/<feature>/（§2.17 产物目录双轨约定）
+  for cand in "$d/$name" "docs/$name"; do
+    [[ -f "$cand" ]] && { f="$cand"; break; }
+  done
+  # ③ 刻意**不用**裸 glob `docs/*/`——独立复核实测：那样只要有人在 docs/ 下任意子目录
+  #   （如 docs/unrelated/）放一个同名占位文件，所有变更的交付门禁就永久放行了。
+  #   故此处要求该目录"看起来像功能目录"：须含 01-spec.md 或 01.5-rtvm-matrix.md。
+  #   这是本族根因的反向形态——覆盖面过宽比过窄更危险，因为它制造的是假绿。
+  if [[ -z "$f" ]]; then
+    for cand in docs/*/"$name"; do
+      [[ -f "$cand" ]] || continue
+      pdir=$(dirname "$cand")
+      [[ -f "$pdir/01-spec.md" || -f "$pdir/01.5-rtvm-matrix.md" ]] || continue
+      f="$cand"; break
+    done
+  fi
+  [[ -n "$f" ]] || die "cannot finish: missing $label ($name) — standards §1.1 eight-category minimum doc set"
+  # Sentinel must be the template's own first-line marker form, anchored to
+  # line start — a bare substring match false-positives on prose that merely
+  # MENTIONS the marker (live-found when a ledger row describing it tripped).
+  if grep -q '^<!-- TEMPLATE-MARKER' "$f"; then
+    die "cannot finish: $f is still the unfilled template — delete the TEMPLATE-MARKER line once filled (standards §1.1)"
+  fi
+  grep -qE "$pat" "$f" \
+    || die "cannot finish: $f must declare '未命中，不适用' with evidence, or carry real $label rows (standards §1.1)"
+}
+
 # Delivery evidence a change must carry before it may leave the machine: the
 # v3.7.0 coding record, test results, a changelog, and the v2.21.0 ReAct
 # Observation records in it (standards §2.16.2). Shared by --stage stop and
@@ -196,12 +239,18 @@ validate_delivery() { # change-id
   local req hit
   for req in $(grep -oE 'REQ-[0-9]+' "$d/09-changelog.md" | sort -u); do
     hit=0
-    for m in docs/*/01.5-rtvm-matrix.md; do
+    # FU-019: the standards source repo keeps its matrix nested at
+    # docs/changes/<CHG>/01.5 (two levels) — a single-level glob would report
+    # every REQ as unbackfilled there (fail-closed but unusable).
+    for m in docs/*/01.5-rtvm-matrix.md docs/changes/*/01.5-rtvm-matrix.md; do
       [[ -f "$m" ]] || continue
       grep -qE "^\| \`?${req}\`?" "$m" && { hit=1; break; }
     done
     [[ "$hit" == 1 ]] || die "cannot finish: REQ $req referenced in changelog but not backfilled in docs/<feature>/01.5-rtvm-matrix.md (gate 4)"
   done
+  # CHG-004 / REQ-022: the remaining two of the eight-category minimum doc set.
+  check_delivery_doc "$d" 06.5-deployment-config.md '^([#>-][[:space:]]*)*未命中|^[|].*(未命中|(CFG|DB)-[0-9]+)|(CFG|DB)-[0-9]+' 'config/DB record'
+  check_delivery_doc "$d" 06-delivery-summary.md '^[|].*FU-[0-9]+|^[-*][[:space:]]+.*FU-[0-9]+|^(#{1,6}[[:space:]]*).*遗留' 'delivery summary / FU ledger'
 }
 
 validate_stop() {
@@ -414,6 +463,17 @@ case "$command" in
   begin)
     id="${2:-}"
     [[ -n "$id" ]] || die "usage: scripts/agent-gate begin <change-id>"
+    # FU-015 (BUG-003): a change dir carrying a changelog is a CLOSED change —
+    # re-opening it would let a new change write into a read-only artifact set
+    # (standards §2.15 rule 4, one change one document set).
+    # S1/S2 (independent review): -s misses zero-size and symlinked markers;
+    # '.'/'..' would escape the change dir. Both are closed here.
+    if [[ "$id" == "." || "$id" == ".." ]]; then
+      die "invalid change id '$id'"
+    fi
+    if [[ -e "$change_root/$id/09-changelog.md" || -L "$change_root/$id/09-changelog.md" ]]; then
+      die "change $id is already closed ($change_root/$id/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
+    fi
     required_docs_present "$id"
     validate_governance_state "$id"
     mkdir -p "$(dirname "$active_file")"
