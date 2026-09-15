@@ -480,10 +480,29 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 # A9 规范条款存在性锚点（CHG-008 / FU-016）：防条款被静默移除
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
-# A11 规范体量上界（CHG-010 / FU-017）：≤115KB（117,760 字节）——防正文回弹
+# A11 规范体量上界（CHG-010 引入 / CHG-011 重校准）：治理内容演进时上界随之重校准
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 120KB。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 115KB (FU-017)" 1 "$([[ "$std_bytes" -le 117760 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 120KB (FU-017, recalibrated v3.10.0)" 1 "$([[ "$std_bytes" -le 122880 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
+
+# A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
+at_least "A12 root-cause classification present (REQ-057)" 1 "$STD" '根因分类'
+at_least "A12 change dynamic constraints present (REQ-058)" 1 "$STD" '变更动态约束'
+
+# A13 安装器自动接线锚点（CHG-012）
+at_least "A13 bootstrap auto-wires hooksPath (CHG-012)" 1 "$ROOT/scripts/bootstrap.sh" 'auto-wired   git config core.hooksPath'
+at_least "A13 gate reads yml verification fallback (CHG-012)" 1 "$GATE_TPL" 'agent-governance.yml'
+
+# A14 升级模式锚点（CHG-013）
+at_least "A14 bootstrap upgrade mode present (CHG-013)" 1 "$ROOT/scripts/bootstrap.sh" '--upgrade'
+
+# A15 全面升级自更新锚点（CHG-014）
+at_least "A15 bootstrap self-update present (CHG-014)" 1 "$ROOT/scripts/bootstrap.sh" 'self-update skill repo'
+
+# A16 失败模式与反篡改锚点（CHG-015）
+at_least "A16 gate anti-tamper guard present (CHG-015)" 1 "$GATE_TPL" 'anti-tamper'
+at_least "A16 upgrade blocks on dirty target (CHG-015)" 1 "$ROOT/scripts/bootstrap.sh" 'uncommitted changes — commit first, or pass --force'     
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

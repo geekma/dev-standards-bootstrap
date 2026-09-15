@@ -6,7 +6,7 @@
 ### One-command AI Agent Development Governance & Quality Gate System for Any Repository
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.9.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.14.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -20,7 +20,9 @@
 
 **dev-standards-bootstrap** is a reusable AI agent Skill that injects a complete, battle-tested **software development and change management governance system** into any code repository with a single command: **five mandatory quality gates**, a **risk classification matrix**, an **agent role independence framework**, and **anti-skip execution rules** — installed once, enforced permanently.
 
-The design is measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows `/compact` retains only **53% of safety rules after one round, 10% after five**; the [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents intent drift and incidents that never feed back. The answer is architectural: **never trust agent memory or self-reports** — governance state lives on disk as versioned artifacts, a dependency-free gate reads the filesystem (not the conversation) at every write, CI is the final arbiter, and the governance package tests itself with 151 golden-case assertions. Full rationale: [DEVELOPMENT_STANDARDS.md §2.17](resources/DEVELOPMENT_STANDARDS.md).
+The design is measured, not hypothetical. A CIKM '26 study of production agent memory ([arXiv:2608.22752](https://arxiv.org/abs/2608.22752)) shows `/compact` retains only **53% of safety rules after one round, 10% after five**; the [AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook) documents intent drift and incidents that never feed back. The answer is architectural: **never trust agent memory or self-reports** — governance state lives on disk as versioned artifacts, a dependency-free gate reads the filesystem (not the conversation) at every write, CI is the final arbiter, and the governance package tests itself with 158 golden-case assertions. Full rationale: [DEVELOPMENT_STANDARDS.md §2.17](resources/DEVELOPMENT_STANDARDS.md).
+
+The failure-diagnosis side is grounded the same way. AgentRx ([arXiv:2602.02475](https://arxiv.org/abs/2602.02475)) shows that root-cause attribution stays reliable (annotator κ=0.89) only when causes go through **mutually-exclusive categories with disambiguation checklists and evidence-cited judgments**, and that checkers must be **two-phase — a structural guard before the assertion** (ambiguous evidence must not fail). This project folds both into its bug process: root-cause tables carry a mutually-exclusive classification with per-category disambiguation questions, root causes anchor at the **earliest unrecovered failure point** (late symptoms are not the cause), and every new gate/audit checker follows the same guard→assertion design rule (§2.5 Stage 6, §2.13.4).
 
 ---
 
@@ -34,9 +36,9 @@ The design is measured, not hypothetical. A CIKM '26 study of production agent m
 | **10-Stage Lifecycle + AI Anti-Skip Rules** | ReAct (Thought→Action→Observation) on every step; anti-skip rules ban summary-style "done", silent downgrades, premature completion (§2.16) |
 | **Test Coverage Standard (11 dimensions)** | Per-dimension design or explicit N/A; branch coverage ≥60% (L2+); LLM eval-set regression; **business-scenario coverage ≥80%** (SC-xxx, L3 ≥90%) |
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
-| **Bug Fix Log + Same-Family Scan** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row — fix without family scan is rejected (§2.5 Stage 6) |
+| **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a **mutually-exclusive root-cause classification** with per-category disambiguation questions, anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (151 assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (158 assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13).
 
@@ -54,7 +56,9 @@ Clone the repository into your Skill directory (`git clone https://github.com/ge
 
 > "Use dev-standards-bootstrap to initialize this repo."
 
-The Skill runs `bash scripts/bootstrap.sh --core <target>` (layered flags `--claude/--ci/--guard/--pipeline`, `--all` for everything): it detects existing files and never overwrites silently (diffs first, `--force` to override), writes `AGENTS.md` plus the standards/methodology layer and templates into `docs/`, and optionally adds hook adapters, Git hooks, CI workflows, and the golden-case self-test suite.
+The Skill runs `bash scripts/bootstrap.sh --all <target>` (layered flags `--core/--claude/--ci/--guard/--pipeline` for selective install): it detects existing files and never overwrites silently (diffs first, `--force` to override), then **auto-injects everything** — `AGENTS.md`, the standards/methodology layer, templates, the gate, Git hooks + `core.hooksPath` wiring, the client hook adapter, CI workflows, an auto-detected verification command, and the golden-case self-test suite. After init there is nothing left to wire by hand (only one platform-side step remains, below).
+
+**Upgrading**: after a skill version bump, say the same utterance again — the skill detects the version diff and runs `bootstrap --upgrade`, which updates governance-owned files (standards, templates, scripts, hooks, workflows) to the carried version while leaving live records untouched (`bugfix-log.md`, delivery summary, 06.5 records, your `.agent-governance.yml`), then re-runs the auto-wiring. Commit the target repo first so git history preserves any customization.
 
 ---
 
@@ -67,14 +71,15 @@ dev-standards-bootstrap/
 ├── README.zh-CN.md                         # Chinese documentation
 ├── LICENSE                                 # MIT License
 ├── scripts/
-│   └── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer, idempotent, conflict-safe
+│   ├── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer, idempotent, conflict-safe
+│   └── update-assertion-count.sh           # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
 ├── screenshots/                            # README screenshots (gate blocking, change artifacts)
 ├── tests/
-│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (151 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
+│   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (158 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
 │   └── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist uniqueness / numbering / tautology-proof greps
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.9.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.14.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
@@ -106,7 +111,9 @@ dev-standards-bootstrap/
 
 ## The Deterministic Gate (agent-gate)
 
-Copy `agent-gate.sh` to `scripts/agent-gate`, create `docs/changes/CHG-123/` with `00-intent.md` (recorded intent) + `00-governance.json` (risk level + distinct execution owners; L3 needs the three `release_authorized_by`-family authorization fields) and the non-empty spec/impact/plan/tasks/test artifacts, then run:
+`bootstrap --guard` (included in `--all`) **injects the full enforcement package automatically**: `scripts/agent-gate`, the `.githooks/` Git hooks (pre-commit/pre-push/commit-msg) plus `core.hooksPath` wiring, `.agent-governance.yml` (team-reviewable record), the client hook adapter when a supported coding client is detected, and the golden-case suite. Clients without hook schemas are enforced by Git hooks + CI — nothing is fabricated for them.
+
+To file a change, create `docs/changes/CHG-123/` with `00-intent.md` (recorded intent) + `00-governance.json` (risk level + distinct execution owners; L3 needs the three `release_authorized_by`-family authorization fields) and the non-empty spec/impact/plan/tasks/test artifacts, then run:
 
 ```bash
 scripts/agent-gate begin CHG-123
@@ -126,14 +133,18 @@ scripts/agent-gate begin CHG-123
 
 ![agent-gate blocking a non-compliant commit of source changes in an IDE](screenshots/agent-gate-blocked-in-trae.png)
 
-Install Git hooks with `git config core.hooksPath .githooks`, set `AGENT_GUARD_VERIFY_COMMAND` to the real build/lint/test/security command, then mark the GitHub workflow as a required branch-protection check. Run `scripts/install-hook-adapter` for the Claude Code/Cursor/Gemini CLI pre-write adapters. State files and checkboxes are declarations, not proof: CI re-runs the real command and is mandatory for enforcement.
+The **verification command** (the real build/test command run by `stop` and `ci`) is auto-detected at bootstrap from the project layout (package.json / Makefile / pom.xml / go.mod / pyproject / Cargo) and prefilled into `.agent-governance.yml` — edit it there, or override with the `AGENT_GUARD_VERIFY_COMMAND` env var (highest priority). Existing user config is never overwritten (custom `core.hooksPath` or a customized yml is left untouched). Security note: a yml verification command is **not executed while the file itself is part of the pending change** (anti-tamper — a PR cannot inject commands into the reviewer's hook); commit it first, or use the env var.
+
+The only remaining platform-side step: mark the `agent-governance` workflow as a **required branch-protection check** (Settings → Branches, or via `gh api`). State files and checkboxes are declarations, not proof: CI re-runs the real command and is mandatory for enforcement.
 
 ### Optional Pipeline Automation (§2.17)
+
+Injected automatically by `bootstrap --pipeline` (included in `--all`) — the workflows land in `.github/workflows/` with zero wiring:
 
 - **Artifact pipeline** (`github-artifact-pipeline.yml`): merging `01-spec.md` auto-creates a scaffold branch with `02`/`03`/`03.5`/`04` skeleton PRs; merging `09-changelog.md` auto-opens a release-checklist issue. Skeletons contain headings and to-fill comments only.
 - **Incident loop** (`github-incident-to-intent.yml`): monitoring systems fire `repository_dispatch` type `incident`; the workflow creates a `BUG-<UTC-timestamp>` intent skeleton PR — every incident re-enters the pipeline as recorded intent.
 - **Autonomy cap**: hosted workflows are limited to A2 actions (branches, skeletons, PRs, issues); content (A3) and execution (A4) stay local; merge gates are never waived by automation. Semantics are defined by the standards §2.17, not by any platform.
-- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh` — 151 golden-case assertions, bash + git only.
+- **Self-testing**: before modifying `agent-gate.sh`, hooks, or workflows, run `bash tests/run-tests.sh` — 158 golden-case assertions, bash + git only.
 
 ---
 
@@ -188,7 +199,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.9.0 | **Last Updated:** 2026-09-14 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.14.0 | **Last Updated:** 2026-09-14 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 

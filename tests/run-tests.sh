@@ -497,6 +497,36 @@ report "stop runs AGENT_GUARD_VERIFY_COMMAND and fails on it" 2 $?
 AGENT_GUARD_VERIFY_COMMAND='true' scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop passes when AGENT_GUARD_VERIFY_COMMAND succeeds" 0 $?
 
+# CHG-012/CHG-015 / REQ-066+076：验证命令来源链 env → .agent-governance.yml
+# （占位符跳过；**反篡改**：yml 处于待定变更中时不执行其命令——已提交版本才可信）
+printf 'ci:\n  verification_command: "false"\n' > .agent-governance.yml
+git add .agent-governance.yml && git commit -qm "yml false (committed baseline)"
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop reads failing verification command from committed yml (CHG-012)" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop names the yml source of the failed command" "from .agent-governance[.]yml" "$out"
+
+printf 'ci:\n  verification_command: "true"\n' > .agent-governance.yml
+git add .agent-governance.yml && git commit -qm "yml true"
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop passes when committed yml verification command succeeds" 0 $?
+
+printf 'ci:\n  verification_command: "<replace-with-project-test-command>"\n' > .agent-governance.yml
+git add .agent-governance.yml && git commit -qm "yml placeholder"
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop skips placeholder verification command (CHG-012)" 0 $?
+
+# CHG-015 反篡改：待定修改的 yml（未提交）不执行其命令
+printf 'ci:\n  verification_command: "false"\n' > .agent-governance.yml
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "stop skips yml verification modified in the pending change (anti-tamper)" 0 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "skip note names anti-tamper" "anti-tamper" "$out"
+
+AGENT_GUARD_VERIFY_COMMAND='false' scripts/agent-gate --stage stop >/dev/null 2>&1
+report "env verification command overrides committed yml (CHG-015)" 2 $?
+rm -f .agent-governance.yml
+
 # ---------------------------------------------------------------- T6 ci
 new_repo
 seed_artifacts CHG-600 L1 claude/s-1

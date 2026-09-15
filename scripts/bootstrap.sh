@@ -38,6 +38,10 @@ Flags (layers; default --core when none given):
                .agent-governance.yml, tests/run-tests.sh (治理自测试随强制包, §2.17.4)
   --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml
   --all        以上全部
+  --upgrade    升级已接入仓库：治理自有文件（规范/方法论/模板/脚本/hooks/workflows/tests）
+               更新到本 Skill 携带版本；跳过 live/用户文件（bugfix-log、06-delivery-summary、
+               06.5、.agent-governance.yml、docs/changes/**、docs/bugs/BUG-*/）；随后重跑自动接线。
+               升级前请先提交目标仓库（git history 即备份）。打印版本迁移。
   --force      覆盖目标仓库中内容不同的既有文件（默认冲突时展示 diff 并拒绝）
   -h, --help   本帮助
 
@@ -48,6 +52,7 @@ EOF
 }
 
 force=false
+upgrade=false
 layers=""
 target=""
 for arg in "$@"; do
@@ -58,6 +63,7 @@ for arg in "$@"; do
     --guard)    layers="$layers guard" ;;
     --pipeline) layers="$layers pipeline" ;;
     --all)      layers="core claude ci guard pipeline" ;;
+    --upgrade)  layers="core claude ci guard pipeline"; upgrade=true ;;
     --force)    force=true ;;
     -h|--help)  usage; exit 0 ;;
     -*)         echo "bootstrap: unknown flag '$arg'" >&2; usage >&2; exit 2 ;;
@@ -66,22 +72,73 @@ for arg in "$@"; do
 done
 [[ -n "$layers" ]] || layers="core"
 [[ -n "$target" ]] || target="$PWD"
+
+# CHG-014 / REQ-073: --upgrade first self-updates the skill source (when it is
+# a git clone with a clean tree), so "全面升级" = source latest + target sync.
+# If the pull actually changed files, re-exec so the NEW installer code runs
+# (bash must never execute a script file that changed underneath it).
+if [[ "$upgrade" == true ]]; then
+  if [[ -d "$SKILL_ROOT/.git" ]] && command -v git >/dev/null 2>&1; then
+    if [[ -n "$(git -C "$SKILL_ROOT" status --porcelain 2>/dev/null)" ]]; then
+      echo "NOTE       skill repo has uncommitted changes — skipping self-update; run with a clean skill repo for a full upgrade" >&2
+    else
+      before=$(git -C "$SKILL_ROOT" rev-parse HEAD 2>/dev/null || true)
+      if GIT_TERMINAL_PROMPT=0 git -C "$SKILL_ROOT" pull --ff-only -q 2>/dev/null; then
+        after=$(git -C "$SKILL_ROOT" rev-parse HEAD 2>/dev/null || true)
+        if [[ -n "$before" && -n "$after" && "$before" != "$after" ]]; then
+          echo "self-update skill repo: ${before:0:9} -> ${after:0:9} (re-executing with updated installer)"
+          exec bash "$SCRIPT_DIR/bootstrap.sh" "$@"
+        fi
+      else
+        echo "NOTE       skill repo self-update (git pull) failed — continuing with the local version; update the skill repo manually for a full upgrade" >&2
+      fi
+    fi
+  fi
+fi
+
 [[ -d "$target" ]] || { echo "bootstrap: target is not a directory: $target" >&2; exit 2; }
 
 # install_file <dest_rel> <src_rel> [chmod_mode]
+# CHG-013: live/user-owned files are NEVER touched by --upgrade (they hold
+# accumulated data: FU ledger, bug index, CFG records, user's verify command).
+LIVE_SKIP=(
+  "docs/bugfix-log.md"
+  "docs/06-delivery-summary.md"
+  "docs/06.5-deployment-config.md"
+  ".agent-governance.yml"
+)
+
 install_file() {
   local dest_rel="$1" src_rel="$2" chmod_mode="${3:-}"
   local dest="$target/$dest_rel" src="$SKILL_ROOT/$src_rel"
-  [[ -f "$src" ]] || { echo "bootstrap: MISSING SOURCE $src_rel (skill repo broken)" >&2; exit 2; }
+  [[ -f "$src" ]] || { echo "bootstrap: MISSING SOURCE $src_rel (skill repo broken) — partial install: installed=$installed" >&2; exit 2; }
+  if [[ "$upgrade" == true ]]; then
+    for skip in "${LIVE_SKIP[@]}"; do
+      if [[ "$dest_rel" == "$skip" ]]; then
+        echo "live (skip)  $dest_rel"
+        skipped=$(( skipped + 1 ))
+        return 0
+      fi
+    done
+  fi
   if [[ -e "$dest" ]]; then
     if cmp -s "$dest" "$src"; then
       echo "up to date   $dest_rel"
       skipped=$(( skipped + 1 ))
       return 0
     fi
+    if [[ "$upgrade" == true ]]; then
+      echo "updated      $dest_rel (upgrade)"
+      upgraded=$(( upgraded + 1 ))
+      mkdir -p "$(dirname "$dest")"
+      cp "$src" "$dest"
+      [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
+      return 0
+    fi
     if [[ "$force" != true ]]; then
       echo "CONFLICT     $dest_rel (different content; re-run with --force to overwrite)" >&2
       diff -u --label "$dest_rel (existing)" --label "$src_rel (template)" "$dest" "$src" >&2 || true
+      echo "bootstrap: aborting — partial install: installed=$installed up-to-date=$skipped; re-run with --force to complete" >&2
       exit 2
     fi
     echo "overwrite    $dest_rel"
@@ -98,6 +155,7 @@ install_file() {
 installed=0
 overwritten=0
 skipped=0
+upgraded=0
 
 run_layer() {
   local layer="$1"
@@ -147,18 +205,112 @@ run_layer() {
 }
 
 echo "bootstrap: applying layers [$(echo $layers | tr ' ' ',')] -> $target"
+if [[ "$upgrade" == true ]]; then
+  carried=$(grep -oE '规范版本：v[0-9.]+' "$SKILL_ROOT/resources/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1 | grep -oE '[0-9.]+')
+  installed_ver=$(grep -oE '规范版本：v[0-9.]+' "$target/docs/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1 | grep -oE '[0-9.]+' || true)
+  echo "upgrade: v${installed_ver:-not-installed} -> v${carried:-unknown}"
+  # CHG-015: uncommitted changes + upgrade = overwrite data-loss risk → block
+  # unless explicitly forced. Non-git targets get a prominent warning instead
+  # (nothing to roll back, but --upgrade is an explicit user action there).
+  if [[ -d "$target/.git" ]] && command -v git >/dev/null 2>&1; then
+    if [[ -n "$(git -C "$target" status --porcelain 2>/dev/null)" ]]; then
+      if [[ "$force" != true ]]; then
+        echo "bootstrap: target has uncommitted changes — commit first, or pass --force to upgrade anyway (git history preserves customization)" >&2
+        exit 2
+      fi
+      echo "WARNING     --force on a dirty target tree — uncommitted customizations may be overwritten" >&2
+    fi
+  elif [[ ! -d "$target/.git" ]]; then
+    echo "WARNING     target is not a git repository — upgraded files cannot be rolled back" >&2
+  fi
+fi
 for l in $layers; do
   run_layer "$l"
 done
 
+# CHG-012: guard auto-wiring — after install, wire everything that can be
+# wired without asking. Respect existing user config; never overwrite.
+auto_wire_guard() {
+  # 1) hooksPath: three states — unset -> set; already .githooks -> skip;
+  #    something else -> DO NOT touch, print manual hint (OQ-1).
+  if [[ -d "$target/.git" ]] && command -v git >/dev/null 2>&1; then
+    cur=$(git -C "$target" config --get core.hooksPath || true)
+    if [[ -z "$cur" ]]; then
+      git -C "$target" config core.hooksPath .githooks
+      echo "auto-wired   git config core.hooksPath .githooks"
+    elif [[ "$cur" == ".githooks" ]]; then
+      echo "auto-wired   core.hooksPath already .githooks (skipped)"
+    else
+      echo "NOTE         core.hooksPath is '$cur' (custom) — left untouched; wire .githooks manually if intended" >&2
+    fi
+  fi
+  # 2) client hook adapter: only run when a supported client is detected in
+  #    THIS shell's env (the adapter itself exits 0 even without a client, so
+  #    its exit code alone would false-positive — check the env here first).
+  if [[ -f "$target/scripts/install-hook-adapter" ]]; then
+    client=""
+    if [[ "${CLAUDECODE:-}" == 1 ]]; then client=claude
+    elif [[ -n "${CURSOR_AGENT:-}" || -n "${CURSOR_TRACE_ID:-}" ]]; then client=cursor
+    elif [[ "${GEMINI_CLI:-}" == 1 ]]; then client=gemini
+    fi
+    if [[ -n "$client" ]]; then
+      ok=0
+      if (cd "$target" && bash scripts/install-hook-adapter "$client"); then
+        for f in .claude/settings.json .cursor/hooks.json .gemini/settings.json; do
+          [[ -f "$target/$f" ]] && ok=1
+        done
+      fi
+      if [[ "$ok" == 1 ]]; then
+        echo "auto-wired   client hook adapter generated ($client)"
+      else
+        echo "NOTE         adapter generation did not produce a config for $client — run scripts/install-hook-adapter manually" >&2
+      fi
+    else
+      echo "NOTE         no supported coding client detected in this shell — run scripts/install-hook-adapter inside your client; Git hooks + CI still enforce" >&2
+    fi
+  fi
+  # 3) verification command autodetect: replace the placeholder only; user
+  #    customizations are never touched. Env var keeps highest priority at runtime.
+  local yml="$target/.agent-governance.yml" detected=""
+  if [[ -f "$yml" ]] && grep -q '<replace-with-project-test-command>' "$yml"; then
+    if [[ -f "$target/package.json" ]] && grep -q '"test"[[:space:]]*:' "$target/package.json"; then detected="npm test"
+    elif [[ -f "$target/Makefile" ]] && grep -qE '^test[[:space:]]*:' "$target/Makefile"; then detected="make test"
+    elif [[ -f "$target/pom.xml" ]]; then detected="mvn test"
+    elif [[ -f "$target/go.mod" ]]; then detected="go test ./..."
+    elif [[ -f "$target/pyproject.toml" || -f "$target/pytest.ini" ]]; then detected="pytest -q"
+    elif [[ -f "$target/Cargo.toml" ]]; then detected="cargo test"
+    fi
+    if [[ -n "$detected" ]]; then
+      tmpf=$(mktemp 2>/dev/null) || tmpf=""
+      if [[ -n "$tmpf" ]]; then
+        # single-quoted sed program; the detected command is appended as a
+        # separate argv piece to avoid any quote-escaping in the pattern
+        sed 's|verification_command: "<replace-with-project-test-command>"|verification_command: "__DETECTED__"|' "$yml" > "$tmpf" \
+          && sed "s|__DETECTED__|$detected|" "$tmpf" > "$tmpf.2" \
+          && mv "$tmpf.2" "$yml" \
+          && echo "auto-wired   verification command detected -> $detected (edit .agent-governance.yml to change; AGENT_GUARD_VERIFY_COMMAND env overrides)"
+        rm -f "$tmpf" "$tmpf.2"
+        grep -q '<replace-with-project-test-command>' "$yml" && echo "NOTE         placeholder replacement FAILED — set ci.verification_command manually" >&2
+      fi
+    else
+      echo "NOTE         could not detect a test command — set ci.verification_command in .agent-governance.yml (or AGENT_GUARD_VERIFY_COMMAND)" >&2
+    fi
+  fi
+  # 4) platform-side step cannot be automated via files — print exact hint.
+  echo "manual       GitHub: mark 'agent-governance' workflow as a required check (repo Settings -> Branches -> Branch protection, or via gh api)"
+}
+case " $layers " in
+  *" guard "*) auto_wire_guard ;;
+esac
+[[ "$upgrade" == true ]] && echo "upgrade: governance files synced to carried version; live/user files untouched"
+
 cat <<EOF
 
 bootstrap: done. Summary for $target:
-  installed: $installed   overwritten: $overwritten   up-to-date: $skipped   conflicts: 0
+  installed: $installed   overwritten: $overwritten   upgraded: $upgraded   up-to-date: $skipped   conflicts: 0
 Next (per SKILL.md):
   - 变更起编时从模板生成 00-intent.md / 00-governance.json / 04.5-coding-record.md
-  - 若启用了 --guard，运行 scripts/install-hook-adapter 生成当前客户端 Hook，
-    并执行 git config core.hooksPath .githooks
-  - 在托管平台将 agent-governance 与项目测试设为 Required Check
+  - --guard 已自动接线 hooksPath / 客户端适配器 / 验证命令探测（见上方 auto-wired 行）
+  - 剩余手工仅平台侧：在托管平台将 agent-governance 与项目测试设为 Required Check
 EOF
 exit 0

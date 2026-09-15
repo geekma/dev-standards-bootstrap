@@ -259,8 +259,29 @@ validate_stop() {
   validate_active_change
   id=$(active_change)
   validate_delivery "$id"
-  if [[ -n "${AGENT_GUARD_VERIFY_COMMAND:-}" ]]; then
-    bash -lc "$AGENT_GUARD_VERIFY_COMMAND" || die "cannot finish: AGENT_GUARD_VERIFY_COMMAND failed"
+  # CHG-012 / FU: verification command source chain — env (highest) →
+  # .agent-governance.yml ci.verification_command (placeholder skipped) → unset
+  # (verify skipped; same fail-open semantics as before). Two-phase per design:
+  # the file/config is the guard for "is there a command", bash is the assertion.
+  local vcmd="${AGENT_GUARD_VERIFY_COMMAND:-}" vsrc="env" yml_tampered=0
+  if [[ -z "$vcmd" && -f ".agent-governance.yml" ]]; then
+    # CHG-015 anti-tamper: if the yml itself is part of the pending change
+    # (modified/untracked), its command must NOT auto-execute — a PR could
+    # otherwise inject arbitrary commands into the reviewer's stop/ci hook.
+    # Committed versions are trusted (standard repo-trust model).
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+       && [[ -n "$(git status --porcelain -- .agent-governance.yml 2>/dev/null)" ]]; then
+      yml_tampered=1
+      echo "agent-gate: verification command from .agent-governance.yml skipped — the file is modified in the pending change (anti-tamper, CHG-015); set AGENT_GUARD_VERIFY_COMMAND to run verification"
+    else
+      vcmd=$(sed -nE 's/^[[:space:]]*verification_command:[[:space:]]*"(.+)".*/\1/p' .agent-governance.yml 2>/dev/null | head -n 1)
+      vsrc=".agent-governance.yml"
+      case "$vcmd" in ""|*"<replace"*) vcmd=""; vsrc="" ;; esac
+    fi
+  fi
+  if [[ -n "$vcmd" ]]; then
+    echo "agent-gate: verification command from $vsrc: $vcmd"
+    bash -lc "$vcmd" || die "cannot finish: verification command failed (from $vsrc): $vcmd"
   fi
 }
 
