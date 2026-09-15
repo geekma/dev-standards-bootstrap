@@ -101,6 +101,16 @@ report "version tree zh"             1 "$(grep_count "$RM_ZH" "完整规范文�
 report "version tree en"             1 "$(grep_count "$RM_EN" "Full standards document v${V}")"
 report "skill carried version"       1 "$(grep_count "$SKILL" "当前携带版本 v${V}")"
 
+# SKILL.md 版本可见性三载体（用户需求："在 skill 里就能看到是不是最新版"）。
+# 平台事实：SKILL.md frontmatter 无 version 字段、/skills 面板只展示 name + description
+# → 只写 frontmatter 用户看不见；只写正文则技能列表里看不见。故版本必须同时落在
+# ①frontmatter version ②description 尾注 ③正文顶部横幅。三处任一漂移（升级规范时漏改）
+# 即红——与"版本页脚已同步"同族：声称的覆盖面必须等于校验的覆盖面。
+report "skill frontmatter version == footer version" "$V" \
+  "$(grep -m1 -oE '^version: [0-9.]+' "$SKILL" | grep -oE '[0-9.]+')"
+report "skill description carries carried version" 1 "$(grep_count "$SKILL" "携带规范版本 v${V}")"
+report "skill body version banner present" 1 "$(grep_count "$SKILL" "当前携带版本：v${V}")"
+
 # 升级日志（v3.8.0 起外置 STANDARDS_CHANGELOG.md，CHG-005）：新文件存在、
 # 新条目置顶且首行版本 == 页脚版本、规范正文不再内嵌历史日志行
 SLOG="$ROOT/resources/STANDARDS_CHANGELOG.md"
@@ -421,7 +431,15 @@ fi
 report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
 
 # A6c docs/changes/ 下 CHG 编号连续递增（CHG-001, CHG-002, ... 无跳号）
-chg_nums=$(basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/null | sed 's/CHG-//' | sort -n)
+# BUG-004 修复：编号去前缀后保留前导零（008），bash 算术按**八进制**解析 →
+# "value too great for base"；实测（bash 3.2）该错误会**中断整个 if 复合块**，
+# 而不只是让条件为假 → 下面的 report 从未执行，断言既不会红也不会绿，连断言
+# 总数都不计它（A10 基线按缺失它的口径固化，缺陷完全不可见）。
+# 修法：复用本仓 shipped 模板 audit-docs-consistency.sh check_seq() 的既有范式——
+# 在取值阶段用 awk '%d' 做十进制归一（非数字归一为 0，产生 gap 报错而非静默跳过）。
+chg_nums=$(basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/null \
+  | sed 's/CHG-//' | awk '{printf "%d\n", $1}' | sort -n)
+a6c_ran=0
 if [[ -n "$chg_nums" ]]; then
   chg_prev=0
   chg_gap=0
@@ -433,9 +451,15 @@ if [[ -n "$chg_nums" ]]; then
     chg_prev=$n
   done
   report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
+  a6c_ran=1
 else
   report "A6c CHG numbering continuous (no gaps)" 1 0
+  a6c_ran=1
 fi
+# BUG-004 放大器守卫：A10 基线只记**断言总数**、不记**断言名** → 任一断言被"整块
+# 跳过"时总数与基线依然一致（基线本就是按缺失它的口径固化的），缺陷完全不可见。
+# 本断言专防"复合块被算术错误中断导致 report 未执行"这一失效模式复发。
+report "A6c actually executed (BUG-004 guard)" 1 "$a6c_ran"
 
 # A6d docs/bugs/ 下每个 BUG 目录含六件套（01~06）
 bug_dirs=$(ls -d "$REPO_BUGS"/BUG-* 2>/dev/null || true)

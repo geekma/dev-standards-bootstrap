@@ -24,6 +24,20 @@ The design is measured, not hypothetical. A CIKM '26 study of production agent m
 
 The failure-diagnosis side is grounded the same way. AgentRx ([arXiv:2602.02475](https://arxiv.org/abs/2602.02475)) shows that root-cause attribution stays reliable (annotator κ=0.89) only when causes go through **mutually-exclusive categories with disambiguation checklists and evidence-cited judgments**, and that checkers must be **two-phase — a structural guard before the assertion** (ambiguous evidence must not fail). This project folds both into its bug process: root-cause tables carry a mutually-exclusive classification with per-category disambiguation questions, root causes anchor at the **earliest unrecovered failure point** (late symptoms are not the cause), and every new gate/audit checker follows the same guard→assertion design rule (§2.5 Stage 6, §2.13.4).
 
+Two field notes from the production repository this standard was extracted from:
+
+<p align="center">
+  <img src="screenshots/token-counter-93m-per-day.png" alt="Token counter: 93.9M tokens in one day, 192.6M over seven days" width="360">
+  <br>
+  <sub><b>Field note 1 — code is not the bottleneck.</b> Real token-counter capture: 93.9M tokens in a single day for $2.36, 192.6M across seven days. Output is now measured in hundreds of millions; what breaks is the process wrapped around it.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/standards-bloated-879-lines.png" alt="Agent starting a task by running wc -l docs/DEVELOPMENT_STANDARDS.md and listing docs/" width="760">
+  <br>
+  <sub><b>Field note 2 — the standard lives on disk, not in context.</b> The agent's first move on a task is <code>wc -l docs/DEVELOPMENT_STANDARDS.md</code> and <code>ls docs/</code>: it locates the standard as a file it must read, rather than a rule it happens to remember from a conversation that may already be compacted.</sub>
+</p>
+
 ---
 
 ## Key Features
@@ -60,6 +74,8 @@ The Skill runs `bash scripts/bootstrap.sh --all <target>` (layered flags `--core
 
 **Upgrading**: after a skill version bump, say the same utterance again — the skill detects the version diff and runs `bootstrap --upgrade`, which updates governance-owned files (standards, templates, scripts, hooks, workflows) to the carried version while leaving live records untouched (`bugfix-log.md`, delivery summary, 06.5 records, your `.agent-governance.yml`), then re-runs the auto-wiring. Commit the target repo first so git history preserves any customization.
 
+**Checking your version**: the carried standards version is written into `SKILL.md` in three places — frontmatter `version:`, the tail of the `description`, and a banner right under the title — so it is visible in the skill list and again whenever the skill loads. Compare it with the `Standards Version` badge at the top of this README: a lower number means your local copy is stale.
+
 ---
 
 ## Repository Structure
@@ -73,7 +89,7 @@ dev-standards-bootstrap/
 ├── scripts/
 │   ├── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer, idempotent, conflict-safe
 │   └── update-assertion-count.sh           # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
-├── screenshots/                            # README screenshots (gate blocking, change artifacts)
+├── screenshots/                            # README screenshots (motivation, gate blocking, artifacts, gate-5 review)
 ├── tests/
 │   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (158 assertions; copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
 │   └── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist uniqueness / numbering / tautology-proof greps
@@ -115,6 +131,12 @@ dev-standards-bootstrap/
 
 **Filing a change is the agent's job, not yours**: the coding agent creates `docs/changes/CHG-123/` with `00-intent.md` (recorded intent) + `00-governance.json` (risk level + distinct execution owners; L3 needs the three `release_authorized_by`-family authorization fields) and the non-empty spec/impact/plan/tasks/test artifacts, then activates the gate. From that moment enforcement is automatic — pre-write before edits, staged at commit, stop at turn end, ci on the PR.
 
+<p align="center">
+  <img src="screenshots/agent-writing-change-artifacts.png" alt="Agent writing the CHG-044 artifact set plus BUG-016 and BUG-017 document groups" width="620">
+  <br>
+  <sub>The agent filing its own change: CHG-044's full artifact set (intent → governance → spec → impact analysis → plan → tasks → test scripts) plus the defect document groups for BUG-016/BUG-017 — every file written before the first line of source code.</sub>
+</p>
+
 Command reference — every command below is invoked **automatically** by Git hooks, CI, or the agent at the right moment; there is nothing here to run by hand during setup:
 
 | Command | Purpose |
@@ -127,9 +149,23 @@ Command reference — every command below is invoked **automatically** by Git ho
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state + delivery evidence for touched changes) and runs the real verification command |
 | `metrics` | Read-only pipeline metrics as JSON Lines — observations only, never a substitute for DoD |
 
-![The required artifact set of a new change: 00-governance.json, 01-spec.md, 03-modification-plan.md, 04-test-scripts.md staged as new files](screenshots/change-artifacts-required-set.png)
+<p align="center">
+  <img src="screenshots/change-artifacts-required-set.png" alt="00-governance.json, 01-spec.md, 03-modification-plan.md and 04-test-scripts.md staged as new files" width="620">
+  <br>
+  <sub>The minimum artifact set of a new change — <code>00-governance.json</code>, <code>01-spec.md</code>, <code>03-modification-plan.md</code>, <code>04-test-scripts.md</code> — staged as new files. <code>begin</code> refuses to activate the gate without them.</sub>
+</p>
 
-![agent-gate blocking a non-compliant commit of source changes in an IDE](screenshots/agent-gate-blocked-in-trae.png)
+<p align="center">
+  <img src="screenshots/agent-gate-blocked-in-trae.png" alt="agent-gate rejecting a source commit with no change artifacts inside the IDE" width="420">
+  <br>
+  <sub>agent-gate blocking a non-compliant source commit inside the IDE: no artifacts under <code>docs/changes/&lt;change-id&gt;/</code>, no commit — and the enforcement is not tied to any single editor.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/agent-gate-blocks-defect-doc-set.png" alt="agent-gate rejecting a defect commit that is missing docs/changes/BUG-021/00-intent.md" width="420">
+  <br>
+  <sub>The same gate on the defect path: a commit missing <code>docs/changes/BUG-021/00-intent.md</code> is rejected before it ever reaches the branch.</sub>
+</p>
 
 The **verification command** (the real build/test command run by `stop` and `ci`) is auto-detected at bootstrap from the project layout (package.json / Makefile / pom.xml / go.mod / pyproject / Cargo) and prefilled into `.agent-governance.yml` — edit it there, or override with the `AGENT_GUARD_VERIFY_COMMAND` env var (highest priority). Existing user config is never overwritten (custom `core.hooksPath` or a customized yml is left untouched). Security note: a yml verification command is **not executed while the file itself is part of the pending change** (anti-tamper — a PR cannot inject commands into the reviewer's hook); commit it first, or use the env var.
 
@@ -150,7 +186,17 @@ Injected automatically by `bootstrap --pipeline` (included in `--all`) — the w
 
 A change passing through the gates accumulates its full artifact chain, from `01-spec.md` all the way to `08-supplement.md`:
 
-![Full artifact lifecycle of a change: 01-spec through 08-supplement](screenshots/change-artifacts-full-lifecycle.png)
+<p align="center">
+  <img src="screenshots/change-artifacts-full-lifecycle.png" alt="One change's artifact chain: 01-spec.md through 08-supplement.md" width="520">
+  <br>
+  <sub>One change's full artifact chain, <code>01-spec.md</code> → <code>08-supplement.md</code>. Every stage ends by committing a version-controlled artifact; the next stage begins by reading it — the commit chain itself is the audit trail.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/ai-client-todo-with-traceability.png" alt="AI client todo list ordered docs first, then failing test, then code, each tagged with REQ/DES/TC ids" width="720">
+  <br>
+  <sub>The same chain seen from inside the AI client: a todo list whose order is pinned by the standard — docs first, then the failing test (red), then code — and every item carries its REQ/DES/TASK/TC/CHG traceability id.</sub>
+</p>
 
 ```
 [ Gate 1: Doc-First ]      Requirements/design must exist before any code change
@@ -169,6 +215,40 @@ A change passing through the gates accumulates its full artifact chain, from `01
 ```
 
 Any change that fails any gate is **blocked from merge to main**.
+
+### Evidence & Traceability in Practice
+
+<p align="center">
+  <img src="screenshots/rtvm-matrix-full-chain.png" alt="RTVM matrix with REQ, DES, TASK, TC and verification columns" width="620">
+  <br>
+  <sub>Gate 4's RTVM matrix: every REQ row must resolve to DES / TASK / TC and to verification evidence — an unclosed row blocks the merge.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/dod-item-by-item-checklist.png" alt="DoD checklist ticked item by item with per-gate evidence citations" width="360">
+  <br>
+  <sub>Gate 3 / §2.16.3 in practice: the DoD is closed item by item with each gate's evidence cited inline. A single line saying "completed per the standard" is rejected — the checklist is the deliverable.</sub>
+</p>
+
+### Gate 5 in Practice: Independence Is Dispatched, Not Declared
+
+<p align="center">
+  <img src="screenshots/gate5-green-evidence-and-review-dispatch.png" alt="Green recheck PASS 24 / FAIL 0, EXIT=0, then two read-only subtasks dispatched" width="760">
+  <br>
+  <sub>Gate 5 starts from real evidence, not a claim: green recheck (PASS 24 / FAIL 0, EXIT=0) plus a frozen baseline hash, then two <b>read-only</b> sub-tasks are dispatched — one for test recheck, one for code review.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/independent-review-rejection.png" alt="Independent test recheck and code review dispatched as separate sub-tasks, review returned as a blocker" width="480">
+  <br>
+  <sub>Independence is dispatched, not declared: separate sub-tasks for independent test recheck and independent code review — and the review comes back <b>rejected</b> with a blocking finding, which is the system working.</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/gate5-independent-recheck.png" alt="A new independent reviewer verifying the rework after the fix" width="760">
+  <br>
+  <sub>The rework is then verified by a <b>new</b> independent reviewer: the author cannot self-certify, so "fixed" requires evidence produced after the fix.</sub>
+</p>
 
 ---
 

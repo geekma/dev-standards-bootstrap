@@ -24,6 +24,20 @@
 
 失败诊断侧同样有方法论文支撑。AgentRx（[arXiv:2602.02475](https://arxiv.org/abs/2602.02475)）证明：根因归因要保持可靠（标注一致性 κ=0.89），必须把根因逼进**互斥分类、用消歧问题裁决并强制引用证据**，且检查器必须**两段式——先结构 guard 后断言**（证据含糊不得判罚）。本项目已将其吸收进 Bug 流程：根因表携带互斥分类与逐类消歧问题、根因锚定"**最早未恢复失败点**"（晚期显著症状不是根因）、每个新增门禁/审计检查遵循同一 guard→断言设计规约（§2.5 阶段 6、§2.13.4）。
 
+以下两张实拍，来自本规范被抽离出来的那个生产仓库：
+
+<p align="center">
+  <img src="screenshots/token-counter-93m-per-day.png" alt="token 计数器：一天 93.9M tokens，七天 192.6M" width="360">
+  <br>
+  <sub><b>实拍一 · 瓶颈早已不在代码。</b>token 计数器真实读数：一天 93.9M tokens、花费 $2.36，七天 192.6M。产出按亿计之后，真正会崩的是包在代码外面的那套流程。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/standards-bloated-879-lines.png" alt="Agent 开工先执行 wc -l docs/DEVELOPMENT_STANDARDS.md 并列出 docs/ 目录" width="760">
+  <br>
+  <sub><b>实拍二 · 规范活在磁盘上，不活在上下文里。</b>Agent 启动任务的第一件事是 <code>wc -l docs/DEVELOPMENT_STANDARDS.md</code> 再 <code>ls docs/</code>——它把规范当成一份必须去读的文件，而不是碰巧从某段可能已被压缩的对话里记住的一条约束。</sub>
+</p>
+
 ---
 
 ## 核心特性
@@ -60,6 +74,8 @@ Skill 会执行 `bash scripts/bootstrap.sh --all <目标仓库>`（分层 flag `
 
 **版本升级**：Skill 版本更新后，把同一句话再说一遍——Skill 检测版本差异并执行 `bootstrap --upgrade`：治理自有文件（规范/模板/脚本/hooks/workflows）更新到携带版本，**live 记录不动**（`bugfix-log.md`、交付总结、06.5 记录、你的 `.agent-governance.yml`），随后重跑自动接线。升级前先提交目标仓库，让 git history 保留任何自定义。
 
+**查看当前版本**：本 Skill 携带的规范版本写在 `SKILL.md` 三处——frontmatter `version:`、`description` 尾注、标题下的版本横幅——技能列表里能看到，加载本文件时也再看到一次。与上方 `规范版本` 徽章比对即可：数字更低说明本地副本已落后。
+
 ---
 
 ## 仓库结构
@@ -73,7 +89,7 @@ dev-standards-bootstrap/
 ├── scripts/
 │   ├── bootstrap.sh                        # 清单驱动安装器（不随 Skill 下发）：按层复制 resources/ 到目标仓库，幂等、冲突安全
 │   └── update-assertion-count.sh           # 仅规范源层（不下发）：再生成 README 断言声称数 + 审计执行数基线
-├── screenshots/                            # README 截图（门禁拦截、变更产物）
+├── screenshots/                            # README 截图（动机、门禁拦截、变更产物、门禁 5 复核）
 ├── tests/
 │   ├── run-tests.sh                        # 治理模板 golden-case 回归套件，含门禁与 bootstrap（158 项断言；复制到目标 tests/——目标仓自适应：未下发/跳过用例自动 SKIP）
 │   └── audit-standards-src.sh              # 仅规范源层（不下发）：审计规范文本自身——版本链 / 关键词矩阵 / 清单唯一性 / 编号体系 / 防恒真 grep
@@ -115,6 +131,12 @@ dev-standards-bootstrap/
 
 **发起变更是 Agent 的职责，不是你的**：编码 Agent 创建 `docs/changes/CHG-123/`（`00-intent.md` 意图登记 + `00-governance.json` 风险等级与互异执行主体；L3 另须 `release_authorized_by` 系列三个授权字段）及非空的规格/影响/方案/任务/测试产物，然后激活门禁。此后强制全自动——写码前 pre-write、提交时 staged、回合结束 stop、PR 上 ci。
 
+<p align="center">
+  <img src="screenshots/agent-writing-change-artifacts.png" alt="Agent 正在写入 CHG-044 全套产物与 BUG-016、BUG-017 缺陷文档组" width="620">
+  <br>
+  <sub>发起变更是 Agent 自己的活：CHG-044 全套产物（意图 → 治理 → 规格 → 影响分析 → 方案 → 任务 → 测试脚本）外加 BUG-016/BUG-017 缺陷文档组——每个文件都落在第一行源码之前。</sub>
+</p>
+
 命令参考——以下命令均由 Git Hook、CI 或 Agent 在对应时机**自动调用**；初始化阶段没有任何需要手工执行的命令：
 
 | 命令 | 用途 |
@@ -127,9 +149,23 @@ dev-standards-bootstrap/
 | `--stage ci [--base <ref>]` | 复核分支/PR diff（产物 + 治理状态 + 触及变更的交付证据）并执行真实验证命令 |
 | `metrics` | 只读管线度量 JSON Lines——仅观察，不得替代 DoD |
 
-![新变更必检产物集：00-governance.json、01-spec.md、03-modification-plan.md、04-test-scripts.md 以新文件暂存](screenshots/change-artifacts-required-set.png)
+<p align="center">
+  <img src="screenshots/change-artifacts-required-set.png" alt="00-governance.json、01-spec.md、03-modification-plan.md、04-test-scripts.md 以新文件暂存" width="620">
+  <br>
+  <sub>新变更的最低产物集——<code>00-governance.json</code>、<code>01-spec.md</code>、<code>03-modification-plan.md</code>、<code>04-test-scripts.md</code>——以新文件暂存；缺任一，<code>begin</code> 就不放行。</sub>
+</p>
 
-![agent-gate 在 IDE 内拦截不合规的源码提交](screenshots/agent-gate-blocked-in-trae.png)
+<p align="center">
+  <img src="screenshots/agent-gate-blocked-in-trae.png" alt="agent-gate 在 IDE 内拒绝无产物的源码提交" width="420">
+  <br>
+  <sub>agent-gate 在 IDE 内实拦不合规的源码提交：<code>docs/changes/&lt;变更号&gt;/</code> 下没有产物就不许提交——而且治理不绑定任何一款编辑器。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/agent-gate-blocks-defect-doc-set.png" alt="agent-gate 拒绝缺少 docs/changes/BUG-021/00-intent.md 的缺陷提交" width="420">
+  <br>
+  <sub>同一道门禁在缺陷路径上：缺少 <code>docs/changes/BUG-021/00-intent.md</code> 的提交，在到达分支之前就被拒绝。</sub>
+</p>
 
 **验证命令**（`stop` 与 `ci` 运行的真实构建/测试命令）在 bootstrap 时从项目布局**自动探测**（package.json / Makefile / pom.xml / go.mod / pyproject / Cargo）并预填 `.agent-governance.yml`——可直接编辑，或用 `AGENT_GUARD_VERIFY_COMMAND` 环境变量覆盖（最高优先级）。用户既有配置绝不被覆盖（自定义 `core.hooksPath` 或已改的 yml 原样保留）。安全说明：**yml 文件本身处于待定变更中时，其验证命令不会被执行**（反篡改——PR 无法向审查者的钩子注入命令）；先提交，或用环境变量。
 
@@ -150,7 +186,17 @@ dev-standards-bootstrap/
 
 变更通过门禁的过程会积累完整产物链，从 `01-spec.md` 一直到 `08-supplement.md`：
 
-![变更完整产物生命周期：01-spec 至 08-supplement](screenshots/change-artifacts-full-lifecycle.png)
+<p align="center">
+  <img src="screenshots/change-artifacts-full-lifecycle.png" alt="一个变更的完整产物链：01-spec.md 至 08-supplement.md" width="520">
+  <br>
+  <sub>一个变更的完整产物链：<code>01-spec.md</code> → <code>08-supplement.md</code>。每阶段以提交一个版本受控产物结束，下一阶段以读取它开始——提交链本身就是审计轨迹。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/ai-client-todo-with-traceability.png" alt="AI 客户端 todo 列表：先文档、再失败的测试、最后代码，每项带 REQ/DES/TC 追踪号" width="720">
+  <br>
+  <sub>同一条链在 AI 客户端里的样子：todo 顺序被规范钉死——先文档、再失败的测试（红）、最后才是代码，且每一项都挂着 REQ/DES/TASK/TC/CHG 追踪号。</sub>
+</p>
 
 ```
 [ 门禁 1: 需求/设计先行 ]   任何代码改动前必须先有需求与设计
@@ -169,6 +215,40 @@ dev-standards-bootstrap/
 ```
 
 任何一道门禁未通过，变更即被**拦截在合入主分支之外**。
+
+### 证据与追踪实况
+
+<p align="center">
+  <img src="screenshots/rtvm-matrix-full-chain.png" alt="RTVM 矩阵：REQ / DES / TASK / TC / 验证证据列" width="620">
+  <br>
+  <sub>门禁 4 的 RTVM 矩阵：每个 REQ 行都必须能落到 DES / TASK / TC 与验证证据上——未闭环的行直接阻断合入。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/dod-item-by-item-checklist.png" alt="DoD 逐条勾选清单，每项就地引用对应门禁的证据" width="360">
+  <br>
+  <sub>门禁 3 / §2.16.3 实况：DoD 逐条勾选，且每一项都就地引用对应门禁的证据。一句"已按规范完成"会被退回——清单本身就是交付物。</sub>
+</p>
+
+### 门禁 5 实况：独立性靠派发，不靠声明
+
+<p align="center">
+  <img src="screenshots/gate5-green-evidence-and-review-dispatch.png" alt="绿态复核 PASS 24 / FAIL 0、EXIT=0，随后派出两个只读子任务" width="760">
+  <br>
+  <sub>门禁 5 从真实证据开始，而不是从一句声明开始：绿态复核（PASS 24 / FAIL 0，EXIT=0）加冻结基线哈希，随后派出两个<b>只读</b>子任务——一个做测试复核，一个做代码审查。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/independent-review-rejection.png" alt="独立测试复核与独立代码审查各起一个子任务，Review 以阻断项退回" width="480">
+  <br>
+  <sub>独立性是派发出来的，不是声明出来的：独立测试复核与独立代码审查各起一个子任务——而 Review 以阻断项<b>退回</b>，这恰恰说明机制在生效。</sub>
+</p>
+
+<p align="center">
+  <img src="screenshots/gate5-independent-recheck.png" alt="由新的独立复核方验证整改结果" width="760">
+  <br>
+  <sub>整改再由<b>新的</b>独立复核方验证：开发方不得自证，所以"已修复"必须拿出整改之后产生的证据。</sub>
+</p>
 
 ---
 

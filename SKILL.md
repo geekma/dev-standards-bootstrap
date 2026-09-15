@@ -1,9 +1,14 @@
 ---
 name: dev-standards-bootstrap
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。
+version: 3.14.0
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.14.0，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
+
+> **当前携带版本：v3.14.0**（规范版本，与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+>
+> **怎么判断是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章与 `docs/STANDARDS_CHANGELOG.md` 顶部版本行。低于上面这个版本号，就说明该升级了——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。
 
 ## 这个 Skill 做什么
 
@@ -50,6 +55,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 ## 版本同步
 
 - **同步范围**：`resources/DEVELOPMENT_STANDARDS.md`、`resources/AGENTS.md` 与方法论层（`resources/METHODOLOGY.md` + `resources/methodologies/`）应随规范正文迭代更新（当前携带版本 v3.14.0，见规范页脚）；`resources/templates/agent-gate.sh` 与 `tests/run-tests.sh` 必须同步演进——改脚本必须先跑通 `tests/run-tests.sh` 再发布（§2.17.4）；`scripts/bootstrap.sh` 的清单与 SKILL.md 步骤 3-4 同步维护；断言数生成器 `scripts/update-assertion-count.sh` 管理 README 声称数与审计执行数基线（改断言后必须运行再发布）。
+- **版本可见性（让用户能自查是否最新）**：平台 frontmatter 没有 `version` 字段，`/skills` 面板也只展示 name + description——所以版本号必须落在**三处**：frontmatter `version:`（机器可读）、`description` 尾注（技能列表/模型上下文可见）、正文顶部版本横幅（本文件被加载即可见）。三处与规范页脚同源，由 `tests/audit-standards-src.sh` 的 A1 断言守护；升级规范时**页脚 + 这三处一起改**，漏改即审计红。`resources/DEVELOPMENT_STANDARDS.md` 页脚仍是唯一权威源，其余均为其派生。
 - **文档一致性**：改规范正文 / 模板 / README 后必须另跑通 `tests/audit-standards-src.sh`（规范源层审计：版本链、关键词落点矩阵、§3↔§4 清单同源、编号体系收录、占位符 vs A 层断言防恒真、骨架 vs A 层关键词、00 管线件落点、bugfix 双登记 9+1 项对齐、锚点章节存在性、README 树↔磁盘、升级日志排序）——文档完整性由方法与机器保证，不由轮数保证。
 - **适用范围分层**：`audit-standards-src.sh` 属规范源层自检（仅本仓库使用，**不入** bootstrap 复制清单）；通用层（`agent-gate.sh`/`run-tests.sh`/`check-standards-compliance.sh`/`audit-docs-consistency.sh`）审计目标仓库的变更产物，两层不可互替。脚本断言分 PART A（永久结构不变量）与 PART B（版本快照落点，规范升级时随 §2.14 日志更新），防脚本腐烂。
 - **升级推送**：每次升级本 Skill 内的规范版本后，已经接入过的项目**不会自动更新**，需要用户再次调用本 Skill 走"检测已有文件 -> 展示版本差异 -> 询问是否升级"的流程，并按版本补复制：v3.3.0+ 补 `METHODOLOGY.md`、`methodologies/`（v3.4.0 含 `state-trigger-audit.md`）与 `bugfix-log.md` 到 `docs/`；v3.5.0+ 补 `commit-msg` 模板到 `.githooks/` 并更新 `pre-push` 与 `scripts/agent-gate`；v3.6.0+ 补缺陷文档组模板（`bug-diagnosis.md`/`bug-impact.md`/`bug-test-plan.md`）到 `docs/bugs/_templates/`；v3.7.0+ 缺陷模板扩为六件套（补 `bug-matrix.md`/`bug-config.md`/`bug-tasks.md`）、补编码记录模板 `coding-record.md`（变更起编时落 `docs/changes/<变更号>/04.5-coding-record.md`）并同步更新 `scripts/agent-gate` 与 `tests/run-tests.sh`；v3.7.0 修订（CHG-004）补 `06.5-deployment-config.md` 与 `06-delivery-summary.md` 两个模板到 `docs/`，并同步更新 `scripts/agent-gate`——**这是一次交付门禁收紧**：此前 `--stage stop` 只校验 `04.5`/`05`/`09`，现在 `06.5` 与 `06-delivery-summary` 同样必检，老项目升级后需补齐这两份文档（未命中也要显式声明）才能通过。规范正文 §1.1 早已声明"八类缺一即未完成"，本修订只是让实现与已声明的语义对齐，故不升规范版本号。
