@@ -113,11 +113,9 @@ dev-standards-bootstrap/
 
 `bootstrap --guard`（`--all` 含）**自动注入完整强制执行包**：`scripts/agent-gate`、`.githooks/` Git Hook（pre-commit/pre-push/commit-msg）与 `core.hooksPath` 接线、`.agent-governance.yml`（团队可评审记录）、检测到受支持编码客户端时自动生成 Hook 适配器、golden-case 套件。无 Hook schema 的客户端由 Git Hook + CI 强制执行——不臆造配置。
 
-发起变更：在 `docs/changes/CHG-123/` 落 `00-intent.md`（意图登记）+ `00-governance.json`（风险等级 + 互异执行主体；L3 另须 `release_authorized_by` 系列三个授权字段）及非空的规格/影响/方案/任务/测试产物，然后执行：
+**发起变更是 Agent 的职责，不是你的**：编码 Agent 创建 `docs/changes/CHG-123/`（`00-intent.md` 意图登记 + `00-governance.json` 风险等级与互异执行主体；L3 另须 `release_authorized_by` 系列三个授权字段）及非空的规格/影响/方案/任务/测试产物，然后激活门禁。此后强制全自动——写码前 pre-write、提交时 staged、回合结束 stop、PR 上 ci。
 
-```bash
-scripts/agent-gate begin CHG-123
-```
+命令参考——以下命令均由 Git Hook、CI 或 Agent 在对应时机**自动调用**；初始化阶段没有任何需要手工执行的命令：
 
 | 命令 | 用途 |
 |---|---|
@@ -125,7 +123,7 @@ scripts/agent-gate begin CHG-123
 | `--stage pre-write` | Agent 写源码前校验活跃变更产物与治理状态；目标路径解析失败即拒绝放行（fail-closed） |
 | `--stage staged` | 暂存的源码改动必须携带对应变更产物与有效治理状态，否则提交被拒 |
 | `--stage commit-msg <msgfile>` | 归因闸门：暂存代码文件的提交消息必须引用有效变更号（合并 / Revert / 纯文档提交豁免） |
-| `--stage stop` | 源码改动后结束回合前，必须存在 `04.5-coding-record.md`（最先校验）、`05-test-results.md`、`09-changelog.md`（含 ReAct Observation 记录），配置了 `AGENT_GUARD_VERIFY_COMMAND` 时还须真实执行通过；changelog 引用的 REQ 必须已回填 `docs/<feature>/01.5-rtvm-matrix.md` 行（门禁 4 RTVM 闭环） |
+| `--stage stop` | 源码改动后结束回合前，必须存在 `04.5-coding-record.md`（最先校验）、`05-test-results.md`、`09-changelog.md`（含 ReAct Observation 记录），并真实执行通过验证命令（env 或 `.agent-governance.yml`，已配置时）；changelog 引用的 REQ 必须已回填 `docs/<feature>/01.5-rtvm-matrix.md` 行（门禁 4 RTVM 闭环） |
 | `--stage ci [--base <ref>]` | 复核分支/PR diff（产物 + 治理状态 + 触及变更的交付证据）并执行真实验证命令 |
 | `metrics` | 只读管线度量 JSON Lines——仅观察，不得替代 DoD |
 

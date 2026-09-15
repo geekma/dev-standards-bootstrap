@@ -16,7 +16,10 @@ required_before_merge:
   - 05-test-results.md
   - 09-changelog.md
 ci:
-  # Configure the actual project command in CI. The gate does not invent one.
+  # The gate reads THIS command as a fallback (env AGENT_GUARD_VERIFY_COMMAND
+  # wins). bootstrap auto-detects a project test command and replaces the
+  # placeholder; edit freely — never leave the placeholder if you want stop/ci
+  # to run your tests.
   verification_command: "<replace-with-project-test-command>"
 stop_hook:
   # Set AGENT_GUARD_VERIFY_COMMAND in a client adapter when a fast deterministic

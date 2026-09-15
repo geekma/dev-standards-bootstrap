@@ -113,11 +113,9 @@ dev-standards-bootstrap/
 
 `bootstrap --guard` (included in `--all`) **injects the full enforcement package automatically**: `scripts/agent-gate`, the `.githooks/` Git hooks (pre-commit/pre-push/commit-msg) plus `core.hooksPath` wiring, `.agent-governance.yml` (team-reviewable record), the client hook adapter when a supported coding client is detected, and the golden-case suite. Clients without hook schemas are enforced by Git hooks + CI — nothing is fabricated for them.
 
-To file a change, create `docs/changes/CHG-123/` with `00-intent.md` (recorded intent) + `00-governance.json` (risk level + distinct execution owners; L3 needs the three `release_authorized_by`-family authorization fields) and the non-empty spec/impact/plan/tasks/test artifacts, then run:
+**Filing a change is the agent's job, not yours**: the coding agent creates `docs/changes/CHG-123/` with `00-intent.md` (recorded intent) + `00-governance.json` (risk level + distinct execution owners; L3 needs the three `release_authorized_by`-family authorization fields) and the non-empty spec/impact/plan/tasks/test artifacts, then activates the gate. From that moment enforcement is automatic — pre-write before edits, staged at commit, stop at turn end, ci on the PR.
 
-```bash
-scripts/agent-gate begin CHG-123
-```
+Command reference — every command below is invoked **automatically** by Git hooks, CI, or the agent at the right moment; there is nothing here to run by hand during setup:
 
 | Command | Purpose |
 |---|---|
@@ -125,7 +123,7 @@ scripts/agent-gate begin CHG-123
 | `--stage pre-write` | Validates the active change's artifacts and governance state before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts and a valid governance state, otherwise the commit is rejected |
 | `--stage commit-msg <msgfile>` | Attribution gate: a commit that stages code files must reference a valid change id (waived for merge / revert / docs-only commits) |
-| `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md` (checked first), `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing `AGENT_GUARD_VERIFY_COMMAND` when configured; changelog REQ ids must be backfilled as rows in `docs/<feature>/01.5-rtvm-matrix.md` (Gate 4 RTVM closure) |
+| `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md` (checked first), `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing verification command (env or `.agent-governance.yml`, when configured); changelog REQ ids must be backfilled as rows in `docs/<feature>/01.5-rtvm-matrix.md` (Gate 4 RTVM closure) |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff (artifacts + governance state + delivery evidence for touched changes) and runs the real verification command |
 | `metrics` | Read-only pipeline metrics as JSON Lines — observations only, never a substitute for DoD |
 

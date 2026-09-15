@@ -5,7 +5,7 @@
 # 合规/违规的暂存区与工作区状态，断言 agent-gate 的退出码与输出。
 # 零依赖：bash 3.2+（macOS/Linux 均可）、git。
 #
-# 双布局自适应：Skill 仓库内直接跑（全 102 用例）；bootstrap --guard 复制到目标
+# 双布局自适应：Skill 仓库内直接跑（全量用例）；bootstrap --guard 复制到目标
 # 仓库后跑——源路径自动回退到 scripts/agent-gate / tests/audit-docs-consistency.sh，
 # Skill 仓库专属用例（T11 安装器、依赖未装层的 T10/T12）自动 SKIP，已装层全部回归。
 #
