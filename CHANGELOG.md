@@ -20,6 +20,19 @@
 
 （历史版本见下方归档段）
 
+## [3.23.0] — 2026-09-16
+
+### 新增
+
+- **审计 `--only-fail`**：`audit-docs-consistency.sh` 支持 `--only-fail`——只打 FAIL 行、skip/VACUOUS SKIP 行与汇总；存量红仓复跑不再全量重放 ok 行。默认行为逐字节不变（规范条款见 STANDARDS_CHANGELOG v3.23.0 ②）。
+- **L0/L1 轻量通道**：L0/L1 变更的 02/03/03.5/04 允许单行"未命中，不适用（理由）"显式声明满足存在性；L2/L3 不变，文件名与门禁零改动（③）。
+
+### 变更
+
+- **验收勾选改条目号引用制**：不再要求把验收标准原文逐条抄进清单——条目号 + 勾选 + A 层关键输出一行即可；"只写已验收"仍判未完成（①）。
+- **Observation 输出瘦身**：归档过滤后关键输出（≤10 行）+ 完整日志落点，禁止整段原文贴入对话或产物；全规范 9 处"实际输出"措辞同步统一为"关键输出"（④）。
+- **09 双节引用制**：追踪矩阵映射一行索引 01.5（禁复制行）；ReAct 表行引用 05 批次（⑤）。
+
 ## [3.22.0] — 2026-09-16
 
 ### 新增
@@ -98,7 +111,8 @@
 
 3.1.0 ~ 3.10.0 的演进（风险分级矩阵、缺陷六件套、八类最低文档集、场景覆盖率、根因分类、检查器设计规约等）见 [STANDARDS_CHANGELOG](resources/STANDARDS_CHANGELOG.md)。
 
-[Unreleased]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.22.0...HEAD
+[Unreleased]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.23.0...HEAD
+[3.23.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.22.0...v3.23.0
 [3.22.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.21.2...v3.22.0
 [3.21.2]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.21.1...v3.21.2
 [3.21.1]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.21.0...v3.21.1

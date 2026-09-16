@@ -1691,8 +1691,8 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   printf '%s' "$out" | grep -q CONFLICT && report "T21 re-run raises no conflict" 0 1 || report "T21 re-run raises no conflict" 0 0
 
   # TC-143 自动升级：fake 源版本 +0.0.1 → 重跑 → 目标规范页脚跟随
-  sed -i.bak 's/规范版本：v3\.22\.0/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md" 2>/dev/null \
-    || sed -i '' 's/规范版本：v3\.22\.0/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md"
+  sed -i.bak 's/规范版本：v3\.23\.0/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md" 2>/dev/null \
+    || sed -i '' 's/规范版本：v3\.23\.0/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md"
   rm -f "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md.bak"
   (cd "$TGT" && git add -A && git commit -qm artifacts)
   bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" >/dev/null 2>&1

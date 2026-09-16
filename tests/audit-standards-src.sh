@@ -714,6 +714,8 @@ report "A20 stamper attests the batch and lists its members" 1 "$(a17_at_least_1
 # 否则兄弟重盖会静默改掉风险行。取批次最高值：稳定且保守。
 report "A20 batch provenance risk is member-independent (max of the batch)" 1 "$(a17_at_least_1 "$(grep -c 'batch_changes" && -f' "$STAMP_TPL" || true)")"
 report "A20 template audit grew a G7 batch group" 1 "$(a17_at_least_1 "$(grep -c 'G7 变更批次自洽' "$AUDIT_TPL" || true)")"
+# v3.23.0（CHG-023/REQ-114）：--only-fail 模式锚点——防静默回退（flag 消失 = 空转声明豁免与瘦身能力同失）
+report "A20 template audit offers --only-fail with skip-line exemption" 1 "$(a17_at_least_1 "$(grep -c 'only-fail' "$AUDIT_TPL" || true)")"
 report "A20 G7 checks every declared change has an entry section" 1 "$(a17_at_least_1 "$(grep -c 'every batch change has a section in the batch 00-intent.md' "$AUDIT_TPL" || true)")"
 report "A20 G7 checks records are a subset of the anchors" 1 "$(a17_at_least_1 "$(grep -c 'every batch governance record has an anchor' "$AUDIT_TPL" || true)")"
 report "A20 G7 re-checks the L0/L1 ceiling" 1 "$(a17_at_least_1 "$(grep -c 'batch risk levels are L0/L1 only' "$AUDIT_TPL" || true)")"

@@ -38,12 +38,25 @@
 #
 # 零依赖：bash 3.2+、grep、awk、sort、comm。macOS/Linux 均可。
 #
-# Usage: tests/audit-docs-consistency.sh [repo_root]   # 默认当前仓库根
+# Usage: tests/audit-docs-consistency.sh [--only-fail] [repo_root]   # 默认当前仓库根
+#   --only-fail（v3.23.0）：只打印 FAIL 行、skip/空转声明行与最终汇总，ok 行抑制——
+#   存量历史缺口永久 FAIL 的仓库反复复跑时，不必每次全量重放所有 ok 行。
+#   **skip / VACUOUS SKIP 行豁免抑制**（v3.21.0"空转必须显式声明"硬约束不被本 flag 绕过）。
+#   FAIL 行、最终汇总行与 exit code 语义与默认模式完全一致；默认（无 flag）逐字节不变。
 # 路径根（docs 等）由 <repo_root>/.agent-governance.yml 的 paths.* 决定；
 # 未配置即用内置默认 docs/，行为与 v3.14.0 一致（v3.15.0）。
 set -uo pipefail
 
-ROOT="${1:-$(pwd)}"
+ROOT=""
+only_fail=0
+for _a in "$@"; do
+  if [[ "$_a" == "--only-fail" ]]; then
+    only_fail=1
+  else
+    ROOT="$_a"
+  fi
+done
+ROOT="${ROOT:-$(pwd)}"
 
 # 路径根可配置（v3.15.0）：默认值 = 历史写死值，未配置即行为不变。
 # 解析优先级：环境变量 > .agent-governance.yml 的 paths.* > 内置默认。
@@ -73,6 +86,11 @@ report() { # name expected actual
   local name="$1" expected="$2" actual="$3"
   if [[ "$expected" == "$actual" ]]; then
     pass=$(( pass + 1 ))
+    # --only-fail（v3.23.0）：ok 行抑制，但 skip / VACUOUS SKIP 类行豁免——
+    # 空转声明（v3.21.0）属于"读到它不能当通过"的正信号，吞掉它就是假绿复活。
+    if [[ "$only_fail" -eq 1 ]] && [[ "$name" != *SKIP* && "$name" != *skip* ]]; then
+      return 0
+    fi
     printf 'ok   %s\n' "$name"
   else
     fail=$(( fail + 1 ))
