@@ -66,7 +66,7 @@
 
 - 内聚判据：一个模块的所有成员服务于**同一个变更理由**；出现第二个理由即拆。
 - 禁止循环依赖；依赖方向固定为"外层 → 领域层"，领域层不得 import 外层类型。
-- 跨层数据结构直接引用（Controller 返回 Entity、领域层持有 DTO）属于数据建模违规，按 `data-structures.md` §2 转换规则处理。
+- 跨层数据结构直接引用（Controller 返回 Entity、领域层持有 DTO）属于数据建模违规，按 `data-structures.md` §1「转换规则（M0）」处理。
 
 ### 3.4 错误处理
 
@@ -109,4 +109,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.14.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.22.0_

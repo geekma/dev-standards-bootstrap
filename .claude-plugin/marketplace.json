@@ -1,0 +1,23 @@
+{
+  "name": "geekma-dev-standards",
+  "owner": {
+    "name": "geekma",
+    "url": "https://github.com/geekma"
+  },
+  "description": "AI agent development governance skills for any repository",
+  "plugins": [
+    {
+      "name": "dev-standards-bootstrap",
+      "description": "AI agent development governance skill: five quality gates, AGENTS.md entry, Git/CI enforcement for any repo.",
+      "source": "./",
+      "version": "3.22.0",
+      "category": "documentation",
+      "keywords": [
+        "ai-agents",
+        "governance",
+        "quality-gates",
+        "agents-md"
+      ]
+    }
+  ]
+}

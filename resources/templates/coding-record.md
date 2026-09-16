@@ -1,13 +1,22 @@
 # CHG-xxx 编码记录（Coding Record）
 
+<!-- provenance
+author: PENDING
+email: PENDING
+generated_at: PENDING
+generated_by: PENDING
+-->
+
 > **定位**：变更组功能文档 `04.5-coding-record.md`（规范 §2.5 阶段 5 / §1.1 最低文档集八类映射「编码」，v3.7.0）——记录本次变更**实际落码**的文件清单、WHY 决策与验证动作；改动"做了什么"由 `09-changelog.md` 承载，本文件回答"改了哪些文件、为什么这么改、如何验证"。
 > **纪律**：与其它功能文档一致，闭合后只增不改；编码中新发现影响面时先补 `02-code-impact-analysis.md` 再继续编码。
+> **溯源（v3.17.0）**：顶部 `<!-- provenance -->` 块**必须**由 `scripts/stamp-provenance.sh <CHG-id>` 生成——它从运行环境读取作者 / 提交者 / 主机 / 平台 / UTC 时间，手写改不出这些真值，门禁 `stop` / CI 会校验（占位块与手工块一律拒绝）。
+> **批次（v3.18.0）**：本文件被**同一天**的 L0/L1 变更共享时（`docs/changes/BATCH-YYYYMMDD/`），每个变更占一个 `## <变更号>` 小节，小节内各自给"改动文件清单 / WHY / ReAct 段"。此时溯源块证明的是**批次**（`change: BATCH-…` + `batch_changes:` 列出成员），不是某一个成员。
 
 ## 元信息
 
 | 字段 | 内容 |
 |---|---|
-| 变更号 | CHG-xxx（变更目录 `docs/changes/CHG-xxx/`，功能文档在 `docs/<feature>/`） |
+| 变更号 | CHG-xxx（变更目录 `docs/changes/CHG-xxx/`；批次则为 `docs/changes/BATCH-YYYYMMDD/` + 本变更的 `## CHG-xxx` 小节，v3.18.0。功能文档在 `docs/<feature>/`） |
 | 风险等级 | L0 / L1 / L2 / L3（与 `00-governance.json` 一致） |
 | 实现主体 | Agent 标识 / 人（§2.1 独立性约束） |
 | 关联任务 | `TASK-xxx`（对应 `03.5-tasks.md` 行，逐项可追溯） |
@@ -49,4 +58,5 @@
 - [ ] WHY 决策记录解释"为什么"而非"做了什么"
 - [ ] ReAct 编码段每组含 Thought / Action / Observation，Observation 为真实输出
 - [ ] 新增依赖（如有）已说明理由并完成供应链审核
+- [ ] 顶部 `<!-- provenance -->` 块已由 `scripts/stamp-provenance.sh <CHG-id>` 生成（无 PENDING 残留，v3.17.0）
 - [ ] 本文件存在且非空（gate stop / CI `validate_delivery` 机器校验，v3.7.0）

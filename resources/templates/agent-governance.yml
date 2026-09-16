@@ -1,8 +1,42 @@
 # Copy this file as .agent-governance.yml and adapt the paths for the project.
-# The shell gate uses the environment variable below so it remains dependency-free.
 # NOTE: this is a team-reviewable SUMMARY. The authoritative artifact set is what
 # scripts/agent-gate begin enforces (7 non-empty files below); keep both in sync.
+
+# ── 路径配置（v3.15.0）────────────────────────────────────────────────────────
+# 只配置**目录根**。每个键的默认值 = 历史写死值，因此**不写这一段与写默认值
+# 完全等价**——未配置的仓库行为与升级前逐字节一致（零回归）。
+#
+# 解析优先级：环境变量 AGENT_GUARD_<KEY>_DIR > 本文件 > 内置默认。
+# 读取方：scripts/agent-gate、scripts/check-standards-compliance.sh、
+#         tests/audit-docs-consistency.sh、scripts/stamp-provenance.sh（另读
+#         `provenance.include_email`）。
+#         （scripts/bootstrap.sh 是**安装期写入方**，它不随本包下发到目标仓库——
+#          本注释里的路径均指目标仓库内的落点，不是 Skill 源仓的路径。）
+# 安装期替换：非默认根会同步改写模板**内部**的路径引用（hooks/adapter 按路径
+#         调门禁、workflows 与规范模板按路径引用文档），运行时零成本。
+#
+# ⚠️ 以下**刻意不可配置**：
+#    · `.github/`——GitHub Actions 只从 `.github/workflows/` 读 workflow、
+#      只从 `.github/` 或仓库根读 PR 模板；换名即流水线静默失效，做成旋钮是假的。
+#    · 契约名：`AGENTS.md` 文件名、`scripts/agent-gate` 落点名、变更 12 件产物名、
+#      缺陷六件套名、required-check 名 `agent-governance`。它们一旦随仓库而异，
+#      跨仓逐文件比对与"装一次、迁移到任意仓库"
+#      这一核心能力即失效——参数化目录根是便利，参数化契约名是解体。
+paths:
+  docs: docs            # 文档根：规范/方法论/变更/缺陷/交付总结都挂在此下
+  scripts: scripts      # 治理脚本根：agent-gate、install-hook-adapter、合规检查
+  tests: tests          # 测试与审计脚本根：run-tests.sh、audit-docs-consistency.sh
+  githooks: .githooks   # Git Hook 根：pre-commit、pre-push、commit-msg（随 core.hooksPath 生效）
+
+# 变更轨 / 缺陷轨根。默认由 paths.docs 派生（<docs>/changes、<docs>/bugs）；
+# 显式写在这里可单独覆盖（例如变更轨想放 specs/ 而非 docs/）。env 仍最高优先。
+# 变更批次（v3.18.0，规范 §1.1）：**同一天**的多个 L0/L1 变更可改落
+# <change_root>/BATCH-YYYYMMDD/ 一个目录——产物**文件名不变**，用 `## <变更号>`
+# 小节锚点区分，00-governance.json 写成**一行一个 JSON 对象**；L2/L3 不得入批。
+# 这不是配置键，只是布局约定：独立 <变更号>/ 目录永远优先，故不建批次即零影响。
 change_root: docs/changes
+bugs_root: docs/bugs
+
 required_before_source_write:
   - 00-intent.md
   - 00-governance.json
@@ -12,9 +46,14 @@ required_before_source_write:
   - 03.5-tasks.md
   - 04-test-scripts.md
 required_before_merge:
-  - 04.5-coding-record.md
+  - 04.5-coding-record.md   # stop/ci 另检：必须携带脚本生成的 `<!-- provenance -->` 块
   - 05-test-results.md
-  - 09-changelog.md
+  - 09-changelog.md         # stop/ci 另检：必须含 ReAct `Observation` 记录
+  - 06.5-deployment-config.md   # 未命中也要在行首声明「未命中，不适用」
+  - 06-delivery-summary.md      # 须含 FU- 遗留项行（或「遗留」节）
+# CHG-017 ④（v3.21.2）：上列 5 件 = `validate_delivery` 的实检集（v3.21.2 与门禁对齐；此前只列 3 件，
+# 漏了 06.5 / 06-delivery-summary 与三项内容校验）。`required_before_source_write`
+# 的 7 件 = `begin` 的实检集。本文件是**团队可复核的摘要**，判定仍以门禁为准。
 ci:
   # The gate reads THIS command as a fallback (env AGENT_GUARD_VERIFY_COMMAND
   # wins). bootstrap auto-detects a project test command and replaces the
@@ -25,3 +64,13 @@ stop_hook:
   # Set AGENT_GUARD_VERIFY_COMMAND in a client adapter when a fast deterministic
   # test command is safe to run at the end of every agent turn.
   verification_command_environment_variable: AGENT_GUARD_VERIFY_COMMAND
+
+# ── 文件溯源（v3.17.0）────────────────────────────────────────────────────────
+# scripts/stamp-provenance.sh 把「谁 / 哪台机器 / 什么时候」写进变更产物的
+# `<!-- provenance -->` 块：author / email / committer / commit / host / platform /
+# generated_at。**真值由脚本从运行环境读取**（git 配置与提交者、hostname、
+# uname、UTC 时间），手写改不出这些值——所以 agent-gate 会校验块存在、字段齐全、
+# 且 generated_by 指向本脚本（手工填的块过不了门禁）。
+provenance:
+  # 隐私开关：false 时 email 写为 <redacted>，作者与主机信息保留。
+  include_email: true

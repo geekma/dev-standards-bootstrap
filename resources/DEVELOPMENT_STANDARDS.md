@@ -24,6 +24,8 @@
 | A 层 / B 层验收 | A=机器可验硬证据（命令见 §2.5 速查表）；B=独立角色判定，开发不得自评 | §2.5 总则 |
 | DoD / DoT | 变更完成判定 / 任务完成标准（可验证退出条件） | §2.16.3 / §2.5 阶段 3 |
 | 标准升级日志 | 规范版本历史唯一落点（外置于 `STANDARDS_CHANGELOG.md`，新条目置顶） | §2.14 |
+| 文件溯源块 | 变更的 `04.5-coding-record.md` 携带的"谁 / 哪台机器 / 何时"证据块（**强制范围就是这一件**，其余产物可选），由 `scripts/stamp-provenance.sh` 从运行环境读出，禁手写 | §1.1 |
+| 变更批次 | 同日多个 L0/L1 变更共用一个 `BATCH-YYYYMMDD/` 目录（文件名不变，锚点区分），L2/L3 不得入批 | §1.1 |
 
 ## 分层阅读路由（Layered Reading Map，v3.9.0）
 
@@ -167,6 +169,18 @@
 > **变更管线入口件**：`00-intent.md` / `00-governance.json` 落变更目录 `docs/changes/<变更号>/`（§2.17，不占用功能文档编号序列、不使用编号前缀）；**新变更必须分配新变更号、新建独立变更目录**（如最新已用 CHG-041，新变更取 CHG-042 并新建 `docs/changes/CHG-042/`；取号前核实占用——磁盘与远端，见 §2.15 规则 4，v3.8.1），禁止在既有变更目录追加或改写（§2.15 硬性规则 4，v3.6.0）；功能文档与变更目录的双轨关系见 §2.17「产物目录双轨约定」。
 >
 > **编号规则统一引用**：所有前缀均遵循同一套顺序规则——连续递增、不跳号、不重号、历史已分配编号不重排（详细规则见 §1.2，不在此处或其他章节重复展开）。**目标仓库机器可验**：`tests/audit-docs-consistency.sh` G2 校验编号连续无跳号（重号核查属 §1.2 核对表 B 层）。
+>
+> **路径根可配置（v3.15.0）**：全文出现的 `docs/`、`scripts/`、`tests/`、`.githooks/` 均为**默认目录根**，可按仓库习惯在 `.agent-governance.yml` 的 `paths:` 段改写（安装参数 `--docs-dir` 等会同步写入该段，并改写模板**内部**的路径引用）。解析优先级：`AGENT_GUARD_<KEY>_DIR` 环境变量 > 配置文件 > 内置默认；**不配置即等于默认，行为与本版之前逐字节一致**。机器读取方：`scripts/agent-gate`、`scripts/check-standards-compliance.sh`、`tests/audit-docs-consistency.sh`、`scripts/bootstrap.sh`。
+>
+> **不可配置项（v3.15.0）**：①`.github/`——平台只从 `.github/workflows/` 读 workflow、只从 `.github/` 或仓库根读 PR 模板，换名即流水线静默失效，做成旋钮是假的；②**契约名**——`AGENTS.md` 文件名、`scripts/agent-gate` 落点名、变更 12 件产物名（`00-intent.md` … `09-changelog.md`）、缺陷六件套名（`01-diagnosis.md` … `06-tasks.md`）、required-check 名 `agent-governance`。它们一旦随仓库而异，跨仓逐文件比对与"装一次、迁移到任意仓库"的能力即失效。**参数化目录根是便利，参数化契约名是解体。**
+>
+> **规范升级日志的归属（v3.16.0）**：`docs/STANDARDS_CHANGELOG.md` 是**规范自带文件的升级历史**，**归 Skill 所有**（`--core` 下发、`--upgrade` 整体更新），**目标仓库不在此追加本地条目**——你自己的历史写 `docs/changes/<变更号>/09-changelog.md`（§4）与 `docs/bugfix-log.md`，三者互不替代。已追加则 `--upgrade` **检测到即拒绝**（fail-closed，`--force` 可越过）：既不静默覆盖、也不做追加式合并——合并会让"这行归谁维护"失去唯一答案。
+>
+> **Agent 自进化与派生资产（v3.16.0）**：本规范**允许**派生面向特定项目或特定 Agent 优化的 Skill；派生资产**独立演进、不回收到源仓**（源仓出现其**副本，或指向它们的可执行/可安装路径引用**即为缺陷——那是第二份权威源；解释性文字里的举例不算引用，**故本文件不举例名字**）。**派生方义务**：在 `SKILL.md` frontmatter 声明 `agent_created: true` 与 `derived_from: dev-standards-bootstrap`。**本 Skill 义务**：安装与升级的**每一条**写入路径都跳过声明了 `derived_from` 的目录并打印 `derived (skip)`，**`--force` 不越过**（`--force` 的语义是"覆盖内容不同的既有文件"，不是"覆盖别人派生出来的资产"）。完整机制见 `SKILL.md`「Agent 自进化契约」。
+>
+> **文件溯源（v3.17.0）**：变更的 `04.5-coding-record.md` 必须携带 `scripts/stamp-provenance.sh <变更号>` 生成的 `<!-- provenance -->` 块，**禁手写**。动机：`00-governance.json` 的 `implementation_owner` 是手写字符串，写什么就是什么，回溯时无法区分"真跑过"与"顺手编的"；溯源块把作者 / 邮箱 / 提交者 / 提交短哈希 / 主机名 / 平台 / UTC 时间从**运行环境**读出（`git config`、`git log -1`、`hostname`、`uname`、`date -u`），手写改不出这些真值。**门禁校验形状与非占位**（§2.16.2）：块存在、`author`/`email`/`generated_at`/`generated_by` 四字段非空、`generated_at` 为 ISO-8601 形状、`generated_by` 必须指向该脚本——手写块能编出 `author`，却过不了最后一关；**`author` 是否属实不可机器验证**，此缺口显式承认。**不追溯既往**：只校验当前活跃变更，历史产物不得回填（回填会把 `generated_at` 伪造成今天，正是该块要防的伪造）；审计 A19 对此设反向断言。隐私开关（`provenance.include_email`）、幂等（整块替换）与工具缺失时的 `unknown` 降级见脚本头部注释。**全量盖章（v3.22.0）**：`stamp-provenance.sh --all <变更号>` 可选地把同一溯源块盖到活跃变更目录**全部 `*.md` 产物**（幂等、批感知；`00-governance.json` 刻意不盖——JSON 注入注释块破坏机器读取）；强制范围仍为 `04.5-coding-record.md`。
+>
+> **变更批次（v3.18.0）**：**同一天**的多个 **L0/L1** 变更**可**共用 `<变更根>/BATCH-YYYYMMDD/` 一个目录。**放宽的只有目录，产物文件名一字不改**（仍是 12 件同名文件），同批变更用 `## <变更号>` 小节锚点分开，`00-governance.json` 推荐**一行一个 JSON 对象**（变更号 / 风险 / 责任人各成行；读取器格式无关，单行多行皆可——v3.20.0）。当天的追加落在同一套文件里，检索条目从 N 套降到 1 套——**是复用既有体系，不是新起一套**。**风险不放宽**：L2/L3 必须独立目录（共享产物会削弱逐变更证据边界与角色独立性），门禁按记录逐条校验并拒绝批次内的 L2/L3。**解析顺序**：独立 `<变更根>/<变更号>/`（历史布局，永远优先）→ `AGENT_GUARD_CHANGE_DIR` → 含该锚点的 `BATCH-*/`。**闭环语义细一档**：`09-changelog.md` 被同批共享，"文件存在"不再等于"本变更已关闭"，改判**本变更自己的 `## <变更号>` 小节**是否存在（FU-015 同义）。溯源块在批次里证明**批次**并列出成员（`change: BATCH-…` + `batch_changes:`），风险取批次最高值，以免重盖章时被兄弟改写。**变更集合一律从权威名单读**（`00-governance.json` 的 `change_id`），不从 `## <标题>` 反推——标题分不清"变更小节"与"结构小节"，而本规范强制 `09-changelog.md` 含 Observation 记录（§2.16.2），反推会凭空造出变更（v3.19.0 实测）。**批次小节标题一律写 `## <变更号>`**（不带 `§N：` 前缀；`§N：CHG-XXX` 是 `05-test-results.md` 的批次小节格式，不是变更锚点）。审计 G7 逐批次核对：每条记录在 `00-intent.md` 有自己的分节、记录 ⊆ 锚点、风险 ∈ {L0,L1}、变更号跨批次唯一。
 
 ### 1.2 独立 RTVM 矩阵文件与编号顺序规范
 
@@ -286,7 +300,7 @@
 | 阶段 2 影响 | `grep -q '业务影响' docs/<feature>/02-code-impact-analysis.md`；`grep -q '风险' …02…`；`grep -q '回滚策略' …02…`；`grep -q '隐式链路三向遍历' docs/<feature>/02-code-impact-analysis.md` | 三维影响关键词 + 隐式链路遍历记录（或"未命中"声明行） |
 | 阶段 3 方案 | `grep -c 'DES-' docs/<feature>/03-modification-plan.md`；`grep -q '备选' docs/<feature>/03-modification-plan.md` **或** `grep -q '选型' docs/<feature>/03-modification-plan.md`（任一命中即过，等价旧 `\|` ERE 写法且源文本可复制执行） | DES 编号 + ≥2 候选选型对比 |
 | 阶段 4 测试 | `grep -c 'TC-' docs/<feature>/04-test-scripts.md`；`grep -q '覆盖维度' docs/<feature>/04-test-scripts.md`；`grep -c 'SC-' docs/<feature>/04-test-scripts.md` | TC 编号 + 覆盖维度列 + SC 场景清单 |
-| 阶段 5 编码 | `grep -rn 'CHG-' <变更源码>`；`04.5-coding-record.md` 存在且非空（gate stop/CI 校验） | 源码 CHG-xxx 标注 + 编码记录 |
+| 阶段 5 编码 | `grep -rn 'CHG-' <变更源码>`；`04.5-coding-record.md` 存在且非空，且携带脚本生成的溯源块（v3.17.0；`scripts/stamp-provenance.sh --check`，gate stop/CI 校验） | 源码 CHG-xxx 标注 + 编码记录 + 溯源块 |
 | 阶段 6 缺陷 | `grep -cE '^### BUG-[0-9]' docs/bugfix-log.md` | log 真实 BUG 条目（模板占位不参与匹配） |
 
 ### 阶段 1：需求与规格定义（Doc-First）
@@ -345,7 +359,7 @@
 
 - **编码约定**：沿用既有代码风格；防御性编程（判空/异常不吞掉）；敏感信息不入日志；新增依赖需说明理由并做供应链审核（§2.13.2）。工程决策细则见 `docs/methodologies/development.md`（M0/M1 基线）；数据结构建模见 `docs/methodologies/data-structures.md`（M0 基线，含弱类型穿层禁令）。
 - **ReAct 微循环（v2.21.0，每次源码修改强制）**：每次改动前 **Thought**——分析当前状态、修改目标与影响面（引用 02 三维影响分析，含被波及的调用方与共享组件，§2.16.2 铁律）；改动后 **Observation**——运行受影响测试与验证命令并记录实际输出。**禁止"上来就改代码"**（§5 严重违规）。
-- **验收标准**：A 层——关键改动处含 `CHG-xxx` 标注，且 `04.5-coding-record.md` 存在且非空（命令见速查表「阶段 5」行；gate stop/CI 机器校验，v3.7.0）；B 层——Review Agent 审查："无 WHY 注释"或"注释只复述代码"一律打回（见 §5 Anti-Patterns），留 Agent 标识（§2.1.7）。
+- **验收标准**：A 层——关键改动处含 `CHG-xxx` 标注，且 `04.5-coding-record.md` 存在且非空、并携带由 `scripts/stamp-provenance.sh` 生成的溯源块（v3.17.0，禁手写；命令见速查表「阶段 5」行；gate stop/CI 机器校验）；B 层——Review Agent 审查："无 WHY 注释"或"注释只复述代码"一律打回（见 §5 Anti-Patterns），留 Agent 标识（§2.1.7）。
 
 ### 阶段 6：缺陷诊断与根因推导（Bug 专用）
 
@@ -716,7 +730,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 | 执行环节 | 产物 / 状态 | 落点文档 |
 |---|---|---|
-| 管线入口（§2.17） | 00-intent.md（意图）+ 00-governance.json（治理声明） | 变更目录 `docs/changes/<变更号>/` |
+| 管线入口（§2.17） | 00-intent.md（意图）+ 00-governance.json（治理声明） | 变更目录 `docs/changes/<变更号>/`；**同日 L0/L1 可共落 `docs/changes/BATCH-YYYYMMDD/`**（v3.18.0，§1.1；文件名不变，`## <变更号>` 锚点区分，治理记录推荐一行一变更） |
 | 前置核对（§2.16.1） | 标准版本 / 升级日志影响 / 基线快照 / 背景调研结论 | 09 CHG「重要上下文」 |
 | 阶段1 需求 | REQ 登记（来源/评审/DoD） | 01-spec §14/§16 |
 | 阶段2 影响 | 02（拓扑/影响/回滚） | 02 |
@@ -766,7 +780,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 > **管线治理声明 `00-governance.json`**：与 `00-intent.md` 同目录创建，声明本次变更治理元数据——`change_id`（与变更目录名一致）、`risk_level`（L0-L3，§0.5.1）、`implementation_owner` / `test_owner` / `review_owner`（执行主体标识，§2.1.7 格式）；**L2/L3 变更 `test_owner` 与 `review_owner` 必须与 `implementation_owner` 互异**（§0.5.2/门禁 5），否则 `agent-gate begin` 拒绝放行。执行主体标识不得为占位符（`PENDING`/`TODO`/`TBD`/`待定`；`implementation_owner` 恒检，`test_owner`/`review_owner` 按 L2/L3 检查，v3.5.0）；**L3 变更另须含释放授权三字段** `release_authorized_by` / `release_authorized_at` / `release_authorization_evidence`（全部非空，缺失即 `agent-gate begin` 拒绝放行）。**缺陷修复变更须声明 `bug_ref`**（v3.6.0，可选字段，值为本次处置的缺陷编号如 `BUG-042`）——非空时 `agent-gate begin` 校验 `docs/bugs/<bug_ref>/` 下缺陷文档组六件（`01-diagnosis.md`/`02-impact.md`/`03-test-plan.md`/`04-matrix.md`/`05-config.md`/`06-tasks.md`；v3.6.0 三件、v3.7.0 扩六件）存在且非空（根目录 `AGENT_GUARD_BUGS_ROOT` 可覆盖，默认 `docs/bugs`），缺失即拒绝放行；非缺陷修复留空字符串跳过校验。创建后不可变（§2.15）；风险等级修订（§0.5 降级判定禁令）记录到 09 CHG「重要上下文」，不改写本文件。模板见 skill 资源 `governance-state.json`。
 
-> **产物目录双轨约定**：变更管线产物（`00-intent.md`/`00-governance.json` 及 `agent-gate begin` 必检 7 件）落**变更目录** `docs/changes/<变更号>/`（默认根；`AGENT_GUARD_CHANGE_ROOT` 可覆盖），gate 以该目录为核对根；`docs/<feature>/` 为功能级长期文档（05/06/07/09、01.5 矩阵、06.5 等）的权威落点（§2.5）。变更目录中的 01-spec/02/03/03.5/04 为门禁入口件，与功能目录同名文档须为同一内容（同文件或同步回填），禁止两处分叉；05/09 因 gate stop 在变更目录核证（05/09 存在性），同样双落点同步；§2.5 各阶段校验命令中的 `docs/<feature>/` 路径在管线启用时按变更目录对应解释。**`01.5-rtvm-matrix.md` 属审计层边界（v3.7.0 边界声明）**：该矩阵单落点于功能目录（§1.2，不双落变更目录），其回填正确性由通用层审计 `tests/audit-docs-consistency.sh` G5（门禁 4 机器兜底，§2.13.4）与 B 层 Review 承担，`agent-gate` 的 `validate_delivery` 不校验该文件——八类映射中「矩阵」类的 gate 侧校验以 01.5 双落点协议与审计/Review 为准，非静默缺口。**治理工具自身**（scripts/agent-gate、scripts/install-hook-adapter、scripts/check-standards-compliance.sh、tests/run-tests.sh、tests/audit-docs-consistency.sh、.githooks/、hook 适配器配置）不视为产品代码——安装/升级它们的提交不需要变更产物，由 §2.17.4 golden-case 回归背书。
+> **产物目录双轨约定**：变更管线产物（`00-intent.md`/`00-governance.json` 及 `agent-gate begin` 必检 7 件）落**变更目录** `docs/changes/<变更号>/`（默认根；`AGENT_GUARD_CHANGE_ROOT` 可覆盖），gate 以该目录为核对根；`docs/<feature>/` 为功能级长期文档（05/06/07/09、01.5 矩阵、06.5 等）的权威落点（§2.5）。变更目录中的 01-spec/02/03/03.5/04 为门禁入口件，与功能目录同名文档须为同一内容（同文件或同步回填），禁止两处分叉；05/09 因 gate stop 在变更目录核证（05/09 存在性），同样双落点同步；§2.5 各阶段校验命令中的 `docs/<feature>/` 路径在管线启用时按变更目录对应解释。**`01.5-rtvm-matrix.md` 属审计层边界（v3.7.0）**：该矩阵**单落点、不两处分叉**（§1.2）——有功能目录的仓库落 `docs/<feature>/`，**无功能目录的仓库（本规范源仓即此类）落 `<变更根>/<变更号>/`**。其回填**内容**正确性由通用层审计 G5（门禁 4 机器兜底，§2.13.4）与 B 层 Review 承担；`agent-gate` 的 `validate_delivery` **不把它当作本变更的必检产物**（不校验存在与节完整性），但**读取 `docs/*/01.5-rtvm-matrix.md` 与 `<变更根>/*/01.5-rtvm-matrix.md`（深度 1）做「门禁 4」回填核对**——`09-changelog.md` 引用的每个 `REQ-` 须在其中一份成行。——八类映射中「矩阵」类的 gate 侧校验以 01.5 双落点协议与审计/Review 为准，非静默缺口。**治理工具自身**（scripts/agent-gate、scripts/install-hook-adapter、scripts/check-standards-compliance.sh、tests/run-tests.sh、tests/audit-docs-consistency.sh、.githooks/、hook 适配器配置）不视为产品代码——安装/升级它们的提交不需要变更产物，由 §2.17.4 golden-case 回归背书。
 
 > **本地 Git Hook 强制面（v3.5.0）**：`commit-msg` 归因闸门（`agent-gate --stage commit-msg <msgfile>`，模板 `resources/templates/commit-msg`）——暂存区含代码文件的提交消息必须引用有效变更号，豁免阶梯：合并提交（MERGE_HEAD 存在）、以 `Revert` 开头、纯文档/纯产物提交（无代码文件）；branch 模式（`--stage ci --base <ref>`）对 diff 触及的变更追加 delivery 证据核验（05+09 与 Observation，§2.17.5）；`pre-push` 模板接线 `--stage ci`（base 取 upstream，无 upstream 退化为 HEAD）。**安装器自动接线（v3.11.0）**：`bootstrap --guard` 自动配置 `core.hooksPath`（已有自定义值不覆盖）、自动生成客户端适配器（检测到客户端时）、自动探测构建系统测试命令预填 `.agent-governance.yml`；gate 验证命令来源链 = `AGENT_GUARD_VERIFY_COMMAND` env → yml `ci.verification_command`（占位符跳过）→ 未配置跳过。
 
@@ -930,7 +944,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - [ ] `01-spec.md`：需求受影响时追加 REQ（未影响标"未命中"）
 - [ ] `03-modification-plan.md`：设计受影响时回写正文（根因为设计遗漏时回补 DES）
 - [ ] `04-test-scripts.md`：防回归 TC 已新增/扩展
-- [ ] `04.5-coding-record.md`：编码记录已落（改动文件清单/CHG-xxx 标注/WHY，v3.7.0）
+- [ ] `04.5-coding-record.md`：编码记录已落（改动文件清单/CHG-xxx 标注/WHY，v3.7.0），且已跑 `scripts/stamp-provenance.sh <变更号>` 盖上溯源块（v3.17.0）
 - [ ] `05-test-results.md`：本批次测试证据已追加（§N 绑定 CHG）
 - [ ] `01.5-rtvm-matrix.md`：TC 行已回填
 - [ ] `06.5-deployment-config.md`：配置/DB 受影响时已记录（未命中标注）
@@ -1034,4 +1048,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.14.0 | 更新时间：2026-09-14 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.22.0 | 更新时间：2026-09-16 | 全局维护责任人：geekma (geekma@gmail.com)*

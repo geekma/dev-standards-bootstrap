@@ -1,0 +1,9 @@
+{
+  "name": "dev-standards-bootstrap",
+  "description": "AI agent development governance skill: five quality gates, AGENTS.md entry, Git/CI enforcement for any repo.",
+  "version": "3.22.0",
+  "author": {
+    "name": "geekma"
+  },
+  "homepage": "https://github.com/geekma/dev-standards-bootstrap"
+}

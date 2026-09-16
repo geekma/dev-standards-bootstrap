@@ -6,13 +6,32 @@
 # 此前只有 B 层人工核对。本脚本把这些一致性不变量固化为确定性断言，
 # 与 agent-gate（单产物 A 层标记）互补——gate 管"单件合格"，本脚本管"多件互证"。
 #
-# 【审计范围】docs/DEVELOPMENT_STANDARDS.md + AGENTS.md + docs/<feature>/*/ + docs/bugfix-log.md：
+# 【审计范围】<docs>/DEVELOPMENT_STANDARDS.md + AGENTS.md + <docs>/bugfix-log.md + 产物目录。
+# **产物目录按"不变量是否时间不变"分两类**（详见下方"审计单元"节，这是本文件的核心划分）：
 #   G1 版本链：AGENTS.md 页脚版本 == 规范页脚版本（§2.16.4 第 6 条的机器化）
-#   G2 编号体系：REQ/DES/TC/SC/CHG/CFG/DB/FU 连续递增、无跳号、无重号（§1.2 / 自检第 3 条）
-#   G3 §3↔§4 同源：每个 09-changelog 最新 CHG 归档清单标签与规范 §3 完全一致（§3 同源声明）
+#   G2 编号体系：REQ/DES/TC/SC/CHG/CFG/DB/FU 连续递增、无跳号（§1.2 / 自检第 3 条）
+#      —— 时间不变，故作用于 **功能目录 ∪ 变更目录**（`<change_root>/<变更号>/`）
+#   G3 §3↔§4 同源：09-changelog 最新 CHG 归档清单标签与规范 §3 完全一致（§3 同源声明）
 #   G4 bugfix 双登记互证：log 每条 BUG 有对应 CHG；每个 CHG 的 BUG 行已登记 log（§2.5 阶段 6）
+#      —— **两个方向都遍历全树 09-changelog**（含 `<change_root>/<变更号>/` 深度 2，v3.21.0）
 #   G5 RTVM 双落点：最新 CHG 追踪矩阵短引用中的 REQ 均已回填 01.5-rtvm-matrix（门禁 4；最新 CHG 无 REQ 引用时豁免建矩阵）
 #   G6 §4 必填节完整：最新 CHG 含 追踪矩阵映射/现象/分析/根因/方案/测试结论/角色签署/ReAct/检查清单/未动项
+#      —— G3/G5/G6 比对的是**当前规范版本**，故只作用于**活文档（功能目录）**：
+#         冻结的变更目录按 §2.15 硬性规则 4 / §2.16.5「已闭合 CHG 禁止改写」不可回填，
+#         事后按当前 §3/§4 判它们只会产出**永久无法清除的红**。变更轨由门禁在创建时兜住。
+#   G7 变更批次自洽（v3.18.0；v3.19.0 修正判定方向）：<change_root>/BATCH-YYYYMMDD/ 的治理记录、
+#      入口分节、风险等级、跨批次唯一性互相自证（§1.1 同天 L0/L1 合并）——批次把"一个变更
+#      一套产物"放宽为"一套产物承载多个变更"，放宽的代价必须由机器盯住，否则批次会变成
+#      绕过 A 层门禁的暗道。**判定一律从权威名单（00-governance.json 的 change_id）正向出发**，
+#      不从 `## <标题>` 反向推断——后者分不清变更小节与结构小节（§2.16.2 的 `## Observation`）。
+#
+# 【"空转"必须显式声明】（v3.21.0）产物目录用**正信号**识别（见"审计单元"节），不用
+#   "是 <docs>/ 的子目录"取全集。任一组的目录集合为空时，本脚本**打印一行 `VACUOUS SKIP`
+#   明确告知那一组没有覆盖本仓库**，而不是静默跳过。**静默空转 = 假绿**，是本文件最该防的
+#   失效模式：旧实现在 <docs>/ 存在任意非功能子目录（如 docs/changes、docs/review）时让
+#   G2/G3/G5/G6 一条断言都不执行、也不打印任何行，操作者读到 "N passed" 会以为它们都过了。
+#   实测：一个 01-spec.md 带 REQ 跳号的仓库**通过**了审计。**读到 "VACUOUS SKIP" 就必须
+#   知道：那一组没有覆盖本仓库，不能当"通过"理解。**
 #
 # 【更新语义】文档修订（活文档类）与批次保留冲突时以规范 §2.15 为准；存量仓库首跑
 # 可能大量失败——失败项即 §2.14 存量回填清单，逐项处置或在 §2.13.4 走例外留痕。
@@ -20,12 +39,31 @@
 # 零依赖：bash 3.2+、grep、awk、sort、comm。macOS/Linux 均可。
 #
 # Usage: tests/audit-docs-consistency.sh [repo_root]   # 默认当前仓库根
+# 路径根（docs 等）由 <repo_root>/.agent-governance.yml 的 paths.* 决定；
+# 未配置即用内置默认 docs/，行为与 v3.14.0 一致（v3.15.0）。
 set -uo pipefail
 
 ROOT="${1:-$(pwd)}"
-STD="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
+
+# 路径根可配置（v3.15.0）：默认值 = 历史写死值，未配置即行为不变。
+# 解析优先级：环境变量 > .agent-governance.yml 的 paths.* > 内置默认。
+cfg_path() { # key default
+  local k="$1" d="$2" v=""
+  if [[ -f "$ROOT/.agent-governance.yml" ]]; then
+    v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" "$ROOT/.agent-governance.yml" 2>/dev/null \
+        | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$v" ]] || v="$d"
+  printf '%s' "$v"
+}
+DOCS_DIR="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
+DOCS="$ROOT/$DOCS_DIR"
+STD="$DOCS/DEVELOPMENT_STANDARDS.md"
 AGENTS="$ROOT/AGENTS.md"
-BFLOG="$ROOT/docs/bugfix-log.md"
+BFLOG="$DOCS/bugfix-log.md"
+# 变更根（v3.18.0 批次审计用）：默认 = <docs>/changes，与门禁同一套解析规则。
+CHANGE_DIR="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
+CHANGES="$ROOT/$CHANGE_DIR"
 
 pass=0
 fail=0
@@ -59,34 +97,118 @@ S3TMP=$(mktemp)
 awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD" \
   | grep -oE '【[^】]+】' | sort > "$S3TMP"
 
-# ---------- G2 编号体系：连续、唯一 ----------
 # ---------- G2 编号体系：连续、无跳号 ----------
 # 说明：重号（同一编号重复定义）无法在纯文本层面与"引用"可靠区分（TC/REQ 被下游
 # 文档合法多次引用），故本脚本只做机器可验的连续性核查；重号核查留 §1.2 编号顺序
 # 核对表（B 层/人工）。
+#
+# 【v3.21.0 两处修正——旧实现对本仓真实产物误报 695 处"缺号"】
+#
+# ① **只数"定义式"出现，不数"引用"**。旧实现 grep 全文件的 `PREFIX-N`，把正文里的
+#    引用也算成编号。实测（本仓 16 个变更目录的 01-spec.md）：
+#      · CHG-006 定义 `REQ-033`~`REQ-041`（连续 9 个），但正文引用"`REQ-024`~`REQ-032`"
+#        （依赖项/需求变更说明）→ 编号集合被撑到 24..41 → 区间内凭空多出 8 个"缺号"；
+#      · CHG-002 定义 `REQ-008`~`REQ-013`，但首行写"REQ 从 `REQ-008` 起（CHG-001 已用
+#        `REQ-001`~`REQ-007`）"→ 集合变成 {1,7,8..13} → 报 6 个"缺号"。
+#    定义式形状 = 行首是标题（`#`~`######`）/ 表格首列（`| `）/ 列表项（`- `），紧跟
+#    `PREFIX-N`；引用（出现在句中、第二列起）不再计入。**实测：全仓 61 个产物文件
+#    （16 REQ + 15 DES + 16 TC + 14 SC）用定义式规则误报 0 处。**
+#
+# ② **区间基线是文件自身的 min，不是 1**。旧实现 `seq 1 "$max"` 假定被审文件独占
+#    从 1 开始的整个编号空间，而 §1.2 的编号空间是**全仓全局**的：任何不始于 1 的
+#    文件都被判"1..max 全是缺号"。本仓 CHG-016 的 01-spec.md 定义 080~083 连续，
+#    却报 79 个缺号。改为 `seq "$min" "$max"`——只要求"文件自己定义的号段无空洞"，
+#    这才是"跳号"的正确语义（REQ-001 与 REQ-003 同现而缺 002 = 真跳号，仍被抓）。
+#
+# 两处修正缺一不可：只改 ② 仍有引用污染（CHG-006 报 8），只改 ① 仍被 1..max 判死
+# （CHG-003 定义 14..18 报 13 个缺号）。
+DEF_RE() { # <prefix> -> 定义式编号行的正则
+  printf '^#{1,6}[[:space:]]*%s-[0-9]+|^\\|[[:space:]]*`?%s-[0-9]+`?[[:space:]]*\\||^-[[:space:]]*`?%s-[0-9]+|^%s-[0-9]+' "$1" "$1" "$1" "$1"
+}
+
 check_seq() { # feature_dir prefix file_path label
   local dir="$1" prefix="$2" glob="$3" label="$4"
-  local nums max i missing
-  nums=$(grep -ohE "${prefix}-[0-9]+" "$glob" 2>/dev/null | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq || true)
+  local nums min max missing
+  nums=$(grep -ohE "$(DEF_RE "$prefix")" "$glob" 2>/dev/null \
+    | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq || true)
   [[ -z "$nums" ]] && { report "$label (no numbers, skip)" ok ok; return; }
+  min=$(printf '%s\n' "$nums" | head -1)
   max=$(printf '%s\n' "$nums" | tail -1)
   if [[ "$max" -le 9999 ]]; then
-    missing=0
-    for i in $(seq 1 "$max"); do
-      printf '%s\n' "$nums" | grep -qx "$i" || missing=$(( missing + 1 ))
-    done
-    report "$label continuous 1..${max} (no gaps)" 0 "$missing"
+    missing=$(printf '%s\n' "$nums" \
+      | awk -v mn="$min" -v mx="$max" '{a[$1+0]=1} END{n=0; for(i=mn;i<=mx;i++) if(!(i in a)) n++; print n}')
+    report "$label continuous ${min}..${max} (no gaps)" 0 "$missing"
   else
     report "$label continuity (max=${max} skip)" ok ok
   fi
 }
 
-feature_dirs=$(find "$ROOT/docs" -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true)
-if [[ -z "$feature_dirs" ]]; then
-  report "G2 no feature dirs (vacuous skip)" ok ok
+# ---------- 审计目录识别（v3.21.0） ----------
+# 用**正信号**识别，不按"是 docs/ 的子目录"取全集：`docs/changes`、`docs/bugs`、
+# `docs/review` 都是子目录，但 `docs/changes` 自己不是产物目录（它的**子目录**才是）。
+# 旧实现取全集，于是只要 docs/ 下存在任意一个子目录，"没有产物目录"的空转分支就不
+# 触发，G2/G3/G5/G6 **一条断言都不执行、也不打印任何行**——操作者读到 "4 passed" 会
+# 以为它们都过了。实测（v3.21.0）：一个 `01-spec.md` 里带 REQ 跳号的仓库**通过**了
+# 审计（假绿），同时 G4 因为找不到 `docs/changes/09-changelog.md` 误报**假红**。
+# 正信号与门禁 `check_delivery_doc` 的"看起来像功能目录"判据同源（CHG-004 为修同族
+# 假绿而引入：裸 `<docs>/*/` glob 会让任意占位文件永久放行）。
+#
+# 规范 §2.17「产物目录双轨约定」：`docs/<feature>/` 是功能级长期文档（05/06/07/09、
+# 01.5 矩阵、06.5 等）的权威落点；`docs/changes/<变更号>/` 是变更管线产物（管线入口件
+# 与门禁必检 7 件）的落点。
+#
+# 【审计单元按"不变量对冻结历史的适用性"分两类，这是本文件最核心的划分】
+#
+#   · **G2 编号连续性 → 功能目录 ∪ 变更目录**。这条不变量是**时间不变**的：`REQ-001`
+#     与 `REQ-003` 同现而缺 `002`，在写下那天就是错的，今天仍是错的，与"当时规范怎么写"
+#     无关。所以对两轨都成立、都该查。**这是本次修复的靶心**：旧实现只取功能目录，于是
+#     `docs/changes/<CHG>/` 布局的仓库里 G2 一条断言都不执行、也不打印任何行，一个
+#     01-spec.md 带 REQ 跳号的仓库**通过**了审计（假绿）。
+#
+#   · **G3/G5/G6 → 只取功能目录（活文档）**。这三组是拿**当前规范版本**去比对：G3 比
+#     §3 归档清单标签、G6 比 §4 必填节、G5 比 01.5 矩阵回填。而 §2.15 硬性规则 4 与
+#     §2.16.5「已闭合 CHG 禁止改写，勘误/补充一律新开一组变更文档」**明令历史变更目录
+#     不可回填**——拿今天的 §3 去判 CHG-002 的归档清单，是**时代错置**：它只会产出
+#     **永久无法清除的红**（本仓实测：CHG-002/CHG-005/CHG-007 共 4 条，且按规范不许改）。
+#     永久红比漏报更坏：它训练操作者忽略审计。变更轨的这三类一致性由**门禁在创建时**
+#     （`begin`/`staged`/`ci`/`stop`，那时产物还可修）承担，不由事后审计承担。
+#     功能目录的 09-changelog 是**活文档**（累积 CHG，最新一条即当前变更）→ 可行动。
+#
+# 「变更目录」按**结构**判定（直接位于 `<change_root>/` 下一层），不按目录名猜——
+# 变更号允许自定义形状（含 `BUG-<UTC 时间戳>` 等事故重入号），名字判据不可靠。
+looks_like_audit_dir() { # <dir> -> 0 当且仅当它承载变更/功能产物
+  [[ -f "$1/01-spec.md" || -f "$1/01.5-rtvm-matrix.md" || -f "$1/09-changelog.md" ]]
+}
+
+# 正信号 = 承载 01-spec / 01.5 矩阵 / 09-changelog 之一；`docs/bugs/<BUG-xxx>/` 的六件套
+# 以 `01-diagnosis.md` 起名，不命中本信号，**刻意排除**——其一致性由门禁的六件存在性
+# 校验与 B 层 Review 承担（§2.5 阶段 6），不属于"跨文档同源"审计面。
+# sort -u 去重：change_root 配成 docs 根时两路枚举会重叠。
+audit_dirs=""   # G2：功能目录 ∪ 变更目录
+g36_dirs=""     # G3/G5/G6：仅活文档（不在 <change_root>/ 下的产物目录）
+for base in "$DOCS" "$CHANGES"; do
+  while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    looks_like_audit_dir "$d" || continue
+    audit_dirs="$audit_dirs$d"$'\n'
+    # 变更根下的目录 = 冻结历史 → 不进 G3/G5/G6。
+    case "$d" in "$CHANGES"/*) ;; *) g36_dirs="$g36_dirs$d"$'\n' ;; esac
+  done <<< "$(find "$base" -mindepth 1 -maxdepth 1 -type d 2>/dev/null || true)"
+done
+audit_dirs=$(printf '%s' "$audit_dirs" | sort -u)
+g36_dirs=$(printf '%s' "$g36_dirs" | sort -u)
+
+if [[ -z "$audit_dirs" ]]; then
+  # **显式声明"这些组没跑"**。静默空转 = 假绿，是本文件最该防的失效模式：旧实现只在
+  # `<docs>/` 连一个子目录都没有时才打这一行，而 `docs/changes`、`docs/bugs`、
+  # `docs/review` 都算"子目录"——它们一存在，G2/G3/G5/G6 就**一条断言都不执行、也不打
+  # 任何行**，操作者读到 "4 passed" 会以为这几组都过了。实测：一个 01-spec.md 带 REQ
+  # 跳号的仓库**通过**了审计。此行故意写得啰嗦：它不是"通过"，是"未覆盖"。
+  report "G2 VACUOUS SKIP — no artifact dir under $DOCS_DIR/ or $CHANGE_DIR/, so G2 did NOT run (do NOT read this as a pass)" ok ok
 else
   # while-read 逐行迭代：兼容含空格的目录名（for in $var 会按空格拆词）
   while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
     fname=$(basename "$d")
     [[ -f "$d/01-spec.md" ]] && check_seq "$d" "REQ" "$d/01-spec.md" "G2 REQ numbering in $fname"
     [[ -f "$d/03-modification-plan.md" ]] && check_seq "$d" "DES" "$d/03-modification-plan.md" "G2 DES numbering in $fname"
@@ -96,10 +218,19 @@ else
     [[ -f "$d/06.5-deployment-config.md" ]] && check_seq "$d" "CFG" "$d/06.5-deployment-config.md" "G2 CFG numbering in $fname"
     [[ -f "$d/06.5-deployment-config.md" ]] && check_seq "$d" "DB" "$d/06.5-deployment-config.md" "G2 DB numbering in $fname"
     [[ -f "$d/06-delivery-summary.md" ]] && check_seq "$d" "FU" "$d/06-delivery-summary.md" "G2 FU numbering in $fname"
-  done <<< "$feature_dirs"
+  done <<< "$audit_dirs"
 fi
 
-# ---------- G3 §3↔§4 同源 + G5 RTVM + G6 必填节（逐 09-changelog 最新 CHG） ----------
+# G3/G5/G6 的空转声明（与 G2 分开声明：两组的覆盖面不同，合并成一句会让操作者
+# 误判"哪几组没跑"）。只落变更目录的仓库会命中这一行——那是**设计如此**（见上方划分），
+# 不是缺陷，但必须让操作者知道这三组没覆盖本仓库。
+if [[ -z "$g36_dirs" ]]; then
+  report "G3/G5/G6 VACUOUS SKIP — no living-doc dir (feature dir) outside $CHANGE_DIR/; these groups did NOT run (by design: frozen change dirs are the gate's job, see header)" ok ok
+fi
+
+# ---------- G3 §3↔§4 同源 + G5 RTVM + G6 必填节（逐活文档目录的 09-changelog 最新 CHG） ----------
+# 迭代 **$g36_dirs**（活文档），不是 $audit_dirs：见上方"审计单元分两类"——拿当前 §3/§4
+# 判冻结的变更目录是时代错置。
 while IFS= read -r c; do
   chg="$c/09-changelog.md"
   [[ -f "$chg" ]] || continue
@@ -123,7 +254,10 @@ while IFS= read -r c; do
   n3=$(wc -l < "$L4TMP" | tr -d ' ')
   report "G3 $fname archived checklist non-empty (防恒真空转)" 1 "$([[ "$n3" -gt 0 ]] && echo 1 || echo 0)"
   rm -f "$L4TMP"
-  # G5 RTVM 短引用 ⊆ 01.5 矩阵（门禁 4：只改 changelog 不回填矩阵视为未闭环）
+  # G5 RTVM 短引用 ⊆ 01.5 矩阵（门禁 4：只改 changelog 不回填矩阵视为未闭环）。
+  # §2.17：该矩阵**单落点于功能目录**（不双落变更目录），而本循环的审计单元正是功能
+  # 目录（活文档）→ 就地取即正确，不需要全树兜底。**若这里改成"全树任意矩阵"兜底，
+  # 会掩盖"矩阵被放错落点"这一真实问题**——那正是 G5 想抓的分叉。
   if [[ -f "$c/01.5-rtvm-matrix.md" ]]; then
     unreached=0
     for r in $(grep -oE 'REQ-[0-9]+' "$CHG_BLOCK" | sort -u); do
@@ -136,36 +270,115 @@ while IFS= read -r c; do
     report "G5 $fname no REQ refs in latest CHG (matrix exempt)" ok ok
   fi
   rm -f "$CHG_BLOCK"
-done <<< "$feature_dirs"
+done <<< "$g36_dirs"
+
+# ---------- G7 变更批次自洽（v3.18.0） ----------
+# 批次目录 = <change_root>/BATCH-YYYYMMDD/（§1.1 同天 L0/L1 合并）。它把"一个变更
+# 一套产物"放宽为"一套产物承载多个变更"，放宽的代价必须由机器盯住，否则批次会变成
+# 绕过 A 层门禁的暗道。四条不变量，全部纯文本可验（无需 JSON 解析器）：
+#   a) 记录 ⊆ 入口锚点：每条 change_id 必须在批次 00-intent.md 有自己的 `## <id>`
+#      小节（§2.17 管线入口按变更分节；缺了就是"登记了却没说要做啥"）
+#   b) 记录 ⊆ 锚点：每条 change_id 必须能在批次内某 *.md 找到锚点（否则是孤儿记录）
+#   c) 风险等级 ∈ {L0,L1}：批次是低风险专用通道，L2/L3 必须在独立目录
+#   d) 变更号跨批次唯一：同一 id 出现在两个批次 → 检索与归属二义
+# 锚点形状与门禁 anchors_in_file 用同一条 sed 表达式，防止"审计认得的锚点"和
+# "门禁认得的锚点"悄悄分叉（分叉会让审计通过而门禁拒绝，或反之）。
+#
+# 【v3.19.0 修正】原 a) 是"批次内任一 *.md 的 `## <id>` 必须有治理记录"，即把
+# **每一个** `## <ascii 单词>` 标题都当作变更号。这条方向在批次里站不住：规范
+# §2.16.2 强制 `09-changelog.md` 含 Observation 记录，作者写成 `## Observation`
+# 时它就是一条合法标题——审计会把它当成"未登记的变更"报红（实测假红），门禁
+# 也会拿 "Observation" 去查治理记录并拒绝整批（同一根因）。`## <标题>` 在文本
+# 层面无法区分"变更小节"与"结构小节"，所以这条反向不变量被**替换**为 a)：
+# 只从权威名单（00-governance.json 的 change_id）出发，不再反向推断。
+# 代价如实记录："写了一个没登记的 `## CHG-903` 小节"不再由审计发现——但它本来
+# 也由门禁兜住：任何变更号被 begin/staged/ci 用到时，validate_governance_state
+# 都会因"没有治理记录"而 fail-closed（比按标题形状猜更准）。
+batch_dirs=$(find "$CHANGES" -mindepth 1 -maxdepth 1 -type d \
+  -name 'BATCH-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]' 2>/dev/null | sort || true)
+if [[ -z "$batch_dirs" ]]; then
+  report "G7 no change batches (vacuous skip)" ok ok
+else
+  b_noentry=0; b_unanchored=0; b_badrisk=0; b_dup=0
+  seen_ids=$(mktemp)
+  while IFS= read -r bd; do
+    [[ -d "$bd" ]] || continue
+    bname=$(basename "$bd")
+    gov="$bd/00-governance.json"
+    if [[ ! -s "$gov" ]]; then
+      report "G7 $bname carries 00-governance.json" ok missing
+      continue
+    fi
+    report "G7 $bname carries 00-governance.json" ok ok
+    # 权威名单：只从治理记录取变更号（见文件头 v3.19.0 修正说明）。
+    ids=$(grep -oE '"change_id"[[:space:]]*:[[:space:]]*"[A-Za-z0-9._-]+"' "$gov" 2>/dev/null \
+      | sed -E 's/.*"([A-Za-z0-9._-]+)"$/\1/' | sort -u || true)
+    anchors=$(sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' \
+      "$bd"/*.md 2>/dev/null | sort -u || true)
+    # a) 管线入口按变更分节（只查 00-intent.md，不查全部 *.md —— 后者会把
+    #    `## Observation` 这类结构标题算成变更小节）。
+    entry_anchors=$(sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' \
+      "$bd/00-intent.md" 2>/dev/null | sort -u || true)
+    for i in $ids; do
+      printf '%s\n' "$entry_anchors" | grep -qx "$i" || b_noentry=$(( b_noentry + 1 ))
+    done
+    for i in $ids; do
+      printf '%s\n' "$anchors" | grep -qx "$i" || b_unanchored=$(( b_unanchored + 1 ))
+    done
+    for r in $(grep -oE '"risk_level"[[:space:]]*:[[:space:]]*"[^"]*"' "$gov" 2>/dev/null \
+      | sed -E 's/.*"([^"]*)"$/\1/' || true); do
+      case "$r" in L0|L1) ;; *) b_badrisk=$(( b_badrisk + 1 )) ;; esac
+    done
+    for i in $ids; do
+      if grep -qx "$i" "$seen_ids" 2>/dev/null; then
+        b_dup=$(( b_dup + 1 ))
+      else
+        printf '%s\n' "$i" >> "$seen_ids"
+      fi
+    done
+  done <<< "$batch_dirs"
+  report "G7 every batch change has a section in the batch 00-intent.md" 0 "$b_noentry"
+  report "G7 every batch governance record has an anchor" 0 "$b_unanchored"
+  report "G7 batch risk levels are L0/L1 only" 0 "$b_badrisk"
+  report "G7 change ids unique across batches" 0 "$b_dup"
+  rm -f "$seen_ids"
+fi
 
 # ---------- G4 bugfix 双登记互证 ----------
 if [[ -f "$BFLOG" ]]; then
   # 陈旧模板占位自检：旧版模板占位标题含数字（### BUG-001：<一句话现象标题>），
   # 会被规范阶段 6 A 层 ^### BUG-[0-9] 计入 → 恒真统计。存在即判未替换。
   report "G4 stale numeric placeholder absent" 0 "$(grep -cE '^### BUG-0+1：<一句话现象标题>' "$BFLOG" 2>/dev/null || true)"
+  # 两个方向都必须遍历**全树** changelog，而不只是功能目录：变更轨的 09-changelog
+  # 落在 <change_root>/<变更号>/（深度 2），而旧实现只看 <docs>/ 下一层的
+  # `$c/09-changelog.md`。**同一根因**造成一对不对称的假判定：
+  #   · "每条已登记 BUG 都被某 CHG 引用" → **假红**（CHG 明明引用了，却找不到 changelog）；
+  #   · "每条 CHG 的 BUG 行都已登记 log" → **空转假绿**（一个 changelog 都没读到，unlogged 恒为 0）。
+  # v3.21.0 修正。
+  all_changelogs=$(find "$DOCS" -name '09-changelog.md' -type f 2>/dev/null || true)
   orphans=0
   for b in $(grep -oE '^### BUG-[0-9]+' "$BFLOG" | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq); do
     hit=0
-    while IFS= read -r c; do
-      [[ -f "$c/09-changelog.md" ]] && grep -qE "BUG-0*${b}([^0-9]|$)" "$c/09-changelog.md" && hit=1
-    done <<< "$feature_dirs"
+    while IFS= read -r chg; do
+      [[ -n "$chg" ]] || continue
+      grep -qE "BUG-0*${b}([^0-9]|$)" "$chg" && hit=1
+    done <<< "$all_changelogs"
     [[ "$hit" -eq 0 ]] && orphans=$(( orphans + 1 ))
   done
   report "G4 every logged BUG referenced by some CHG" 0 "$orphans"
   unlogged=0
-  while IFS= read -r c; do
-    chg="$c/09-changelog.md"
-    [[ -f "$chg" ]] || continue
+  while IFS= read -r chg; do
+    [[ -n "$chg" ]] || continue
     # 取「对应缺陷」行整行，行内可能引用多个 BUG（同批修复）
     bug_line=$(grep '对应缺陷' "$chg" | head -1)
     [[ -z "$bug_line" ]] && continue
     for b in $(printf '%s' "$bug_line" | grep -oE 'BUG-[0-9]+' | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq); do
       grep -qE "^### BUG-0*${b}([^0-9]|$)" "$BFLOG" || unlogged=$(( unlogged + 1 ))
     done
-  done <<< "$feature_dirs"
+  done <<< "$all_changelogs"
   report "G4 every CHG BUG line registered in log" 0 "$unlogged"
 else
-  report "G4 no docs/bugfix-log.md (skip; Bug 修复须先按 §2.5 阶段 6 建立)" ok ok
+  report "G4 no $DOCS_DIR/bugfix-log.md (skip; Bug 修复须先按 §2.5 阶段 6 建立)" ok ok
 fi
 
 rm -f "$S3TMP"

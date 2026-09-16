@@ -4,7 +4,8 @@
 # 在 CI 中做最基础的"产物是否存在"校验（不校验内容质量，内容质量由门禁5独立 Review 负责）。
 #
 # 用法：在 PR/CI 流水线中，对比目标分支与当前分支的改动文件，
-# 若命中 src/ 或 main 代码目录变更，则要求 docs/<feature>/ 下必须有对应更新。
+# 若命中代码目录变更，则要求 <docs>/<feature>/ 下必须有对应更新（<docs> 默认 docs，
+# 见下方 paths.docs 配置；v3.15.0）。
 # 可选传入基线：scripts/check-standards-compliance.sh <base-ref>
 #
 # ── 基线（BASE_REF）为什么必须给，以及为什么不许写死 ──────────────────────────
@@ -84,15 +85,39 @@ echo "基线（base ref）：$BASE_REF"
 
 CHANGED_FILES=$(git diff --name-only "$BASE_REF"...HEAD)
 
+# 路径根可配置（v3.15.0）：默认值 = 历史写死值 docs，未配置即行为不变。
+# 解析优先级：环境变量 AGENT_GUARD_DOCS_DIR > .agent-governance.yml paths.docs > 默认。
+cfg_path() { # key default
+  local k="$1" d="$2" v=""
+  if [[ -f ".agent-governance.yml" ]]; then
+    v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+        | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$v" ]] || v="$d"
+  printf '%s' "$v"
+}
+DOCS_DIR="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
+# 变更轨根（默认由 paths.docs 派生，可用 change_root 单独覆盖，如 specs/changes）。
+# 【同步义务】agent-gate.sh 与 audit-docs-consistency.sh 都读它——本脚本若只认
+# <docs>/<feature>/，在"变更轨不在 docs 下"的仓库里会把合规产物视同不存在（假红拦截），
+# 三处读取方口径必须一致（v3.15.0 的三脚本同改义务）。
+CHANGE_ROOT="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
+# 转义进 ERE 用（目录名可能含点，如 doc.specs）
+DOCS_RE=$(printf '%s' "$DOCS_DIR" | sed 's/[.[\*^$]/\\&/g')
+CHANGE_RE=$(printf '%s' "$CHANGE_ROOT" | sed 's/[.[\*^$]/\\&/g')
+
 # 代码路径定义必须与 agent-gate.sh is_code_path() 保持一致（同层守卫，单一口径）：
 # 之前只列 6 种后缀，漏 .sh/.sql/.kt/.rb/.php/.cs/.cpp 等 → 代码变更逃过文档检查。
 # 【同步义务】下方扩展名清单须与 resources/templates/agent-gate.sh 的 is_code_path()
 # 一致——机器双守护：源层 audit A2 + tests/run-tests.sh T12；改其一必须同步改另一。
 CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$' || true)
-DOCS_CHANGED=$(echo "$CHANGED_FILES" | grep -E '^docs/.*/(01-spec|02-code-impact-analysis|03-modification-plan|03\.5-tasks|04-test-scripts|05-test-results|09-changelog)\.md$' || true)
+# CHG-017 ⑪（v3.21.1）：本正则原先只接受 ${DOCS_RE} 前缀 → 变更轨不在 <docs>/ 下
+# （自定义 change_root，如 specs/changes）时，合规产物被判"缺失"（假红拦人）。
+# 两个前缀都接受，与 agent-gate / audit-docs-consistency 的同源口径对齐。
+DOCS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^(${DOCS_RE}|${CHANGE_RE})/.*/(01-spec|02-code-impact-analysis|03-modification-plan|03\.5-tasks|04-test-scripts|05-test-results|09-changelog)\.md$" || true)
 
 if [[ -n "$CODE_CHANGED" && -z "$DOCS_CHANGED" ]]; then
-  echo "❌ 门禁拦截：检测到源码变更，但未发现 docs/<feature>/ 下对应的规范文档更新。"
+  echo "❌ 门禁拦截：检测到源码变更，但未发现 $DOCS_DIR/<feature>/（或变更轨 $CHANGE_ROOT/<变更号>/）下对应的规范文档更新。"
   echo "命中门禁 1（需求/设计先行）与门禁 4（追踪矩阵闭环），本次变更判定为不合规。"
   echo "变更的源码文件："
   echo "$CODE_CHANGED"
@@ -101,6 +126,14 @@ fi
 
 if [[ -n "$DOCS_CHANGED" ]]; then
   # 抽查 09-changelog.md 是否含有必填字段关键词，防止只建空文件
+  #
+  # 【批次（v3.18.0）的已知粒度限制，显式记录】变更批次里 09-changelog.md 被同批多个
+  # 变更共享，而本脚本只有"文件"维度、拿不到"变更号"，所以下方的必填节抽查是**文件级**
+  # 的：它证明"这个 changelog 里至少有一处完整节"，不能证明"本 PR 涉及的那个变更的小节
+  # 完整"。**精确到锚点的判定在 scripts/agent-gate --stage ci**（`validate_diff` 按
+  # `## <变更号>` 锚点逐个归因后调 `validate_delivery`），两条 CI 守卫同时在线，故此处
+  # 不重复实现——本脚本的定位本来就是"最基础的产物存在性校验"（见文件头）。
+  # 若将来本脚本要独立承担批次判定，需先从 diff 里提取锚点再逐变更核对。
   for f in $(echo "$DOCS_CHANGED" | grep '09-changelog.md' || true); do
     for section in "追踪矩阵映射" "测试脚本与结论" "角色签署与独立性"; do
       if ! grep -q "$section" "$f"; then

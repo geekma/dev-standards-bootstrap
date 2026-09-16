@@ -12,28 +12,205 @@ die() {
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "run inside a Git repository"
 cd "$repo_root"
 
-change_root="${AGENT_GUARD_CHANGE_ROOT:-docs/changes}"
+# --- path roots (v3.15.0) ---------------------------------------------------
+# Directory ROOTS are configurable; each built-in default IS the historical
+# hardcoded value, so a repo without a `paths:` block behaves exactly as before.
+# Precedence: AGENT_GUARD_<KEY>_DIR env > .agent-governance.yml > built-in default.
+# Only roots are configurable. Contract names (AGENTS.md, the gate filename, the
+# twelve change artifacts, the six defect artifacts, the required-check name) are
+# deliberately NOT configurable: making them configurable would break cross-repo
+# comparison and migration, which is the point of this package.
+cfg_path() { # key default
+  local k="$1" d="$2" v=""
+  if [[ -f ".agent-governance.yml" ]]; then
+    v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+        | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$v" ]] || v="$d"
+  printf '%s' "$v"
+}
+docs_dir="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
+scripts_dir="${AGENT_GUARD_SCRIPTS_DIR:-$(cfg_path scripts scripts)}"
+tests_dir="${AGENT_GUARD_TESTS_DIR:-$(cfg_path tests tests)}"
+githooks_dir="${AGENT_GUARD_GITHOOKS_DIR:-$(cfg_path githooks .githooks)}"
+# `.github/` is deliberately NOT configurable: GitHub only reads workflows from
+# .github/workflows and PR templates from .github/ — renaming it silently kills
+# the pipeline, so a knob there would be a lie.
+# change_root / bugs_root keep their own keys and env vars; their default is
+# derived from the docs root, which is what the shipped config documents.
+change_root="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$docs_dir/changes")}"
+bugs_root="${AGENT_GUARD_BUGS_ROOT:-$(cfg_path bugs_root "$docs_dir/bugs")}"
+# regex-safe forms for the path-classification tests below (defaults contain a
+# literal dot: .githooks)
+re_escape() { printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g'; }
+docs_re=$(re_escape "$docs_dir")
+scripts_re=$(re_escape "$scripts_dir")
+tests_re=$(re_escape "$tests_dir")
+githooks_re=$(re_escape "$githooks_dir")
+change_root_re=$(re_escape "$change_root")
 # 00-intent.md is the pipeline entry point (problem / expected outcome / constraints);
 # a change without a recorded intent is treated as undocumented work.
 required_docs=(00-intent.md 00-governance.json 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md)
 active_file=$(git rev-parse --git-path agent-governance/active-change)
 
+# --- change batches (v3.18.0, standards §1.1) -------------------------------
+# Same-day L0/L1 changes MAY share one `<change_root>/BATCH-YYYYMMDD/` directory
+# instead of one directory per change. What is deliberately NOT changed is the
+# ARTIFACT NAMES: the twelve files keep their exact names, so every "find by
+# name" path in the gate, the audit, and the target repo keeps working. Only the
+# containing directory differs, and each artifact carries a `## CHG-xxx` section
+# anchor that tells the bundled changes apart. That anchor is what makes a batch
+# addressable without a JSON/YAML parser.
+#
+# Resolution order (first hit wins):
+#   1. a dedicated `<change_root>/<id>/` directory — the historical layout, and
+#      it always wins so existing repos are untouched;
+#   2. AGENT_GUARD_CHANGE_DIR — explicit override for tooling/tests;
+#   3. a BATCH-*/ directory containing a `## <id>` anchor.
+# If nothing matches we return the canonical dedicated path, so error messages
+# keep naming the path the user is expected to create.
+change_dir() { # <change-id> -> directory
+  # NOTE (bash 3.2): `local` expands every word BEFORE assigning any of them, so
+  # a second assignment may not reference the first. Keep declarations split.
+  local id="$1"
+  local d="$change_root/$id" b
+  [[ -d "$d" ]] && { printf '%s' "$d"; return 0; }
+  if [[ -n "${AGENT_GUARD_CHANGE_DIR:-}" && -d "${AGENT_GUARD_CHANGE_DIR:-}" ]]; then
+    printf '%s' "$AGENT_GUARD_CHANGE_DIR"; return 0
+  fi
+  for b in "$change_root"/BATCH-*/; do
+    [[ -d "$b" ]] || continue
+    if grep -qE "$(anchor_re "$id")" "$b"/*.md 2>/dev/null; then
+      printf '%s' "${b%/}"; return 0
+    fi
+  done
+  printf '%s' "$d"
+}
+
+is_batch_dir() { # <dir> -> 0 if it is a BATCH-YYYYMMDD directory
+  [[ "$(basename "$1")" =~ ^BATCH-[0-9]{8}$ ]]
+}
+
+# Section anchor pattern: `## <change-id>` (optionally followed by more words).
+# Requires a separator after the id so a heading like `## 00-intent.md` is not
+# mistaken for a change. Shared by change_dir() and anchors_in_file() so the
+# resolver and the scanners can never disagree about what an anchor is.
+anchor_re() { printf '^##[[:space:]]+%s([[:space:]]|$)' "$1"; }
+
+# The one place that parses anchors out of a file (see anchor_re for the shape).
+anchors_in_file() { # <file> -> ids, one per line
+  [[ -f "$1" ]] || return 0
+  sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' "$1" 2>/dev/null | sort -u
+}
+
+# The AUTHORITATIVE roster of a batch: the change ids declared in its
+# 00-governance.json, one per line. This — not the set of `## <heading>` lines —
+# is what defines "which changes live here".
+#
+# v3.19.0 fix: the anchor scan used to serve as the roster, but `## <heading>`
+# cannot tell a change section from a structural one, and the standards REQUIRE
+# structural headings inside the shared artifacts (e.g. `## Observation` in
+# 09-changelog.md, §2.16.2). Reading those as change ids produced a phantom
+# `{"change_id":"Observation"}` row in `metrics` and made `--stage staged`/`ci`
+# reject a perfectly valid batch ("declares no governance record for
+# 'Observation'") — a gate that fails on a heading the standards mandate.
+gov_ids() { # <governance-file> -> declared change ids, one per line
+  [[ -s "$1" ]] || return 0
+  grep -oE '"change_id"[[:space:]]*:[[:space:]]*"[A-Za-z0-9._-]+"' "$1" 2>/dev/null \
+    | sed -E 's/.*"([A-Za-z0-9._-]+)"$/\1/' | sort -u || true
+}
+
+# Which change ids does a directory address? A dedicated <CHG>/ directory names
+# exactly one (its basename); a batch names every change its roster declares.
+# The diff and metrics scans walk DIRECTORIES rather than starting from an id,
+# so they need this direction of the mapping.
+# Fallback: with no readable roster there is nothing authoritative to report, so
+# the anchors are used as a best effort — that keeps a missing/empty
+# 00-governance.json surfacing as a concrete error instead of a silent no-op.
+change_ids_in_dir() { # <dir> -> ids, one per line
+  local d="$1" f roster
+  if is_batch_dir "$d"; then
+    roster=$(gov_ids "$d/00-governance.json")
+    if [[ -n "$roster" ]]; then
+      printf '%s\n' "$roster"
+      return 0
+    fi
+    for f in "$d"/*.md; do
+      [[ -f "$f" ]] || continue
+      anchors_in_file "$f"
+    done | sort -u
+  else
+    basename "$d"
+  fi
+}
+
+# Governance records are JSON, and JSON has no meaningful newlines: a
+# pretty-printed single object and a one-object-per-line batch carry the SAME
+# data. The reader used to be line-oriented (`grep ... | head -1`), which made
+# those two shapes behave completely differently — and because the SHIPPED
+# template `resources/templates/governance-state.json`, which SKILL.md tells the
+# agent to turn into `00-governance.json`, is pretty-printed, following the
+# documented workflow produced a record the gate REFUSED with
+#   "00-governance.json must declare risk_level L0, L1, L2, or L3"
+# while the field sat two lines below the `change_id`. Measured on this repo's
+# own ledger: 16 of 16 records (CHG-001..016) are multi-line, so all 16 would
+# have been rejected by the gate that ships with them. `metrics` reported
+# `"risk_level":null` for every one of them.
+#
+# v3.20.0 fix: flatten the file, split on top-level object boundaries, then
+# select by change_id. Any valid JSON layout now reads identically — the
+# one-object-per-line batch convention stays legal (and stays recommended: it
+# keeps per-change diffs reviewable), it is simply no longer a PARSER
+# requirement. The batch clause in the standards still tells authors to write
+# one object per line; that is now a style rule, not a load-bearing one.
+#
+# Records stay FLAT (no nested objects): `json_field` is still a single-line
+# sed, and the L3 release-authorization fields are deliberately flat strings for
+# that reason. Flattening does not weaken that contract.
+gov_record() { # <governance-file> <change-id> -> that change's JSON object, one line
+  local file="$1" id="$2"
+  local flat
+  [[ -s "$file" ]] || return 0
+  # `|| true` is load-bearing: the gate runs under `set -euo pipefail`, so a
+  # no-match grep would abort the whole script (exit 1, no message) instead of
+  # returning an empty record the caller can turn into a precise diagnostic.
+  flat=$(tr -d '\n\r' < "$file" 2>/dev/null) || return 0
+  # Split between sibling objects. Both separators must be handled: batches are
+  # written as bare consecutive objects (newline-separated, no comma) while a
+  # JSON array or a `jq`-formatted file puts a comma between them. The optional
+  # `,?` covers both. A `}{` sequence INSIDE a string value would split there
+  # too — accepted: records are flat strings and `change_id` is never last, so
+  # the worst case is a truncated record, never a sibling's fields.
+  printf '%s' "$flat" \
+    | sed -E 's/\}[[:space:]]*,?[[:space:]]*\{/}\n{/g' 2>/dev/null \
+    | grep -E "\"change_id\"[[:space:]]*:[[:space:]]*\"${id}\"" 2>/dev/null \
+    | head -n 1 || true
+}
+
+json_field() { # <json-line> <key> -> value
+  local line="$1" key="$2"
+  printf '%s' "$line" | sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" 2>/dev/null | head -n 1 || true
+}
+
 is_code_path() {
   local path="$1"
-  [[ "$path" =~ ^(docs/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
+  [[ "$path" =~ ^(${docs_re}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
   # 治理工具自身不是产品代码：安装/升级治理包的提交不需要变更产物（否则新仓库
   # 第一次 commit 即死锁——鸡生蛋）。它们由 §2.17.4 golden-case 回归背书。
-  [[ "$path" =~ ^(\.githooks/|\.claude/|\.cursor/|\.gemini/|\.agent-governance\.yml$|scripts/agent-gate$|scripts/install-hook-adapter$|scripts/check-standards-compliance\.sh$|tests/run-tests\.sh$|tests/audit-docs-consistency\.sh$) ]] && return 1
+  # v3.17.0：**新增治理脚本必须同步加进本清单**——stamp-provenance.sh 漏加时，
+  # 全新安装后的第一次 commit 会被判为"源码变更"而拦下（T15 D5 用例实测暴露）。
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
 required_docs_present() {
-  local id="$1" doc
+  local id="$1" doc d
   # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
   # (kills "-foo", "foo.", "a..b"; existing CHG-xxx / BUG-<ts> forms all pass).
   [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
+  d=$(change_dir "$id")
   for doc in "${required_docs[@]}"; do
-    [[ -s "$change_root/$id/$doc" ]] || die "missing required artifact: $change_root/$id/$doc"
+    [[ -s "$d/$doc" ]] || die "missing required artifact: $d/$doc"
   done
   validate_artifact_content "$id"
 }
@@ -43,7 +220,8 @@ required_docs_present() {
 # must not pass as a complete artifact set. These checks are deterministic
 # greps; quality judgment (B layer) stays with independent roles.
 validate_artifact_content() {
-  local id="$1" d="$change_root/$id"
+  local id="$1" d
+  d=$(change_dir "$id")
   grep -q "预期结果" "$d/00-intent.md" \
     || die "$d/00-intent.md missing expected-outcome section (A-layer acceptance, standards §2.5)"
   grep -q "开放问题" "$d/00-intent.md" \
@@ -84,11 +262,6 @@ validate_artifact_content() {
   fi
 }
 
-json_string() {
-  local file="$1" key="$2"
-  sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" "$file" | head -n 1
-}
-
 # Placeholder owner values are governance debt, not a real assignment: an
 # owner set to PENDING/TODO/TBD/待定 must fail the gate now instead of
 # silently passing role-independence checks later. (v3.5.0)
@@ -100,32 +273,77 @@ reject_placeholder_owner() { # file field value
   esac
 }
 
+# v3.17.0 file provenance (standards §1.1). The block is written by
+# scripts/stamp-provenance.sh from the RUNNING ENVIRONMENT (git identity,
+# hostname, platform, UTC time) — values a hand-writer cannot know, which is
+# exactly what makes them evidence rather than a claim. What a gate can check is
+# therefore: the block exists, its fields are filled, `generated_at` looks like a
+# real ISO date, and `generated_by` names the script — a hand-written block
+# naming itself something else fails here. Truthfulness of `author` itself is not
+# machine-verifiable; the producer requirement is what narrows the gap.
+provenance_block() { # file -> block lines, or empty
+  sed -n '/^<!-- provenance$/,/^-->$/p' "$1" 2>/dev/null || true
+}
+validate_provenance() { # file
+  local f="$1" blk k norm
+  blk=$(provenance_block "$f")
+  [[ -n "$blk" ]] || die "cannot finish: $f carries no provenance block — run scripts/stamp-provenance.sh <CHG-id> (standards §1.1)"
+  # Placeholder first: an unfilled template should hear "run the script", not a
+  # downstream symptom about date formats.
+  norm=$(printf '%s' "$blk" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+  case "$norm" in
+    *PENDING*|*TODO*|*TBD*|*待定*) die "cannot finish: $f provenance block still holds a placeholder — run scripts/stamp-provenance.sh <CHG-id>" ;;
+  esac
+  for k in author email generated_at generated_by; do
+    printf '%s\n' "$blk" | grep -qE "^${k}:[[:space:]]*[^[:space:]]" \
+      || die "cannot finish: $f provenance block is missing '$k' — regenerate with scripts/stamp-provenance.sh"
+  done
+  printf '%s\n' "$blk" | grep -qE '^generated_at:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' \
+    || die "cannot finish: $f provenance 'generated_at' is not an ISO-8601 date — regenerate with scripts/stamp-provenance.sh"
+  printf '%s\n' "$blk" | grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' \
+    || die "cannot finish: $f provenance block was not produced by scripts/stamp-provenance.sh (a hand-written block cannot pass this)"
+}
+
 validate_governance_state() {
-  local id="$1" file risk implementation test_owner review_owner declared_id
-  file="$change_root/$id/00-governance.json"
+  local id="$1" file risk implementation test_owner review_owner declared_id d rec
+  d=$(change_dir "$id")
+  file="$d/00-governance.json"
   [[ -s "$file" ]] || die "missing required artifact: $file"
-  declared_id=$(json_string "$file" change_id)
+  # A dedicated <CHG>/ directory holds one record; a batch holds one line per
+  # bundled change. Scope to THIS change's line so a sibling's risk/owners can
+  # never satisfy our checks (or be misread as ours).
+  rec=$(gov_record "$file" "$id")
+  [[ -n "$rec" ]] || die "$file declares no governance record for '$id' (expected a JSON line with \"change_id\": \"$id\")"
+  declared_id=$(json_field "$rec" change_id)
   [[ "$declared_id" == "$id" ]] || die "$file must declare change_id '$id'"
-  risk=$(json_string "$file" risk_level)
+  risk=$(json_field "$rec" risk_level)
   [[ "$risk" =~ ^L[0-3]$ ]] || die "$file must declare risk_level L0, L1, L2, or L3"
-  implementation=$(json_string "$file" implementation_owner)
+  # v3.18.0 change batches are L0/L1 ONLY (standards §1.1). Bundling weakens the
+  # per-change evidence boundary — artifacts of several changes share one file —
+  # which is tolerable for low-risk work and not for anything needing role
+  # independence or release authorization. Enforced here, on the record, so it
+  # cannot be bypassed by simply dropping artifacts into a BATCH-*/ directory.
+  if is_batch_dir "$d" && [[ "$risk" != L0 && "$risk" != L1 ]]; then
+    die "$d is a change batch but '$id' declares risk_level $risk — batches are L0/L1 only; move '$id' to $change_root/$id/ (standards §1.1)"
+  fi
+  implementation=$(json_field "$rec" implementation_owner)
   [[ -n "$implementation" ]] || die "$file must declare implementation_owner"
   reject_placeholder_owner "$file" implementation_owner "$implementation"
   if [[ "$risk" == L2 || "$risk" == L3 ]]; then
-    test_owner=$(json_string "$file" test_owner)
-    review_owner=$(json_string "$file" review_owner)
+    test_owner=$(json_field "$rec" test_owner)
+    review_owner=$(json_field "$rec" review_owner)
     [[ -n "$test_owner" && -n "$review_owner" ]] || die "$file must declare test_owner and review_owner for $risk"
     reject_placeholder_owner "$file" test_owner "$test_owner"
     reject_placeholder_owner "$file" review_owner "$review_owner"
     [[ "$implementation" != "$test_owner" && "$implementation" != "$review_owner" && "$test_owner" != "$review_owner" ]] || die "$file requires distinct implementation, test, and review owners for $risk"
   fi
   # v3.5.0 L3 release authorization: flat string fields, not a nested object —
-  # json_string extracts with a single-line sed, so nested JSON cannot parse.
+  # the record is extracted with a single-line sed, so nested JSON cannot parse.
   if [[ "$risk" == L3 ]]; then
     local auth_by auth_at auth_ev
-    auth_by=$(json_string "$file" release_authorized_by)
-    auth_at=$(json_string "$file" release_authorized_at)
-    auth_ev=$(json_string "$file" release_authorization_evidence)
+    auth_by=$(json_field "$rec" release_authorized_by)
+    auth_at=$(json_field "$rec" release_authorized_at)
+    auth_ev=$(json_field "$rec" release_authorization_evidence)
     [[ -n "$auth_by" ]] || die "$file must declare release_authorized_by for L3"
     reject_placeholder_owner "$file" release_authorized_by "$auth_by"
     [[ -n "$auth_at" ]] || die "$file must declare release_authorized_at for L3"
@@ -134,11 +352,10 @@ validate_governance_state() {
   # v3.6.0 bug document set: an optional flat bug_ref binds this change to a
   # defect document group under docs/bugs/<bug_ref>/; when declared, the
   # three-file set must exist and be non-empty (standards §2.5 stage 6).
-  local bug_ref bugs_root
-  bug_ref=$(json_string "$file" bug_ref)
+  local bug_ref
+  bug_ref=$(json_field "$rec" bug_ref)
   if [[ -n "$bug_ref" ]]; then
     [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
-    bugs_root="${AGENT_GUARD_BUGS_ROOT:-docs/bugs}"
     for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
       [[ -s "$bugs_root/$bug_ref/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bugs_root/$bug_ref/$doc"
     done
@@ -189,17 +406,17 @@ working_code_changed() {
 # which deliberately fails the '[0-9]' count).
 check_delivery_doc() { # change-dir filename content-regex label
   local d="$1" name="$2" pat="$3" label="$4" f="" cand pdir
-  # 落点三选一：① 变更目录（常态）② 仓库级 docs/（无功能目录的仓库，如本仓库）
-  # ③ 功能目录 docs/<feature>/（§2.17 产物目录双轨约定）
-  for cand in "$d/$name" "docs/$name"; do
+  # 落点三选一：① 变更目录（常态）② 仓库级 <docs>/（无功能目录的仓库，如本仓库）
+  # ③ 功能目录 <docs>/<feature>/（§2.17 产物目录双轨约定）
+  for cand in "$d/$name" "$docs_dir/$name"; do
     [[ -f "$cand" ]] && { f="$cand"; break; }
   done
-  # ③ 刻意**不用**裸 glob `docs/*/`——独立复核实测：那样只要有人在 docs/ 下任意子目录
-  #   （如 docs/unrelated/）放一个同名占位文件，所有变更的交付门禁就永久放行了。
+  # ③ 刻意**不用**裸 glob `<docs>/*/`——独立复核实测：那样只要有人在文档根下任意子目录
+  #   （如 <docs>/unrelated/）放一个同名占位文件，所有变更的交付门禁就永久放行了。
   #   故此处要求该目录"看起来像功能目录"：须含 01-spec.md 或 01.5-rtvm-matrix.md。
   #   这是本族根因的反向形态——覆盖面过宽比过窄更危险，因为它制造的是假绿。
   if [[ -z "$f" ]]; then
-    for cand in docs/*/"$name"; do
+    for cand in "$docs_dir"/*/"$name"; do
       [[ -f "$cand" ]] || continue
       pdir=$(dirname "$cand")
       [[ -f "$pdir/01-spec.md" || -f "$pdir/01.5-rtvm-matrix.md" ]] || continue
@@ -222,10 +439,15 @@ check_delivery_doc() { # change-dir filename content-regex label
 # Observation records in it (standards §2.16.2). Shared by --stage stop and
 # branch-mode CI so both enforcement lines hold the same bar. (v3.5.0)
 validate_delivery() { # change-id
-  local id="$1" d="$change_root/$id"
+  local id="$1" d
+  d=$(change_dir "$id")
   # v3.7.0: the coding record (changed-file list, CHG-xxx anchors, WHY
   # decisions) is part of the delivery bar (standards §2.5 stage 5).
   [[ -s "$d/04.5-coding-record.md" ]] || die "cannot finish: missing coding record $d/04.5-coding-record.md"
+  # v3.17.0: ...and it must carry script-generated provenance (who / where /
+  # when). Checked here rather than at `begin` because the coding record is a
+  # stage-5 artifact — there is nothing to stamp before coding starts.
+  validate_provenance "$d/04.5-coding-record.md"
   [[ -s "$d/05-test-results.md" ]] || die "cannot finish: missing test evidence $d/05-test-results.md"
   [[ -s "$d/09-changelog.md" ]] || die "cannot finish: missing changelog $d/09-changelog.md"
   # Every executed stage must leave an Observation record (verification
@@ -240,13 +462,13 @@ validate_delivery() { # change-id
   for req in $(grep -oE 'REQ-[0-9]+' "$d/09-changelog.md" | sort -u); do
     hit=0
     # FU-019: the standards source repo keeps its matrix nested at
-    # docs/changes/<CHG>/01.5 (two levels) — a single-level glob would report
+    # <change_root>/<CHG>/01.5 (two levels) — a single-level glob would report
     # every REQ as unbackfilled there (fail-closed but unusable).
-    for m in docs/*/01.5-rtvm-matrix.md docs/changes/*/01.5-rtvm-matrix.md; do
+    for m in "$docs_dir"/*/01.5-rtvm-matrix.md "$change_root"/*/01.5-rtvm-matrix.md; do
       [[ -f "$m" ]] || continue
       grep -qE "^\| \`?${req}\`?" "$m" && { hit=1; break; }
     done
-    [[ "$hit" == 1 ]] || die "cannot finish: REQ $req referenced in changelog but not backfilled in docs/<feature>/01.5-rtvm-matrix.md (gate 4)"
+    [[ "$hit" == 1 ]] || die "cannot finish: REQ $req referenced in changelog but not backfilled in $docs_dir/<feature>/01.5-rtvm-matrix.md (gate 4)"
   done
   # CHG-004 / REQ-022: the remaining two of the eight-category minimum doc set.
   check_delivery_doc "$d" 06.5-deployment-config.md '^([#>-][[:space:]]*)*未命中|^[|].*(未命中|(CFG|DB)-[0-9]+)|(CFG|DB)-[0-9]+' 'config/DB record'
@@ -310,23 +532,25 @@ complete_valid_change_exists() {
   [[ -d "$change_root" ]] || return 1
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
-    id=$(basename "$dir")
-    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
     complete=true
     for doc in "${required_docs[@]}"; do
       [[ -s "$dir/$doc" ]] || { complete=false; break; }
     done
-    if [[ "$complete" == true ]] \
-       && ( validate_governance_state "$id" ) >/dev/null 2>&1 \
-       && ( validate_artifact_content "$id" ) >/dev/null 2>&1; then
-      return 0
-    fi
+    [[ "$complete" == true ]] || continue
+    # A dedicated dir names one change; a batch names every change it anchors.
+    for id in $(change_ids_in_dir "${dir%/}"); do
+      [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+      if ( validate_governance_state "$id" ) >/dev/null 2>&1 \
+         && ( validate_artifact_content "$id" ) >/dev/null 2>&1; then
+        return 0
+      fi
+    done
   done
   return 1
 }
 
 validate_diff() {
-  local mode="$1" base="${2:-}" files code_changed docs_changed f id seen_ids
+  local mode="$1" base="${2:-}" files code_changed docs_changed f id dir_id seen_ids
   files=$(changed_files "$mode" "$base")
   [[ -n "$files" ]] || exit 0
   code_changed=false
@@ -334,16 +558,32 @@ validate_diff() {
   seen_ids=""
   while IFS= read -r f; do
     is_code_path "$f" && code_changed=true
-    if [[ "$f" =~ ^${change_root}/([A-Za-z0-9._-]+)/[A-Za-z0-9._-]+$ ]]; then
+    if [[ "$f" =~ ^${change_root_re}/([A-Za-z0-9._-]+)/[A-Za-z0-9._-]+$ ]]; then
       docs_changed=true
-      id="${BASH_REMATCH[1]}"
-      case " $seen_ids " in
-        *" $id "*) ;;
-        *) seen_ids="$seen_ids $id" ;;
-      esac
-      # Staged/CI diffs are the only enforcement line for clients without
-      # pre-write hooks, so the governance state must be validated here too.
-      validate_governance_state "$id"
+      dir_id="${BASH_REMATCH[1]}"
+      # A batch artifact is SHARED by every bundled change, so a diff to it is
+      # attributable to the whole roster. v3.19.0: read the roster from
+      # 00-governance.json rather than off the `## <heading>` lines — the latter
+      # picks up structural headings the standards require (§2.16.2
+      # `## Observation`) and fails the batch over a heading it mandates.
+      # `|| true` semantics preserved: an unreadable roster falls back to the
+      # anchors, and an empty list must not abort the scan.
+      local id_list
+      if [[ "$dir_id" == BATCH-* ]]; then
+        id_list=$(gov_ids "$(dirname "$f")/00-governance.json")
+        [[ -n "$id_list" ]] || id_list=$(anchors_in_file "$f")
+      else
+        id_list="$dir_id"
+      fi
+      for id in $id_list; do
+        case " $seen_ids " in
+          *" $id "*) ;;
+          *) seen_ids="$seen_ids $id" ;;
+        esac
+        # Staged/CI diffs are the only enforcement line for clients without
+        # pre-write hooks, so the governance state must be validated here too.
+        validate_governance_state "$id"
+      done
     fi
   done <<< "$files"
 
@@ -449,33 +689,37 @@ emit_metrics() {
   [[ -d "$change_root" ]] || exit 0
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
-    id=$(basename "$dir")
-    [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
-    if [[ -s "$dir/00-governance.json" ]]; then
-      risk=$(json_string "$dir/00-governance.json" risk_level)
-      # Emit a valid JSON string value; null stays unquoted.
-      if [[ "$risk" =~ ^L[0-3]$ ]]; then risk="\"$risk\""; else risk=null; fi
-    else
-      risk=null
-    fi
-    t_intent=$(first_commit_ts "$dir/00-intent.md")
-    t_gov=$(first_commit_ts "$dir/00-governance.json")
-    t_spec=$(first_commit_ts "$dir/01-spec.md")
-    t_plan=$(first_commit_ts "$dir/03-modification-plan.md")
-    t_test=$(first_commit_ts "$dir/05-test-results.md")
-    t_chg=$(first_commit_ts "$dir/09-changelog.md")
-    t_code=$(first_commit_referencing "$id")
-    printf '{"change_id":"%s","risk_level":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
-      "$id" "$risk" \
-      "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
-      "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
-      "$(ts_or_null "$t_chg")" \
-      "$(delta_or_null "$t_spec" "$t_intent")" \
-      "$(delta_or_null "$t_plan" "$t_spec")" \
-      "$(delta_or_null "$t_code" "$t_plan")" \
-      "$(delta_or_null "$t_test" "$t_code")" \
-      "$(delta_or_null "$t_chg" "$t_intent")" \
-      "$(delivery_ready "$dir")"
+    # One metrics row per CHANGE, not per directory: a batch directory holds
+    # several changes and must not collapse into a single `BATCH-*` row with
+    # one risk level standing in for all of them.
+    for id in $(change_ids_in_dir "${dir%/}"); do
+      [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+      if [[ -s "$dir/00-governance.json" ]]; then
+        risk=$(json_field "$(gov_record "$dir/00-governance.json" "$id")" risk_level)
+        # Emit a valid JSON string value; null stays unquoted.
+        if [[ "$risk" =~ ^L[0-3]$ ]]; then risk="\"$risk\""; else risk=null; fi
+      else
+        risk=null
+      fi
+      t_intent=$(first_commit_ts "$dir/00-intent.md")
+      t_gov=$(first_commit_ts "$dir/00-governance.json")
+      t_spec=$(first_commit_ts "$dir/01-spec.md")
+      t_plan=$(first_commit_ts "$dir/03-modification-plan.md")
+      t_test=$(first_commit_ts "$dir/05-test-results.md")
+      t_chg=$(first_commit_ts "$dir/09-changelog.md")
+      t_code=$(first_commit_referencing "$id")
+      printf '{"change_id":"%s","risk_level":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
+        "$id" "$risk" \
+        "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
+        "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
+        "$(ts_or_null "$t_chg")" \
+        "$(delta_or_null "$t_spec" "$t_intent")" \
+        "$(delta_or_null "$t_plan" "$t_spec")" \
+        "$(delta_or_null "$t_code" "$t_plan")" \
+        "$(delta_or_null "$t_test" "$t_code")" \
+        "$(delta_or_null "$t_chg" "$t_intent")" \
+        "$(delivery_ready "$dir")"
+    done
   done
 }
 
@@ -492,8 +736,19 @@ case "$command" in
     if [[ "$id" == "." || "$id" == ".." ]]; then
       die "invalid change id '$id'"
     fi
-    if [[ -e "$change_root/$id/09-changelog.md" || -L "$change_root/$id/09-changelog.md" ]]; then
-      die "change $id is already closed ($change_root/$id/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
+    # In a BATCH the changelog file is SHARED by every bundled change, so "the
+    # file exists" cannot mean "this change is closed" — a sibling's changelog
+    # would close every change that joins the batch later (false positive).
+    # Closure for a batch member is therefore its OWN `## <id>` section in the
+    # changelog, which is the same FU-015 semantics read one level finer.
+    d=$(change_dir "$id")
+    if is_batch_dir "$d"; then
+      if [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]] \
+         && grep -qE "$(anchor_re "$id")" "$d/09-changelog.md" 2>/dev/null; then
+        die "change $id is already closed ($d/09-changelog.md carries a '## $id' section) — open a new change id (standards §2.15 rule 4, FU-015)"
+      fi
+    elif [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]]; then
+      die "change $id is already closed ($d/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
     fi
     required_docs_present "$id"
     validate_governance_state "$id"
@@ -576,7 +831,16 @@ references (pure fixes / docs changes) are exempt.
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.
 
-Configuration: set AGENT_GUARD_CHANGE_ROOT to change the default docs/changes root.
+Configuration (v3.15.0): directory ROOTS come from the `paths:` block of
+.agent-governance.yml (docs / scripts / tests / githooks), each overridable by
+AGENT_GUARD_<KEY>_DIR. Every built-in default is the historical hardcoded value,
+so a repo that configures nothing behaves exactly as before.
+change_root / bugs_root keep AGENT_GUARD_CHANGE_ROOT / AGENT_GUARD_BUGS_ROOT and
+default to <docs>/changes and <docs>/bugs. Not configurable, on purpose:
+.github/ (the platform mandates the location) and the contract names (AGENTS.md,
+the gate filename, the twelve change artifacts, the six defect artifacts, the
+required check name) — they are what makes a repo comparable to every other repo
+using this package.
 EOF
     ;;
   *) die "unknown command '$command'" ;;

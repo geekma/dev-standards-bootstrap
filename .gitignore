@@ -24,9 +24,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # Blog / narrative docs are local snapshots, not part of the audit chain.
-# Governance artifacts (docs/changes/, docs/bugs/, docs/bugfix-log.md,
-# docs/06-delivery-summary.md, docs/06.5-deployment-config.md, docs/review/)
-# are NOT ignored — the commit chain IS the audit trail (FU-007 closure).
 docs/why-i-built-dev-standards-bootstrap.md
 docs/incubation-story.zh-CN.md
 docs/ai-development-problems-and-solutions.zh-CN.md
@@ -36,4 +33,20 @@ docs/ai-native-sdlc-implementation-report.zh-CN.md
 cover-image/
 .workbuddy/
 .workbuddy-ai
+
+# ✅ 已裁定：**docs/ 保持忽略**（2026-09-16，用户裁定；CHG-017 / FU-032 登记）
+# 裁定内容：本仓的治理产物（docs/changes/、docs/bugs/、bugfix-log.md、06-delivery-summary.md、
+#   06.5-deployment-config.md、review/）视为**本地工作快照**，不纳入版本控制——**不照抄到别的
+#   仓库**，目标仓库仍应遵守"提交链即审计链"。
+# 背景事实（不变）：此前注释曾声称这批产物 "are NOT ignored — the commit chain IS the audit trail
+#   (FU-007 closure)"，与下面这一行**直接矛盾**（v3.19.0 记录，注释已删）；实测
+#   `git ls-files docs | wc -l` == 0，磁盘上有 232+ 个文件，且历史上从未有提交删除过 docs/
+#   （`git log --diff-filter=D -- 'docs/*'` 为空）——这些产物从未进入过版本控制。
+# 已知后果（**接受，不再视为待办**；细节见 docs/changes/CHG-017/02-code-impact-analysis.md）：
+#   · 规范 §2.15 规则 4「已闭合 CHG 只读」在本仓**无版本控制背书**，只靠操作纪律；
+#   · `agent-gate --stage ci`（branch 模式，pre-push 与平台 CI 的判据）从 `git diff` 取产物信号，
+#     而产物永远进不了 diff → 本仓 **CI 模式必然红**（`--stage staged`/`stop` 有读盘兜底，仍可用）；
+#   · 未跟踪的**分发载荷**文件（如新增的 resources/templates/*.sh）若不 `git add`，克隆式安装会拿不到
+#     ——载荷是否入库**与该裁定无关**，见 FU-032。
+# 如需恢复审计链：删掉下面这行 → `git add docs/` → 接线 `core.hooksPath`（当前为空），并在新变更里说明。
 docs

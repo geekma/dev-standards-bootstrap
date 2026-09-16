@@ -283,8 +283,9 @@ for rmf in "$RM_EN" "$RM_ZH"; do
 done
 
 # ---------- 06.5 / 06-delivery-summary 模板存在性（CHG-004 / BUG-002） ----------
-#   §1.1「最低文档集八类」含 06.5-deployment-config.md 与 06-delivery-summary.md，
-#   但原模板目录**无对应模板**、门禁也不校验 → 目标仓库无处可复制、漏项无人拦。
+#   §1.1「最低文档集八类」含 06.5-deployment-config.md；06-delivery-summary.md 是
+#   §2.5 阶段 9.5 的必含产物（**不在八类内**，落 §1.1 编号主表「遗留项 (Follow-up)」行）。
+#   两者此前都无模板、门禁也不校验 → 目标仓库无处可复制、漏项无人拦。
 #   本断言保证"有模板可复制"；"门禁必检"由 agent-gate.sh 的 stop 分支承担。
 for t in 06.5-deployment-config.md 06-delivery-summary.md; do
   report "template exists and non-empty: $t" 1 "$([[ -s "$ROOT/resources/templates/$t" ]] && echo 1 || echo 0)"
@@ -322,7 +323,10 @@ gate_ext=$(grep -E '\\\.\(c\|' "$ROOT/resources/templates/agent-gate.sh" | head 
 ci_ext=$(grep -E '\\\.\(c\|' "$ROOT/resources/templates/check-standards-compliance.sh" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
 report "A2 code-extension list identical in gate and compliance.sh" "$gate_ext" "$ci_ext"
 
-# A3 README 声称的 golden-case 断言数必须 == run-tests 静态调用数——
+# A3 README 声称的 golden-case 断言数必须与生成器**同源**（CHG-019：静态调用点计数
+# 与运行期实出结构性死锁——同链双调用与循环站点使两口径恒差 3，README 取任一值都有
+# 一侧红）。口径唯一权威 = 生成器（运行期实出 `N passed`，红套件拒同步）；本断言只
+# 做"声称集合单一一致"与"== 生成器口径"两件事，重算逻辑不在此复制（防第三口径）。
 #    防"47→52→55 多处数字漂移"复发（本项目实际发生过）
 #
 #    CHG-003 收紧取值正则，同时治两个方向的缺陷：
@@ -332,24 +336,29 @@ report "A2 code-extension list identical in gate and compliance.sh" "$gate_ext" 
 #       107 与 118、而真值为 125，且这条 FAIL 在 main 上长期无人察觉。
 #    ② 假阳性（阻断方向）：若仅放宽为 '[0-9]+[^0-9]{0,20}'，版本号尾数会被卷进来——实测
 #       '见 §2.17.4 防恒真断言' 会命中 '4 防恒真断言'。
-#    故最终形态：(^|[^0-9.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)
-#       · 前导 '(^|[^0-9.])' 排除"前一个字符是数字或小数点"，避免版本号尾数被当成计数；
+#    故最终形态：(^|[^0-9A-Za-z.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)
+#       · 前导 '(^|[^0-9A-Za-z.])' 排除"前一个字符是数字、字母或小数点"，避免版本号尾数
+#         与**标识符尾数**被当成计数；字母这一档是 v3.21.0 补的——实测
+#         'G6 **executed no assertion' 会命中 '6 … assertion'，于是 claims 变成 {268,6}，
+#         两个方向同时红（"单一一致数字"与"== 静态调用数"）。`G6`/`T20`/`A22`/`CHG-016`
+#         这类标识符在本文档里到处都是，漏掉这一档等于给每个标识符都埋一颗地雷。
 #       · 上限 20 覆盖全部已知中英表述（最长 '项 golden-case ' 为 14 字符）并避免跨句误匹配；
 #       · 'assertions?' 兼顾单复数。
 #    须命中：'107 golden-case assertions' / '118 assertions' / '107 项 golden-case 断言'
-#    须不命中：'见 §2.17.4 防恒真断言'（版本号尾数）
+#    须不命中：'见 §2.17.4 防恒真断言'（版本号尾数）/ 'G6 executed no assertion'（标识符尾数）
 #    已知残余缺口（不阻断，登记 FU-009）：'assertions: 125'（数字在关键词之后）不命中。
-claims=$(grep -ohE '(^|[^0-9.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)' "$RM_EN" "$RM_ZH" | grep -oE '[0-9]+' | sort -u | tr '\n' ',')
-actual=$(grep -cE '^[[:space:]]*(report|check_output) ' "$ROOT/tests/run-tests.sh")
+claims=$(grep -ohE '(^|[^0-9A-Za-z.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)' "$RM_EN" "$RM_ZH" | grep -oE '[0-9]+' | sort -u | tr '\n' ',')
+GEN="$ROOT/scripts/update-assertion-count.sh"
+gen_rc=0
+gen_out=$(bash "$GEN" --check 2>&1) || gen_rc=$?
+gen_n=$(printf '%s\n' "$gen_out" | sed -nE 's/^assertion claims in sync with run-tests \(([0-9]+)\)$/\1/p')
 report "A3 README assertion-count claims are a single consistent number" 1 "$(printf '%s' "$claims" | grep -c '^[0-9]*,$')"
-report "A3 claimed assertion count == run-tests static call count" "$actual" "${claims%,}"
+report "A3 claimed assertion count == generator runtime count (CHG-019)" "$gen_n" "${claims%,}"
 
 # A3c 生成器同步校验（CHG-007 / FU-005+009）：README 声称数必须与生成器 --check 一致——
 #    手工改数、漏改、或 run-tests 增删用例后未同步，都在这里红。
-GEN="$ROOT/scripts/update-assertion-count.sh"
 if [[ -f "$GEN" ]]; then
-  bash "$GEN" --check >/dev/null 2>&1
-  report "A3c README assertion claims match generated count (FU-005/009)" 0 "$?"
+  report "A3c README assertion claims match generated count (FU-005/009)" 0 "$gen_rc"
 else
   report "A3c assertion generator script exists" 1 0
 fi
@@ -367,8 +376,8 @@ report "A4 governance workflow has no literal branch fallback" 0 "$(grep -cF "||
 
 # A5 门禁"交付必检文档"必须随 bootstrap --core 下发模板（CHG-004 / FU-012 防复发）——
 #    根因：门禁要求某文档存在、而安装清单不提供模板 → 目标仓库无从落笔，只能靠人记；
-#    `06.5` 与 `06-delivery-summary` 长期处于此状态（八类中两类无守护），是 CHG-003
-#    差点漏交 06.5 的制度性原因。
+#    `06.5` 与 `06-delivery-summary` 长期处于此状态（前者属八类、后者属阶段 9.5 必含，
+#    两类交付必检文档都无模板），是 CHG-003 差点漏交 06.5 的制度性原因。
 #    取值方式刻意用**动态派生**而非静态清单：从 agent-gate.sh 的 check_delivery_doc
 #    调用点提取文件名，再**真跑一次 --core 到临时目录**核对落点。
 #    为什么不 grep bootstrap.sh 的文本：首版就是这么写的，结果 install_file 写成
@@ -488,12 +497,27 @@ for d in $chg_dirs; do
 done
 report "A6e closed change dirs are complete (BUG-003 guard)" 0 "$closed_missing"
 
+# A24 quick-start 承诺面必须已入库（CHG-020）：README 宣传的安装命令读取的是**提交里**
+# 的文件——文件只在暂存区/工作树时，远端 raw 404（实测缺陷：install.sh 未提交而已提交的
+# README 已在宣传 curl 一条命令）。`git ls-files` 匹配=tracked（CI 干净 checkout 下即
+# committed）；与"树↔磁盘"断言互补：那条管"README 树=磁盘实际"，本条管"README 命令=提交内容"。
+a24_missing=0
+for a24f in scripts/install.sh CHANGELOG.md MAINTAINER.md resources/templates/stamp-provenance.sh .claude-plugin/marketplace.json .claude-plugin/plugin.json; do
+  git -C "$ROOT" ls-files --error-unmatch "$a24f" >/dev/null 2>&1 \
+    || { echo "audit: quick-start surface not committed (untracked): $a24f" >&2; a24_missing=$(( a24_missing + 1 )); }
+done
+report "A24 quick-start surface is git-tracked (CHG-020)" 0 "$a24_missing"
+
 # ── PART A8: 门禁硬化形态锚点（CHG-007：FU-008/014/015/019 防复发）──────────────────
 #   门禁行为已由 run-tests golden case 守护；此处锁"实现形态"，防行为被静默回退成弱检查
 #   （BUG-001 同族：检查模式弱于其声称语义）。取值用 grep -F 固定串，防正则元字符歧义。
 GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
-report "A8 begin rejects closed change re-entry (FU-015)" 1 "$(grep -cF 'already closed' "$GATE_TPL")"
-report "A8 RTVM glob covers nested change-dir matrices (FU-019)" 1 "$(grep -cF 'docs/changes/*/01.5-rtvm-matrix.md' "$GATE_TPL")"
+# v3.18.0：FU-015 的闭环判定从"changelog 文件存在"细化为两种形态——独立目录仍看文件，
+# 批次目录看**本变更自己的 `## <id>` 小节**（同批共享 changelog，"文件存在"会把后加入的
+# 变更一起判为已关闭）。故此处由"恰好 1 处"改为"两种形态各至少 1 处"：恒等断言会把
+# 正确的细化判成回退，下界断言才是这条不变量真正想守的东西。
+at_least "A8 begin rejects closed change re-entry (FU-015)" 2 "$GATE_TPL" 'already closed'
+report "A8 RTVM glob covers nested change-dir matrices (FU-019)" 1 "$(grep -cF '"$change_root"/*/01.5-rtvm-matrix.md' "$GATE_TPL")"
 # 说明：固定串在 gate 中天然多处命中（检查点 + 报文），故下两条用 ≥1 下界语义而非恒等
 ga_n=$(grep -cF 'REQ-[0-9]+' "$GATE_TPL")
 report "A8 numbering checks are digit-anchored (FU-008)" 1 "$([[ "$ga_n" -ge 1 ]] && echo 1 || echo 0)"
@@ -504,10 +528,25 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 # A9 规范条款存在性锚点（CHG-008 / FU-016）：防条款被静默移除
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
-# A11 规范体量上界（CHG-010 引入 / CHG-011 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 120KB。
+# A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2 重校准）：治理内容演进时上界随之重校准
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 128KB。
+# v3.21.2（CHG-017 / REQ-089）重校准 124KB → 128KB 的依据（按 §5.1 的两个条件）：
+#   ① **先压缩**：本轮新增文字先做了一轮浓缩（删除规范正文里的变更日志式括注、
+#      把派生资产的判定口径收成一句），但 v3.21.1 + v3.21.2 两轮的对齐修正
+#      （AGENTS 门禁节清单、L3 覆盖率门槛、矩阵落点句澄清等）已把 124KB 上界的
+#      余量吃到 **193 字节**——上界事实上再次失效，与 v3.16.0 的 53 字节同型；
+#   ② **有 CHANGELOG 条目对应**：见 `resources/STANDARDS_CHANGELOG.md` 的 v3.21.2 行；
+#   ③ 上界按 KiB 步进（+4KB）重设，余量 **4,289 字节**——**不是**按当前体量贴合，
+#      否则下一次任何实质新增又会立刻撞墙。
+# v3.17.0 重校准 120KB → 124KB 的依据（不只是"装不下了"）：
+#   ① v3.16.0 的未提交改动已把 120KB 上界的余量吃到 **53 字节**——上界事实上已失效，
+#      留着它只会让下一位维护者以为还有空间；
+#   ② 本版新增的是**治理要求**（文件溯源 + 不追溯既往），不是文字膨胀；且已先做压缩：
+#      合并三条重复条款为一条、并把机制细节下沉到 stamp-provenance.sh 头部注释，
+#      净增 1,035 字节（122,827 → 123,862）；
+#   ③ 上界按 KiB 步进（+4KB）重设，余量 3,114 字节——**不是**按当前体量贴合。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 120KB (FU-017, recalibrated v3.10.0)" 1 "$([[ "$std_bytes" -le 122880 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 128KB (FU-017, recalibrated v3.21.2)" 1 "$([[ "$std_bytes" -le 131072 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
@@ -527,6 +566,256 @@ at_least "A15 bootstrap self-update present (CHG-014)" 1 "$ROOT/scripts/bootstra
 # A16 失败模式与反篡改锚点（CHG-015）
 at_least "A16 gate anti-tamper guard present (CHG-015)" 1 "$GATE_TPL" 'anti-tamper'
 at_least "A16 upgrade blocks on dirty target (CHG-015)" 1 "$ROOT/scripts/bootstrap.sh" 'uncommitted changes — commit first, or pass --force'     
+
+# A17 路径根可配置锚点（v3.15.0）——防两个反向回退：
+#   ① 参数化回退：又变回硬编码（目标仓库换根后门禁按默认根找文件 → 静默错位）；
+#   ② 过度参数化：把 AGENTS.md / 12 件产物名 / 六件套名也做成可配 →
+#      跨仓逐文件比对与"装一次迁移任意仓库"解体。
+#   形态锚点（grep -c）而非行为断言：行为由 run-tests T14 在真仓库里端到端验证。
+GOV_YML_TPL="$ROOT/resources/templates/agent-governance.yml"
+AUDIT_TPL="$ROOT/resources/templates/audit-docs-consistency.sh"
+CI_TPL="$ROOT/resources/templates/check-standards-compliance.sh"
+# 计数型断言统一归一到 0/1（本脚本的 at_least 是 4 参形态：name min file pattern，
+# 计数型必须走 report + 归一，不能直接喂计数）
+a17_at_least_1() { [[ "${1:-0}" -ge 1 ]] && echo 1 || echo 0; }
+report "A17 gate resolves path roots from config" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path() {' "$GATE_TPL" || true)")"
+report "A17 gate path defaults are the historical values" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path docs docs' "$GATE_TPL" || true)")"
+report "A17 audit script resolves the docs root from config" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path docs docs' "$AUDIT_TPL" || true)")"
+report "A17 compliance script resolves the docs root from config" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path docs docs' "$CI_TPL" || true)")"
+report "A17 installer exposes --docs-dir" 1 "$(a17_at_least_1 "$(grep -c -- '--docs-dir' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A17 installer persists non-default roots into the config" 1 "$(a17_at_least_1 "$(grep -c 'rewrite_yml_key' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A17 live-skip keys are logical, not literal paths (D6)" 1 "$(a17_at_least_1 "$(grep -c 'install_file bugfix-log ' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A17 shipped config declares the four configurable roots" 4 "$(grep -cE '^  (docs|scripts|tests|githooks):' "$GOV_YML_TPL" || true)"
+report "A17 .github is NOT configurable (platform-fixed location)" 0 "$(grep -cE '^  github:' "$GOV_YML_TPL" || true)"
+report "A17 contract names stay out of the configurable block" 0 "$(grep -cE '^  (AGENTS|CLAUDE|agent-gate|00-intent|01-diagnosis)' "$GOV_YML_TPL" || true)"
+report "A17 installer substitutes in-template path references" 1 "$(a17_at_least_1 "$(grep -c 'transform_src' "$ROOT/scripts/bootstrap.sh" || true)")"
+at_least "A17 standards documents the configurable roots" 1 "$STD" '路径根可配置'
+at_least "A17 standards documents the non-configurable set" 1 "$STD" '不可配置项'
+
+# A18 Agent 自进化契约 + 自更新/版本自查锚点（v3.16.0）——防三类反向回退：
+#   ① 自更新又变回"静默跳过"（D1 回归：非 git 克隆时用户以为已升级）；
+#   ② 升级又去覆盖显式层选择（D4 回归）或派生资产（自进化契约失效）；
+#   ③ 派生标记解析退回整文件 grep（SKILL.md 正文的示例代码块会被误判为真实
+#      声明——本轮实测踩过：源仓把自己报成了派生 Skill，且写入守卫会误拒
+#      向本仓自身的合法安装）。
+BOOT="$ROOT/scripts/bootstrap.sh"
+report "A18 installer exposes a read-only --check mode" 1 "$(a17_at_least_1 "$(grep -c 'check_mode=true' "$BOOT" || true)")"
+report "A18 installer exposes --self-update" 1 "$(a17_at_least_1 "$(grep -c 'self_update=true' "$BOOT" || true)")"
+report "A18 installer exposes --derived-report" 1 "$(a17_at_least_1 "$(grep -c 'derived_report=true' "$BOOT" || true)")"
+report "A18 upgrade preserves an explicit layer selection (D4)" 1 "$(a17_at_least_1 "$(grep -c 'layers_explicit' "$BOOT" || true)")"
+report "A18 derived markers are parsed from frontmatter only" 1 "$(a17_at_least_1 "$(grep -c 'frontmatter() {' "$BOOT" || true)")"
+report "A18 installer refuses to install into a derived skill" 1 "$(a17_at_least_1 "$(grep -c 'refusing to install into a derived skill directory' "$BOOT" || true)")"
+report "A18 every write path skips derived dirs" 1 "$(a17_at_least_1 "$(grep -c 'derived (skip)' "$BOOT" || true)")"
+report "A18 upgrade refuses to clobber local changelog rows (D5)" 1 "$(a17_at_least_1 "$(grep -c 'divergence_guard' "$BOOT" || true)")"
+report "A18 installer pins path roots into the shipped config (idempotency)" 1 "$(a17_at_least_1 "$(grep -c 'DOCS_DIR}/changes' "$BOOT" || true)")"
+at_least "A18 standards documents the changelog ownership" 1 "$STD" '规范升级日志的归属'
+at_least "A18 standards documents the self-evolution contract" 1 "$STD" 'Agent 自进化与派生资产'
+at_least "A18 SKILL.md declares the derived_from contract" 1 "$SKILL" 'derived_from'
+report "A18 changelog template declares skill ownership" 1 "$(a17_at_least_1 "$(grep -c '归 Skill 所有' "$ROOT/resources/STANDARDS_CHANGELOG.md" || true)")"
+report "A18 MAINTAINER.md exists (maintainer notes live outside the payload)" 1 "$([[ -s "$ROOT/MAINTAINER.md" ]] && echo 1 || echo 0)"
+report "A18 MAINTAINER.md is NOT in the installer copy list" 0 "$(grep -c 'MAINTAINER.md' "$BOOT" || true)"
+
+# A19 文件溯源锚点（v3.17.0）——防五类反向回退：
+#   ① 溯源脚本从 payload 消失或未进 guard 层 → 门禁要求它，目标仓库却装不到，
+#      每个变更都会卡在"run stamp-provenance.sh"却无脚本可跑（死锁）；
+#   ② 门禁不再校验溯源 → 要求形同虚设，手写块畅通；
+#   ③ 校验退回"只看块存在" → 占位块与手写块放行（本轮实测的反例形态）；
+#   ④ 隐私开关失效 → email 恒明文，`include_email: false` 无声无效；
+#   ⑤ 幂等性回退 → 重复运行叠加多个块（门禁按首块校验，叠加即误导）。
+# 形态锚点而非行为断言：行为由 run-tests T16 在真仓库里端到端验证（26 断言）。
+STAMP_TPL="$ROOT/resources/templates/stamp-provenance.sh"
+CR_TPL="$ROOT/resources/templates/coding-record.md"
+report "A19 provenance stamper ships in the payload" 1 "$([[ -s "$STAMP_TPL" ]] && echo 1 || echo 0)"
+report "A19 installer lands the stamper in the guard layer" 1 "$(a17_at_least_1 "$(grep -c 'install_file - "\$SCRIPTS_DIR/stamp-provenance.sh"' "$BOOT" || true)")"
+report "A19 installer substitutes the stamper path in templates" 1 "$(a17_at_least_1 "$(grep -c 'scripts/stamp-provenance' "$BOOT" || true)")"
+# §2 联动表：改复制清单必须同步 --help 文本（--help 是文件清单的唯一权威源）
+report "A19 installer --help lists the stamper in the guard layer" 1 "$(a17_at_least_1 "$(grep -c 'stamp-provenance.sh (文件溯源盖章' "$BOOT" || true)")"
+report "A19 gate extracts the provenance block" 1 "$(a17_at_least_1 "$(grep -c 'provenance_block() {' "$GATE_TPL" || true)")"
+report "A19 gate validates the coding record's provenance" 1 "$(a17_at_least_1 "$(grep -c 'validate_provenance "\$d/04.5-coding-record.md"' "$GATE_TPL" || true)")"
+report "A19 gate rejects a missing block" 1 "$(a17_at_least_1 "$(grep -c 'carries no provenance block' "$GATE_TPL" || true)")"
+report "A19 gate rejects a placeholder block" 1 "$(a17_at_least_1 "$(grep -c 'provenance block still holds a placeholder' "$GATE_TPL" || true)")"
+report "A19 gate requires the script as producer" 1 "$(a17_at_least_1 "$(grep -c 'was not produced by scripts/stamp-provenance.sh' "$GATE_TPL" || true)")"
+report "A19 gate checks the ISO shape of generated_at" 1 "$(a17_at_least_1 "$(grep -c 'is not an ISO-8601 date' "$GATE_TPL" || true)")"
+report "A19 gate requires the four mandatory fields" 1 "$(a17_at_least_1 "$(grep -c 'for k in author email generated_at generated_by' "$GATE_TPL" || true)")"
+report "A19 stamper honours the privacy switch" 1 "$(a17_at_least_1 "$(grep -c 'include_email' "$STAMP_TPL" || true)")"
+report "A19 stamper redacts the email when asked" 1 "$(a17_at_least_1 "$(grep -c '<redacted>' "$STAMP_TPL" || true)")"
+report "A19 privacy switch is env-overridable (CLI > env > yml)" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_PROVENANCE_EMAIL' "$STAMP_TPL" || true)")"
+report "A19 stamper replaces the block wholesale (idempotent)" 1 "$(a17_at_least_1 "$(grep -c '去掉已有块' "$STAMP_TPL" || true)")"
+report "A19 stamper never fabricates: unknown fallbacks" 1 "$(a17_at_least_1 "$(grep -c 'unknown' "$STAMP_TPL" || true)")"
+# 门禁的报错文案是"run scripts/stamp-provenance.sh <CHG-id>"——那么该命令在
+# 编码记录尚未落盘时**必须**给出可执行的下一步，而不是 cryptic 的 "nothing stamped"；
+# 且**不得**自动建空骨架（门禁对 04.5 只查"存在且非空"，自动建壳即放行空交付）。
+report "A19 stamper gives an actionable next step when the record is absent" 1 "$(a17_at_least_1 "$(grep -c 'write the coding record first' "$STAMP_TPL" || true)")"
+# v3.17.0 实测踩过：新增的治理脚本若不在 is_code_path() 的治理工具白名单里，
+# 它以 .sh 结尾 → 被判为产品代码 → 新仓库装完治理包**第一次 commit 即死锁**。
+# 故"新增治理脚本"必须同步进白名单；本断言把这条约束钉在源层。
+report "A19 gate treats the stamper as a governance tool (no install deadlock)" 1 "$(a17_at_least_1 "$(grep -c 'scripts_re}/stamp-provenance' "$GATE_TPL" || true)")"
+report "A19 shipped config declares the provenance section" 1 "$(a17_at_least_1 "$(grep -c '^provenance:' "$GOV_YML_TPL" || true)")"
+report "A19 shipped config defaults include_email to true" 1 "$(a17_at_least_1 "$(grep -c '^  include_email: true' "$GOV_YML_TPL" || true)")"
+report "A19 coding-record template carries the placeholder block" 1 "$(a17_at_least_1 "$(grep -c '^<!-- provenance' "$CR_TPL" || true)")"
+report "A19 coding-record template placeholder is stamped PENDING" 1 "$(a17_at_least_1 "$(grep -c '^author: PENDING' "$CR_TPL" || true)")"
+at_least "A19 standards documents the provenance requirement" 1 "$STD" '文件溯源'
+at_least "A19 SKILL.md tells the agent to stamp provenance" 1 "$SKILL" 'stamp-provenance'
+# 反向断言（v3.22.0 语义修正）：溯源块只允许出现在**活跃变更**或**已闭合变更**
+# （含 09-changelog.md）——交付时盖章是 §1.1 的**强制动作**，原断言"历史目录一律
+# 不得盖章"与它直接矛盾（自锁：本仓 17 个变更目录 0 盖章，一盖即红，溯源条款在
+# 源仓从未走通过）。修正后仍拦住真正的伪造形态：对**无关的开放目录**随手盖章
+# （那才是"把 generated_at 伪造成今天"的入口）；已闭合目录的块是交付时的合法
+# 产物（幂等重盖本就无法与首次区分——门禁本就只校验活跃变更，此处不假装更强）。
+# 活跃变更从 .git/agent-governance/active-change 读（gate begin 维护；无 gate 环境
+# 退化为"已闭合即可"）。
+active_id=""
+if [[ -s "$ROOT/.git/agent-governance/active-change" ]]; then
+  active_id=$(tr -d '[:space:]' < "$ROOT/.git/agent-governance/active-change")
+fi
+retro_stamped=0
+for d in "$ROOT/docs/changes"/*/; do
+  [[ -d "$d" ]] || continue
+  dname=$(basename "$d")
+  # 已闭合的目录级代理：存在 09-changelog.md。批次的"半闭合"（部分成员已写小节）
+  # 由门禁的逐成员锚点语义兜底（A20），此处采用目录级代理并如实声明——共享产物的
+  # 盖章属于整批交付动作，按成员拆分反而会把合法盖章误判为回填。
+  [[ -f "$d/09-changelog.md" ]] && continue
+  [[ "$dname" == "$active_id" ]] && continue
+  for f in "$d"*.md; do
+    [[ -f "$f" ]] || continue
+    grep -q '^<!-- provenance$' "$f" 2>/dev/null || continue
+    echo "audit: provenance block on a non-active, non-closed change artifact: ${f#$ROOT/}" >&2
+    retro_stamped=$(( retro_stamped + 1 ))
+  done
+done
+report "A19 stamps appear only on the active or closed changes (v3.22.0 semantics)" 0 "$retro_stamped"
+
+# A20 变更批次锚点（v3.18.0）——防五类反向回退：
+#   ① 批次解析从门禁消失 → 批次目录里的变更被判"缺产物"，同天合并直接不可用；
+#   ② 治理记录退回"取文件里第一个 risk_level" → 批次里读到**兄弟变更的风险与
+#      责任人**（最危险的一种：错的风险等级会放行 L2/L3）；
+#   ③ 批次失去 L0/L1 上限 → 批次变成绕过角色独立性的暗道；
+#   ④ 闭环判定退回"changelog 文件存在" → 同批兄弟的 changelog 把后加入的变更
+#      一起判为已关闭（假阳性），或反之永不关闭；
+#   ⑤ 审计与门禁对"锚点"的定义分叉 → 审计绿而门禁红（或反过来），最难查。
+# 行为由 run-tests T18 在真仓库里端到端验证；此处钉形态，防静默删除。
+report "A20 gate resolves batch directories" 1 "$(a17_at_least_1 "$(grep -c 'change_dir() {' "$GATE_TPL" || true)")"
+report "A20 gate scans BATCH-* directories" 1 "$(a17_at_least_1 "$(grep -c '\$change_root\"/BATCH-\*/' "$GATE_TPL" || true)")"
+report "A20 gate honours AGENT_GUARD_CHANGE_DIR" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_CHANGE_DIR' "$GATE_TPL" || true)")"
+report "A20 gate recognises a batch directory by name" 1 "$(a17_at_least_1 "$(grep -c 'is_batch_dir() {' "$GATE_TPL" || true)")"
+report "A20 gate has ONE definition of a section anchor" 1 "$(a17_at_least_1 "$(grep -c 'anchor_re() {' "$GATE_TPL" || true)")"
+report "A20 gate extracts anchors with a single sed shape" 1 "$(a17_at_least_1 "$(grep -c 'anchors_in_file() {' "$GATE_TPL" || true)")"
+report "A20 gate maps a directory to every change it carries" 1 "$(a17_at_least_1 "$(grep -c 'change_ids_in_dir() {' "$GATE_TPL" || true)")"
+report "A20 governance records are scoped per change (one record per change id)" 1 "$(a17_at_least_1 "$(grep -c 'gov_record() {' "$GATE_TPL" || true)")"
+report "A20 governance state is scoped to this change's own record" 1 "$(a17_at_least_1 "$(grep -c 'rec=\$(gov_record "\$file" "\$id")' "$GATE_TPL" || true)")"
+report "A20 batches are L0/L1 only (refused on the record, not on the path)" 1 "$(a17_at_least_1 "$(grep -c 'batches are L0/L1 only' "$GATE_TPL" || true)")"
+report "A20 batch closure is this change's own anchor, not the shared file" 1 "$(a17_at_least_1 "$(grep -c "carries a '## \$id' section" "$GATE_TPL" || true)")"
+report "A20 metrics emits one row per change, not per directory" 1 "$(a17_at_least_1 "$(grep -c 'change_ids_in_dir "\${dir%/}"' "$GATE_TPL" || true)")"
+report "A20 diff attribution reads a batch file's governance roster" 1 "$(a17_at_least_1 "$(grep -c 'id_list=\$(gov_ids "\$(dirname "\$f")/00-governance.json")' "$GATE_TPL" || true)")"
+report "A20 stamper resolves the batch directory too" 1 "$(a17_at_least_1 "$(grep -c 'resolve_dir() {' "$STAMP_TPL" || true)")"
+report "A20 stamper attests the batch and lists its members" 1 "$(a17_at_least_1 "$(grep -c 'batch_changes:' "$STAMP_TPL" || true)")"
+# 批次共享一个编码记录 → 溯源块的 risk 行不该因"这次是哪个成员盖的"而变，
+# 否则兄弟重盖会静默改掉风险行。取批次最高值：稳定且保守。
+report "A20 batch provenance risk is member-independent (max of the batch)" 1 "$(a17_at_least_1 "$(grep -c 'batch_changes" && -f' "$STAMP_TPL" || true)")"
+report "A20 template audit grew a G7 batch group" 1 "$(a17_at_least_1 "$(grep -c 'G7 变更批次自洽' "$AUDIT_TPL" || true)")"
+report "A20 G7 checks every declared change has an entry section" 1 "$(a17_at_least_1 "$(grep -c 'every batch change has a section in the batch 00-intent.md' "$AUDIT_TPL" || true)")"
+report "A20 G7 checks records are a subset of the anchors" 1 "$(a17_at_least_1 "$(grep -c 'every batch governance record has an anchor' "$AUDIT_TPL" || true)")"
+report "A20 G7 re-checks the L0/L1 ceiling" 1 "$(a17_at_least_1 "$(grep -c 'batch risk levels are L0/L1 only' "$AUDIT_TPL" || true)")"
+report "A20 G7 checks change ids are unique across batches" 1 "$(a17_at_least_1 "$(grep -c 'change ids unique across batches' "$AUDIT_TPL" || true)")"
+# v3.19.0：批次变更集合必须**正向读权威名单**（00-governance.json 的 change_id），
+# 不得反向从 `## <标题>` 推断——`## <标题>` 分不清变更小节与结构小节，而规范
+# §2.16.2 强制 09-changelog.md 含 `## Observation`，反向推断会让 metrics 造出幽灵
+# 变更、让 `--stage staged` 拒掉整批（实测）。下面三锚点钉住修法，末条是反向断言。
+report "A20 gate has ONE place that reads the batch roster" 1 "$(a17_at_least_1 "$(grep -c 'gov_ids() {' "$GATE_TPL" || true)")"
+report "A20 batch change set comes from the roster, not from headings" 1 "$(a17_at_least_1 "$(grep -c 'roster=\$(gov_ids "\$d/00-governance.json")' "$GATE_TPL" || true)")"
+report "A20 audit reads the roster as the batch's authoritative id set" 1 "$(a17_at_least_1 "$(grep -c '权威名单：只从治理记录取变更号' "$AUDIT_TPL" || true)")"
+report "A20 audit documents WHY the reverse direction was dropped" 1 "$(a17_at_least_1 "$(grep -c '无法区分\"变更小节\"与\"结构小节\"' "$AUDIT_TPL" || true)")"
+# 反向断言：`## <标题>` 反向推断不得回潮（`id_list=$(anchors_in_file "$f")` 只能是
+# 无名单时的兜底，不能是批次归属的主路径——主路径必须是 gov_ids）。
+report "A20 batch attribution does not fall back to heading scanning first" 0 "$(grep -cE '^ *id_list=\$\(anchors_in_file "\$f"\)$' "$GATE_TPL" || true)"
+# 审计与门禁必须用**同一条** sed 表达式提取锚点：定义分叉时审计会绿而门禁红。
+# 锚点形状的规范表述见门禁 anchor_re()：^##[[:space:]]+<id>([[:space:]]|$)
+report "A20 audit and gate share one anchor shape" 1 "$(a17_at_least_1 "$(grep -c '同一条 sed 表达式' "$AUDIT_TPL" || true)")"
+at_least "A20 standards documents the change batch" 1 "$STD" '变更批次'
+at_least "A20 SKILL.md documents the batch layout" 1 "$SKILL" '变更批次'
+at_least "A20 AGENTS.md states the batch rule in the gate steps" 1 "$ROOT/resources/AGENTS.md" 'BATCH-YYYYMMDD'
+at_least "A20 changelog carries the v3.18.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.18.0'
+# 反向断言：bash 3.2 缺陷不得回潮。`local a="$1" b="$x/$a"` 里 `$a` 尚未赋值
+# （local 先展开全部词再赋值），set -u 下报 unbound variable；在 begin 路径因 id
+# 恰为全局而侥幸通过，在 --stage staged / CI 路径（id 是局部变量，不进入 $( ) 子壳）
+# 上是潜伏的。本版修正，此处钉住"声明必须拆开"。
+report "A20 gate splits the resolver's local declaration (bash 3.2)" 0 "$(grep -c 'local id="\$1" d=' "$GATE_TPL" || true)"
+report "A20 stamper splits the resolver's local declaration (bash 3.2)" 0 "$(grep -c 'local id="\$1" d=' "$STAMP_TPL" || true)"
+
+# A21 治理记录的格式无关性锚点（v3.20.0）——防三类反向回退：
+#   ① 记录读取退回**行式**（`grep ... | head -1`）→ 多行格式化记录读不到任何字段。
+#      这不是假想：v3.18.0 为支持批次正是这么改的（行式对批次是必需的：要按
+#      change_id 隔离兄弟记录），它**静默打破了多行记录**，而多行恰是**随包下发的
+#      模板** `resources/templates/governance-state.json` 的形状、也是 SKILL.md
+#      指示生成 `00-governance.json` 时照抄的形状。实测后果：`begin` 报
+#      `must declare risk_level L0, L1, L2, or L3`（字段就在 change_id 下面两行），
+#      `metrics` 对每条记录报 `"risk_level":null`；本仓账本 16/16 条全中。
+#   ② 有人"反向修"——把模板压成单行来迁就读取器。数据迁就解析器是错的方向：
+#      模板是给人看的，读取器必须接受任意合法 JSON。故有下面的反向断言。
+#   ③ 批次成员之间串读（本修复最容易引入的回归）——由 run-tests T19 ④ 端到端钉住。
+# 形态锚点；行为由 run-tests T19 在真仓库里端到端验证（多行 / 单行 / 多行批次三种形状）。
+report "A21 gate flattens a governance record before matching" 1 "$(a17_at_least_1 "$(grep -c 'flat=\$(tr -d' "$GATE_TPL" || true)")"
+report "A21 gate splits sibling records on top-level object boundaries" 1 "$(a17_at_least_1 "$(grep -c 'top-level object boundaries' "$GATE_TPL" || true)")"
+report "A21 the record reader is documented as no longer line-oriented" 1 "$(a17_at_least_1 "$(grep -c 'no longer a PARSER' "$GATE_TPL" || true)")"
+report "A21 the batch one-line convention survives as a style rule" 1 "$(a17_at_least_1 "$(grep -c 'style rule, not a load-bearing one' "$GATE_TPL" || true)")"
+# 正向：随包模板仍是多行（这是本缺陷的触发形状，也是文档指示照抄的形状）
+report "A21 shipped governance template is the multi-line shape" 1 "$(grep -cE '^  \"change_id\":' "$ROOT/resources/templates/governance-state.json" || true)"
+# 反向：模板**不得**被压成单行来迁就解析器（数据迁就解析器是错的方向）
+report "A21 the template was NOT collapsed to one line (fix the reader, not the data)" 0 "$(grep -cE '^\{.*\"change_id\".*\}$' "$ROOT/resources/templates/governance-state.json" || true)"
+report "A21 golden suite covers a pretty-printed record end-to-end" 1 "$(a17_at_least_1 "$(grep -c 'T19 begin accepts a pretty-printed governance record' "$ROOT/tests/run-tests.sh" || true)")"
+report "A21 golden suite pins that a sibling's risk cannot leak" 1 "$(a17_at_least_1 "$(grep -c 'T19 the sibling reads its own risk, not the first record' "$ROOT/tests/run-tests.sh" || true)")"
+report "A21 changelog carries the v3.20.0 entry" 1 "$(a17_at_least_1 "$(grep -c 'v3.20.0' "$ROOT/resources/STANDARDS_CHANGELOG.md" || true)")"
+at_least "A21 SKILL.md documents the format-agnostic record reader" 1 "$SKILL" '格式无关'
+at_least "A21 MAINTAINER documents the record-reader coupling" 1 "$ROOT/MAINTAINER.md" 'gov_record'
+
+# A22 审计单元识别 / 空转显式声明 / 编号定义式（v3.21.0）——防四类反向回退：
+#   ① 审计单元退回"<docs>/ 下一层子目录全集" → `docs/changes`、`docs/bugs`、`docs/review`
+#      只要存在一个，G2/G3/G5/G6 就**一条断言都不执行、也不打印任何行**（静默空转 =
+#      假绿）。实测：一个 `docs/changes/CHG-001/01-spec.md` 带 REQ 跳号的仓库**通过**了
+#      审计；同一根因还让 G4 去找不存在的 `docs/changes/09-changelog.md` 而误报假红。
+#   ② 空转声明被删掉、或合并成一句 → 操作者再次分不清"覆盖了"与"没覆盖"（两组覆盖面
+#      不同，必须分开声明）。
+#   ③ `check_seq` 退回"grep 全出现 + 基线从 1 开始" → 本仓 16 个 01-spec.md 误报 **695**
+#      处"缺号"（CHG-006 定义 `REQ-033~041`，却因正文引用 `REQ-024~032` 被撑成 24..41）。
+#   ④ G3/G5/G6 被"顺手"扩到冻结的变更目录 → 拿**当前** §3/§4 判历史，产出**永久无法清除
+#      的红**（§2.15 硬性规则 4 / §2.16.5「已闭合 CHG 禁止改写」）。
+# 形态锚点；行为由 run-tests T20 在真仓库里端到端验证（管线态跳号 / 非 1 起点 / 正文引用）。
+report "A22 audit detects units by positive signal" 1 "$(a17_at_least_1 "$(grep -c 'looks_like_audit_dir()' "$AUDIT_TPL" || true)")"
+report "A22 audit declares a G2 vacuous skip instead of skipping silently" 1 "$(a17_at_least_1 "$(grep -c 'G2 VACUOUS SKIP' "$AUDIT_TPL" || true)")"
+report "A22 audit declares the G3/G5/G6 vacuous skip separately from G2" 1 "$(a17_at_least_1 "$(grep -c 'G3/G5/G6 VACUOUS SKIP' "$AUDIT_TPL" || true)")"
+report "A22 numbering counts definition-shaped occurrences only" 1 "$(a17_at_least_1 "$(grep -c 'DEF_RE()' "$AUDIT_TPL" || true)")"
+report "A22 numbering baseline is the file's own min, not 1" 0 "$(grep -c '\$(seq 1 "\$max")' "$AUDIT_TPL" || true)"
+report "A22 G2 covers the change track as well as the feature track" 1 "$(a17_at_least_1 "$(grep -c 'for base in "\$DOCS" "\$CHANGES"' "$AUDIT_TPL" || true)")"
+report "A22 G3/G5/G6 are scoped to living docs only" 1 "$(a17_at_least_1 "$(grep -c 'g36_dirs' "$AUDIT_TPL" || true)")"
+at_least "A22 the audit header documents the frozen-history scoping" 1 "$AUDIT_TPL" '不变量对冻结历史的适用性'
+report "A22 golden suite pins the change-dir REQ gap end-to-end" 1 "$(a17_at_least_1 "$(grep -c 'T20 audit reds on a REQ gap inside a change dir' "$ROOT/tests/run-tests.sh" || true)")"
+report "A22 golden suite pins that in-prose refs do not widen the span" 1 "$(a17_at_least_1 "$(grep -c 'T20 in-prose REQ references do not widen the definition span' "$ROOT/tests/run-tests.sh" || true)")"
+report "A22 changelog carries the v3.21.0 entry" 1 "$(a17_at_least_1 "$(grep -c 'v3.21.0' "$ROOT/resources/STANDARDS_CHANGELOG.md" || true)")"
+at_least "A22 MAINTAINER documents the audit-unit scoping" 1 "$ROOT/MAINTAINER.md" 'g36_dirs'
+
+# A23 一键安装器 + 溯源全量盖章形态锚点（v3.22.0）——防三类反向回退：
+#   ① install.sh 退化成自含安装逻辑（复制 bootstrap 清单）→ 双权威源必然漂移
+#      （SKILL.md 步骤 3 的既有教训）；必须保持"薄委托"形态；
+#   ② install.sh 丢失离线路径（--from）→ golden T21 无法零网络运行，CI 脆化；
+#   ③ stamper 的 --all 把 00-governance.json 也盖了 → JSON 注入 HTML 注释破坏
+#      门禁/审计的扁平 JSON 读取（假绿/假红的不可诊断来源）。
+INSTALL_SH="$ROOT/scripts/install.sh"
+report "A23 install.sh exists in the source layer" 1 "$([[ -s "$INSTALL_SH" ]] && echo 1 || echo 0)"
+report "A23 install.sh stays a thin delegate to bootstrap" 1 "$(a17_at_least_1 "$(grep -c 'scripts/bootstrap.sh' "$INSTALL_SH" || true)")"
+report "A23 install.sh auto-detects install vs upgrade" 1 "$(a17_at_least_1 "$(grep -c 'mode="auto"' "$INSTALL_SH" || true)")"
+report "A23 install.sh keeps the offline path (--from)" 1 "$(a17_at_least_1 "$(grep -c -- '--from' "$INSTALL_SH" || true)")"
+report "A23 install.sh never overwrites a dirty skill checkout" 1 "$(a17_at_least_1 "$(grep -c 'never overwrites your checkout' "$INSTALL_SH" || true)")"
+report "A23 install.sh documents the one-liner" 1 "$(a17_at_least_1 "$(grep -c 'curl -fsSL' "$INSTALL_SH" || true)")"
+report "A23 stamper exposes the --all mode" 1 "$(a17_at_least_1 "$(grep -c 'stamp_all=true' "$STAMP_TPL" || true)")"
+report "A23 stamper --all targets every md artifact" 1 "$(a17_at_least_1 "$(grep -cF '"$CHG_DIR"/*.md' "$STAMP_TPL" || true)")"
+report "A23 stamper documents why the governance JSON is excluded" 1 "$(a17_at_least_1 "$(grep -c 'deliberately NOT stamped' "$STAMP_TPL" || true)")"
+report "A23 golden suite covers --all end-to-end" 1 "$(a17_at_least_1 "$(grep -c 'T17b --all stamps the whole change directory' "$ROOT/tests/run-tests.sh" || true)")"
+report "A23 golden suite covers the one-command installer" 1 "$(a17_at_least_1 "$(grep -c 'T21 install.sh --from performs a full offline install' "$ROOT/tests/run-tests.sh" || true)")"
+report "A23 project CHANGELOG.md exists (version narrative lives outside the READMEs)" 1 "$([[ -s "$ROOT/CHANGELOG.md" ]] && echo 1 || echo 0)"
+at_least "A23 README en points at install.sh" 1 "$RM_EN" 'install.sh'
+at_least "A23 README zh points at install.sh" 1 "$RM_ZH" 'install.sh'
+at_least "A23 MAINTAINER documents the install.sh role" 1 "$ROOT/MAINTAINER.md" 'install.sh'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

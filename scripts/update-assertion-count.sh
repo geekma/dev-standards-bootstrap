@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# update-assertion-count.sh — recompute the golden-case assertion count from
-# tests/run-tests.sh static call sites and rewrite the claims in both READMEs.
+# update-assertion-count.sh — recompute the golden-case assertion count from a
+# real run-tests.sh execution (runtime `N passed`) and rewrite the claims in
+# both READMEs.
 #
 #   update-assertion-count.sh          # rewrite READMEs to the real count
 #   update-assertion-count.sh --check  # exit 1 if any README would change (CI/audit mode)
@@ -11,8 +12,16 @@
 # every claim site generated. Zero deps: bash + grep + sed + diff.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-N=$(grep -cE '^[[:space:]]*(report|check_output) ' "$ROOT/tests/run-tests.sh")
-[[ "$N" =~ ^[0-9]+$ && "$N" -gt 0 ]] || { echo "cannot determine assertion count" >&2; exit 2; }
+# N is the RUNTIME passed count — the number a user actually sees. Static
+# call-site counting undercounts by construction: same-line conditional chains
+# (`grep … && report … || report …`) anchor nowhere at line start (0 sites for
+# 1+ runtime calls) and loop-driven sites run k>1 times (CHG-019 review: static
+# 288 vs runtime 291 — the same 3-gap already existed at 281/284).
+run_out=$(bash "$ROOT/tests/run-tests.sh" 2>&1 | tail -n 1) || true
+N=$(printf '%s\n' "$run_out" | sed -nE 's/^([0-9]+) passed, [0-9]+ failed$/\1/p')
+F=$(printf '%s\n' "$run_out" | sed -nE 's/^[0-9]+ passed, ([0-9]+) failed$/\1/p')
+[[ -n "$N" && -n "$F" ]] || { echo "cannot determine assertion count from run-tests output: ${run_out:-<empty>}" >&2; exit 2; }
+[[ "$F" == 0 ]] || { echo "run-tests reported ${F} failed — refusing to sync claims off a red suite" >&2; exit 2; }
 check=0
 [[ "${1:-}" == "--check" ]] && check=1
 status=0

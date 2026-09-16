@@ -27,9 +27,9 @@
 
 若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
 
-1. 在 `docs/changes/<变更号>/` 创建并完成 `00-intent.md`、`00-governance.json`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`；`00-intent.md` 是变更管线入口（问题/预期结果/约束，§2.17），02 是先分析后方案的强制前提（业务/技术/风险三维 + 回滚策略，§2.5 阶段 2），JSON 必须声明风险等级和执行主体，L2/L3 的开发、测试、Review 主体必须不同。涉及需求或功能行为的变更，交付前还须建立并回填功能级 RTVM 矩阵 `docs/<feature>/01.5-rtvm-matrix.md`（REQ→DES→TASK→TC 四维链路 + 验证状态，门禁 4；八类最低文档集之一）：changelog 引用的每个 REQ 编号都必须有对应矩阵回填行，缺失即未闭环（stop/CI 与 audit G5 均拦截）。
+1. 在 `docs/changes/<变更号>/` 创建并完成 `00-intent.md`、`00-governance.json`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`；`00-intent.md` 是变更管线入口（问题/预期结果/开放问题/约束等，§2.17；`begin` 硬校验"预期结果"与"开放问题"两节），02 是先分析后方案的强制前提（业务/技术/风险三维 + 回滚策略，§2.5 阶段 2），JSON 必须声明风险等级和执行主体，L2/L3 的开发、测试、Review 主体必须不同。**同一天的多个 L0/L1 变更可共用 `docs/changes/BATCH-YYYYMMDD/` 一个目录**（§1.1，v3.18.0）：产物文件名不变、同批变更用 `## <变更号>` 小节锚点分开、`00-governance.json` **推荐**一行一个变更（v3.20.0 起读取器格式无关，单行/多行皆可，推荐只为逐变更 diff 可读）；**L2/L3 不得入批**。涉及需求或功能行为的变更，交付前还须建立并回填功能级 RTVM 矩阵 `docs/<feature>/01.5-rtvm-matrix.md`（REQ→DES→TASK→TC 四维链路 + 验证状态，门禁 4；八类最低文档集之一）：changelog 引用的每个 REQ 编号都必须有对应矩阵回填行，缺失即未闭环（stop/CI 与 audit G5 均拦截）。
 2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。
-3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」的 Observation 记录，§2.16.2）。启用 Stop Hook 时，源码改动后的结束回复同样会自动检查这些产物（含门禁 4：changelog 引用的 REQ 须已回填 `docs/<feature>/01.5-rtvm-matrix.md`）。
+3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」的 Observation 记录，§2.16.2）。**交付前还须给 `04.5-coding-record.md` 盖溯源块**：执行 `scripts/stamp-provenance.sh <变更号>`（真值从 git / 主机 / UTC 时间读出，**禁手写**；可选 `--all` 把溯源块盖到本变更目录全部 `*.md` 产物，v3.22.0；只校验当前活跃变更，**历史产物不得回填**，§1.1）。启用 Stop Hook 时，源码改动后的结束回复同样会自动检查这些产物（含门禁 4：changelog 引用的 REQ 须已回填 `docs/<feature>/01.5-rtvm-matrix.md`）。
 4. 传动与事故重入（§2.17.1/§2.17.2）：`01-spec.md` 合入会自动派发 02/03/03.5/04 骨架 PR，`09-changelog.md` 合入会自动开发布检查单 issue；生产事故经 incident 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架，接手者须走完整变更流程，禁止"修完不留痕"。
 5. `scripts/agent-gate metrics` 只读输出管线度量（§2.17.5），不得用度量数值替代 DoD 判定。
 
@@ -46,10 +46,10 @@
 | 做技术/方法论选型（允许用哪些、禁止用哪些） | `docs/METHODOLOGY.md`（M0–M3 分级唯一权威表）+ §2.5 阶段 3 |
 | 写代码前的工程决策（SOLID/DRY/KISS、复杂度、错误处理、日志、并发） | `docs/methodologies/development.md` |
 | 定义数据结构 / 接口字段 / LLM 输入输出契约 | `docs/methodologies/data-structures.md`（六类模型 + 弱类型禁令） |
-| 写测试用例 | §2.5 阶段 4 + §0 门禁 2（十一类覆盖维度 + SC-xxx 业务场景清单，场景覆盖率 ≥80%） |
+| 写测试用例 | §2.5 阶段 4 + §0 门禁 2（十一类覆盖维度 + SC-xxx 业务场景清单，场景覆盖率 ≥80%（L3 ≥90%）） |
 | 执行中如何留痕（Thought/Observation） | §2.16.2 ReAct 执行铁律 |
 | 只是改 bug | §2.5 阶段 6（含 `docs/bugfix-log.md` 双登记 + 根因表「同族推演」行 + 「Bug 修复回填清单」）+ `docs/methodologies/state-trigger-audit.md`（同族推演与反模式细则）+ §0 门禁 |
-| 交付前文档互证（CI/本地均可跑） | `bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档清单↔§3 同源 / G4 bugfix 双登记互证 / G5 RTVM 回填一致 / G6 §4 必填节；失败项即 §2.14 回填清单，§2.13.4） |
+| 交付前文档互证（CI/本地均可跑） | `bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档清单↔§3 同源 / G4 bugfix 双登记互证 / G5 RTVM 回填一致 / G6 §4 必填节 / G7 变更批次自洽；失败项即 §2.14 回填清单，§2.13.4） |
 | 涉及配置文件/数据库变更 | §2.6 |
 | 要发布上线 | §2.7、§2.8 |
 | 涉及模型/Prompt/AI 链路 | §2.9 + `docs/methodologies/data-structures.md` §4（LLM 结构专项） |
@@ -63,4 +63,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.14.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.22.0_
