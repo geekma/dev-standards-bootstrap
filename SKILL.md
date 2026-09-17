@@ -1,12 +1,12 @@
 ---
 name: dev-standards-bootstrap
-version: 3.23.0
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.23.0，低于此版本即需升级。
+version: 3.27.0
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.27.0，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
 
-> **当前携带版本：v3.23.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+> **当前携带版本：v3.27.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
 >
 > **自查是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章。低于上方版本号就该升级——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。也可直接 `bash scripts/bootstrap.sh --check <目标仓库>` 看三处版本比对。
 
@@ -92,7 +92,7 @@ derived_from_version: <你派生时本 Skill 携带的版本，如 3.22.0>
 
 ## 变更批次（同日合并）
 
-**同一天**的多个 **L0/L1** 变更可以共用 `<docs>/changes/BATCH-YYYYMMDD/` 一个目录，而不是各建一个变更目录。
+**同一天**的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/` 一个目录，而不是各建一个变更目录（v3.24.0 默认化）。
 
 - **只有目录被放宽，产物文件名一字不改**——仍是 `00-intent.md` … `09-changelog.md` 那 12 件同名文件；同批变更用 `## <变更号>` 小节锚点分开，`00-governance.json` 写成**一行一个 JSON 对象**（变更号 / 风险 / 责任人各自成行；**推荐写法，但不再是解析器的硬要求**——见下条）。所有按文件名找东西的既有习惯（门禁、审计、人工检索）继续有效——**这是复用既有体系，不是新起一套**。
 - **L2/L3 不得入批**：批次让多个变更共享一套产物，会削弱逐变更证据边界与角色独立性。门禁按治理记录逐条校验并直接拒绝批次内的 L2/L3。
@@ -112,6 +112,6 @@ derived_from_version: <你派生时本 Skill 携带的版本，如 3.22.0>
 
 ## 版本同步
 
-- **当前携带版本 v3.23.0**（见规范页脚，页脚是唯一权威源）。
+- **当前携带版本 v3.27.0**（见规范页脚，页脚是唯一权威源）。
 - **版本号三载体**：frontmatter `version:`、`description` 尾注、正文顶部横幅——升级规范时**页脚 + 三处一起改**，漏改即审计红；平台事实论证（frontmatter 无 `version` 字段等）以 [`MAINTAINER.md`](MAINTAINER.md) §6 为权威，本文件不复述。
 - **改本 Skill 本身的人**（改脚本 / 改规范 / 改模板 / 动断言）请读 **[`MAINTAINER.md`](MAINTAINER.md)**：文件角色表、改哪里必须同时改哪里的联动表、两道自测试的用法与顺序、断言数生成器、审计的 PART A/B 分区、逐版本升级推送清单。**装规范的人不需要读它。**

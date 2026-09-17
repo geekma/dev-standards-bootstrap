@@ -528,8 +528,15 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 # A9 规范条款存在性锚点（CHG-008 / FU-016）：防条款被静默移除
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
-# A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 128KB。
+# A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0 重校准）：治理内容演进时上界随之重校准
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 132KB。
+# v3.25.0（CHG-025）重校准 128KB → 132KB 的依据（按既有三个条件）：
+#   ① **先压缩**：v3.24.0 + v3.25.0 两轮新增条款均经措辞压缩（§2.9.6/§2.5 三轮收字），
+#      v3.24.0 收口时余量仅剩 3 字节——上界事实上已失效（同 v3.17.0 的 53 字节、
+#      v3.21.2 的 193 字节同型）；v3.25.0 新增为执行侧纪律（写侧并行批量/定向验证/
+#      产物最小表达形态），非文字膨胀；
+#   ② **有 CHANGELOG 条目对应**：见 `resources/STANDARDS_CHANGELOG.md` 的 v3.25.0 行；
+#   ③ 上界按 KiB 步进（+4KB）重设，余量约 3.3KB——**不是**按当前体量贴合。
 # v3.21.2（CHG-017 / REQ-089）重校准 124KB → 128KB 的依据（按 §5.1 的两个条件）：
 #   ① **先压缩**：本轮新增文字先做了一轮浓缩（删除规范正文里的变更日志式括注、
 #      把派生资产的判定口径收成一句），但 v3.21.1 + v3.21.2 两轮的对齐修正
@@ -546,7 +553,7 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #      净增 1,035 字节（122,827 → 123,862）；
 #   ③ 上界按 KiB 步进（+4KB）重设，余量 3,114 字节——**不是**按当前体量贴合。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 128KB (FU-017, recalibrated v3.21.2)" 1 "$([[ "$std_bytes" -le 131072 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 132KB (FU-017, recalibrated v3.25.0)" 1 "$([[ "$std_bytes" -le 135168 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
@@ -631,7 +638,10 @@ report "A19 installer substitutes the stamper path in templates" 1 "$(a17_at_lea
 # §2 联动表：改复制清单必须同步 --help 文本（--help 是文件清单的唯一权威源）
 report "A19 installer --help lists the stamper in the guard layer" 1 "$(a17_at_least_1 "$(grep -c 'stamp-provenance.sh (文件溯源盖章' "$BOOT" || true)")"
 report "A19 gate extracts the provenance block" 1 "$(a17_at_least_1 "$(grep -c 'provenance_block() {' "$GATE_TPL" || true)")"
-report "A19 gate validates the coding record's provenance" 1 "$(a17_at_least_1 "$(grep -c 'validate_provenance "\$d/04.5-coding-record.md"' "$GATE_TPL" || true)")"
+# v3.26.0 (CHG-026): provenance scope widened — the gate loops over every *.md
+# artifact (skipping 00-governance.json) instead of pinning 04.5 only. Anchor on
+# the loop shape: skip-guard + loop call must both be present (防单点回潮).
+report "A19 gate validates every artifact's provenance (CHG-026)" 1 "$([[ $(grep -c 'validate_provenance "\$pf"' "$GATE_TPL" || true) -ge 1 && $(grep -c '"00-governance.json"' "$GATE_TPL" || true) -ge 1 ]] && echo 1 || echo 0)"
 report "A19 gate rejects a missing block" 1 "$(a17_at_least_1 "$(grep -c 'carries no provenance block' "$GATE_TPL" || true)")"
 report "A19 gate rejects a placeholder block" 1 "$(a17_at_least_1 "$(grep -c 'provenance block still holds a placeholder' "$GATE_TPL" || true)")"
 report "A19 gate requires the script as producer" 1 "$(a17_at_least_1 "$(grep -c 'was not produced by scripts/stamp-provenance.sh' "$GATE_TPL" || true)")"

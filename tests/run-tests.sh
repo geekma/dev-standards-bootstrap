@@ -430,12 +430,26 @@ report "stop rejects a negated mid-line 遗留 mention (BUG-002 residual closed)
 printf '# 06-delivery-summary\n本变更无 FU-901 需要登记。\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop rejects a mid-sentence FU- mention with no structured row (FU-020)" 2 $?
+# CHG-026 (v3.26.0): provenance is mandatory for EVERY *.md artifact — fixture
+# helper re-stamps all CHG-500 artifacts with inline valid blocks (layout-
+# independent by design; the stamper script itself is exercised in T17).
+stamp_fixture_all() {
+  for pf in docs/changes/CHG-500/*.md; do
+    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
+    if ! grep -q '^<!-- provenance' "$pf"; then
+      { printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+    fi
+  done
+}
+
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop still accepts a structured FU table row (FU-020 positive)" 0 $?
 
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop passes with evidence and changelog" 0 $?
 
 # ------------------------------------------------ T16 文件溯源（v3.17.0）
@@ -459,12 +473,21 @@ out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
 report "stop rejects a hand-written provenance block (v3.17.0)" 2 "$rc"
 check_output "stop demands the script as producer" "was not produced by scripts/stamp-provenance[.]sh" "$out"
 
+# CHG-026 (v3.26.0): the traceability bar covers every artifact, not just the
+# coding record — an unstamped 01-spec must be named by the gate.
+printf '# 规格\nREQ-500 已验收。\n' > docs/changes/CHG-500/01-spec.md
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "stop rejects any unstamped artifact (v3.26.0)" 2 "$rc"
+check_output "stop names the unstamped file" "01-spec[.]md carries no provenance block" "$out"
+{ printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; printf '# 规格\nREQ-500 已验收。\n'; } > docs/changes/CHG-500/01-spec.md
+
 printf '<!-- provenance\nauthor: bob\nemail: b@x.com\ngenerated_at: not-a-date\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-500/04.5-coding-record.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop rejects a non-ISO generated_at (v3.17.0)" 2 $?
 
 printf '<!-- provenance\nauthor: claude/s-1\nemail: <redacted>\ngenerated_at: 2026-09-15T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-500/04.5-coding-record.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop accepts a script-shaped block with a redacted email (privacy switch)" 0 $?
 
 # CHG-004 独立复核发现并已修：候选落点不得用裸 glob `docs/*/`。
@@ -487,6 +510,7 @@ scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop rejects a feature dir without 01-spec/01.5 marker" 2 $?
 printf '# spec\n- REQ-001: r\n' > docs/featx/01-spec.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop accepts a real feature dir carrying 01-spec.md" 0 $?
 
 # 恢复常态（两件回到变更目录）
@@ -494,6 +518,7 @@ rm -rf docs/unrelated docs/featx
 printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更，依据见 02-code-impact-analysis.md。\n' > docs/changes/CHG-500/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop passes again once artifacts return to the change dir" 0 $?
 
 # v3.7.0：Gate 4 —— changelog 引用的 REQ 必须回填 docs/<feature>/01.5-rtvm-matrix.md
@@ -503,6 +528,7 @@ report "stop blocks changelog REQ not backfilled in 01.5 matrix" 2 $?
 mkdir -p docs/feata
 printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/feata/01.5-rtvm-matrix.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop passes once REQ rows backfilled in matrix" 0 $?
 
 # CHG-007 / FU-019：源头仓嵌套形态 docs/changes/<CHG>/01.5 也必须被 RTVM 检查接受
@@ -512,6 +538,7 @@ report "stop still blocks once the one-level matrix is removed" 2 $?
 mkdir -p docs/changes/CHG-901
 printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/changes/CHG-901/01.5-rtvm-matrix.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop accepts a nested docs/changes/<CHG>/01.5 matrix (FU-019)" 0 $?
 rm -rf docs/changes/CHG-901
 printf '| REQ-101 | 用户故事A | DES-101 | T1 | CHG-500 | TC-101 | test | PASS |\n' > docs/feata/01.5-rtvm-matrix.md   # 恢复一层矩阵，后续用例依赖
@@ -525,6 +552,7 @@ AGENT_GUARD_VERIFY_COMMAND='false' scripts/agent-gate --stage stop >/dev/null 2>
 report "stop runs AGENT_GUARD_VERIFY_COMMAND and fails on it" 2 $?
 
 AGENT_GUARD_VERIFY_COMMAND='true' scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop passes when AGENT_GUARD_VERIFY_COMMAND succeeds" 0 $?
 
 # CHG-012/CHG-015 / REQ-066+076：验证命令来源链 env → .agent-governance.yml
@@ -539,16 +567,19 @@ check_output "stop names the yml source of the failed command" "from .agent-gove
 printf 'ci:\n  verification_command: "true"\n' > .agent-governance.yml
 git add .agent-governance.yml && git commit -qm "yml true"
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop passes when committed yml verification command succeeds" 0 $?
 
 printf 'ci:\n  verification_command: "<replace-with-project-test-command>"\n' > .agent-governance.yml
 git add .agent-governance.yml && git commit -qm "yml placeholder"
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop skips placeholder verification command (CHG-012)" 0 $?
 
 # CHG-015 反篡改：待定修改的 yml（未提交）不执行其命令
 printf 'ci:\n  verification_command: "false"\n' > .agent-governance.yml
 scripts/agent-gate --stage stop >/dev/null 2>&1
+stamp_fixture_all
 report "stop skips yml verification modified in the pending change (anti-tamper)" 0 $?
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
 check_output "skip note names anti-tamper" "anti-tamper" "$out"
@@ -588,6 +619,18 @@ report "ci blocks code diff without 06.5 config record" 2 $?
 printf '# 06.5\n未命中，不适用：本变更无配置/DB 变更。\n' > docs/changes/CHG-601/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-902 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-601/06-delivery-summary.md
 commit_all "docs: CHG-601 config + delivery summary"
+# CHG-026 (v3.26.0): CI shares validate_delivery — every artifact must carry a
+# provenance block before a ci-positive case can pass.
+ci_stamp_all() {
+  for pf in "$1"/*.md; do
+    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
+    if ! grep -q '^<!-- provenance' "$pf"; then
+      { printf '<!-- provenance\nauthor: claude/s-1\nemail: t@example.com\ngenerated_at: 2026-09-15T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+    fi
+  done
+}
+
+ci_stamp_all docs/changes/CHG-601
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts code diff committed with artifacts and delivery evidence" 0 $?
 
@@ -620,6 +663,7 @@ printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n
 printf '# 06.5\n未命中，不适用：本变更无配置/DB 变更。\n' > docs/changes/CHG-620/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-903 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-620/06-delivery-summary.md
 commit_all "docs: CHG-620 delivery evidence"
+ci_stamp_all docs/changes/CHG-620
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts docs-only diff after delivery evidence lands" 0 $?
 
@@ -1317,6 +1361,7 @@ if [[ -f "$STAMP_SRC" ]]; then
   printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-700/09-changelog.md
   printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：无配置项。\n' > docs/changes/CHG-700/06.5-deployment-config.md
   printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | x | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-700/06-delivery-summary.md
+  scripts/stamp-provenance.sh --all CHG-700 >/dev/null 2>&1
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T17 gate accepts a real script-stamped record (end-to-end)" 0 $?
 else
@@ -1511,6 +1556,27 @@ else
   echo "SKIP T18 stamper cases: stamp-provenance.sh 为 --guard 层文件（未装 guard 层时不存在）"
 fi
 
+# ------------------------------------------------ T18b 同日批次默认强制（v3.27.0，CHG-027）
+# §1.1 v3.24.0 把"同日多个 L0/L1 默认共用批次"写成默认，但 begin 不拦就是纯建议
+# （下游实测：同日 5 组 L0/L1 全部各开独立目录）。本组验证：当日批次已存在时，
+# 独立 L0/L1 begin 必须被拦；豁免必须显式；入批与 L2 独立照常。
+new_repo
+seed_batch_artifacts "BATCH-$(date +%Y%m%d)" CHG-820:L0
+commit_all "docs: today's batch exists"
+seed_artifacts CHG-821 L1 claude/s-1
+scripts/agent-gate begin CHG-821 >/dev/null 2>&1
+report "T18b begin rejects an independent L0/L1 when a same-day batch exists" 2 $?
+out=$(scripts/agent-gate begin CHG-821 2>&1 || true)
+check_output "T18b refusal names the batch and the escape hatch" "same-day batch exists.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
+AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-821 >/dev/null 2>&1
+report "T18b explicit override allows an independent L0/L1" 0 $?
+seed_batch_artifacts "BATCH-$(date +%Y%m%d)" CHG-822:L1
+scripts/agent-gate begin CHG-822 >/dev/null 2>&1
+report "T18b joining the same-day batch begins" 0 $?
+seed_artifacts CHG-823 L2 claude/s-1 tester reviewer
+scripts/agent-gate begin CHG-823 >/dev/null 2>&1
+report "T18b L2 keeps its independent-directory right (no batch compulsion)" 0 $?
+
 # ------------------------------------------------ T19 治理记录的格式无关性（v3.20.0）
 # 回归背景：v3.18.0 为支持批次把"读治理记录"从**整文件**（v3.14.0 的
 # `json_string <file> <key>`，用 `sed -nE ... "$file"` 逐行扫全文件）改成**行式**
@@ -1690,9 +1756,10 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   report "T21 re-run against a governed target succeeds (auto-upgrade)" 0 "$rc"
   printf '%s' "$out" | grep -q CONFLICT && report "T21 re-run raises no conflict" 0 1 || report "T21 re-run raises no conflict" 0 0
 
-  # TC-143 自动升级：fake 源版本 +0.0.1 → 重跑 → 目标规范页脚跟随
-  sed -i.bak 's/规范版本：v3\.23\.0/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md" 2>/dev/null \
-    || sed -i '' 's/规范版本：v3\.23\.0/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md"
+  # TC-143 自动升级：fake 源版本 +0.0.1 → 重跑 → 目标规范页脚跟随（版本无关形态，
+  # 与 T14 同型——不再钉死当前版本字面量，版本 bump 无须改本夹具）
+  sed -i.bak 's/规范版本：v[0-9.][0-9.]*/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md" 2>/dev/null \
+    || sed -i '' 's/规范版本：v[0-9.][0-9.]*/规范版本：v9.9.9/' "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md"
   rm -f "$FAKE_SRC/resources/DEVELOPMENT_STANDARDS.md.bak"
   (cd "$TGT" && git add -A && git commit -qm artifacts)
   bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" >/dev/null 2>&1

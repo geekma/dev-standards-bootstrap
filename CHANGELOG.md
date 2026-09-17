@@ -20,6 +20,43 @@
 
 （历史版本见下方归档段）
 
+## [3.27.0] — 2026-09-17
+
+### 新增
+
+- **同日批次默认强制**（CHG-027）：当日 `BATCH-YYYYMMDD` 已存在时，L0/L1 变更 begin 必须入批（独立目录被拒；显式 `AGENT_GUARD_ALLOW_INDEPENDENT=1` 豁免并登记理由）；§5 反模式新增"同日多个 L0/L1 各开独立目录"= 中度违规。下游实测动机：同日 5 组 L0/L1 全部未合批。
+
+## [3.26.0] — 2026-09-17
+
+### 新增
+
+- **溯源全产物强制**（CHG-026）：变更目录全部 `*.md` 交付时必须携带溯源块（`stamp-provenance.sh --all` 必跑，gate stop/CI 逐一校验）；`00-governance.json` 豁免、历史不回填规则不变。动机：下游仓实证每目录 9 件 md 仅 04.5 有块。
+- **BUG/CHG 不双建条款**（§2.5 阶段 6）：缺陷默认只落六件套 + bugfix-log；升级变更轨需满足三条件之一，`bug_ref` 指向六件套，诊断正文只引用不复制。§1.1 补句：变更轨 `BUG-xxx`（L0/L1）同适用按天合并。
+
+### 变更
+
+- golden 断言 292 → 294（夹具全量盖章 + unstamped 负例）。
+
+## [3.25.0] — 2026-09-17
+
+### 新增
+
+- **执行侧纪律二批**（CHG-025，条款细节见 [STANDARDS_CHANGELOG](resources/STANDARDS_CHANGELOG.md) v3.25.0 行）：AGENTS.md 执行资源纪律五条→八条（+并行批量写、+定向验证优先、+有状态 mock 隔离，+过滤模板通用形态）；规范 §2.5 新增「产物最小表达形态」、§2.9.6 新增定向验证与 cache_read 量纲注。
+
+### 变更
+
+- **A11 规范体量上界重校准 128KB→132KB**（v3.21.2 先例：先压缩、有 CHANGELOG 条目、KiB 步进；v3.24.0 收口余量仅 3 字节）。源层脚本 `tests/audit-standards-src.sh`，目标仓零影响。
+
+## [3.24.0] — 2026-09-17
+
+### 新增
+
+- **执行侧 token 纪律入规范**（CHG-024，条款细节见 [STANDARDS_CHANGELOG](resources/STANDARDS_CHANGELOG.md) v3.24.0 行）：AGENTS.md 下发面新增「Agent 执行资源纪律」五条（管道过滤 / 一次 grep 合并 / 先定位后小窗 / 勘探下放只读子代理 / 无匹配≠通过）；规范新增 §2.9.6 会话与上下文纪律（单会话单主题、>50 轮或主题切换即 handoff）；§1.1 同日 L0/L1 批次由"可共用"升"默认共用"；§2.5 总则新增跨产物引用制 + 单产物 ≤40 行软上限。
+
+### 修复
+
+- **golden T21 夹具版本耦合**：夹具 sed 钉死 `规范版本：v3.23.0` 字面量，源版本 bump 后必红；改为版本无关形态 `v[0-9.][0-9.]*`（同文件 T14 先例），断言数/语义不变。
+
 ## [3.23.0] — 2026-09-16
 
 ### 新增
@@ -111,7 +148,11 @@
 
 3.1.0 ~ 3.10.0 的演进（风险分级矩阵、缺陷六件套、八类最低文档集、场景覆盖率、根因分类、检查器设计规约等）见 [STANDARDS_CHANGELOG](resources/STANDARDS_CHANGELOG.md)。
 
-[Unreleased]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.23.0...HEAD
+[Unreleased]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.27.0...HEAD
+[3.27.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.26.0...v3.27.0
+[3.26.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.25.0...v3.26.0
+[3.25.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.24.0...v3.25.0
+[3.24.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.23.0...v3.24.0
 [3.23.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.22.0...v3.23.0
 [3.22.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.21.2...v3.22.0
 [3.21.2]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.21.1...v3.21.2

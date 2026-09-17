@@ -444,10 +444,6 @@ validate_delivery() { # change-id
   # v3.7.0: the coding record (changed-file list, CHG-xxx anchors, WHY
   # decisions) is part of the delivery bar (standards §2.5 stage 5).
   [[ -s "$d/04.5-coding-record.md" ]] || die "cannot finish: missing coding record $d/04.5-coding-record.md"
-  # v3.17.0: ...and it must carry script-generated provenance (who / where /
-  # when). Checked here rather than at `begin` because the coding record is a
-  # stage-5 artifact — there is nothing to stamp before coding starts.
-  validate_provenance "$d/04.5-coding-record.md"
   [[ -s "$d/05-test-results.md" ]] || die "cannot finish: missing test evidence $d/05-test-results.md"
   [[ -s "$d/09-changelog.md" ]] || die "cannot finish: missing changelog $d/09-changelog.md"
   # Every executed stage must leave an Observation record (verification
@@ -473,6 +469,18 @@ validate_delivery() { # change-id
   # CHG-004 / REQ-022: the remaining two of the eight-category minimum doc set.
   check_delivery_doc "$d" 06.5-deployment-config.md '^([#>-][[:space:]]*)*未命中|^[|].*(未命中|(CFG|DB)-[0-9]+)|(CFG|DB)-[0-9]+' 'config/DB record'
   check_delivery_doc "$d" 06-delivery-summary.md '^[|].*FU-[0-9]+|^[-*][[:space:]]+.*FU-[0-9]+|^(#{1,6}[[:space:]]*).*遗留' 'delivery summary / FU ledger'
+  # v3.17.0 provenance, scope widened v3.26.0 (CHG-026): EVERY *.md artifact in
+  # the change dir must carry a script-generated block — the author / committer
+  # / host / UTC-time header is the delivery traceability bar, not a
+  # coding-record extra. Checked LAST so earlier structural failures name their
+  # own check; 00-governance.json stays excluded (HTML comments would break the
+  # flat-JSON readers — v3.22.0 decision, unchanged). Run
+  # `scripts/stamp-provenance.sh --all <CHG-id>` at delivery time.
+  local pf
+  for pf in "$d"/*.md; do
+    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
+    validate_provenance "$pf"
+  done
 }
 
 validate_stop() {
@@ -752,6 +760,19 @@ case "$command" in
     fi
     required_docs_present "$id"
     validate_governance_state "$id"
+    # v3.27.0 (CHG-027): the same-day batch default is ENFORCED, not advisory —
+    # once a BATCH-<today> exists, a new L0/L1 change must join it (standards
+    # §1.1, v3.24.0 defaulting). Independent dirs stay valid for L2/L3 and for
+    # single-change days (no batch yet). Escape hatch is explicit on purpose:
+    # AGENT_GUARD_ALLOW_INDEPENDENT=1 with the justification recorded in the
+    # changelog — silent bypasses are the failure mode this closes (the
+    # same family as "the standard shipped a speed bump nobody stepped on").
+    b_risk=$(json_field "$(gov_record "$d/00-governance.json" "$id")" risk_level)
+    if [[ "$b_risk" == L0 || "$b_risk" == L1 ]] && ! is_batch_dir "$d" \
+       && [[ -d "$change_root/BATCH-$(date +%Y%m%d)" ]] \
+       && [[ "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
+      die "same-day batch exists ($change_root/BATCH-$(date +%Y%m%d)) — L0/L1 changes must join it (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+    fi
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     echo "agent-gate: active change is $id"
