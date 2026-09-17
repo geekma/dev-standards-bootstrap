@@ -37,8 +37,9 @@ Flags (layers; default --core when none given):
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, <scripts>/check-standards-compliance.sh
   --guard      强制执行包: <scripts>/agent-gate, <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
+               <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
-               <github>/workflows/agent-governance.yml, <scripts>/install-hook-adapter,
+               <github>/workflows/agent-governance.yml,
                .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4)
   --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml
   --all        以上全部
@@ -429,6 +430,7 @@ transform_src() { # src -> stdout
     return 0
   fi
   sed -e "s|scripts/install-hook-adapter|$SCRIPTS_DIR/install-hook-adapter|g" \
+      -e "s|scripts/session-gate\.sh|$SCRIPTS_DIR/session-gate.sh|g" \
       -e "s|scripts/check-standards-compliance\.sh|$SCRIPTS_DIR/check-standards-compliance.sh|g" \
       -e "s|scripts/stamp-provenance\.sh|$SCRIPTS_DIR/stamp-provenance.sh|g" \
       -e "s|scripts/agent-gate|$SCRIPTS_DIR/agent-gate|g" \
@@ -587,6 +589,7 @@ run_layer() {
       install_file - "$GITHOOKS_DIR/commit-msg" resources/templates/commit-msg 755
       install_file - ".github/workflows/agent-governance.yml" resources/templates/github-agent-governance.yml
       install_file - "$SCRIPTS_DIR/install-hook-adapter" resources/templates/install-hook-adapter.sh 755
+      install_file - "$SCRIPTS_DIR/session-gate.sh" resources/templates/session-gate.sh 755
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases
       install_file - "$TESTS_DIR/run-tests.sh" tests/run-tests.sh 755
@@ -715,25 +718,17 @@ auto_wire_guard() {
   #    THIS shell's env (the adapter itself exits 0 even without a client, so
   #    its exit code alone would false-positive — check the env here first).
   if [[ -f "$target/$SCRIPTS_DIR/install-hook-adapter" ]]; then
-    client=""
-    if [[ "${CLAUDECODE:-}" == 1 ]]; then client=claude
-    elif [[ -n "${CURSOR_AGENT:-}" || -n "${CURSOR_TRACE_ID:-}" ]]; then client=cursor
-    elif [[ "${GEMINI_CLI:-}" == 1 ]]; then client=gemini
+    ok=0
+    if (cd "$target" && bash "$SCRIPTS_DIR/install-hook-adapter" >/dev/null 2>&1); then
+      for f in .claude/settings.json .cursor/hooks.json .gemini/settings.json \
+               .opencode/plugins/dev-standards-gate.js; do
+        [[ -f "$target/$f" ]] && ok=1
+      done
     fi
-    if [[ -n "$client" ]]; then
-      ok=0
-      if (cd "$target" && bash "$SCRIPTS_DIR/install-hook-adapter" "$client"); then
-        for f in .claude/settings.json .cursor/hooks.json .gemini/settings.json; do
-          [[ -f "$target/$f" ]] && ok=1
-        done
-      fi
-      if [[ "$ok" == 1 ]]; then
-        echo "auto-wired   client hook adapter generated ($client)"
-      else
-        echo "NOTE         adapter generation did not produce a config for $client — run $SCRIPTS_DIR/install-hook-adapter manually" >&2
-      fi
+    if [[ "$ok" == 1 ]]; then
+      echo "auto-wired   client session-enforcement wired (install-hook-adapter detected the local clients)"
     else
-      echo "NOTE         no supported coding client detected in this shell — run $SCRIPTS_DIR/install-hook-adapter inside your client; Git hooks + CI still enforce" >&2
+      echo "NOTE         no supported coding client detected — Git hooks + CI still enforce; run $SCRIPTS_DIR/install-hook-adapter inside your client later" >&2
     fi
   fi
   # 3) verification command autodetect: replace the placeholder only; user

@@ -22,3 +22,4 @@
 - [ ] ≥1 个新建防回归 TC 覆盖根因路径
 - [ ] 复跑清单逐项有理由或明确写无
 - [ ] 证据落 05-test-results.md 批次并链接进 bugfix-log 条目「测试证据」
+- [ ] 溯源块已盖：`scripts/stamp-provenance.sh --bug <BUG-id>`（时间 / 提交者 / 主机设备从运行环境读出，**禁手写**；gate stop 与审计 A21 校验，v3.28.0）

@@ -9,6 +9,7 @@
 # 用法：
 #   scripts/stamp-provenance.sh <CHG-id> [file ...]   # 就地写入（默认 04.5-coding-record.md）
 #   scripts/stamp-provenance.sh --all <CHG-id>        # 全量盖章：活跃变更目录下全部 *.md（v3.22.0）
+#   scripts/stamp-provenance.sh --bug <BUG-id>        # 缺陷六件套盖章：docs/bugs/<id>/*.md（v3.28.0）
 #   scripts/stamp-provenance.sh --print <CHG-id>      # 只打印块，不写文件
 #   scripts/stamp-provenance.sh --check <file>        # 校验已有块（CI 用，形状 + 非占位）
 #
@@ -42,12 +43,14 @@ cfg_path() { # key default
 }
 DOCS_DIR="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
 CHANGE_ROOT="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
+BUGS_ROOT="${AGENT_GUARD_BUGS_ROOT:-$(cfg_path bugs_root "$DOCS_DIR/bugs")}"
 INCLUDE_EMAIL="${AGENT_GUARD_PROVENANCE_EMAIL:-$(cfg_path include_email true)}"
 
 usage() {
   cat <<'EOF'
 Usage: scripts/stamp-provenance.sh <CHG-id> [file ...]
        scripts/stamp-provenance.sh --all <CHG-id>
+       scripts/stamp-provenance.sh --bug <BUG-id>
        scripts/stamp-provenance.sh --print <CHG-id>
        scripts/stamp-provenance.sh --check <file>
 
@@ -59,6 +62,10 @@ Default target: <change_root>/<CHG-id>/04.5-coding-record.md
 --all:          stamp every *.md artifact of the resolved change directory
                 (batch-aware; 00-governance.json is deliberately NOT stamped —
                 an HTML comment inside JSON would break the machine readers).
+--bug <BUG-id>: stamp every *.md of the defect doc group <bugs_root>/<BUG-id>/
+                (v3.28.0 — the six-piece set carries the same who/host/when
+                header; the block labels the group with `bug:` instead of
+                `change:` and `risk:` is `n/a`).
 Privacy: set `provenance.include_email: false` in .agent-governance.yml to write
          email as <redacted>.
 EOF
@@ -66,11 +73,14 @@ EOF
 
 mode=write
 stamp_all=false
+stamp_bug=false
+bug_id=""
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
   --print)   mode=print; shift ;;
   --check)   mode=check; shift ;;
   --all)     stamp_all=true; shift ;;
+  --bug)     stamp_bug=true; bug_id="${2:-}"; shift 2 ;;
   "")        usage >&2; exit 2 ;;
 esac
 
@@ -101,15 +111,22 @@ if [[ "$mode" == check ]]; then
   exit 0
 fi
 
-chg="${1:-}"
-[[ -n "$chg" ]] || { usage >&2; exit 2; }
-[[ "$chg" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "stamp-provenance: invalid change id '$chg'" >&2; exit 2; }
-shift
-# --all 与显式文件清单互斥：组合会把优先级问题留给读者（显式清单生效、--all 静默
-# 丢失）——拒绝组合，让语义只有一种。
-if [[ "$stamp_all" == true && "$#" -gt 0 ]]; then
-  echo "stamp-provenance: --all cannot be combined with an explicit file list" >&2
-  exit 2
+if [[ "$stamp_bug" == true ]]; then
+  # v3.28.0 --bug：缺陷六件套组。目录就是 <bugs_root>/<id>，无批次、无 governance。
+  chg="$bug_id"
+  [[ -n "$chg" ]] || { usage >&2; exit 2; }
+  [[ "$chg" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "stamp-provenance: invalid defect id '$chg'" >&2; exit 2; }
+else
+  chg="${1:-}"
+  [[ -n "$chg" ]] || { usage >&2; exit 2; }
+  [[ "$chg" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "stamp-provenance: invalid change id '$chg'" >&2; exit 2; }
+  shift
+  # --all 与显式文件清单互斥：组合会把优先级问题留给读者（显式清单生效、--all 静默
+  # 丢失）——拒绝组合，让语义只有一种。
+  if [[ "$stamp_all" == true && "$#" -gt 0 ]]; then
+    echo "stamp-provenance: --all cannot be combined with an explicit file list" >&2
+    exit 2
+  fi
 fi
 
 # Batch-aware resolution (v3.18.0): a same-day L0/L1 batch keeps its artifacts in
@@ -133,7 +150,11 @@ resolve_dir() { # <change-id> -> directory
   done
   printf '%s' "$d"
 }
-CHG_DIR=$(resolve_dir "$chg")
+if [[ "$stamp_bug" == true ]]; then
+  CHG_DIR="$BUGS_ROOT/$chg"
+else
+  CHG_DIR=$(resolve_dir "$chg")
+fi
 
 if [[ "$#" -gt 0 ]]; then
   targets=("$@")
@@ -144,6 +165,10 @@ elif [[ "$stamp_all" == true ]]; then
   # fails, because "nothing stamped" must never masquerade as success.
   targets=("$CHG_DIR"/*.md)
   default_target=false
+elif [[ "$stamp_bug" == true ]]; then
+  # v3.28.0 --bug: every *.md of the defect doc group (typically the six-piece).
+  targets=("$CHG_DIR"/*.md)
+  default_target=false
 else
   targets=("$CHG_DIR/04.5-coding-record.md")
   default_target=true
@@ -152,15 +177,22 @@ fi
 # What the block attests. In a batch the coding record is SHARED by every
 # bundled change, so naming one member would be a claim the next member's stamp
 # silently overwrites. Attest the batch and list what it covers instead.
-if [[ "$(basename "$CHG_DIR")" =~ ^BATCH-[0-9]{8}$ ]]; then
+# Bug mode (v3.28.0) attests the defect group with a `bug:` label and no batch.
+if [[ "$stamp_bug" == true ]]; then
+  block_change="$chg"
+  batch_changes=""
+  block_label="bug"
+elif [[ "$(basename "$CHG_DIR")" =~ ^BATCH-[0-9]{8}$ ]]; then
   block_change="$(basename "$CHG_DIR")"
   batch_changes=$(for f in "$CHG_DIR"/*.md; do
       [[ -f "$f" ]] || continue
       sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' "$f"
     done | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  block_label="change"
 else
   block_change="$chg"
   batch_changes=""
+  block_label="change"
 fi
 
 # --- 从环境取真值（缺什么写 unknown，不编造）---------------------------------
@@ -219,6 +251,10 @@ if [[ -n "$batch_changes" && -f "$gov" ]]; then
   [[ -n "$risk" ]] || risk="unknown"
 fi
 
+# Bug mode: no governance record exists for a defect group — say so instead of
+# letting the risk lookup fall through to a misleading "unknown".
+[[ "$stamp_bug" == true ]] && risk="n/a"
+
 skill_ver="unknown"
 std="$DOCS_DIR/DEVELOPMENT_STANDARDS.md"
 if [[ -f "$std" ]]; then
@@ -230,7 +266,7 @@ BLK=$(mktemp) || exit 2
 trap 'rm -f "$BLK"' EXIT
 {
   echo "<!-- provenance"
-  echo "change: $block_change"
+  echo "$block_label: $block_change"
   echo "risk: $risk"
   if [[ -n "$batch_changes" ]]; then
     echo "batch_changes: $batch_changes"

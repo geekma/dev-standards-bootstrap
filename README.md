@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.27.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.28.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -318,7 +318,7 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # Source-layer only (NOT shipped): committed baseline of the audit's executed-assertion count (assertion A10 fails on drift)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.27.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.28.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
@@ -341,7 +341,8 @@ dev-standards-bootstrap/
         ├── governance-state.json           # Template for each change's 00-governance.json (NOT shipped — the agent writes it per change)
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
         ├── pre-commit, pre-push, commit-msg  # Git hook templates (commit-msg: attribution gate)
-        ├── install-hook-adapter.sh         # Generates the hook adapter for the detected tool (claude/cursor/gemini)
+        ├── install-hook-adapter.sh         # Detects local AI clients and wires session-time enforcement (adaptive, v3.28.0)
+        ├── session-gate.sh                  # Session-time enforcement: start = audit red-light, idle = gate stop equivalent
         ├── github-agent-governance.yml     # Required-check workflow template
         ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/03.5/04 skeletons PR; changelog merged -> release checklist issue
         └── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
@@ -351,7 +352,7 @@ dev-standards-bootstrap/
 
 **Does it modify my code?** No. The whole package is documentation, templates, hooks and validators around your workflow. The gate *rejects* commits; it never edits files.
 
-**How do I uninstall it?** Delete everything the installer laid down: `AGENTS.md` (and `CLAUDE.md` if generated), the governance docs under `docs/` (`DEVELOPMENT_STANDARDS.md`, `STANDARDS_CHANGELOG.md`, `METHODOLOGY.md`, `methodologies/`, `bugfix-log.md`, `bugs/`, `06-delivery-summary.md`, `06.5-deployment-config.md`), the injected scripts (`scripts/agent-gate`, `scripts/stamp-provenance.sh`, `scripts/check-standards-compliance.sh`, `scripts/install-hook-adapter`), the test/audit files (`tests/run-tests.sh`, `tests/audit-docs-consistency.sh`), `.githooks/`, `.agent-governance.yml`, the injected `.github/` workflows + PR template, any client adapter config (`.claude/` / `.cursor/` / `.gemini/`), and the change artifacts your team created. Then `git config --unset core.hooksPath`.
+**How do I uninstall it?** Delete everything the installer laid down: `AGENTS.md` (and `CLAUDE.md` if generated), the governance docs under `docs/` (`DEVELOPMENT_STANDARDS.md`, `STANDARDS_CHANGELOG.md`, `METHODOLOGY.md`, `methodologies/`, `bugfix-log.md`, `bugs/`, `06-delivery-summary.md`, `06.5-deployment-config.md`), the injected scripts (`scripts/agent-gate`, `scripts/stamp-provenance.sh`, `scripts/check-standards-compliance.sh`, `scripts/install-hook-adapter`), the test/audit files (`tests/run-tests.sh`, `tests/audit-docs-consistency.sh`), `.githooks/`, `.agent-governance.yml`, the injected `.github/` workflows + PR template, any client adapter config (`.claude/` / `.cursor/` / `.gemini/` / `.opencode/`), and the change artifacts your team created. Then `git config --unset core.hooksPath`.
 
 **Is anything sent to a server?** No. The gate, the stamper and the audit are dependency-free shell scripts that read your filesystem and git metadata. `install.sh` only clones this public repository.
 
@@ -373,7 +374,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.27.0 | **Last Updated:** 2026-09-17 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.28.0 | **Last Updated:** 2026-09-17 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](CHANGELOG.md)
 

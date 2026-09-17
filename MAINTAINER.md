@@ -50,6 +50,8 @@
 | 新增 / 删除测试套件 | `.github/workflows/ci.yml` 的 job 清单（仓库自己的 CI 必须覆盖全部套件）+ `MAINTAINER.md` §3 的命令清单 + 双 README 树（套件若属源层工具须标明不下发） |
 | 双 README 目录树 | 磁盘实际文件（审计有树↔磁盘断言） |
 | 新增 `resources/templates/**` 文件 | 双 README 树（树↔磁盘断言）+ `scripts/bootstrap.sh` 复制清单 + 若脚本被模板引用则补 `transform_src` 路径替换规则 |
+| 改 `install-hook-adapter.sh` 的客户端接线 | `resources/templates/session-gate.sh` 同步（安装器 fail-closed 依赖其存在并 `bash -n` 验证）；opencode 插件生成物 `.opencode/plugins/` 的路径字面量（transform_src 需要能覆盖其内部 `scripts/` 引用） |
+| 改 `session-gate.sh` 的 stop 等价检查强度 | `AGENT_GUARD_SKIP_VERIFY` 语义（idle 软执法跳过 verification_command，真实交付线不设）；active-change 路径必须与 gate 同源（`git rev-parse --git-path agent-governance/active-change`），不得自造第二路径 |
 | 改 `resources/templates/agent-gate.sh` 的校验强度 | 所有写 `04.5-coding-record.md` 的 golden 夹具（校验一紧，夹具集体失效） |
 | 改变更目录布局（`change_dir` / `resolve_dir` / 锚点形状） | `agent-gate.sh` + `stamp-provenance.sh` + `audit-docs-consistency.sh` 的 G7 **三者一起**，且锚点必须用**同一条** sed 表达式（门禁 `anchor_re` / `anchors_in_file` ↔ 审计 G7）——定义分叉即"审计绿而门禁红"，最难查 |
 | 改批次风险上限（`is_batch_dir` 的 L0/L1） | 规范 §1.1 + `resources/AGENTS.md` 门禁步骤 + 审计 G7 的 L0/L1 断言 + golden T18 的拒绝用例 |

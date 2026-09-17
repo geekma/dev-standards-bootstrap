@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.27.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.28.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -285,7 +285,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 ## 治理细节
 
-- **执行侧 token 纪律（v3.24.0/v3.27.0）**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**八条**（管道过滤/一次 grep 合并/先定位后小窗/勘探下放只读子代理/无匹配≠通过/并行批量写/定向验证/有状态 mock 隔离）；规范 §2.9.6 会话与上下文纪律（单会话单主题，>50 轮或主题切换即 handoff）；§2.5 产物最小表达形态 + 单产物 ≤40 行软上限——目标：压 cache_read（= 上下文水位 × 轮数）。
+- **执行侧 token 纪律（v3.24.0/v3.28.0）**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**八条**（管道过滤/一次 grep 合并/先定位后小窗/勘探下放只读子代理/无匹配≠通过/并行批量写/定向验证/有状态 mock 隔离）；规范 §2.9.6 会话与上下文纪律（单会话单主题，>50 轮或主题切换即 handoff）；§2.5 产物最小表达形态 + 单产物 ≤40 行软上限——目标：压 cache_read（= 上下文水位 × 轮数）。
 - **同日变更批次（v3.18.0；v3.24.0 默认化）**：同一天的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/` 一个目录，而不是各建一个。放宽的只有目录——产物文件名一字不改，同批变更用 `## <变更号>` 小节锚点区分，批次变更集合从 `00-governance.json` 的权威名单读取（绝不从标题反推）。风险上限不放宽：**L2/L3 必须独立目录**，门禁按治理记录拒绝批次内的 L2/L3（以 `00-governance.json` 名单为准）。
 - **缺陷组刻意不入批**：每个缺陷在 `docs/bugs/<BUG-xxx>/` 保有独立六件套（诊断/影响/测试计划/矩阵/配置DB/任务），逐缺陷证据边界不共享；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）本身就是天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
 - **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md` 与 `docs/methodologies/state-trigger-audit.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历）。
@@ -318,7 +318,7 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # 源层专用（不下发）：审计执行断言数的入库基线（断言 A10 对漂移判红）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.27.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.28.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
@@ -341,7 +341,8 @@ dev-standards-bootstrap/
         ├── governance-state.json           # 每次变更 00-governance.json 的模板（不下发——由 Agent 按变更生成）
         ├── agent-governance.yml            # 团队可复核的治理配置记录（复制到 .agent-governance.yml）
         ├── pre-commit、pre-push、commit-msg  # Git Hook 模板（commit-msg：归因闸门）
-        ├── install-hook-adapter.sh         # 为检测到的工具生成 Hook 适配器（claude/cursor/gemini）
+        ├── install-hook-adapter.sh         # 探测本地 AI 客户端并自适应接线会话内执法（v3.28.0）
+        ├── session-gate.sh                  # 会话内执法：start=审计亮红灯，idle=stop 等价检查
         ├── github-agent-governance.yml     # 必需检查 workflow 模板
         ├── github-artifact-pipeline.yml    # 产物管线：spec 合入 -> 02/03/03.5/04 骨架 PR；changelog 合入 -> 发布检查单 issue
         └── github-incident-to-intent.yml   # 事故回路：告警派发 -> BUG-<ts> 意图骨架 PR
@@ -351,7 +352,7 @@ dev-standards-bootstrap/
 
 **会改我的代码吗？** 不会。整套包是围绕你工作流的文档、模板、Hook 与校验器。门禁只会**拒绝**提交，从不编辑文件。
 
-**如何卸载？** 删除安装器落下的全部内容：`AGENTS.md`（及生成的 `CLAUDE.md`）、`docs/` 下的治理文档（`DEVELOPMENT_STANDARDS.md`、`STANDARDS_CHANGELOG.md`、`METHODOLOGY.md`、`methodologies/`、`bugfix-log.md`、`bugs/`、`06-delivery-summary.md`、`06.5-deployment-config.md`）、注入的脚本（`scripts/agent-gate`、`scripts/stamp-provenance.sh`、`scripts/check-standards-compliance.sh`、`scripts/install-hook-adapter`）、测试/审计文件（`tests/run-tests.sh`、`tests/audit-docs-consistency.sh`）、`.githooks/`、`.agent-governance.yml`、注入的 `.github/` workflows 与 PR 模板、客户端适配器配置（`.claude/` / `.cursor/` / `.gemini/`），以及团队自己产出的变更文档。然后 `git config --unset core.hooksPath`。
+**如何卸载？** 删除安装器落下的全部内容：`AGENTS.md`（及生成的 `CLAUDE.md`）、`docs/` 下的治理文档（`DEVELOPMENT_STANDARDS.md`、`STANDARDS_CHANGELOG.md`、`METHODOLOGY.md`、`methodologies/`、`bugfix-log.md`、`bugs/`、`06-delivery-summary.md`、`06.5-deployment-config.md`）、注入的脚本（`scripts/agent-gate`、`scripts/stamp-provenance.sh`、`scripts/check-standards-compliance.sh`、`scripts/install-hook-adapter`）、测试/审计文件（`tests/run-tests.sh`、`tests/audit-docs-consistency.sh`）、`.githooks/`、`.agent-governance.yml`、注入的 `.github/` workflows 与 PR 模板、客户端适配器配置（`.claude/` / `.cursor/` / `.gemini/` / `.opencode/`），以及团队自己产出的变更文档。然后 `git config --unset core.hooksPath`。
 
 **会把数据发到服务器吗？** 不会。门禁、溯源盖章与审计都是零依赖 shell 脚本，只读你的文件系统与 git 元数据。`install.sh` 仅克隆本公开仓库。
 
@@ -373,7 +374,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.27.0 | **最后更新：** 2026-09-17 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.28.0 | **最后更新：** 2026-09-17 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](CHANGELOG.md)
 

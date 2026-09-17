@@ -1715,7 +1715,9 @@ AF=$(mktemp -d); audit_fixture "$AF"
 out=$(bash "$AUDIT_SRC" "$AF" 2>&1); rc=$?
 report "T20 a compliant feature-dir repo still passes (no regression)" 0 "$rc"
 t20_ran=1
-printf '%s' "$out" | grep -q "VACUOUS SKIP" && t20_ran=0
+# 精确锚定 G3/G5/G6 组（v3.28.0 起 G8/A20/A21 在无 bugs/变更目录的仓库合法打印
+# 自己的空转声明——泛 grep "VACUOUS SKIP" 会把"诚实声明未覆盖"误判成"G3 没跑"）。
+printf '%s' "$out" | grep -q "G3/G5/G6 VACUOUS SKIP" && t20_ran=0
 report "T20 G3/G5/G6 actually ran on the living-doc track (no vacuous skip)" 1 "$t20_ran"
 
 rm -rf "$AC" "$AC2" "$AC3" "$AC4" "$AC5" "$AF"

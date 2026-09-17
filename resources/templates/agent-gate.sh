@@ -192,6 +192,24 @@ json_field() { # <json-line> <key> -> value
   printf '%s' "$line" | sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" 2>/dev/null | head -n 1 || true
 }
 
+# v3.28.0 (CHG-071 复盘): bug_ref may be a flat string OR a flat string array —
+# the old check extracted only flat strings, so every change declaring an array
+# silently skipped the six-piece validation (fail-open). Returns one value per
+# line; empty output for a key that is absent. Callers MUST distinguish
+# "absent" from "present but unparseable" via a grep on the raw record.
+json_field_values() { # <json-line> <key> -> one value per line
+  local line="$1" key="$2" flat arr
+  flat=$(printf '%s' "$line" | sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" 2>/dev/null | head -n 1 || true)
+  if [[ -n "$flat" ]]; then printf '%s\n' "$flat"; return 0; fi
+  # NOTE: the bracket is [^]] (no backslash) ON PURPOSE — BSD sed (macOS) does
+  # not match [^]] inside an ERE bracket expression; [^]] is POSIX-portable.
+  arr=$(printf '%s' "$line" | sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p" 2>/dev/null | head -n 1 || true)
+  [[ -n "$arr" ]] || return 0
+  printf '%s\n' "$arr" | tr ',' '\n' \
+    | sed -E 's/^[[:space:]]*"?([^"]*)"?[[:space:]]*$/\1/' \
+    | grep -v '^[[:space:]]*$' || true
+}
+
 is_code_path() {
   local path="$1"
   [[ "$path" =~ ^(${docs_re}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
@@ -199,7 +217,7 @@ is_code_path() {
   # 第一次 commit 即死锁——鸡生蛋）。它们由 §2.17.4 golden-case 回归背书。
   # v3.17.0：**新增治理脚本必须同步加进本清单**——stamp-provenance.sh 漏加时，
   # 全新安装后的第一次 commit 会被判为"源码变更"而拦下（T15 D5 用例实测暴露）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -349,15 +367,35 @@ validate_governance_state() {
     [[ -n "$auth_at" ]] || die "$file must declare release_authorized_at for L3"
     [[ -n "$auth_ev" ]] || die "$file must declare release_authorization_evidence for L3"
   fi
-  # v3.6.0 bug document set: an optional flat bug_ref binds this change to a
-  # defect document group under docs/bugs/<bug_ref>/; when declared, the
-  # three-file set must exist and be non-empty (standards §2.5 stage 6).
-  local bug_ref
-  bug_ref=$(json_field "$rec" bug_ref)
-  if [[ -n "$bug_ref" ]]; then
-    [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
-    for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
-      [[ -s "$bugs_root/$bug_ref/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bugs_root/$bug_ref/$doc"
+  # v3.6.0 bug document set: bug_ref binds this change to defect document group(s)
+  # under <bugs_root>/<bug_ref>/; when declared, the six-piece set must exist and
+  # be non-empty (standards §2.5 stage 6). v3.28.0 (CHG-071 复盘): the check was
+  # FAIL-OPEN — it only parsed flat strings, so changes declaring an array
+  # ("bug_ref": ["BUG-040", …]) extracted empty and SKIPPED validation entirely.
+  # Now both forms parse; a declared-but-unparseable bug_ref dies (fail-closed).
+  # Validated refs are exported in bug_refs_current for the stop-stage
+  # provenance check (stamp-provenance.sh --bug).
+  local bug_ref _r
+  bug_refs_current=""
+  if printf '%s' "$rec" | grep -q '"bug_ref"'; then
+    while IFS= read -r _r; do
+      [[ -n "$_r" ]] && bug_refs_current="$bug_refs_current $_r"
+    done < <(json_field_values "$rec" bug_ref)
+    if [[ -z "${bug_refs_current// /}" ]]; then
+      # An EXPLICIT empty value ("bug_ref": "" or []) means "no defect bound" —
+      # same semantics as the field being absent (golden: 'begin skips bug_ref
+      # validation when empty'). Only a present-but-unparseable value fails.
+      if printf '%s' "$rec" | grep -qE "\"bug_ref\"[[:space:]]*:[[:space:]]*(\"\"|\[[[:space:]]*\])"; then
+        :
+      else
+        die "$file field 'bug_ref' is present but unparseable — use a flat string or a flat JSON string array of defect ids"
+      fi
+    fi
+    for bug_ref in $bug_refs_current; do
+      [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
+      for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+        [[ -s "$bugs_root/$bug_ref/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bugs_root/$bug_ref/$doc"
+      done
     done
   fi
 }
@@ -483,18 +521,76 @@ validate_delivery() { # change-id
   done
 }
 
+# v3.28.0 (CHG-071 / BUG-040~055 复盘): defect doc groups are enforced by
+# EXISTENCE of <bugs_root>/<BUG-id>/, not only through a change's bug_ref —
+# 16 groups shipped with only 01-diagnosis.md (and self-checked "[x] done" in
+# the log) because every machine check was scoped to the change track. The
+# sweep runs at staged / stop / CI so pure bug-track处置 hits the same bar.
+# Escape hatch: <bugs_root>/.gate-allowlist lists legacy incomplete groups,
+# one id per line, reason in a trailing comment — listed groups WARN (visible,
+# counted by audit G8), unlisted groups die.
+validate_bug_groups() {
+  local group doc missing allow listed gid
+  [[ -d "$bugs_root" ]] || return 0
+  allow="$bugs_root/.gate-allowlist"
+  for group in "$bugs_root"/BUG-*/; do
+    [[ -d "$group" ]] || continue
+    [[ -s "$group/01-diagnosis.md" ]] || continue
+    missing=""
+    for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+      [[ -s "$group/$doc" ]] || missing="$missing $doc"
+    done
+    [[ -z "$missing" ]] && continue
+    gid=$(basename "$group")
+    listed=""
+    if [[ -f "$allow" ]]; then
+      listed=$(grep -vE '^[[:space:]]*(#|$)' "$allow" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
+    fi
+    if [[ -n "$listed" ]]; then
+      echo "agent-gate: WARN defect group $gid incomplete (allowlisted):$missing"
+    else
+      die "defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
+    fi
+  done
+}
+
+# v3.28.0: defect groups bound to the active change (bug_ref) must carry the
+# provenance header on all six pieces — stamp with
+# `scripts/stamp-provenance.sh --bug <BUG-id>` at delivery time. Relies on
+# bug_refs_current set by validate_governance_state (stop stage only; begin
+# must not demand provenance on freshly created groups).
+validate_bug_ref_provenance() {
+  local ref doc
+  [[ -z "${bug_refs_current// /}" ]] && return 0
+  for ref in $bug_refs_current; do
+    for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+      validate_provenance "$bugs_root/$ref/$doc"
+    done
+  done
+}
+
 validate_stop() {
   local id
   working_code_changed || return 0
   validate_active_change
   id=$(active_change)
   validate_delivery "$id"
+  # v3.28.0: repo-wide six-piece sweep + provenance for this change's bound
+  # defect groups (stamp-provenance.sh --bug).
+  validate_bug_groups
+  validate_bug_ref_provenance
   # CHG-012 / FU: verification command source chain — env (highest) →
   # .agent-governance.yml ci.verification_command (placeholder skipped) → unset
   # (verify skipped; same fail-open semantics as before). Two-phase per design:
   # the file/config is the guard for "is there a command", bash is the assertion.
+  # v3.28.0: AGENT_GUARD_SKIP_VERIFY=1 short-circuits the command — session-time
+  # soft checks (session-gate idle) must not run a full regression (mvn test …)
+  # on every turn; the real delivery line (Claude Stop hook / pre-commit / CI)
+  # never sets it and keeps the full bar.
   local vcmd="${AGENT_GUARD_VERIFY_COMMAND:-}" vsrc="env" yml_tampered=0
-  if [[ -z "$vcmd" && -f ".agent-governance.yml" ]]; then
+  if [[ "${AGENT_GUARD_SKIP_VERIFY:-}" == "1" ]]; then
+    echo "agent-gate: verification command skipped (AGENT_GUARD_SKIP_VERIFY=1, session-time soft check) — full bar still enforced at staged/CI"
+  elif [[ -z "$vcmd" && -f ".agent-governance.yml" ]]; then
     # CHG-015 anti-tamper: if the yml itself is part of the pending change
     # (modified/untracked), its command must NOT auto-execute — a PR could
     # otherwise inject arbitrary commands into the reviewer's stop/ci hook.
@@ -594,6 +690,10 @@ validate_diff() {
       done
     fi
   done <<< "$files"
+
+  # v3.28.0: defect doc groups are repo-level evidence — sweep them on every
+  # diff-anchored stage (staged commits / branch CI), not only at stop.
+  validate_bug_groups
 
   # v3.5.0: branch-mode CI additionally requires delivery evidence (test
   # results + changelog with ReAct Observation) for every change touched by
@@ -848,6 +948,15 @@ stop and branch-mode CI enforce delivery evidence: 04.5-coding-record.md,
 Gate 4 RTVM (v3.7.0): REQ ids referenced by the changelog must be backfilled
 as rows in docs/<feature>/01.5-rtvm-matrix.md; changelogs without REQ
 references (pure fixes / docs changes) are exempt.
+
+defect doc groups (v3.28.0): every <bugs_root>/BUG-*/ group holding a
+01-diagnosis.md must contain the complete six-piece set (staged / stop / CI).
+Groups declared via 00-governance.json 'bug_ref' (flat string or string array —
+a declared but unparseable value fails closed) additionally need the
+provenance header on all six pieces at stop: stamp with
+'scripts/stamp-provenance.sh --bug <BUG-id>'. Legacy incomplete groups can be
+allowlisted with a recorded reason in <bugs_root>/.gate-allowlist (one id per
+line, trailing comment = reason); allowlisted groups WARN instead of dying.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.

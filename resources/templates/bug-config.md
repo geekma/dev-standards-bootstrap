@@ -20,3 +20,4 @@
 - [ ] 配置 / DB 两表逐行有值；未命中显式声明"无配置/DB 影响"并给依据
 - [ ] 需变更项已登记 CFG / DB 编号并落入 `06.5-deployment-config.md` 与 `06-tasks.md`
 - [ ] 与 `02-impact.md`、bugfix-log 条目一致
+- [ ] 溯源块已盖：`scripts/stamp-provenance.sh --bug <BUG-id>`（时间 / 提交者 / 主机设备从运行环境读出，**禁手写**；gate stop 与审计 A21 校验，v3.28.0）

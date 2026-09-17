@@ -25,3 +25,4 @@
 - [ ] REQ / DES / CHG / 文档 / FU 五类逐项有结论
 - [ ] 根因为设计遗漏时已回补 DES
 - [ ] 与 bugfix-log 条目及关联 CHG「Bug 修复回填清单」逐项一致
+- [ ] 溯源块已盖：`scripts/stamp-provenance.sh --bug <BUG-id>`（时间 / 提交者 / 主机设备从运行环境读出，**禁手写**；gate stop 与审计 A21 校验，v3.28.0）

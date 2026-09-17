@@ -24,6 +24,17 @@
 #      一套产物"放宽为"一套产物承载多个变更"，放宽的代价必须由机器盯住，否则批次会变成
 #      绕过 A 层门禁的暗道。**判定一律从权威名单（00-governance.json 的 change_id）正向出发**，
 #      不从 `## <标题>` 反向推断——后者分不清变更小节与结构小节（§2.16.2 的 `## Observation`）。
+#   G8 缺陷六件套存在性（v3.28.0，CHG-071/BUG-040~055 复盘）：`<bugs_root>/BUG-*/` 凡起组
+#      必须六件齐——此前六件套"刻意排除"出审计面、委托给门禁，而门禁只在变更轨 bug_ref
+#      声明时校验，纯 bug 轨处置 16 组只写 01-diagnosis 亦无红灯。**委托必须落在会跑的
+#      执法点上，否则就是循环踢皮球**：审计直接接管（存在性是时间不变量）。豁免 = 登记
+#      `<bugs_root>/.gate-allowlist`（一行一 id，行尾注释写理由），登记组仍逐行点名可见。
+#   A20 变更目录溯源盖章互证（v3.28.0）：①同目录 ≥1 件已盖而其余未盖 = 盖章半途而废
+#      （时间不变的不一致，CHG-071 实测 2/9）；②`standard_version >= v3.26.0` 的变更目录
+#      必须全 `*.md` 盖章（其规范版本自身要求）。**不触发历史回填禁令**：不要求 v3.26 前
+#      老目录补章——A20 只抓"半途"与"新版未执行"，不抓"时代如此"。
+#   A21 缺陷六件套溯源盖章（v3.28.0）：六件套同用环境真值证据头（`stamp-provenance.sh
+#      --bug` 写入，禁手写）；缺失组即回填清单——`--bug` 写入的是当下真值，不是伪造历史。
 #
 # 【"空转"必须显式声明】（v3.21.0）产物目录用**正信号**识别（见"审计单元"节），不用
 #   "是 <docs>/ 的子目录"取全集。任一组的目录集合为空时，本脚本**打印一行 `VACUOUS SKIP`
@@ -199,8 +210,8 @@ looks_like_audit_dir() { # <dir> -> 0 当且仅当它承载变更/功能产物
 }
 
 # 正信号 = 承载 01-spec / 01.5 矩阵 / 09-changelog 之一；`docs/bugs/<BUG-xxx>/` 的六件套
-# 以 `01-diagnosis.md` 起名，不命中本信号，**刻意排除**——其一致性由门禁的六件存在性
-# 校验与 B 层 Review 承担（§2.5 阶段 6），不属于"跨文档同源"审计面。
+# 不命中本信号——v3.28.0 起其**存在性与盖章**由 G8 / A21 直接审计（不再"刻意排除"后
+# 委托给可能不跑的门禁），其编号/§3/§4 同源类一致性仍归门禁与 B 层 Review。
 # sort -u 去重：change_root 配成 docs 根时两路枚举会重叠。
 audit_dirs=""   # G2：功能目录 ∪ 变更目录
 g36_dirs=""     # G3/G5/G6：仅活文档（不在 <change_root>/ 下的产物目录）
@@ -397,6 +408,77 @@ if [[ -f "$BFLOG" ]]; then
   report "G4 every CHG BUG line registered in log" 0 "$unlogged"
 else
   report "G4 no $DOCS_DIR/bugfix-log.md (skip; Bug 修复须先按 §2.5 阶段 6 建立)" ok ok
+fi
+
+# ---------- G8 缺陷六件套存在性 + A20/A21 溯源盖章互证（v3.28.0） ----------
+BUGS_DIR="${AGENT_GUARD_BUGS_ROOT:-$(cfg_path bugs_root "$DOCS_DIR/bugs")}"
+BUGS="$ROOT/$BUGS_DIR"
+ALLOW="$BUGS/.gate-allowlist"
+SIX="01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md"
+
+if [[ -d "$BUGS" ]]; then
+  incomplete=0; allow_n=0
+  for g in "$BUGS"/BUG-*/; do
+    [[ -d "$g" ]] || continue
+    any=0
+    for doc in $SIX; do [[ -e "$g/$doc" ]] && any=1; done
+    [[ "$any" == 1 ]] || continue
+    gid=$(basename "$g"); miss=""
+    for doc in $SIX; do [[ -s "$g/$doc" ]] || miss="$miss $doc"; done
+    [[ -z "$miss" ]] && continue
+    listed=""
+    [[ -f "$ALLOW" ]] && listed=$(grep -vE '^[[:space:]]*(#|$)' "$ALLOW" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
+    if [[ -n "$listed" ]]; then
+      allow_n=$((allow_n+1)); echo "     G8 allowlisted legacy: $gid — missing:$miss"
+    else
+      incomplete=$((incomplete+1)); echo "     G8 incomplete: $gid — missing:$miss (补六件，或登记理由进 $ALLOW)"
+    fi
+  done
+  report "G8 bug doc groups complete (six-piece)" 0 "$incomplete"
+  report "G8 allowlisted legacy groups (counted, not hidden)" "$allow_n" "$allow_n"
+else
+  report "G8 VACUOUS SKIP — no $BUGS_DIR/ directory, so G8 did NOT run (do NOT read this as a pass)" ok ok
+fi
+
+vge() { awk -v a="$1" -v b="$2" 'BEGIN{split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){x[i]+=0;y[i]+=0;if(x[i]>y[i])exit 0;if(x[i]<y[i])exit 1}exit 0}'; }
+
+if [[ -d "$CHANGES" ]]; then
+  partial=0; era=0
+  for cd_ in "$CHANGES"/*/; do
+    [[ -d "$cd_" ]] || continue
+    total=0; have=0
+    for pf_ in "$cd_"*.md; do
+      [[ -f "$pf_" ]] || continue
+      total=$((total+1))
+      grep -q '^<!-- provenance$' "$pf_" 2>/dev/null && have=$((have+1))
+    done
+    [[ "$total" -eq 0 ]] && continue
+    if [[ "$have" -gt 0 && "$have" -lt "$total" ]]; then
+      partial=$((partial+1)); echo "     A20 partial stamping: $(basename "$cd_") — $have/$total stamped"
+    fi
+    std_v=$(tr -d '\n' < "$cd_/00-governance.json" 2>/dev/null | sed -nE 's/.*"standard_version"[[:space:]]*:[[:space:]]*"v?([0-9.]+)".*/\1/p' | head -1)
+    if [[ -n "$std_v" ]] && vge "$std_v" "3.26.0" && [[ "$have" -lt "$total" ]]; then
+      era=$((era+1)); echo "     A20 v3.26+ change not fully stamped: $(basename "$cd_") (std $std_v) — $have/$total"
+    fi
+  done
+  report "A20 change-dir stamping complete once started (no half-stamped dirs)" 0 "$partial"
+  report "A20 v3.26.0+ change dirs fully stamped" 0 "$era"
+else
+  report "A20 VACUOUS SKIP — no change root, so A20 did NOT run (do NOT read this as a pass)" ok ok
+fi
+
+if [[ -d "$BUGS" ]]; then
+  unprov=0
+  for g in "$BUGS"/BUG-*/; do
+    [[ -d "$g" ]] || continue
+    for pf_ in "$g"*.md; do
+      [[ -f "$pf_" ]] || continue
+      grep -q '^<!-- provenance$' "$pf_" 2>/dev/null || { unprov=$((unprov+1)); echo "     A21 unstamped: $pf_"; }
+    done
+  done
+  report "A21 bug doc groups carry provenance (stamp --bug)" 0 "$unprov"
+else
+  report "A21 VACUOUS SKIP — no $BUGS_DIR/ directory" ok ok
 fi
 
 rm -f "$S3TMP"
