@@ -8,15 +8,43 @@
 
 ### 新增
 
-- **Claude Code 插件分发面**：新增 `.claude-plugin/{plugin,marketplace}.json`（`source: "./"`——仓库即插件）。端到端实测：`claude plugin validate` 通过、`marketplace add` → `plugin install` → `plugin details` 显示 **Skills (1)**（根级 SKILL.md 被发现，常驻 ~197 tok）；`claude plugin marketplace add geekma/dev-standards-bootstrap` 即装。
-- **README 接入动线重排（两步式，修复鸡生蛋）**：第 1 步「注册 Skill」四条实测路由任选——① `npx skills add geekma/dev-standards-bootstrap -g`（通用 store，今天即可用）② Claude Code 插件 ③ 对话粘贴话术 ④ `install.sh --as-skill`；第 2 步「一句话初始化」。旧「路径 A/路径 B」叙事移除；新增 CI 徽章与 TL;DR（定义句/关键词前置，SEO/GEO）。
-- **审计 A24 承诺面入库守护**：README 宣传的安装命令所读取的文件（install.sh / CHANGELOG / MAINTAINER / stamp-provenance / .claude-plugin/*）必须 git-tracked——防「文档宣传未提交文件 → 线上 raw 404」类缺陷复发（实测缺陷：已提交 README 宣传 curl 命令，install.sh 却只在暂存区）。
-- **README 安装命令去重（CHG-021）**：一条命令的全文 URL 从每份 README 5 处收敛为 1 处唯一权威落点（Installation & Upgrades），其余四处改 flag 变体 + 锚点链接；双语结构对称不变。
-- **Skill 本体注册进 AI 客户端（对话式安装，CHG-019）**：`scripts/install.sh --as-skill <claude|opencode|all|落点路径>` 把 Skill 本体以 **symlink** 注册进客户端技能目录（`claude` → `~/.claude/skills`、`opencode` → `~/.config/opencode/skills`、`all` → 两者、值含 `/` 视为落点本身）。checkout 即 Skill 布局（根级 `SKILL.md` + `resources/` + `scripts/`），零复制、自更新即时生效；fail-closed（已有非 symlink 落点绝不触碰，`--force` 仅 retarget symlink 或替换空目录）；与 `--install`/`--upgrade`/`--check`/`--layer` 互斥，不触碰任何目标仓库。补齐 README 此前的鸡生蛋缺口：此前"对 Agent 说一句话"预设 Skill 已装，但没有任何装 Skill 本体的路径。双 README 新增对称小节 + 可直接粘贴给 Agent 的对话话术；`SKILL.md` 步骤 3 同步。golden T21 新增 TC-145..148（链接/幂等/冲突/自定义路径，全走 `--skills-root` 重定向，零真实 HOME 写入）。
+- **四项打包（规范 v3.34.0）**：gate L0/L1"评审≠实现"机校（FU-042 闭环）；metrics `expert_sessions` 专家会话数观测（L2 ≤3 护栏可见化，只观测不拦截）；session-gate 会话开始注入规则 10 四主体自查表（冲突点名）；能力卡附合规「专家评审记录」golden 样例。golden 310。
+- **规则 10 机器执法（规范 v3.33.0）**：agent-gate 强制 `spec_author` 声明（全等级）、L2/L3 四主体互异、「专家评审记录」节强制 §2.1.7 署名（stop/CI）——作者/实现/测试/评审分离从 B 层升 A 层。golden 299→308（含评审收口 +2）。
+
+### 变更
+
+- **专家两批制（规范 v3.32.0）**：每阶段专家分生产批与评审批，专家不得评审自己参与生产的产物（需求分析者≠需求评审者、方案设计者≠方案评审者）；规则 10 补 spec_author 锚点与 DoD 核对项；第三轮 review 修复（含 v3.29.1 一处"声称已改未落盘"的模板计数补正）。条款细节见 `resources/STANDARDS_CHANGELOG.md` v3.32.0 行。
+- **角色单一职责（规范 v3.31.0）**：同一变更内规格/文档作者、实现、测试、评审四主体互异（L0/L1 最低线=评审独立且作者≠评审）；`00-governance.json` 模板增 `spec_author` 字段；§5 "一人多角色"=严重违规。另：专家能力卡补理论出处索引（25 行，含提出者与原著载体）。
+- **专家能力卡（规范 v3.30.0）**：`methodologies/expert-capabilities.md`——9 核心 + 3 条件命中专家（数据/LLM/可靠性）的能力定义层（理论工具箱注名经典方法论、广度协同、项目经验装载、方法论自适应绑定）；§2.2 新增增量承诺（零发现零建议=泛评退回）与"项目速览·方法论偏好/专家扩展"自适应。条款细节见 `resources/STANDARDS_CHANGELOG.md` v3.30.0 行。
+
+### 变更
+
+- **对齐与压缩续修（v3.29.1，CHG-029）**：全项目三路评审 22 项必修——计数修正（"12 件产物"实为 15 件，7 处）、§2.2 与 §0.5.2 豁免措辞冲突消解、§3/§5/§2.16.2 补专家评审执行钩子、MAINTAINER §5.1 上界句过时更新、双 README 漂移修复、CHANGELOG 版本链断档补齐；SKILL/MAINTAINER 冗余压缩。零规范性条款变更，门禁/golden 零改动。废止"双 README ≤200 行"目标（v3.22.0 重写后失效，正式登记）。
+
+## [3.29.0] — 2026-09-18
+
+### 新增
+
+- **分阶段专家评审（规范 §2.2）**：九专家（业务/行业/技术/架构/项目管理/安全/性能/测试/整体验收）映射既有角色；需求四步循环、开发漏项检测、测试 NFR 反向核对、交付四方整体验收；上下文贴近契约（无项目证据的模板泛评一律退回）。条款细节见 `resources/STANDARDS_CHANGELOG.md` v3.29.0 行。
+
+## [3.28.0] — 2026-09-17
+
+### 新增
+
+- **会话内执法**：`session-gate.sh` + `install-hook-adapter.sh`——会话开始自动跑一致性审计亮存量红灯，会话空闲跑 stop 等价检查；按客户端自适应接线（claude/opencode/cursor/gemini/codex），生成后强制验证。
+- **缺陷六件套执法闭环**：gate 逐组校验六件齐（豁免走 `.gate-allowlist` 登记理由）；`stamp-provenance.sh --bug` 给缺陷组盖章；审计新增 G8/A20/A21 接管。
+- **Claude Code 插件分发面**：新增 `.claude-plugin/{plugin,marketplace}.json`（仓库即插件，`claude plugin marketplace add geekma/dev-standards-bootstrap` 即装，根级 SKILL.md 常驻 ~197 tok）。
+- **README 接入动线重排（两步式，修复鸡生蛋）**：第 1 步「注册 Skill」四条实测路由任选（`npx skills add` 通用 store / Claude Code 插件 / 对话话术 / `install.sh --as-skill`）；第 2 步「一句话初始化」；新增 CI 徽章与 TL;DR。
+- **Skill 本体注册进 AI 客户端（CHG-019）**：`install.sh --as-skill <claude|opencode|all|路径>` 以 symlink 注册进客户端技能目录，checkout 即 Skill 布局，零复制、自更新即时生效、fail-closed；golden T21 新增 4 用例。
+- **审计 A24 承诺面入库守护**：README 宣传命令所读取的文件必须 git-tracked，防「文档宣传未提交文件 → raw 404」复发。
+
+### 变更
+
+- **README 安装命令去重（CHG-021）**：一条命令全文 URL 从每份 README 5 处收敛为 1 处唯一权威落点，其余改 flag 变体 + 锚点链接；双语对称。
 
 ### 修复
 
-- **双 README golden 断言声称数漂移**：`scripts/update-assertion-count.sh` 原按**静态调用点**计数，漏计同链双调用（`grep … && report … || report …`）与循环站点，声称数与运行实出长期差 3（281↔284、288↔291 两代同型）。改为**运行期实出口径**（解析 `N passed`；红套件拒同步 exit 2），本版同步为 292。MAINTAINER §4 口径同步。
+- **双 README golden 断言声称数漂移**：`update-assertion-count.sh` 改运行期实出口径（解析 `N passed`；红套件拒同步），声称数与运行实出长期差 3 的问题修复。MAINTAINER §4 口径同步。
 
 （历史版本见下方归档段）
 
@@ -148,7 +176,9 @@
 
 3.1.0 ~ 3.10.0 的演进（风险分级矩阵、缺陷六件套、八类最低文档集、场景覆盖率、根因分类、检查器设计规约等）见 [STANDARDS_CHANGELOG](resources/STANDARDS_CHANGELOG.md)。
 
-[Unreleased]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.27.0...HEAD
+[Unreleased]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.29.0...HEAD
+[3.29.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.28.0...v3.29.0
+[3.28.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.27.0...v3.28.0
 [3.27.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.26.0...v3.27.0
 [3.26.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.25.0...v3.26.0
 [3.25.0]: https://github.com/geekma/dev-standards-bootstrap/compare/v3.24.0...v3.25.0

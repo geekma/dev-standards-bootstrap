@@ -84,10 +84,10 @@ expected: y
 open: none
 EOF
   if [[ -n "$test" && -n "$review" ]]; then
-    printf '{"change_id":"%s","risk_level":"%s","implementation_owner":"%s","test_owner":"%s","review_owner":"%s"}\n' \
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"%s","test_owner":"%s","review_owner":"%s"}\n' \
       "$id" "$risk" "$impl" "$test" "$review" > "$d/00-governance.json"
   else
-    printf '{"change_id":"%s","risk_level":"%s","implementation_owner":"%s"}\n' \
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"%s"}\n' \
       "$id" "$risk" "$impl" > "$d/00-governance.json"
   fi
   cat > "$d/01-spec.md" <<'EOF'
@@ -262,7 +262,7 @@ report "begin accepts distinct owners at L2" 0 $?
 
 new_repo
 seed_artifacts CHG-202 L1 claude/s-1
-printf '{"change_id":"OTHER","risk_level":"L1","implementation_owner":"a"}\n' \
+printf '{"change_id":"OTHER","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"a"}\n' \
   > docs/changes/CHG-202/00-governance.json
 scripts/agent-gate begin CHG-202 >/dev/null 2>&1
 report "begin rejects mismatched change_id" 2 $?
@@ -283,13 +283,13 @@ scripts/agent-gate begin CHG-205 >/dev/null 2>&1
 report "begin rejects TODO test owner at L2" 2 $?
 
 seed_artifacts CHG-206 L3 gemini/m-1 claude/c-9 codex/x-7
-printf '{"change_id":"CHG-206","risk_level":"L3","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7"}\n' \
+printf '{"change_id":"CHG-206","risk_level":"L3","spec_author":"author/a-1","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7"}\n' \
   > docs/changes/CHG-206/00-governance.json
 scripts/agent-gate begin CHG-206 >/dev/null 2>&1
 report "begin rejects L3 without release authorization fields" 2 $?
 
 seed_artifacts CHG-207 L3 gemini/m-1 claude/c-9 codex/x-7
-printf '{"change_id":"CHG-207","risk_level":"L3","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7","release_authorized_by":"tech-lead/h-1","release_authorized_at":"2026-09-09T00:00:00Z","release_authorization_evidence":"APPROVAL-001"}\n' \
+printf '{"change_id":"CHG-207","risk_level":"L3","spec_author":"author/a-1","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7","release_authorized_by":"tech-lead/h-1","release_authorized_at":"2026-09-09T00:00:00Z","release_authorization_evidence":"APPROVAL-001"}\n' \
   > docs/changes/CHG-207/00-governance.json
 scripts/agent-gate begin CHG-207 >/dev/null 2>&1
 report "begin accepts L3 with complete release authorization" 0 $?
@@ -451,6 +451,37 @@ printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明
 scripts/agent-gate --stage stop >/dev/null 2>&1
 stamp_fixture_all
 report "stop passes with evidence and changelog" 0 $?
+
+# ------------------------------------------------ T22 规则 10 A 层执法（v3.33.0）
+# 生产-评审分离（§2.2 两批制）与 spec_author 的机器执法：记录级（begin）+
+# 交付级（stop 署名节）。标题形态才触发；正文行内提及不触发（FU-014 同族教训）。
+printf '\n## 专家评审记录\n| 主体 | 结论 |\n|---|---|\n| 业务专家 | 通过 |\n' >> docs/changes/CHG-500/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop rejects a signature-less 专家评审记录 section (FU-039)" "lacks an agent signature" "$out"
+printf '\n署名：opencode / glm-5.3-flash / task-review-01\n' >> docs/changes/CHG-500/01-spec.md
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+stamp_fixture_all
+report "stop accepts 专家评审记录 with a §2.1.7 signature (FU-039)" 0 "$rc"
+
+printf '正文行内提及「专家评审记录」不触发（T22 anchor guard）。\n' >> docs/changes/CHG-500/03-modification-plan.md
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+stamp_fixture_all
+report "stop ignores an inline 专家评审记录 mention (anchor guard)" 0 "$rc"
+
+# v3.33.0 评审收口：证据路径/URL/紧凑串不得充当署名（假绿封堵）——
+# A 层只认 §2.1.7 规范形状（` / ` 带空格三段）。
+printf '\n## 专家评审记录\n依据 docs/methodologies/expert-capabilities.md 与 https://a/b/c 核对，紧凑标识 opencode/glm/task-x。\n' >> docs/changes/CHG-500/03-modification-plan.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "stop rejects path/URL/compact strings as fake signatures" "lacks an agent signature" "$out"
+printf '\n署名：opencode / glm-5.3-flash / task-review-02\n' >> docs/changes/CHG-500/03-modification-plan.md
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+stamp_fixture_all
+report "stop accepts both sections once each carries a canonical signature" 0 "$rc"
+
+# T22 的记录级用例（CHG-610/611）在套件尾部独立仓执行——不能内插在 CHG-500
+# 流中部：new_repo 会重置夹具仓库，后续 CHG-500 用例将整体失联（本轮实测）。
 
 # ------------------------------------------------ T16 文件溯源（v3.17.0）
 # 溯源块必须由 scripts/stamp-provenance.sh 生成——真值（作者 / 提交者 / 主机 /
@@ -721,6 +752,15 @@ echo cl > docs/changes/CHG-700/09-changelog.md
 commit_all "docs: CHG-700 evidence"
 out=$(scripts/agent-gate metrics)
 check_output "metrics flips delivery_ready after evidence" '"delivery_ready":true' "$out"
+# v3.34.0（CHG-034）：专家会话数观测字段（只观测不拦截）
+check_output "metrics emits expert_sessions field" '"expert_sessions":[0-9]+,"expert_sessions_over_guardrail":(true|false)' "$out"
+
+new_repo
+seed_artifacts CHG-710 L0 claude/s-1
+printf '{"change_id":"CHG-710","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","review_owner":"claude/s-1"}\n' > docs/changes/CHG-710/00-governance.json
+scripts/agent-gate begin CHG-710 >/dev/null 2>&1
+out=$(scripts/agent-gate begin CHG-710 2>&1 || true)
+check_output "begin rejects implementation == review_owner at L0 (FU-042)" "review_owner must differ from implementation_owner" "$out"
 
 new_repo
 out=$(scripts/agent-gate metrics)
@@ -761,7 +801,7 @@ printf '# test plan\n' > docs/bugs/BUG-042/03-test-plan.md
 printf '# matrix\n' > docs/bugs/BUG-042/04-matrix.md
 printf '# config\n' > docs/bugs/BUG-042/05-config.md
 printf '# tasks\n' > docs/bugs/BUG-042/06-tasks.md
-printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":"BUG-042"}\n' > docs/changes/CHG-800/00-governance.json
+printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-042"}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin accepts bug_ref with complete defect doc set" 0 $?
 
@@ -785,11 +825,11 @@ check_output "begin names a v3.7.0 defect doc when missing" "missing defect docu
 printf '# matrix recreated\n' > docs/bugs/BUG-042/04-matrix.md
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin accepts bug_ref after all six defect docs land" 0 $?
-printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":""}\n' > docs/changes/CHG-800/00-governance.json
+printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":""}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin skips bug_ref validation when empty" 0 $?
 
-printf '{"change_id":"CHG-800","risk_level":"L1","implementation_owner":"claude/s-1","bug_ref":"../evil"}\n' > docs/changes/CHG-800/00-governance.json
+printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"../evil"}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin rejects bug_ref with path-unsafe defect id" 2 $?
 
@@ -805,7 +845,7 @@ e
 ## 开放问题
 o
 EOF
-printf '{"change_id":"CUSTOM-1","risk_level":"L0","implementation_owner":"a"}\n' > changes/CUSTOM-1/00-governance.json
+printf '{"change_id":"CUSTOM-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > changes/CUSTOM-1/00-governance.json
 echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > changes/CUSTOM-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > changes/CUSTOM-1/03-modification-plan.md
@@ -1106,7 +1146,7 @@ e
 ## 开放问题
 o
 EOF
-printf '{"change_id":"CFG-1","risk_level":"L0","implementation_owner":"a"}\n' > doc/changes/CFG-1/00-governance.json
+printf '{"change_id":"CFG-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > doc/changes/CFG-1/00-governance.json
 echo "REQ-001 s" > doc/changes/CFG-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > doc/changes/CFG-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-1/03-modification-plan.md
@@ -1126,7 +1166,7 @@ e
 ## 开放问题
 o
 EOF
-printf '{"change_id":"CFG-2","risk_level":"L0","implementation_owner":"a"}\n' > doc/changes/CFG-2/00-governance.json
+printf '{"change_id":"CFG-2","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > doc/changes/CFG-2/00-governance.json
 echo "REQ-001 s" > doc/changes/CFG-2/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > doc/changes/CFG-2/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-2/03-modification-plan.md
@@ -1435,7 +1475,7 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
   : > "$d/04-test-scripts.md"
   for pair in "$@"; do
     id="${pair%%:*}"; risk="${pair##*:}"
-    printf '{"change_id":"%s","risk_level":"%s","implementation_owner":"claude/s-1"}\n' "$id" "$risk" >> "$d/00-governance.json"
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1"}\n' "$id" "$risk" >> "$d/00-governance.json"
     printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
     printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
     printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n' "$id" >> "$d/02-code-impact-analysis.md"
@@ -1509,7 +1549,7 @@ rm -f "$t18m2"
 
 # ⑤ 风险上限不放宽：批次共享产物会削弱逐变更证据边界与角色独立性，
 #    L2/L3 必须独立目录——门禁按**记录**拒绝，不能靠目录布局绕过
-printf '{"change_id":"CHG-802","risk_level":"L2","implementation_owner":"a","test_owner":"b","review_owner":"c"}\n' >> "$t18gov"
+printf '{"change_id":"CHG-802","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"a","test_owner":"b","review_owner":"c"}\n' >> "$t18gov"
 printf '## CHG-802\n## 问题\nx\n## 预期结果\ny\n## 开放问题\nn\n' >> docs/changes/BATCH-20260101/00-intent.md
 out=$(scripts/agent-gate begin CHG-802 2>&1); rc=$?
 report "T18 L2 inside a batch is refused" 2 "$rc"
@@ -1600,7 +1640,7 @@ cat > docs/changes/CHG-840/00-governance.json <<'EOF'
 {
   "change_id": "CHG-840",
   "risk_level": "L1",
-  "implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
 }
 EOF
 out=$(scripts/agent-gate begin CHG-840 2>&1); rc=$?
@@ -1618,7 +1658,7 @@ cat > docs/changes/CHG-841/00-governance.json <<'EOF'
 {
   "change_id": "CHG-841",
   "risk_level": "L2",
-  "implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
 }
 EOF
 out=$(scripts/agent-gate begin CHG-841 2>&1); rc=$?
@@ -1633,12 +1673,12 @@ cat > docs/changes/BATCH-20260103/00-governance.json <<'EOF'
 {
   "change_id": "CHG-830",
   "risk_level": "L0",
-  "implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
 },
 {
   "change_id": "CHG-831",
   "risk_level": "L1",
-  "implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
 }
 EOF
 t19b=$(scripts/agent-gate metrics 2>&1)
@@ -1811,6 +1851,26 @@ else
 fi
 
 # ---------------------------------------------------------------- 摘要
+# ------------------------------------------------ T22 记录级执法（独立仓，放套件尾部）
+new_repo
+seed_artifacts CHG-610 L0 claude/s-1
+printf '{"change_id":"CHG-610","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","review_owner":"author/a-1"}\n' > docs/changes/CHG-610/00-governance.json
+scripts/agent-gate begin CHG-610 >/dev/null 2>&1
+report "begin rejects spec_author == review_owner at L0 (lowest bar)" 2 $?
+printf '{"change_id":"CHG-610","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","review_owner":"codex/x-7"}\n' > docs/changes/CHG-610/00-governance.json
+scripts/agent-gate begin CHG-610 >/dev/null 2>&1
+report "begin accepts L0 with spec_author distinct from review_owner" 0 $?
+
+new_repo
+seed_artifacts CHG-611 L2 gemini/m-1 claude/c-9 codex/x-7
+printf '{"change_id":"CHG-611","risk_level":"L2","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7"}\n' > docs/changes/CHG-611/00-governance.json
+scripts/agent-gate begin CHG-611 >/dev/null 2>&1
+out=$(scripts/agent-gate begin CHG-611 2>&1 || true)
+check_output "begin names the missing spec_author (FU-041)" "must declare spec_author" "$out"
+printf '{"change_id":"CHG-611","risk_level":"L2","spec_author":"gemini/m-1","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7"}\n' > docs/changes/CHG-611/00-governance.json
+scripts/agent-gate begin CHG-611 >/dev/null 2>&1
+report "begin rejects spec_author duplicating an owner at L2" 2 $?
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

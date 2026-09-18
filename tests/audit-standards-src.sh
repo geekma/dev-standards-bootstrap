@@ -529,7 +529,9 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
 # A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 132KB。
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 144KB。
+# v3.29.0（CHG-028）重校准 132KB → 140KB 的依据：§2.1 九专家行 + §2.2 分阶段专家评审矩阵为
+# 新增规范性内容（两轮措辞压缩后仍超 136KB 约 1.6KB），按 KiB 步进 +4KB；STANDARDS_CHANGELOG v3.29.0 行即依据。
 # v3.25.0（CHG-025）重校准 128KB → 132KB 的依据（按既有三个条件）：
 #   ① **先压缩**：v3.24.0 + v3.25.0 两轮新增条款均经措辞压缩（§2.9.6/§2.5 三轮收字），
 #      v3.24.0 收口时余量仅剩 3 字节——上界事实上已失效（同 v3.17.0 的 53 字节、
@@ -553,7 +555,7 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #      净增 1,035 字节（122,827 → 123,862）；
 #   ③ 上界按 KiB 步进（+4KB）重设，余量 3,114 字节——**不是**按当前体量贴合。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 132KB (FU-017, recalibrated v3.25.0)" 1 "$([[ "$std_bytes" -le 135168 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 144KB (FU-017, recalibrated v3.31.0)" 1 "$([[ "$std_bytes" -le 147456 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）

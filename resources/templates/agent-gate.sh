@@ -347,6 +347,13 @@ validate_governance_state() {
   implementation=$(json_field "$rec" implementation_owner)
   [[ -n "$implementation" ]] || die "$file must declare implementation_owner"
   reject_placeholder_owner "$file" implementation_owner "$implementation"
+  # v3.33.0 (FU-039/FU-041, CHG-033): standards §2.1 rule 10 (one role per
+  # subject) enforced on the record — the spec/document author must be
+  # declared at every level, differ from the reviewer at the lowest bar, and
+  # differ from all three owners for L2/L3 (two-batch separation, §2.2).
+  spec_author=$(json_field "$rec" spec_author)
+  [[ -n "$spec_author" ]] || die "$file must declare spec_author (standards §2.1 rule 10: author, implementer, tester, reviewer are distinct subjects)"
+  reject_placeholder_owner "$file" spec_author "$spec_author"
   if [[ "$risk" == L2 || "$risk" == L3 ]]; then
     test_owner=$(json_field "$rec" test_owner)
     review_owner=$(json_field "$rec" review_owner)
@@ -354,6 +361,13 @@ validate_governance_state() {
     reject_placeholder_owner "$file" test_owner "$test_owner"
     reject_placeholder_owner "$file" review_owner "$review_owner"
     [[ "$implementation" != "$test_owner" && "$implementation" != "$review_owner" && "$test_owner" != "$review_owner" ]] || die "$file requires distinct implementation, test, and review owners for $risk"
+    [[ "$spec_author" != "$implementation" && "$spec_author" != "$test_owner" && "$spec_author" != "$review_owner" ]] || die "$file requires spec_author distinct from implementation, test, and review owners for $risk (standards §2.1 rule 10)"
+  else
+    review_owner=$(json_field "$rec" review_owner)
+    if [[ -n "$review_owner" ]]; then
+      [[ "$spec_author" != "$review_owner" ]] || die "$file: spec_author must differ from review_owner (lowest bar, standards §2.1 rule 10)"
+      [[ "$implementation" != "$review_owner" ]] || die "$file: review_owner must differ from implementation_owner (reviewer independence at the lowest bar, standards §2.1 rule 10)"
+    fi
   fi
   # v3.5.0 L3 release authorization: flat string fields, not a nested object —
   # the record is extracted with a single-line sed, so nested JSON cannot parse.
@@ -514,6 +528,24 @@ validate_delivery() { # change-id
   # own check; 00-governance.json stays excluded (HTML comments would break the
   # flat-JSON readers — v3.22.0 decision, unchanged). Run
   # `scripts/stamp-provenance.sh --all <CHG-id>` at delivery time.
+  # v3.33.0 (FU-039, CHG-033): an 「专家评审记录」 section (heading-form only —
+  # inline mentions in prose must NOT trigger this) in the requirement or plan
+  # artifact must carry a §2.1.7-style agent signature (platform/model/task,
+  # three slash-separated tokens). A missing section is legitimate N/A
+  # (L0/L1 lightweight channel); a section without a signature is a
+  # self-signed review and blocks delivery.
+  local sigf sigsec
+  for sigf in 01-spec.md 03-modification-plan.md; do
+    [[ -s "$d/$sigf" ]] || continue
+    sigsec=$(awk '/^#{1,6}.*专家评审记录/{flag=1;next} flag && /^#{1,6}[[:space:]]/{flag=0} flag' "$d/$sigf")
+    [[ -n "$sigsec" ]] || continue
+    # §2.1.7 canonical shape only: `platform / model / task` with spaced
+    # slashes — paths (docs/x/y.md), URLs (https://...) and compact a/b/c
+    # strings do NOT match (review finding: evidence paths inside the section
+    # must not satisfy the signature check).
+    echo "$sigsec" | grep -Eq '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / [A-Za-z0-9_-]+' \
+      || die "$d/$sigf 专家评审记录 section lacks an agent signature (§2.1.7 'platform / model / task') — standards §2.2 two-batch rule"
+  done
   local pf
   for pf in "$d"/*.md; do
     [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
@@ -794,6 +826,7 @@ delivery_ready() {
 
 emit_metrics() {
   local dir id risk t_intent t_gov t_spec t_plan t_test t_chg t_code
+  local sigs esess esess_over
   [[ -d "$change_root" ]] || exit 0
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
@@ -816,8 +849,18 @@ emit_metrics() {
       t_test=$(first_commit_ts "$dir/05-test-results.md")
       t_chg=$(first_commit_ts "$dir/09-changelog.md")
       t_code=$(first_commit_referencing "$id")
-      printf '{"change_id":"%s","risk_level":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
-        "$id" "$risk" \
+      # v3.34.0 (CHG-034): observational count of DISTINCT expert-review
+      # signature task-ids (§2.1.7 third segment) across 01/03 — makes the
+      # L2 ≤3 session guardrail (§2.2) visible WITHOUT enforcing (metrics is
+      # read-only by contract).
+      sigs=$(cat "$dir/01-spec.md" "$dir/03-modification-plan.md" 2>/dev/null \
+        | grep -Eo '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / [A-Za-z0-9_-]+' \
+        | awk -F'/' '{gsub(/[[:space:]]/,"",$3); print $3}' | sort -u || true)
+      esess=$(printf '%s' "$sigs" | grep -c . || true)
+      esess_over=false
+      if [[ "$risk" == '"L2"' || "$risk" == '"L3"' ]] && [[ "${esess:-0}" -gt 3 ]]; then esess_over=true; fi
+      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
+        "$id" "$risk" "${esess:-0}" "$esess_over" \
         "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
         "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
         "$(ts_or_null "$t_chg")" \

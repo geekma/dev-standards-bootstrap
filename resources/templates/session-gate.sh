@@ -89,6 +89,39 @@ if [[ "$mode" == "start" ]]; then
     printf '%s\n' "$out"
     echo '```'
   } >> "$REPORT"
+
+  # v3.34.0（CHG-034）：规则 10 自查表注入——活跃变更四主体互异在会话开始即可见
+  # （执法点前移：防跑偏而非防事后）。只读展示，不阻断（start 永不 exit 非 0）。
+  active_file=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  if [[ -n "$active_file" && -s "$active_file" ]]; then
+    cid=$(tr -d '[:space:]' < "$active_file" 2>/dev/null || true)
+    gov="docs/changes/$cid/00-governance.json"
+    # 批次治理文件是纯 JSON（无 ## 锚点），按 change_id 字段匹配定位（终审[中]项修复）
+    [[ -s "$gov" ]] || gov=$(grep -ls "\"change_id\"[[:space:]]*:[[:space:]]*\"$cid\"" docs/changes/BATCH-*/00-governance.json 2>/dev/null | head -1)
+    if [[ -n "$gov" && -s "$gov" ]]; then
+      jf() { sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" <<<"$1" | head -1; }
+      rec=$(tr -d '\n\r' < "$gov" | sed 's/}[[:space:]]*,[[:space:]]*{/}\n{/g' | grep "\"change_id\"[[:space:]]*:[[:space:]]*\"$cid\"" | head -1)
+      sa=$(jf "$rec" spec_author); io=$(jf "$rec" implementation_owner)
+      to=$(jf "$rec" test_owner);   ro=$(jf "$rec" review_owner)
+      conflict=""
+      [[ -n "$sa" && "$sa" == "$ro" ]] && conflict="$conflict spec_author=review_owner"
+      [[ -n "$io" && "$io" == "$ro" ]] && conflict="$conflict implementation=review_owner"
+      {
+        echo "## 规则 10 自查表（v3.34.0）"
+        echo "| 主体 | 标识 |"
+        echo "|---|---|"
+        echo "| spec_author（作者） | ${sa:-（未声明）} |"
+        echo "| implementation_owner（实现） | ${io:-（未声明）} |"
+        echo "| test_owner（测试） | ${to:-（未声明）} |"
+        echo "| review_owner（评审） | ${ro:-（未声明）} |"
+        echo ""
+        echo "判定：$([[ -n "$conflict" ]] && echo "⚠ 冲突：$conflict —— 按 §2.1 规则 10 打回重派" || echo "互异达标（B 层仍需独立签署实质，标识互异≠独立性证明）")"
+      } >> "$REPORT"
+      if [[ -n "$conflict" ]]; then
+        emit "session-gate: 规则 10 冲突 —$conflict（见 ${REPORT} 自查表）"
+      fi
+    fi
+  fi
   exit 0
 fi
 

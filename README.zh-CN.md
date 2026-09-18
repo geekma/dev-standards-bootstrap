@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.28.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.34.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -15,7 +15,7 @@
 
 </div>
 
-`dev-standards-bootstrap` 是一个 **Agent 技能**（也是普通 git 仓库，可装入任意编码 Agent），把**开发治理**注入任意代码仓库：所有编码 Agent 首先读取的 `AGENTS.md` 唯一入口、五道强制**质量门禁**（文档先行/测试先行/证据/追踪/独立验证）、风险分级的**变更管理**、Git/CI 兜底执行——装一次，永久生效。
+`dev-standards-bootstrap` 是一个 **Agent 技能**（也是普通 git 仓库，可装入任意编码 Agent），把**开发治理**注入任意代码仓库：所有编码 Agent 首先读取的 `AGENTS.md` 唯一入口、五道强制**质量门禁**（文档先行/测试先行/证据/追踪/独立验证）、风险分级的**变更管理**、Git/CI 兜底执行——装一次，随升级链保持最新。
 
 | | |
 |---|---|
@@ -58,13 +58,14 @@
 |---|---|
 | **五道门禁 + 两层验收** | 文档先行 / 测试先行 / 证据闭环 / 追踪矩阵 / 独立验证——不可绕过；每阶段过机器可验的 A 层标记 + 独立角色 B 层判定（§2.5） |
 | **风险分级 × 角色独立性** | L0–L3 矩阵驱动独立性：独立执行主体，L2/L3 要求不同平台/模型厂商，L3 强制人类 Release Owner 授权（§0.5） |
+| **分阶段专家评审（9 专家，§2.2）** | 业务/行业/技术/架构/项目管理/安全/性能/测试/整体验收专家，作为既有角色的细分执行主体；PMP 对齐的分阶段评审矩阵 + 上下文贴近契约（无项目证据的模板泛评一律退回）+ 会话成本护栏 |
 | **RTVM 追踪矩阵 + 一次变更一组文档** | REQ→DES→TASK→TC 全链路矩阵；每次变更新开 `docs/changes/<新变更号>/` 文档组（满足**八类最低文档集**，§2.15）；每个缺陷新开六件套 |
 | **10 阶段生命周期 + AI 防跳过规则** | 每步 ReAct（Thought→Action→Observation）；禁止总结式"已完成"、静默降级、提前标完成（§2.16） |
 | **测试覆盖标准（11 维度）** | 逐维设计或显式"不适用"；分支覆盖率 ≥60%（L2+）；LLM 评估集回归；**业务场景覆盖率 ≥80%**（SC-xxx，L3 ≥90%） |
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（299 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（310 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。项目级版本历史见[更新日志](CHANGELOG.md)。
 
@@ -152,7 +153,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 **自查版本**：携带的规范版本写在 `SKILL.md` 三处——frontmatter `version:`、`description` 尾注、正文顶部横幅——技能列表里与每次加载时都能看到。与 README 顶部的 `规范版本` 徽章比对，或执行 `bash <skill目录>/scripts/bootstrap.sh --check <目标仓库>`。
 
-**自定义目录根**：默认根是 `docs/`、`scripts/`、`tests/`、`.githooks/`（另有 `.github/`——平台强制位置，因此不可移动）。**只有目录根可配置**：`AGENTS.md` 文件名、门禁落点名、变更 12 件产物名、缺陷六件套名、required-check 名是跨仓契约——做成可配置就失去了跨仓比对与迁移能力。
+**自定义目录根**：默认根是 `docs/`、`scripts/`、`tests/`、`.githooks/`（另有 `.github/`——平台强制位置，因此不可移动）。**只有目录根可配置**：`AGENTS.md` 文件名、门禁落点名、变更 15 件产物名、缺陷六件套名、required-check 名是跨仓契约——做成可配置就失去了跨仓比对与迁移能力。
 
 ## 自动化与手动边界
 
@@ -163,6 +164,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | Agent 将要写源码 | 客户端 pre-write Hook 校验活跃变更的产物与治理状态 |
 | 你（或 Agent）提交 | `pre-commit`/`commit-msg` Hook 校验暂存产物与变更归因；代码提交不带变更号即被拒 |
 | 源码改动后一轮结束 | stop Hook 要求编码记录（带脚本盖章溯源）、测试证据、含 ReAct Observation 的 changelog |
+| 会话开始 / 收尾 | 会话门禁开始时跑一致性审计、空闲时跑 stop 等价检查——存量红灯在会话内即可见（v3.28.0） |
 | PR 打开 | CI 重跑产物校验**和项目真实验证命令**，并要求 `agent-governance` 检查 |
 | `01-spec.md` 合入主干 | 自动创建骨架分支并派发 `02`/`03`/`03.5`/`04` 骨架 PR（产物管线） |
 | `09-changelog.md` 合入主干 | 自动开发布检查单 issue |
@@ -285,10 +287,10 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 ## 治理细节
 
-- **执行侧 token 纪律（v3.24.0/v3.28.0）**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**八条**（管道过滤/一次 grep 合并/先定位后小窗/勘探下放只读子代理/无匹配≠通过/并行批量写/定向验证/有状态 mock 隔离）；规范 §2.9.6 会话与上下文纪律（单会话单主题，>50 轮或主题切换即 handoff）；§2.5 产物最小表达形态 + 单产物 ≤40 行软上限——目标：压 cache_read（= 上下文水位 × 轮数）。
+- **执行侧 token 纪律（v3.24.0/v3.25.0）**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**八条**（管道过滤/一次 grep 合并/先定位后小窗/勘探下放只读子代理/无匹配≠通过/并行批量写/定向验证/有状态 mock 隔离）；规范 §2.9.6 会话与上下文纪律（单会话单主题，>50 轮或主题切换即 handoff）；§2.5 产物最小表达形态 + 单产物 ≤40 行软上限——目标：压 cache_read（= 上下文水位 × 轮数）。
 - **同日变更批次（v3.18.0；v3.24.0 默认化）**：同一天的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/` 一个目录，而不是各建一个。放宽的只有目录——产物文件名一字不改，同批变更用 `## <变更号>` 小节锚点区分，批次变更集合从 `00-governance.json` 的权威名单读取（绝不从标题反推）。风险上限不放宽：**L2/L3 必须独立目录**，门禁按治理记录拒绝批次内的 L2/L3（以 `00-governance.json` 名单为准）。
 - **缺陷组刻意不入批**：每个缺陷在 `docs/bugs/<BUG-xxx>/` 保有独立六件套（诊断/影响/测试计划/矩阵/配置DB/任务），逐缺陷证据边界不共享；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）本身就是天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
-- **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md` 与 `docs/methodologies/state-trigger-audit.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历）。
+- **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md` 与 `docs/methodologies/expert-capabilities.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱）。
 - **自进化**：从本 Skill 派生（声明 `derived_from: dev-standards-bootstrap`）的 Skill 独立演进，安装/升级的每条写入路径都会跳过它们；`--force` 也不越过。`bash scripts/bootstrap.sh --derived-report` 可列出派生清单。
 - **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽）可在 CI 或本地运行；失败项即回填清单。
 
@@ -318,13 +320,14 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # 源层专用（不下发）：审计执行断言数的入库基线（断言 A10 对漂移判红）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.28.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.34.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
     │   ├── development.md                   # 代码规范：SOLID/DRY/KISS/YAGNI 适用与豁免 + 7 个工程维度
     │   ├── data-structures.md               # 数据结构规范：六类模型 + 弱类型禁令 + LLM 输入输出专项
-    │   └── state-trigger-audit.md           # 状态/触发链路审计：6 条教训 + 6 步清单 + 3 个反模式（v3.4.0）
+    │   ├── state-trigger-audit.md           # 状态/触发链路审计：6 条教训 + 6 步清单 + 3 个反模式（v3.4.0）
+    │   └── expert-capabilities.md           # 专家能力卡：9 核心 + 3 条件命中专家（理论工具箱/广度/经验/自适应）（v3.34.0）
     └── templates/
         ├── CLAUDE.md                       # Claude Code 一行导入
         ├── PULL_REQUEST_TEMPLATE.md        # 带门禁自检的 GitHub PR 模板
@@ -341,7 +344,7 @@ dev-standards-bootstrap/
         ├── governance-state.json           # 每次变更 00-governance.json 的模板（不下发——由 Agent 按变更生成）
         ├── agent-governance.yml            # 团队可复核的治理配置记录（复制到 .agent-governance.yml）
         ├── pre-commit、pre-push、commit-msg  # Git Hook 模板（commit-msg：归因闸门）
-        ├── install-hook-adapter.sh         # 探测本地 AI 客户端并自适应接线会话内执法（v3.28.0）
+        ├── install-hook-adapter.sh         # 探测本地 AI 客户端并自适应接线会话内执法（v3.34.0）
         ├── session-gate.sh                  # 会话内执法：start=审计亮红灯，idle=stop 等价检查
         ├── github-agent-governance.yml     # 必需检查 workflow 模板
         ├── github-artifact-pipeline.yml    # 产物管线：spec 合入 -> 02/03/03.5/04 骨架 PR；changelog 合入 -> 发布检查单 issue
@@ -374,7 +377,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.28.0 | **最后更新：** 2026-09-17 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.34.0 | **最后更新：** 2026-09-18 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](CHANGELOG.md)
 

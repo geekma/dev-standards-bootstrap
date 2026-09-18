@@ -30,7 +30,7 @@ Usage: scripts/bootstrap.sh [flags] [target_root]
 
 Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
-               methodologies/, bugfix-log.md, <docs>/bugs/_templates/ (6),
+               methodologies/ (4), bugfix-log.md, <docs>/bugs/_templates/ (6),
                <docs>/06.5-deployment-config.md, <docs>/06-delivery-summary.md
                (八类最低文档集里原先无模板的两类，CHG-004),
                <tests>/audit-docs-consistency.sh (通用层审计)
@@ -561,7 +561,7 @@ run_layer() {
       install_file - "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" resources/DEVELOPMENT_STANDARDS.md
       install_file standards-changelog "$DOCS_DIR/STANDARDS_CHANGELOG.md" resources/STANDARDS_CHANGELOG.md
       install_file - "$DOCS_DIR/METHODOLOGY.md" resources/METHODOLOGY.md
-      for m in development.md data-structures.md state-trigger-audit.md; do
+      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md; do
         install_file - "$DOCS_DIR/methodologies/$m" "resources/methodologies/$m"
       done
       install_file bugfix-log "$DOCS_DIR/bugfix-log.md" resources/templates/bugfix-log.md

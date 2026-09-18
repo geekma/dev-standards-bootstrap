@@ -40,7 +40,7 @@
 
 | 改动 | 必须同步 |
 |---|---|
-| 规范正文条款 | 页脚版本号 + `STANDARDS_CHANGELOG.md` 顶部新行 + `SKILL.md` 三载体版本 + 双 README 版本 |
+| 规范正文条款 | 页脚版本号 + 上下文/方法论层页脚同步（`resources/AGENTS.md`、`resources/METHODOLOGY.md`、`resources/methodologies/*.md`）+ `STANDARDS_CHANGELOG.md` 顶部新行 + `SKILL.md` 三载体版本 + 双 README 版本 |
 | `resources/templates/agent-gate.sh` | 先跑通 `tests/run-tests.sh`（§2.17.4），再发布；`tests/audit-standards-src.sh` 的 A 层断言 |
 | `resources/templates/agent-governance.yml` 的 `paths:` | `agent-gate.sh` / `check-standards-compliance.sh` / `audit-docs-consistency.sh` **三者一起**——只升其一即"门禁按默认根找、文件在自定义根"的静默错位 |
 | `scripts/bootstrap.sh` 复制清单 | `SKILL.md` 步骤 3–4 + `--help` 文本 |
@@ -79,7 +79,7 @@ bash tests/audit-standards-src.sh  # 源层：版本链 / 关键词落点 / §3�
 
 ### 3.1 第三道：把门禁指向**本仓自己的真实产物**（dogfooding，改门禁后必做）
 
-前两道都在**夹具世界**里验证。夹具是维护者手写的，会不自觉地比真实产物**更规整**——而缺陷恰好住在规整与真实之间的缝里。本仓同时具备"真实产物"（`docs/changes/CHG-001..016`、`docs/bugs/BUG-001..004`）和"自己的门禁"（`resources/templates/agent-gate.sh`），是最便宜的自测素材：
+前两道都在**夹具世界**里验证。夹具是维护者手写的，会不自觉地比真实产物**更规整**——而缺陷恰好住在规整与真实之间的缝里。本仓同时具备"真实产物"（`docs/changes/CHG-001..028`、`docs/bugs/` 缺陷组）和"自己的门禁"（`resources/templates/agent-gate.sh`），是最便宜的自测素材：
 
 ```bash
 # 只读沙箱（不要在本仓直接跑）：复制真实 docs/ + 门禁，在临时仓库里跑
@@ -130,14 +130,20 @@ bash scripts/update-assertion-count.sh --check  # 只检查，漂移即 exit 1�
 
 ### 5.1 规范体量上界（A11）与它的重校准
 
-`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **128 KiB / 131,072 字节**）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
+`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **144 KB / 147,456 字节**）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
 
 **重校准是设计内的动作，不是破例**，但必须满足两个条件：
 
 1. **有 CHANGELOG 条目对应**（新条款必须登记）；
 2. **先压缩再抬高**：把重复条款合并、把机制细节下沉到脚本头部注释（渐进披露），能省多少先省多少。
 
-v3.21.2 的重校准记录（最近一次，供下次参照）：v3.21.1 + v3.21.2 两轮对齐修正把 124 KiB 上界的余量吃到 **193 字节**（与 v3.16.0 的 53 字节同型——上界事实上再次失效）；先做压缩（删除规范正文里的变更日志式括注、把派生资产判定口径收成一句），再按 **KiB 步进（+4 KiB）**重设到 128 KiB，余量 **4,289 字节**——同样不按当前体量贴合。
+v3.31.0 的重校准记录（最近一次，供下次参照）：§2.1 规则 10（角色单一职责）+ §5 反模式行把 140 KB 上界的余量吃到 **-220 字节**（先压缩两处措辞仍压线），按 **KiB 步进（+4 KB）**重设到 144 KB。
+
+v3.29.0 的重校准记录：§2.1 九专家行 + §2.2 评审矩阵把 132 KB 上界的余量吃到 **3 字节**（v3.25 同型——上界事实上再次失效）；先做两轮措辞压缩（仍超 136 KB 约 1.6 KB），再按 **KiB 步进（+4 KB）**重设到 140 KB。
+
+v3.25.0 的重校准记录：v3.24.0 的表达成本条款把 128 KB 上界的余量吃到 **3 字节**，按同协议重设到 132 KB。
+
+v3.21.2 的重校准记录：v3.21.1 + v3.21.2 两轮对齐修正把 124 KB 上界的余量吃到 **193 字节**；先做压缩（删除规范正文里的变更日志式括注、把派生资产判定口径收成一句），再按 **KiB 步进（+4 KB）**重设到 128 KB，余量 **4,289 字节**——同样不按当前体量贴合。
 
 v3.17.0 的重校准记录：v3.16.0 的改动已把 120 KiB 上界的余量吃到 **53 字节**，上界事实上已失效；本版先做压缩（合并三条重复条款 + 机制下沉）把净增压到 **1,035 字节**，再按 **KiB 步进（+4 KiB）**重设——**不按当前体量贴合**，否则下一次任何实质新增又会立刻撞墙。
 
@@ -163,8 +169,15 @@ v3.17.0 的重校准记录：v3.16.0 的改动已把 120 KiB 上界的余量吃�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.34.0** | **四项打包**：gate L0/L1 评审独立机校（FU-042 闭环）+ metrics `expert_sessions` 观测字段 + session-gate 规则 10 自查表注入 + 能力卡合规样例——`--upgrade` 带走 agent-gate/session-gate/expert-capabilities 三件。**无回填义务**。golden 310。 |
+| **v3.33.0** | **gate 执法收紧（FU-039/041 闭环）**：`scripts/agent-gate` 升级即得——治理记录必填 `spec_author`（全等级）、L2/L3 四主体互异、01/03 的「专家评审记录」节强制 §2.1.7 署名（stop/CI）。golden 308。**存量仓唯一动作**：升级后首个新变更的 00-governance.json 按模板声明 `spec_author`（模板已含）。 |
+| **v3.32.0** | **对齐+两批制条款**：规范 §2.2 两批制/规则 10 补锚/DoD 补项、`agent-governance.yml`+`stamp-provenance.sh` 注释计数修正（v3.29.1 未落盘缺陷）、`resources/AGENTS.md` 门禁 1 与锚点表、bootstrap --help、能力卡索引补行——`--upgrade` 一次带走。**无回填义务**。FU-041 登记（gate 硬校验，与 FU-039 合并承载）。 |
+| **v3.31.0** | **新规范性条款**：§2.1 规则 10（角色单一职责，作者/实现/测试/评审四主体互异）+ `governance-state.json` 模板增 `spec_author` 字段 + §5 "一人多角色"反模式行 + `expert-capabilities.md` 理论出处索引节——`--upgrade` 一次带走。**回填义务：无**（`spec_author` 只约束新变更）。源层：A11 重校准 140→144 KB（协议步进）。 |
+| **v3.30.0** | **新方法论层文件**：`resources/methodologies/expert-capabilities.md`（专家能力卡）——`--upgrade` 自动带走（复制清单已扩）；规范 §2.2 新增能力卡条款（组合表不变）。**无回填义务**。源层：audit methodologies 动态遍历自动纳入新文件页脚断言（断言 279→282，生成器重写 .audit-baseline）。 |
+| **v3.29.1** | **对齐续修（无新规范条款、无行为变更、无回填义务）**：规范正文（计数 15 件、§2.2 措辞与钩子、§3/§5 补行）、`resources/AGENTS.md`（角色段 §2.2 衔接）、`resources/METHODOLOGY.md`（双视角行）随 `--core`/`--upgrade` 下发；双 README 能力表补 2 行；CHANGELOG 补 3.28/3.29 节。门禁/golden 零改动。 |
+| **v3.29.0** | **新规范条款（§2.2 分阶段专家评审矩阵）**：`resources/DEVELOPMENT_STANDARDS.md`（§2.1 +9 专家行 + §2.2 新节 + §0.5.2 联动注 + §2.5 阶段 1/2/3/4/5/8 验收行补句）、`resources/AGENTS.md`（锚点表 §2.2 行）随 `--core`/`--upgrade` 下发即可，**无回填义务**（新条款只约束新变更；存量产物不含「专家评审记录」节属合法空转）。门禁/golden 零改动。源仓侧：源层审计 **A11 上界 132KB→140KB 重校准**（v3.29.0 依据：§2.1/§2.2 专家条款演进，两轮措辞压缩后仍超 136KB 约 1.6KB，按 KiB 步进）——`tests/audit-standards-src.sh` 为源层工具不下发，目标仓零影响。§5.1 的"当前上界"句一并更新。 |
 | **v3.22.0** | **唯一载荷变更**：`resources/templates/stamp-provenance.sh`（新增 `--all` 全量盖章，默认行为逐字节不变）。已接入项目 `--upgrade` 带过去即可，**无回填义务**——`--all` 是可选加强，不跑它行为与升级前一致。源仓侧同步：`scripts/install.sh`（新增，源层不下发）、双 README 重写 + 新增 `CHANGELOG.md`、`SKILL.md`（一句话安装路径 + `--all` 溯源行 + 版本载体）、源层审计 A19 语义修正（溯源块 ⊆ 活跃∪已闭合）+ A23 锚点组、golden T17b/T21。另修复 `resources/templates/stamp-provenance.sh` 未入库缺陷（此前全新 clone 后 `--guard` 安装必失败）。 |
-| **v3.21.2** | **同上——纯对齐续修，无新规范条款、无行为变更、无回填义务**（6 条，逐条见 `resources/STANDARDS_CHANGELOG.md` 顶部行）。承接 v3.21.1 的独立复核发现：规范正文删去派生 Skill 名举例、校正 01.5 边界句措辞；`SKILL.md` 补上"仅当现值仍是内置默认"的条件；`agent-governance.yml` 的 `required_before_merge` 与门禁对齐（3 → 5 件）；`scripts/bootstrap.sh` 的派生改三态判定（消掉自定义根安装时的假 NOTE）；`MAINTAINER.md` §8 口径按"面"收敛。**建议同步**：`resources/DEVELOPMENT_STANDARDS.md`、`resources/templates/agent-governance.yml`、`SKILL.md`、`scripts/bootstrap.sh`（`--upgrade` 一次带过去即可）。**无回填义务**——历史产物与目录布局逐条不变。 |
+| **v3.21.2** | **同上——纯对齐续修，无新规范条款、无行为变更、无回填义务**（10 条，逐条见 `resources/STANDARDS_CHANGELOG.md` 顶部行）。承接 v3.21.1 的独立复核发现：规范正文删去派生 Skill 名举例、校正 01.5 边界句措辞；`SKILL.md` 补上"仅当现值仍是内置默认"的条件；`agent-governance.yml` 的 `required_before_merge` 与门禁对齐（3 → 5 件）；`scripts/bootstrap.sh` 的派生改三态判定（消掉自定义根安装时的假 NOTE）；`MAINTAINER.md` §8 口径按"面"收敛。**建议同步**：`resources/DEVELOPMENT_STANDARDS.md`、`resources/templates/agent-governance.yml`、`SKILL.md`、`scripts/bootstrap.sh`（`--upgrade` 一次带过去即可）。**无回填义务**——历史产物与目录布局逐条不变。 |
 | **v3.21.1** | **纯对齐修正——无新规范条款、无行为变更、无回填义务**（15 条，逐条见 `resources/STANDARDS_CHANGELOG.md` 顶部行）。门禁判定强度、产物文件名、目录布局逐条不变，已闭合的历史产物保持原样即合规。**建议同步的副本**（拿对齐后的版本即可）：`scripts/check-standards-compliance.sh`（自定义 `<change_root>` 不在 `<docs>/` 下时不再假红）、`.agent-governance.yml`（读取方清单补 `stamp-provenance.sh`）、`resources/templates/` 下的 `06-delivery-summary.md` / `06.5-deployment-config.md` / `PULL_REQUEST_TEMPLATE.md` / `github-artifact-pipeline.yml`（骨架任务号统一为 `TASK-`）。**曾用自定义根部署过的仓库**另需重跑 `bash scripts/bootstrap.sh --all --upgrade <目标仓库>`：本版修掉了 `--docs-dir` 会把显式 pin 的 `change_root` / `bugs_root` 静默改写成派生值的问题（升级不会改动你已 pin 的值）。 |
 | **v3.21.0** | 同步 `tests/audit-docs-consistency.sh` **即可**（本版只改通用层审计；`scripts/agent-gate` 与 `scripts/stamp-provenance.sh` 本版未改）。**产物落功能目录 `docs/<feature>/` 的仓库零影响**——G2/G3/G5/G6 的覆盖与判定逐条不变。**受影响的仓库**：产物落**变更目录** `docs/changes/<变更号>/`（即启用了变更管线的仓库）→ 升级前审计对这四组**完全空转**：`docs/changes` 被当成"子目录"，于是"没有产物目录"的空转分支不触发，G2/G3/G5/G6 **一条断言都不执行、也不打印任何行**，而操作者读到的是 "4 passed"。升级后 G2 真正覆盖变更轨（管线态跳号会被判红），未覆盖的组会被点名声明。**升级后会看到一行 `G3/G5/G6 VACUOUS SKIP`**——那是**如实告知未覆盖**，不是失败（变更轨的 §3/§4 一致性由门禁 `--stage stop` 在创建时兜住）。**不要用"把 G3/G5/G6 扩到变更目录"来消灭这行提示**：冻结的历史变更目录按 §2.15 硬性规则 4 / §2.16.5 不可回填，那样只会得到永久无法清除的红。 |
 | **v3.20.0** | 同步 `scripts/agent-gate` **即可**（本版只改门禁的"治理记录怎么读"；`stamp-provenance.sh` 与 `tests/audit-docs-consistency.sh` 本版未改）。**一直写单行记录的仓库零影响**——行为逐字节不变。**受影响的仓库**：`00-governance.json` 写成**多行格式化**的（即照 `resources/templates/governance-state.json` 模板生成的默认形状）→ 升级前 `begin` 报 `must declare risk_level L0, L1, L2, or L3`（字段其实就在 `change_id` 下面两行）、`metrics` 对每条记录报 `"risk_level":null`；升级后立即恢复通过。**这是 v3.18.0 引入的静默回归**（为支持批次把读取器从整文件改成行式），凡升过 v3.18.0 / v3.19.0 **且记录是多行**的仓库都中招——本仓自己的账本 16/16 条全中。**不要用"把记录压成单行"来绕过**：升级门禁才是正解。 |
