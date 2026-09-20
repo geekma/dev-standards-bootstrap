@@ -1951,6 +1951,49 @@ sed -i '' 's/generated_at: [0-9-]*/generated_at: 2020-01-01/' docs/bugs/BUG-902/
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T18c pre-v3.35.0 standalone groups (old provenance date) stay legal" 0 $?
 
+# ------------------------------------------------ T18d 缺陷批次扁平化（v3.36.0，BUG-006）
+# §1.1 v3.36.0：同日多缺陷共落 BATCH-YYYYMMDD/ 扁平目录——六件套同名文件 + `## <BUG-id>`
+# 锚点分节，当天追加落在同一套文件里（与变更批次同构）；嵌套形态历史合法；
+# bug_group_dir 三形态统一解析（独立 → 嵌套 → 扁平锚点，多处命中 fail-closed）。
+new_repo
+seed_artifacts CHG-930 L1 claude/s-1
+scripts/agent-gate begin CHG-930 >/dev/null 2>&1
+today=$(date -u +%Y%m%d)
+mkdir -p "docs/bugs/BATCH-$today"
+for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
+  printf '# flat batch\n\n## BUG-903 flat member\n' > "docs/bugs/BATCH-$today/$d6.md"
+done
+# 负例铺垫：BUG-904 只在诊断件锚定（其余五件缺同 id 小节 → 六件锚点不齐）
+printf '\n## BUG-904 member\n' >> "docs/bugs/BATCH-$today/01-diagnosis.md"
+seed_artifacts CHG-931 L0 claude/s-1
+printf '{"change_id":"CHG-931","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-903"}\n' > docs/changes/CHG-931/00-governance.json
+scripts/agent-gate begin CHG-931 >/dev/null 2>&1
+report "T18d flat bug batch begin resolves a bug_ref via the batch anchor" 0 $?
+echo y > src/z.js   # staged/stop 只在存在代码路径改动时执法（对齐 T4/T5 夹具）
+git add -A          # staged 以暂存区为准，空暂存即空转放行
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18d flat batch anchor missing in five pieces is rejected at staged" 2 $?
+check_output "T18d refusal names the flat anchor set" "six-piece anchor set" "$out"
+for d6 in 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
+  printf '\n## BUG-904 member\n' >> "docs/bugs/BATCH-$today/$d6.md"
+done
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18d flat batch passes once every anchored id spans the six pieces" 0 $?
+cp "$ROOT/resources/templates/stamp-provenance.sh" scripts/stamp-provenance.sh
+scripts/stamp-provenance.sh --bug BUG-903 >/dev/null 2>&1
+report "T18d --bug resolves and stamps a flat batch member" 0 $?
+check_output "T18d flat stamp attests the batch id" "^bug: BATCH-" "$(cat "docs/bugs/BATCH-$today/01-diagnosis.md")"
+check_output "T18d flat stamp lists the members" "^batch_changes: BUG-90[34]" "$(cat "docs/bugs/BATCH-$today/01-diagnosis.md")"
+mkdir -p "docs/bugs/BATCH-$today/BUG-905"
+for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
+  printf '# nested\n' > "docs/bugs/BATCH-$today/BUG-905/$d6.md"
+done
+seed_artifacts CHG-932 L0 claude/s-1
+printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-905"}\n' > docs/changes/CHG-932/00-governance.json
+scripts/agent-gate begin CHG-932 >/dev/null 2>&1
+report "T18d nested legacy group still resolves under the three-form resolver" 0 $?
+
 # ------------------------------------------------ T23 项目总册机校（v3.35.0，§1.3/CHG-035）
 new_repo
 seed_artifacts CHG-910 L1 claude/s-1

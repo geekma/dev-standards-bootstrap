@@ -851,14 +851,18 @@ at_least "A25 standards pins first-change initialization" 1 "$STD" 'AGENT_GUARD_
 at_least "A25 standards pins the bug diagnosis master-reading clause" 1 "$STD" '诊断前必读总册'
 at_least "A25 standards pins the TC-coverage clause for bug fixes" 1 "$STD" '不可覆盖必须新增防回归 TC'
 at_least "A25 standards reverses the v3.22.0 no-batch decision" 1 "$STD" '缺陷六件套自 v3.35.0 起同样按天入批'
+at_least "A25 standards flattens the bug batch (v3.36.0)" 1 "$STD" '扁平化'
+at_least "A25 standards pins the flat anchor form" 1 "$STD" '## <BUG-xxx>'
 report "A25 gate resolves defect groups across both layouts" 1 "$(a17_at_least_1 "$(grep -c 'bug_group_dir' "$GATE_TPL" || true)")"
 report "A25 gate sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$GATE_TPL" || true)")"
+report "A25 gate sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c 'anchored in more than one day batch' "$GATE_TPL" || true)")"
 report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'must join it into the day batch\|move it into the day batch' "$GATE_TPL" || true)")"
 report "A25 gate begin checks the twelve masters" 1 "$(a17_at_least_1 "$(grep -c 'validate_project_masters' "$GATE_TPL" || true)")"
 report "A25 gate stop checks the master backfill rows" 1 "$(a17_at_least_1 "$(grep -c 'validate_master_backfill' "$GATE_TPL" || true)")"
 report "A25 stamper resolves batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'defect group not found' "$STAMP_TPL" || true)")"
 report "A25 audit carries G9 masters checks" 1 "$(a17_at_least_1 "$(grep -c 'G9 project masters' "$AUDIT_TPL" || true)")"
 report "A25 audit sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$AUDIT_TPL" || true)")"
+report "A25 audit sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c '扁平批次锚点缺件' "$AUDIT_TPL" || true)")"
 masters_n=0
 for mf in 00-project-charter 01-requirements-master 02-architecture-master 03-interface-registry 04-data-dictionary 05-task-plan 06-test-master 07-test-verdicts 08-deployment-master 09-risk-register 10-change-ledger 11-decision-log; do
   [[ -s "$ROOT/resources/templates/project/$mf.md" ]] && masters_n=$((masters_n+1))
@@ -868,7 +872,9 @@ report "A25 review-record template exists" 1 "$([[ -s "$ROOT/resources/templates
 report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(grep -c 'T23 project-master backfill checklist is enforced at stop' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'T18c defect groups join the same-day batch' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden suite pins the flat bug batch form" 1 "$(a17_at_least_1 "$(grep -c 'T18d flat bug batch' "$ROOT/tests/run-tests.sh" || true)")"
 at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.35.0'
+at_least "A25 changelog carries the v3.36.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.36.0'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

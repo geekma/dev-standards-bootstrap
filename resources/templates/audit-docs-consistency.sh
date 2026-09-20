@@ -435,6 +435,25 @@ if [[ -d "$BUGS" ]]; then
       incomplete=$((incomplete+1)); echo "     G8 incomplete: $gid — missing:$miss (补六件，或登记理由进 $ALLOW)"
     fi
   done
+  # v3.36.0 (BUG-006): FLAT day-batches — six pieces directly in BATCH-*/,
+  # members separated by `## <BUG-id>` anchors; anchor-based completeness.
+  for g in "$BUGS"/BATCH-*/; do
+    [[ -s "${g}01-diagnosis.md" ]] || continue
+    for gid in $(sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+)([[:space:]].*)?$/\1/p' "${g}01-diagnosis.md" | sort -u); do
+      miss=""
+      for doc in $SIX; do
+        grep -qE "^##[[:space:]]+${gid}([[:space:]]|\$)" "$g/$doc" 2>/dev/null || miss="$miss $doc"
+      done
+      [[ -z "$miss" ]] && continue
+      listed=""
+      [[ -f "$ALLOW" ]] && listed=$(grep -vE '^[[:space:]]*(#|$)' "$ALLOW" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
+      if [[ -n "$listed" ]]; then
+        allow_n=$((allow_n+1)); echo "     G8 allowlisted legacy: $gid — missing:$miss"
+      else
+        incomplete=$((incomplete+1)); echo "     G8 incomplete: $gid — missing:$miss (扁平批次锚点缺件；补齐 $g 六件锚点，或登记理由进 $ALLOW)"
+      fi
+    done
+  done
   report "G8 bug doc groups complete (six-piece)" 0 "$incomplete"
   report "G8 allowlisted legacy groups (counted, not hidden)" "$allow_n" "$allow_n"
 else
@@ -473,6 +492,15 @@ if [[ -d "$BUGS" ]]; then
   # v3.35.0 (BUG-005): both layouts — standalone and day-batched groups.
   for g in "$BUGS"/BUG-*/ "$BUGS"/BATCH-*/BUG-*/; do
     [[ -d "$g" ]] || continue
+    for pf_ in "$g"*.md; do
+      [[ -f "$pf_" ]] || continue
+      grep -q '^<!-- provenance$' "$pf_" 2>/dev/null || { unprov=$((unprov+1)); echo "     A21 unstamped: $pf_"; }
+    done
+  done
+  # v3.36.0 (BUG-006): flat batches — the six pieces live directly in BATCH-*/
+  # (nested subgroups are covered by the loop above, not by their parent).
+  for g in "$BUGS"/BATCH-*/; do
+    [[ -s "${g}01-diagnosis.md" ]] || continue
     for pf_ in "$g"*.md; do
       [[ -f "$pf_" ]] || continue
       grep -q '^<!-- provenance$' "$pf_" 2>/dev/null || { unprov=$((unprov+1)); echo "     A21 unstamped: $pf_"; }

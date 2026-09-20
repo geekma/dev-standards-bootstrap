@@ -153,19 +153,35 @@ resolve_dir() { # <change-id> -> directory
 if [[ "$stamp_bug" == true ]]; then
   # v3.35.0 (BUG-005): defect groups live standalone OR inside a per-day batch
   # (<bugs_root>/BATCH-YYYYMMDD/<id>/) — resolve to exactly one (standards §1.1).
+  # v3.36.0 (BUG-006): THIRD layout — a FLAT batch whose members are `## <id>`
+  # anchors in the batch's own six pieces; resolving to the batch dir stamps the
+  # shared files once with the batch label + member list.
   if [[ -d "$BUGS_ROOT/$chg" ]]; then
     CHG_DIR="$BUGS_ROOT/$chg"
   else
     nested=""
+    flat=""
     for b in "$BUGS_ROOT"/BATCH-*/; do
-      [[ -d "${b}${chg}" ]] || continue
-      [[ -n "$nested" ]] && { echo "stamp-provenance: defect group '$chg' exists in more than one day batch under $BUGS_ROOT" >&2; exit 2; }
-      nested="${b%/}/$chg"
+      if [[ -d "${b}${chg}" ]]; then
+        [[ -n "$nested" ]] && { echo "stamp-provenance: defect group '$chg' exists in more than one day batch under $BUGS_ROOT" >&2; exit 2; }
+        nested="${b%/}/$chg"
+      fi
+      if [[ -s "${b}01-diagnosis.md" ]] \
+        && grep -qE "^##[[:space:]]+${chg}([[:space:]]|\$)" "${b}01-diagnosis.md" 2>/dev/null; then
+        [[ -n "$flat" ]] && { echo "stamp-provenance: defect group '$chg' is anchored in more than one day batch under $BUGS_ROOT" >&2; exit 2; }
+        flat="${b%/}"
+      fi
     done
+    if [[ -n "$nested" && -n "$flat" ]]; then
+      echo "stamp-provenance: defect group '$chg' exists both nested ($nested) and flat-anchored ($flat) — keep exactly one (standards §1.1)" >&2
+      exit 2
+    fi
     if [[ -n "$nested" ]]; then
       CHG_DIR="$nested"
+    elif [[ -n "$flat" ]]; then
+      CHG_DIR="$flat"
     else
-      echo "stamp-provenance: defect group not found: $BUGS_ROOT/$chg (standalone or BATCH-*/<id>)" >&2
+      echo "stamp-provenance: defect group not found: $BUGS_ROOT/$chg (standalone, BATCH-*/<id>, or flat BATCH-*/ anchor)" >&2
       exit 2
     fi
   fi
@@ -194,11 +210,18 @@ fi
 # What the block attests. In a batch the coding record is SHARED by every
 # bundled change, so naming one member would be a claim the next member's stamp
 # silently overwrites. Attest the batch and list what it covers instead.
-# Bug mode (v3.28.0) attests the defect group with a `bug:` label and no batch.
+# Bug mode (v3.28.0) attests the defect group with a `bug:` label and no batch;
+# v3.36.0 (BUG-006): a bug id resolved to a FLAT batch attests the batch
+# (`bug: <BATCH-id>` + `batch_bugs:` member list aggregated from the anchors).
 if [[ "$stamp_bug" == true ]]; then
-  block_change="$chg"
-  batch_changes=""
   block_label="bug"
+  if [[ "$(basename "$CHG_DIR")" =~ ^BATCH-[0-9]{8}$ ]]; then
+    block_change="$(basename "$CHG_DIR")"
+    batch_changes=$(sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' "$CHG_DIR/01-diagnosis.md" | sort -u | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  else
+    block_change="$chg"
+    batch_changes=""
+  fi
 elif [[ "$(basename "$CHG_DIR")" =~ ^BATCH-[0-9]{8}$ ]]; then
   block_change="$(basename "$CHG_DIR")"
   batch_changes=$(for f in "$CHG_DIR"/*.md; do

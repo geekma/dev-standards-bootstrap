@@ -408,7 +408,7 @@ validate_governance_state() {
     for bug_ref in $bug_refs_current; do
       [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
       local bug_gdir
-      bug_gdir=$(bug_group_dir "$bug_ref") || die "$file bug_ref '$bug_ref': defect group not found under $bugs_root (standalone or BATCH-*/<id>, standards §1.1)"
+      bug_gdir=$(bug_group_dir "$bug_ref") || die "$file bug_ref '$bug_ref': defect group not found under $bugs_root (standalone, BATCH-*/<id>, or flat BATCH-*/ anchor — standards §1.1)"
       for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
         [[ -s "$bug_gdir/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
       done
@@ -558,26 +558,45 @@ validate_delivery() { # change-id
   done
 }
 
-# v3.35.0 (BUG-005, standards §1.1): defect doc groups live in TWO legal
-# layouts — standalone `<bugs_root>/<BUG-id>/` (legacy + single-of-day) and
-# per-day batch `<bugs_root>/BATCH-YYYYMMDD/<BUG-id>/` (default since v3.35.0).
-# Every consumer resolves through THIS function: exactly one location must
-# match; both existing at once is a fail-closed defect, not a warning.
+# v3.35.0 (BUG-005, standards §1.1): defect doc groups live in a per-day batch;
+# v3.36.0 (BUG-006, standards §1.1): the batch is FLAT — six pieces live DIRECTLY
+# in <bugs_root>/BATCH-YYYYMMDD/ and same-day members are separated by
+# `## <BUG-id>` anchors (isomorphic with the change track). THREE legal layouts
+# resolve through THIS function, exactly one must match; two at once is a
+# fail-closed defect, not a warning:
+#   1. standalone  <bugs_root>/<BUG-id>/            (legacy + single-of-day)
+#   2. nested      <bugs_root>/BATCH-*/<BUG-id>/    (v3.35.0 form, legacy-legal)
+#   3. flat        <bugs_root>/BATCH-*/ (anchors)   (v3.36.0 default)
 bug_group_dir() { # <BUG-id> -> prints the group dir (exit 1 if absent)
-  local id="$1" standalone="" nested="" b
+  local id="$1" standalone="" nested="" flat="" b
   [[ -d "$bugs_root/$id" ]] && standalone="$bugs_root/$id"
   for b in "$bugs_root"/BATCH-*/; do
-    [[ -d "${b}${id}" ]] || continue
-    if [[ -n "$nested" ]]; then
-      die "defect group '$id' exists in more than one day batch under $bugs_root — keep one (standards §1.1)"
+    if [[ -d "${b}${id}" ]]; then
+      if [[ -n "$nested" ]]; then
+        die "defect group '$id' exists in more than one day batch under $bugs_root — keep one (standards §1.1)"
+      fi
+      nested="${b%/}/$id"
     fi
-    nested="${b%/}/$id"
+    # v3.36.0 (BUG-006): flat member = `## <id>` anchor in the batch's own
+    # six pieces. Anchor on 01-diagnosis.md — the group's identity piece.
+    if [[ -s "${b}01-diagnosis.md" ]] \
+      && grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "${b}01-diagnosis.md" 2>/dev/null; then
+      if [[ -n "$flat" ]]; then
+        die "defect group '$id' is anchored in more than one day batch under $bugs_root — keep one (standards §1.1)"
+      fi
+      flat="${b%/}"
+    fi
   done
-  if [[ -n "$standalone" && -n "$nested" ]]; then
-    die "defect group '$id' exists both standalone ($standalone) and batched ($nested) — keep exactly one (standards §1.1)"
+  local hits=0
+  [[ -n "$standalone" ]] && hits=$((hits+1))
+  [[ -n "$nested" ]] && hits=$((hits+1))
+  [[ -n "$flat" ]] && hits=$((hits+1))
+  if [[ "$hits" -gt 1 ]]; then
+    die "defect group '$id' exists in more than one legal layout under $bugs_root (standalone=$standalone nested=$nested flat=$flat) — keep exactly one (standards §1.1)"
   fi
   if [[ -n "$standalone" ]]; then printf '%s' "$standalone"; return 0; fi
   if [[ -n "$nested" ]]; then printf '%s' "$nested"; return 0; fi
+  if [[ -n "$flat" ]]; then printf '%s' "$flat"; return 0; fi
   return 1
 }
 
@@ -612,6 +631,31 @@ validate_bug_groups() {
     else
       die "defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
     fi
+  done
+  # v3.36.0 (BUG-006): FLAT day-batches — the six pieces live directly in
+  # BATCH-YYYYMMDD/ and members are `## <BUG-id>` anchor sections (isomorphic
+  # with change batches). Completeness is ANCHOR-based: every id anchored in
+  # 01-diagnosis.md must carry its own section in all six pieces. Legacy
+  # day-folders that only ever held a merged single file are caught here too —
+  # that is the backfill list (§2.14), with the allowlist as the escape hatch.
+  for batch in "$bugs_root"/BATCH-*/; do
+    [[ -s "${batch}01-diagnosis.md" ]] || continue
+    for gid in $(sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+)([[:space:]].*)?$/\1/p' "${batch}01-diagnosis.md" | sort -u); do
+      missing=""
+      for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+        grep -qE "^##[[:space:]]+${gid}([[:space:]]|\$)" "$batch/$doc" 2>/dev/null || missing="$missing $doc"
+      done
+      [[ -z "$missing" ]] && continue
+      listed=""
+      if [[ -f "$allow" ]]; then
+        listed=$(grep -vE '^[[:space:]]*(#|$)' "$allow" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
+      fi
+      if [[ -n "$listed" ]]; then
+        echo "agent-gate: WARN defect group $gid incomplete (allowlisted):$missing"
+      else
+        die "defect group $gid is missing:$missing — complete the six-piece anchor set in $batch (standards §2.5 stage 6, v3.36.0 flat form) or register a reason in $allow"
+      fi
+    done
   done
   # v3.35.0 (BUG-005): the day-batch default is ENFORCED, mirroring the change
   # track (v3.27.0) — once <bugs_root>/BATCH-<today>/ exists, a defect group
@@ -1081,9 +1125,12 @@ Gate 4 RTVM (v3.7.0): REQ ids referenced by the changelog must be backfilled
 as rows in docs/<feature>/01.5-rtvm-matrix.md; changelogs without REQ
 references (pure fixes / docs changes) are exempt.
 
-defect doc groups (v3.28.0; day-batched layouts since v3.35.0): every
-<bugs_root>/BUG-*/ and <bugs_root>/BATCH-*/BUG-*/ group holding a
+defect doc groups (v3.28.0; day-batched since v3.35.0, FLAT since v3.36.0):
+every <bugs_root>/BUG-*/ and <bugs_root>/BATCH-*/BUG-*/ group holding a
 01-diagnosis.md must contain the complete six-piece set (staged / stop / CI).
+v3.36.0 flat batches (<bugs_root>/BATCH-YYYYMMDD/ holding the six pieces
+directly) are validated by ANCHOR: every `## <BUG-id>` anchored in the batch
+diagnosis must carry its own section in all six pieces.
 Once a same-day bugs batch exists, a standalone group created today is
 rejected (AGENT_GUARD_ALLOW_INDEPENDENT=1 escapes with a recorded reason).
 Groups declared via 00-governance.json 'bug_ref' (flat string or string array —

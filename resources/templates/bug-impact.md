@@ -17,7 +17,7 @@
 
 ## 关联缺陷（横向引用）
 
-- 旧组：`BUG-xxx`（同族 / 衍生，`docs/bugs/BUG-xxx/`）——只引用，不回改
+- 旧组：`BUG-xxx`（同族 / 衍生，`docs/bugs/BUG-xxx/` 或批次 `docs/bugs/BATCH-YYYYMMDD/`——v3.36.0 扁平锚点形态）——只引用，不回改
 - 新组（衍生缺陷）：另起 `docs/bugs/<新BUG-xxx>/` 六件套并在元信息「关联缺陷」回指本组
 
 ## 验收标准
