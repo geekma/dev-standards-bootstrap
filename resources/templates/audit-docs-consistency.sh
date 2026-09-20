@@ -418,7 +418,8 @@ SIX="01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-t
 
 if [[ -d "$BUGS" ]]; then
   incomplete=0; allow_n=0
-  for g in "$BUGS"/BUG-*/; do
+  # v3.35.0 (BUG-005): sweep BOTH layouts — standalone and day-batched groups.
+  for g in "$BUGS"/BUG-*/ "$BUGS"/BATCH-*/BUG-*/; do
     [[ -d "$g" ]] || continue
     any=0
     for doc in $SIX; do [[ -e "$g/$doc" ]] && any=1; done
@@ -469,7 +470,8 @@ fi
 
 if [[ -d "$BUGS" ]]; then
   unprov=0
-  for g in "$BUGS"/BUG-*/; do
+  # v3.35.0 (BUG-005): both layouts — standalone and day-batched groups.
+  for g in "$BUGS"/BUG-*/ "$BUGS"/BATCH-*/BUG-*/; do
     [[ -d "$g" ]] || continue
     for pf_ in "$g"*.md; do
       [[ -f "$pf_" ]] || continue
@@ -479,6 +481,41 @@ if [[ -d "$BUGS" ]]; then
   report "A21 bug doc groups carry provenance (stamp --bug)" 0 "$unprov"
 else
   report "A21 VACUOUS SKIP — no $BUGS_DIR/ directory" ok ok
+fi
+
+# ---------- G9 项目级总册存在与自证（v3.35.0，§1.3） ----------
+# 12 册在位、逐册自证（总册编号 + 独立完整声明）、评审记录成对；最新变更 09 含
+# 回填清单节（存量回填清单语义，§2.14——失败项即回填清单，不产生"永久红"的
+# 历史改写义务：总册是活文档，缺什么补什么即可）。
+PROJECT_DIR="$ROOT/$DOCS_DIR/project"
+if [[ -d "$PROJECT_DIR" ]]; then
+  gm_missing=0; gself=0; grev=0
+  for f in 00-project-charter.md 01-requirements-master.md 02-architecture-master.md 03-interface-registry.md 04-data-dictionary.md 05-task-plan.md 06-test-master.md 07-test-verdicts.md 08-deployment-master.md 09-risk-register.md 10-change-ledger.md 11-decision-log.md; do
+    pm="$PROJECT_DIR/$f"
+    if [[ ! -s "$pm" ]]; then
+      gm_missing=$((gm_missing+1)); echo "     G9 missing master: project/$f"
+      continue
+    fi
+    px="P${f%%-*}"
+    grep -q "总册编号：${px}" "$pm" || { gself=$((gself+1)); echo "     G9 no master id: project/$f (expect 总册编号：$px)"; }
+    grep -q "独立完整声明" "$pm" || { gself=$((gself+1)); echo "     G9 no self-containment claim: project/$f (expect 独立完整声明)"; }
+    rev="$PROJECT_DIR/reviews/$f.review.md"
+    [[ -s "$rev" ]] || { grev=$((grev+1)); echo "     G9 missing review record: reviews/$f.review.md"; }
+  done
+  report "G9 project masters complete (twelve files)" 0 "$gm_missing"
+  report "G9 project masters self-attesting (id + 独立完整声明)" 0 "$gself"
+  report "G9 project masters review records paired" 0 "$grev"
+  # 最新变更 09 含回填清单节（仅在仓库已有变更目录时核；按 mtime 取最新）。
+  g9_ledger=0
+  latest_chg=$(ls -1dt "$CHANGES"/*/ 2>/dev/null | while read -r cd2; do [[ -s "$cd2/09-changelog.md" ]] && printf '%s\n' "$cd2"; done | grep -E '/(CHG|BUG|BATCH)-[0-9]+$' | head -1)
+  if [[ -n "$latest_chg" ]]; then
+    grep -q "项目总册回填清单" "$latest_chg/09-changelog.md" || g9_ledger=1
+    report "G9 latest change carries 项目总册回填清单 ($(basename "$latest_chg"))" 0 "$g9_ledger"
+  else
+    report "G9 latest-change ledger check VACUOUS SKIP — no change dirs with 09 yet" ok ok
+  fi
+else
+  report "G9 VACUOUS SKIP — no $DOCS_DIR/project/ directory (masters not initialized; init on next change, standards §1.3)" ok ok
 fi
 
 rm -f "$S3TMP"

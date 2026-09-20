@@ -554,8 +554,14 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #      合并三条重复条款为一条、并把机制细节下沉到 stamp-provenance.sh 头部注释，
 #      净增 1,035 字节（122,827 → 123,862）；
 #   ③ 上界按 KiB 步进（+4KB）重设，余量 3,114 字节——**不是**按当前体量贴合。
+# v3.35.0 重校准 144KB → 156KB 的依据（不只是"装不下了"）：
+#   ① v3.31.0 的 144KB 上界余量已被 §1.3 项目级总册（CHG-035，12 册定义 + 门禁/DoD/
+#      主线/落点/回填清单 + 缺陷按天入批 + bug 两条款）吃到负值（153,499 字节）；
+#   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.35.0 行；
+#   ③ 上界按 KiB 步进（+12KB，跨 4KB 档取整）重设为 156KB，余量约 6.2KB——
+#      不是按当前体量贴合。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 144KB (FU-017, recalibrated v3.31.0)" 1 "$([[ "$std_bytes" -le 147456 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 156KB (FU-017, recalibrated v3.35.0)" 1 "$([[ "$std_bytes" -le 159744 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
@@ -830,6 +836,39 @@ report "A23 project CHANGELOG.md exists (version narrative lives outside the REA
 at_least "A23 README en points at install.sh" 1 "$RM_EN" 'install.sh'
 at_least "A23 README zh points at install.sh" 1 "$RM_ZH" 'install.sh'
 at_least "A23 MAINTAINER documents the install.sh role" 1 "$ROOT/MAINTAINER.md" 'install.sh'
+
+# ── PART A25: 项目级总册 + 缺陷按天入批形态锚点（v3.35.0，CHG-035/BUG-005）────
+# 防五类反向回退：①总册体系被删（规范/方法论/模板三层任一缺失）；②begin/stop
+# 的总册机校被静默移除；③缺陷批次化回退为"刻意不入批"；④stamper/审计丢失批次
+# 嵌套形态；⑤golden 负例被删导致机校裸奔。
+MASTERS_MD="$ROOT/resources/methodologies/project-masters.md"
+report "A25 project-masters methodology file exists" 1 "$([[ -s "$MASTERS_MD" ]] && echo 1 || echo 0)"
+at_least "A25 methodology defines the twelve masters" 1 "$MASTERS_MD" '十二册清单'
+at_least "A25 methodology defines review-record shape" 1 "$MASTERS_MD" '评审记录必含章节'
+at_least "A25 standards §1.3 defines the master set" 1 "$STD" '项目级总册与评审记录（Project Master Set'
+at_least "A25 standards pins every-change backfill" 1 "$STD" '项目总册回填清单'
+at_least "A25 standards pins first-change initialization" 1 "$STD" 'AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS'
+at_least "A25 standards pins the bug diagnosis master-reading clause" 1 "$STD" '诊断前必读总册'
+at_least "A25 standards pins the TC-coverage clause for bug fixes" 1 "$STD" '不可覆盖必须新增防回归 TC'
+at_least "A25 standards reverses the v3.22.0 no-batch decision" 1 "$STD" '缺陷六件套自 v3.35.0 起同样按天入批'
+report "A25 gate resolves defect groups across both layouts" 1 "$(a17_at_least_1 "$(grep -c 'bug_group_dir' "$GATE_TPL" || true)")"
+report "A25 gate sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$GATE_TPL" || true)")"
+report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'must join it into the day batch\|move it into the day batch' "$GATE_TPL" || true)")"
+report "A25 gate begin checks the twelve masters" 1 "$(a17_at_least_1 "$(grep -c 'validate_project_masters' "$GATE_TPL" || true)")"
+report "A25 gate stop checks the master backfill rows" 1 "$(a17_at_least_1 "$(grep -c 'validate_master_backfill' "$GATE_TPL" || true)")"
+report "A25 stamper resolves batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'defect group not found' "$STAMP_TPL" || true)")"
+report "A25 audit carries G9 masters checks" 1 "$(a17_at_least_1 "$(grep -c 'G9 project masters' "$AUDIT_TPL" || true)")"
+report "A25 audit sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$AUDIT_TPL" || true)")"
+masters_n=0
+for mf in 00-project-charter 01-requirements-master 02-architecture-master 03-interface-registry 04-data-dictionary 05-task-plan 06-test-master 07-test-verdicts 08-deployment-master 09-risk-register 10-change-ledger 11-decision-log; do
+  [[ -s "$ROOT/resources/templates/project/$mf.md" ]] && masters_n=$((masters_n+1))
+done
+report "A25 twelve master templates exist" 12 "$masters_n"
+report "A25 review-record template exists" 1 "$([[ -s "$ROOT/resources/templates/project/reviews/_template.review.md" ]] && echo 1 || echo 0)"
+report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(grep -c 'T23 project-master backfill checklist is enforced at stop' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden suite pins the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'T18c defect groups join the same-day batch' "$ROOT/tests/run-tests.sh" || true)")"
+at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.35.0'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

@@ -151,7 +151,24 @@ resolve_dir() { # <change-id> -> directory
   printf '%s' "$d"
 }
 if [[ "$stamp_bug" == true ]]; then
-  CHG_DIR="$BUGS_ROOT/$chg"
+  # v3.35.0 (BUG-005): defect groups live standalone OR inside a per-day batch
+  # (<bugs_root>/BATCH-YYYYMMDD/<id>/) — resolve to exactly one (standards §1.1).
+  if [[ -d "$BUGS_ROOT/$chg" ]]; then
+    CHG_DIR="$BUGS_ROOT/$chg"
+  else
+    nested=""
+    for b in "$BUGS_ROOT"/BATCH-*/; do
+      [[ -d "${b}${chg}" ]] || continue
+      [[ -n "$nested" ]] && { echo "stamp-provenance: defect group '$chg' exists in more than one day batch under $BUGS_ROOT" >&2; exit 2; }
+      nested="${b%/}/$chg"
+    done
+    if [[ -n "$nested" ]]; then
+      CHG_DIR="$nested"
+    else
+      echo "stamp-provenance: defect group not found: $BUGS_ROOT/$chg (standalone or BATCH-*/<id>)" >&2
+      exit 2
+    fi
+  fi
 else
   CHG_DIR=$(resolve_dir "$chg")
 fi

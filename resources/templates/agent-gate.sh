@@ -407,8 +407,10 @@ validate_governance_state() {
     fi
     for bug_ref in $bug_refs_current; do
       [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
+      local bug_gdir
+      bug_gdir=$(bug_group_dir "$bug_ref") || die "$file bug_ref '$bug_ref': defect group not found under $bugs_root (standalone or BATCH-*/<id>, standards §1.1)"
       for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
-        [[ -s "$bugs_root/$bug_ref/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bugs_root/$bug_ref/$doc"
+        [[ -s "$bug_gdir/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
       done
     done
   fi
@@ -521,6 +523,9 @@ validate_delivery() { # change-id
   # CHG-004 / REQ-022: the remaining two of the eight-category minimum doc set.
   check_delivery_doc "$d" 06.5-deployment-config.md '^([#>-][[:space:]]*)*未命中|^[|].*(未命中|(CFG|DB)-[0-9]+)|(CFG|DB)-[0-9]+' 'config/DB record'
   check_delivery_doc "$d" 06-delivery-summary.md '^[|].*FU-[0-9]+|^[-*][[:space:]]+.*FU-[0-9]+|^(#{1,6}[[:space:]]*).*遗留' 'delivery summary / FU ledger'
+  # v3.35.0 (standards §1.3): project-master backfill checklist — P00..P11
+  # rows present, each [x] or 未命中 with reason.
+  validate_master_backfill "$d"
   # v3.17.0 provenance, scope widened v3.26.0 (CHG-026): EVERY *.md artifact in
   # the change dir must carry a script-generated block — the author / committer
   # / host / UTC-time header is the delivery traceability bar, not a
@@ -553,6 +558,29 @@ validate_delivery() { # change-id
   done
 }
 
+# v3.35.0 (BUG-005, standards §1.1): defect doc groups live in TWO legal
+# layouts — standalone `<bugs_root>/<BUG-id>/` (legacy + single-of-day) and
+# per-day batch `<bugs_root>/BATCH-YYYYMMDD/<BUG-id>/` (default since v3.35.0).
+# Every consumer resolves through THIS function: exactly one location must
+# match; both existing at once is a fail-closed defect, not a warning.
+bug_group_dir() { # <BUG-id> -> prints the group dir (exit 1 if absent)
+  local id="$1" standalone="" nested="" b
+  [[ -d "$bugs_root/$id" ]] && standalone="$bugs_root/$id"
+  for b in "$bugs_root"/BATCH-*/; do
+    [[ -d "${b}${id}" ]] || continue
+    if [[ -n "$nested" ]]; then
+      die "defect group '$id' exists in more than one day batch under $bugs_root — keep one (standards §1.1)"
+    fi
+    nested="${b%/}/$id"
+  done
+  if [[ -n "$standalone" && -n "$nested" ]]; then
+    die "defect group '$id' exists both standalone ($standalone) and batched ($nested) — keep exactly one (standards §1.1)"
+  fi
+  if [[ -n "$standalone" ]]; then printf '%s' "$standalone"; return 0; fi
+  if [[ -n "$nested" ]]; then printf '%s' "$nested"; return 0; fi
+  return 1
+}
+
 # v3.28.0 (CHG-071 / BUG-040~055 复盘): defect doc groups are enforced by
 # EXISTENCE of <bugs_root>/<BUG-id>/, not only through a change's bug_ref —
 # 16 groups shipped with only 01-diagnosis.md (and self-checked "[x] done" in
@@ -565,7 +593,8 @@ validate_bug_groups() {
   local group doc missing allow listed gid
   [[ -d "$bugs_root" ]] || return 0
   allow="$bugs_root/.gate-allowlist"
-  for group in "$bugs_root"/BUG-*/; do
+  # v3.35.0 (BUG-005): sweep BOTH layouts — standalone and day-batched.
+  for group in "$bugs_root"/BUG-*/ "$bugs_root"/BATCH-*/BUG-*/; do
     [[ -d "$group" ]] || continue
     [[ -s "$group/01-diagnosis.md" ]] || continue
     missing=""
@@ -584,6 +613,27 @@ validate_bug_groups() {
       die "defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
     fi
   done
+  # v3.35.0 (BUG-005): the day-batch default is ENFORCED, mirroring the change
+  # track (v3.27.0) — once <bugs_root>/BATCH-<today>/ exists, a defect group
+  # created TODAY outside it must join the batch. Detection uses the group's
+  # provenance block (script-written UTC date; un-stamped groups are skipped
+  # here and caught by the delivery-time stamping checks instead).
+  if [[ "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
+    local today pb pdate
+    today=$(date -u +%Y-%m-%d)
+    for group in "$bugs_root"/BUG-*/; do
+      [[ -d "$group" ]] || continue
+      [[ -d "$bugs_root/BATCH-$(date -u +%Y%m%d)" ]] || return 0
+      pb="$group/01-diagnosis.md"
+      [[ -s "$pb" ]] || continue
+      pdate=$(sed -n 's/^generated_at:[[:space:]]*\([0-9-]\{4\}-[0-9-]\{2\}-[0-9-]\{2\}\).*/\1/p' "$pb" | head -1)
+      [[ "$pdate" == "$today" ]] || continue
+      gid=$(basename "$group")
+      listed=""
+      [[ -f "$allow" ]] && listed=$(grep -vE '^[[:space:]]*(#|$)' "$allow" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
+      [[ -n "$listed" ]] || die "standalone defect group $gid was created today ($pdate) while $bugs_root/BATCH-$(date -u +%Y%m%d) exists — move it into the day batch (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+    done
+  fi
 }
 
 # v3.28.0: defect groups bound to the active change (bug_ref) must carry the
@@ -592,13 +642,44 @@ validate_bug_groups() {
 # bug_refs_current set by validate_governance_state (stop stage only; begin
 # must not demand provenance on freshly created groups).
 validate_bug_ref_provenance() {
-  local ref doc
+  local ref doc gdir
   [[ -z "${bug_refs_current// /}" ]] && return 0
   for ref in $bug_refs_current; do
+    gdir=$(bug_group_dir "$ref") || gdir="$bugs_root/$ref"
     for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
-      validate_provenance "$bugs_root/$ref/$doc"
+      validate_provenance "$gdir/$doc"
     done
   done
+}
+
+# v3.35.0 (standards §1.3): the changelog of a delivered change must carry the
+# project-master backfill checklist — one row per master P00..P11, each either
+# `[x]` (backfilled) or explicitly `未命中（理由）`. An unchecked `[ ]` row
+# without a reason is an open loop, not a completion.
+validate_master_backfill() { # change-dir
+  local d="$1" p row
+  grep -q "项目总册回填清单" "$d/09-changelog.md" \
+    || die "cannot finish: 09-changelog.md missing 「项目总册回填清单」 section (standards §1.3)"
+  for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11; do
+    row=$(grep -E "^- \[[ x]\] ${p}([^0-9]|$)" "$d/09-changelog.md" | head -1)
+    [[ -n "$row" ]] || die "cannot finish: 项目总册回填清单 missing row for $p (standards §1.3)"
+    echo "$row" | grep -qE "^- \[x\]|未命中" \
+      || die "cannot finish: 项目总册回填清单 row $p is neither '[x]' nor '未命中（理由）' (standards §1.3)"
+  done
+}
+
+# v3.35.0 (standards §1.3): begin refuses to start work in a repo whose
+# project masters are not initialized. Filling the skeletons is the FIRST
+# change's job (docs edits precede begin); the gate only demands the twelve
+# files exist. Escape hatch is explicit: AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1
+# with the justification recorded in 09 重要上下文 — fail-closed, never silent.
+validate_project_masters() {
+  local f missing=""
+  [[ -d "$docs_dir/project" ]] || die "project masters not initialized: $docs_dir/project/ missing — copy <docs>/templates/project/ (skill resources/templates/project/) first (standards §1.3); set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 only with a recorded justification"
+  for f in 00-project-charter.md 01-requirements-master.md 02-architecture-master.md 03-interface-registry.md 04-data-dictionary.md 05-task-plan.md 06-test-master.md 07-test-verdicts.md 08-deployment-master.md 09-risk-register.md 10-change-ledger.md 11-decision-log.md; do
+    [[ -s "$docs_dir/project/$f" ]] || missing="$missing $f"
+  done
+  [[ -z "$missing" ]] || die "project masters incomplete:$missing — initialize all twelve under $docs_dir/project/ (standards §1.3)"
 }
 
 validate_stop() {
@@ -916,6 +997,9 @@ case "$command" in
        && [[ "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
       die "same-day batch exists ($change_root/BATCH-$(date +%Y%m%d)) — L0/L1 changes must join it (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
     fi
+    # v3.35.0 (standards §1.3): project masters must be initialized before any
+    # change starts — first change initializes them (docs edits precede begin).
+    [[ "${AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS:-}" == "1" ]] || validate_project_masters
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     echo "agent-gate: active change is $id"
@@ -973,6 +1057,9 @@ Usage:
 begin requires seven non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 01-spec.md, 02-code-impact-analysis.md,
 03-modification-plan.md, 03.5-tasks.md, 04-test-scripts.md. It also enforces
+the project masters (v3.35.0, standards §1.3): all twelve docs/project/ files
+must exist (escape hatch AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a
+recorded justification). It also enforces
 A-layer content checks (standards §2.5): 00-intent.md must contain the
 expected-outcome and open-questions sections; 01-spec.md must use REQ-
 numbering; 02 must cover business impact, risk and rollback; 03-modification-
@@ -987,13 +1074,18 @@ change must exist with a valid governance state. Merge commits, reverts, and
 commits that touch no code path are exempt.
 
 stop and branch-mode CI enforce delivery evidence: 04.5-coding-record.md,
-05-test-results.md, and 09-changelog.md carrying ReAct Observation records.
+05-test-results.md, and 09-changelog.md carrying ReAct Observation records,
+plus the project-master backfill checklist (v3.35.0): a 「项目总册回填清单」
+section with one P00..P11 row each, marked [x] or 未命中 with a reason.
 Gate 4 RTVM (v3.7.0): REQ ids referenced by the changelog must be backfilled
 as rows in docs/<feature>/01.5-rtvm-matrix.md; changelogs without REQ
 references (pure fixes / docs changes) are exempt.
 
-defect doc groups (v3.28.0): every <bugs_root>/BUG-*/ group holding a
+defect doc groups (v3.28.0; day-batched layouts since v3.35.0): every
+<bugs_root>/BUG-*/ and <bugs_root>/BATCH-*/BUG-*/ group holding a
 01-diagnosis.md must contain the complete six-piece set (staged / stop / CI).
+Once a same-day bugs batch exists, a standalone group created today is
+rejected (AGENT_GUARD_ALLOW_INDEPENDENT=1 escapes with a recorded reason).
 Groups declared via 00-governance.json 'bug_ref' (flat string or string array —
 a declared but unparseable value fails closed) additionally need the
 provenance header on all six pieces at stop: stamp with

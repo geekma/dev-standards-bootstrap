@@ -16,6 +16,7 @@
 | `resources/DEVELOPMENT_STANDARDS.md` | **规范正文，版本号唯一权威源**（页脚） | ✅ → `<docs>/` |
 | `resources/STANDARDS_CHANGELOG.md` | 规范升级日志唯一落点（v3.8.0 起） | ✅ → `<docs>/` |
 | `resources/AGENTS.md` / `METHODOLOGY.md` / `methodologies/` | 上下文层与方法论层 | ✅ → `<docs>/` |
+| `resources/templates/project/`（12 册 + 评审模板，v3.35.0） | 项目级总册骨架（§1.3） | ✅ → `<docs>/templates/project/`（目标仓首次变更复制为 `<docs>/project/` 并回填） |
 | `resources/templates/**` | 落到目标仓库的模板与脚本 | ✅（按清单逐项） |
 | `scripts/bootstrap.sh` | 清单驱动安装器（**清单即单一权威源**） | ✅ |
 | `scripts/install.sh` | 一键安装/升级器（v3.22.0，源层工具）：克隆 checkout + 薄委托 bootstrap，**不复制任何安装逻辑**；`--as-skill` 把 Skill 本体以 symlink 注册进 AI 客户端技能目录（不动目标仓，与安装/升级模式互斥） | ❌（不随 Skill 分发，同 bootstrap.sh 自身） |
@@ -169,6 +170,7 @@ v3.17.0 的重校准记录：v3.16.0 的改动已把 120 KiB 上界的余量吃�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.35.0** | **项目级总册体系 + 缺陷三条款（CHG-035/BUG-005）**：`docs/project/` 12 册+逐册评审、09「项目总册回填清单」机校（stop/CI）、begin 强制初始化、缺陷六件套按天入批（`docs/bugs/BATCH-YYYYMMDD/BUG-xxx/`，双形态兼容）+ 诊断必读总册 + TC 覆盖强制——`--upgrade` 带走 agent-gate/stamp-provenance/audit/project-masters.md/**templates/project(13)**。**存量仓回填义务**：升级后下一变更 begin 前初始化 `<docs>/project/`（复制骨架+回填现状+逐册初评）。golden 324，源层断言 309。 |
 | **v3.34.0** | **四项打包**：gate L0/L1 评审独立机校（FU-042 闭环）+ metrics `expert_sessions` 观测字段 + session-gate 规则 10 自查表注入 + 能力卡合规样例——`--upgrade` 带走 agent-gate/session-gate/expert-capabilities 三件。**无回填义务**。golden 310。 |
 | **v3.33.0** | **gate 执法收紧（FU-039/041 闭环）**：`scripts/agent-gate` 升级即得——治理记录必填 `spec_author`（全等级）、L2/L3 四主体互异、01/03 的「专家评审记录」节强制 §2.1.7 署名（stop/CI）。golden 308。**存量仓唯一动作**：升级后首个新变更的 00-governance.json 按模板声明 `spec_author`（模板已含）。 |
 | **v3.32.0** | **对齐+两批制条款**：规范 §2.2 两批制/规则 10 补锚/DoD 补项、`agent-governance.yml`+`stamp-provenance.sh` 注释计数修正（v3.29.1 未落盘缺陷）、`resources/AGENTS.md` 门禁 1 与锚点表、bootstrap --help、能力卡索引补行——`--upgrade` 一次带走。**无回填义务**。FU-041 登记（gate 硬校验，与 FU-039 合并承载）。 |

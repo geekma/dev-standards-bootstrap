@@ -62,6 +62,7 @@ new_repo() {
   git config user.email test@example.invalid
   git config user.name test
   mkdir -p scripts docs/changes src
+  seed_project_masters
   cp "$GATE_SRC" scripts/agent-gate
   chmod +x scripts/agent-gate
   echo init > README.md
@@ -128,6 +129,30 @@ EOF
 commit_all() { # message
   git add -A
   git commit -qm "$1"
+}
+
+# v3.35.0（§1.3）：begin 强制项目总册在位——所有夹具仓库开箱即含 12 册最小骨架
+#（含「总册编号」与「独立完整声明」自证行 + 逐册评审存根）；T23 负例删除后再验拒绝路径。
+seed_project_masters() {
+  mkdir -p docs/project/reviews
+  local p
+  for p in 00-project-charter 01-requirements-master 02-architecture-master 03-interface-registry 04-data-dictionary 05-task-plan 06-test-master 07-test-verdicts 08-deployment-master 09-risk-register 10-change-ledger 11-decision-log; do
+    printf '# master\n总册编号：P%s\n独立完整声明：fixture\n' "${p%%-*}" > "docs/project/$p.md"
+    printf '# review R-P%s\n' "${p%%-*}" > "docs/project/reviews/$p.md.review.md"
+  done
+}
+
+# v3.35.0（§1.3）：交付侧 09 追加「项目总册回填清单」节（幂等；已存在则跳过）。
+append_masters() { # <09-file>
+  local f="$1" p
+  [[ -f "$f" ]] || return 0
+  grep -q '项目总册回填清单' "$f" && return 0
+  {
+    printf '\n#### 项目总册回填清单\n'
+    for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11; do
+      printf -- '- [x] %s 已回填（章节：fixture；变更注记 CHG-999）\n' "$p"
+    done
+  } >> "$f"
 }
 
 # ---------------------------------------------------------------- T1 begin 门禁
@@ -225,6 +250,7 @@ report "begin rejects spec whose REQ- mention carries no number (FU-008)" 2 $?
 new_repo
 seed_artifacts CHG-520 L1 claude/s-1
 printf '# CHG-520 changelog\nclosed\n' > docs/changes/CHG-520/09-changelog.md
+append_masters docs/changes/CHG-520/09-changelog.md
 scripts/agent-gate begin CHG-520 >/dev/null 2>&1
 report "begin rejects re-opening a closed change dir" 2 $?
 out=$(scripts/agent-gate begin CHG-520 2>&1 || true)
@@ -244,9 +270,11 @@ done
 new_repo
 seed_artifacts CHG-521 L1 claude/s-1
 ln -s /dev/null docs/changes/CHG-521/09-changelog.md
+append_masters docs/changes/CHG-521/09-changelog.md
 scripts/agent-gate begin CHG-521 >/dev/null 2>&1
 report "begin rejects a symlinked zero-size 09 marker (S1)" 2 $?
 rm docs/changes/CHG-521/09-changelog.md
+append_masters docs/changes/CHG-521/09-changelog.md
 scripts/agent-gate begin CHG-521 >/dev/null 2>&1
 report "begin accepts the same dir once the symlink marker is removed" 0 $?
 
@@ -374,10 +402,12 @@ scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop blocks finish without changelog" 2 $?
 
 echo chg > docs/changes/CHG-500/09-changelog.md
+append_masters docs/changes/CHG-500/09-changelog.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop blocks finish without ReAct Observation records" 2 $?
 
 printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-500/09-changelog.md
+append_masters docs/changes/CHG-500/09-changelog.md
 
 # CHG-004：八类最低文档集（规范 §1.1）的最后两类纳入交付门禁。
 #   此前 --stage stop 只查 04.5/05/09，06.5 与 06-delivery-summary 既无模板也无校验，
@@ -554,6 +584,7 @@ report "stop passes again once artifacts return to the change dir" 0 $?
 
 # v3.7.0：Gate 4 —— changelog 引用的 REQ 必须回填 docs/<feature>/01.5-rtvm-matrix.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n\n- 对应需求：`REQ-101`（见 01-spec.md）\n' > docs/changes/CHG-500/09-changelog.md
+append_masters docs/changes/CHG-500/09-changelog.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop blocks changelog REQ not backfilled in 01.5 matrix" 2 $?
 mkdir -p docs/feata
@@ -637,6 +668,7 @@ seed_artifacts CHG-601 L1 claude/s-1
 # must carry 05+09 with ReAct Observation records in the same diff.
 printf 'results\n' > docs/changes/CHG-601/05-test-results.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-601/09-changelog.md
+append_masters docs/changes/CHG-601/09-changelog.md
 echo z > src/c.ts
 git add -A
 commit_all "feat: CHG-601 implement"
@@ -671,6 +703,7 @@ base=$(git rev-parse HEAD)
 seed_artifacts CHG-602 L1 claude/s-1
 printf 'results\n' > docs/changes/CHG-602/05-test-results.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n\n- 对应需求：`REQ-201`\n' > docs/changes/CHG-602/09-changelog.md
+append_masters docs/changes/CHG-602/09-changelog.md
 printf '<!-- provenance\nauthor: claude/s-1\nemail: t@example.com\ngenerated_at: 2026-09-15T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-602/04.5-coding-record.md
 echo z > src/c.ts
 git add -A
@@ -690,6 +723,7 @@ check_output "ci names the missing coding record" "cannot finish: missing coding
 printf '<!-- provenance\nauthor: claude/s-1\nemail: t@example.com\ngenerated_at: 2026-09-15T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-620/04.5-coding-record.md
 printf 'results\n' > docs/changes/CHG-620/05-test-results.md
 printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-620/09-changelog.md
+append_masters docs/changes/CHG-620/09-changelog.md
 # CHG-004：docs-only 分支同样要求八类最低文档集齐备（与 stop 同口径）
 printf '# 06.5\n未命中，不适用：本变更无配置/DB 变更。\n' > docs/changes/CHG-620/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-903 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-620/06-delivery-summary.md
@@ -749,6 +783,7 @@ check_output "metrics reports delivery_ready false before evidence" '"delivery_r
 echo ev > docs/changes/CHG-700/05-test-results.md
 echo rv > docs/changes/CHG-700/07-review-report.md
 echo cl > docs/changes/CHG-700/09-changelog.md
+append_masters docs/changes/CHG-700/09-changelog.md
 commit_all "docs: CHG-700 evidence"
 out=$(scripts/agent-gate metrics)
 check_output "metrics flips delivery_ready after evidence" '"delivery_ready":true' "$out"
@@ -872,6 +907,7 @@ if [[ -f "$AUDIT_SRC" ]]; then
 audit_fixture() { # dest -> 构造合规目标仓库 fixture
   local dest="$1"
   rm -rf "$dest"; mkdir -p "$dest/docs/feata"
+  (cd "$dest" && seed_project_masters)
   cp "$STD_SRC" "$dest/docs/DEVELOPMENT_STANDARDS.md"
   cp "$AG_SRC" "$dest/AGENTS.md"
   printf -- '- REQ-001 用户故事A（DoD: x）\n- REQ-002 用户故事B（DoD: y）\n' > "$dest/docs/feata/01-spec.md"
@@ -894,6 +930,7 @@ audit_fixture() { # dest -> 构造合规目标仓库 fixture
     echo '#### 执行记录（ReAct，§2.16.2 铁律）'; echo '记录'; echo;
     echo '#### 变更执行检查清单（§3）'; cat "$dest/s3block.md"; echo;
     echo '#### 未动项'; echo '- 无'; } > "$dest/docs/feata/09-changelog.md"
+  append_masters "$dest/docs/feata/09-changelog.md"
   rm -f "$dest/s3block.md"
 }
 
@@ -1138,6 +1175,7 @@ fi
 #   ② 没配 → 逐字节回到历史行为（零回归，老仓库升级后行为不变）。
 # 另锁"契约名不可配置"：换根后 AGENTS.md 仍须落仓库根（它不是路径根）。
 new_repo
+mkdir -p doc && mv docs/project doc/project   # v3.35.0：paths.docs=doc → begin 按配置根找总册
 mkdir -p doc/changes/CFG-1
 printf 'paths:\n  docs: doc\nchange_root: doc/changes\n' > .agent-governance.yml
 cat > doc/changes/CFG-1/00-intent.md <<'EOF'
@@ -1158,6 +1196,7 @@ check_output "T14 gate resolved the configured change root" "active change is CF
 
 # 派生：只给 paths.docs，change_root 应由它派生（而非回落到 docs/changes）
 new_repo
+mkdir -p doc && mv docs/project doc/project   # v3.35.0：paths.docs=doc → begin 按配置根找总册
 mkdir -p doc/changes/CFG-2
 printf 'paths:\n  docs: doc\n' > .agent-governance.yml
 cat > doc/changes/CFG-2/00-intent.md <<'EOF'
@@ -1399,6 +1438,7 @@ if [[ -f "$STAMP_SRC" ]]; then
   echo y > src/c.js
   echo results > docs/changes/CHG-700/05-test-results.md
   printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-700/09-changelog.md
+append_masters docs/changes/CHG-700/09-changelog.md
   printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：无配置项。\n' > docs/changes/CHG-700/06.5-deployment-config.md
   printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | x | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-700/06-delivery-summary.md
   scripts/stamp-provenance.sh --all CHG-700 >/dev/null 2>&1
@@ -1424,6 +1464,7 @@ if [[ -f "$STAMP_SRC" ]]; then
   printf '# CHG-800 交付总结\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | x | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-800/06-delivery-summary.md
   printf '# CHG-800 评审报告\n## 评审结论\n通过\n' > docs/changes/CHG-800/07-review-report.md
   printf '# CHG-800 Changelog\n#### 执行记录（ReAct）\n' > docs/changes/CHG-800/09-changelog.md
+append_masters docs/changes/CHG-800/09-changelog.md
 
   scripts/stamp-provenance.sh --all CHG-800 >/dev/null 2>&1
   report "T17b --all stamps the whole change directory" 0 "$?"
@@ -1534,6 +1575,7 @@ cp "$t18gov.bak" "$t18gov"; rm -f "$t18gov.bak"
 #     比真实产物规整"造成的盲区，故此处用**真实形状**（`## Observation`）钉住。
 printf '# 09\n## Observation\n#### 执行记录（ReAct）\ncmd: echo ok -> ok\n\n## CHG-800\n' \
   > docs/changes/BATCH-20260101/09-changelog.md
+append_masters docs/changes/BATCH-20260101/09-changelog.md
 git add -A
 out=$(scripts/agent-gate --stage staged 2>&1); rc=$?
 report "T18 staged survives a structural '## Observation' heading in a shared artifact" 0 "$rc"
@@ -1558,6 +1600,7 @@ check_output "T18 the refusal states the L0/L1 ceiling" "batches are L0/L1 only"
 # ⑥ 闭环判定细一档（FU-015 同义）：changelog 被同批共享，"文件存在"不再等于
 #    "本变更已关闭"——否则兄弟的 changelog 会把后加入的变更一起判为已关闭
 printf '# 09\n## CHG-800\n#### 执行记录（ReAct）\nObservation\n' > docs/changes/BATCH-20260101/09-changelog.md
+append_masters docs/changes/BATCH-20260101/09-changelog.md
 out=$(scripts/agent-gate begin CHG-800 2>&1); rc=$?
 report "T18 a closed batch member is refused" 2 "$rc"
 check_output "T18 closure is read from the member's own anchor" "carries a '## CHG-800' section" "$out"
@@ -1870,6 +1913,83 @@ check_output "begin names the missing spec_author (FU-041)" "must declare spec_a
 printf '{"change_id":"CHG-611","risk_level":"L2","spec_author":"gemini/m-1","implementation_owner":"gemini/m-1","test_owner":"claude/c-9","review_owner":"codex/x-7"}\n' > docs/changes/CHG-611/00-governance.json
 scripts/agent-gate begin CHG-611 >/dev/null 2>&1
 report "begin rejects spec_author duplicating an owner at L2" 2 $?
+
+# ------------------------------------------------ T18c 缺陷六件套按天入批（v3.35.0，BUG-005）
+# §1.1 v3.35.0 废止 v3.22.0"缺陷组不入批"：当日缺陷批次已存在时，同日新建的独立
+# 缺陷组必须入批（provenance generated_at 判日）；豁免显式；批次嵌套组照常扫描。
+new_repo
+seed_artifacts CHG-900 L1 claude/s-1
+scripts/agent-gate begin CHG-900 >/dev/null 2>&1
+today=$(date -u +%Y%m%d)
+mkdir -p "docs/bugs/BATCH-$today/BUG-901"
+for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
+  printf '# %s\n' "$d6" > "docs/bugs/BATCH-$today/BUG-901/$d6.md"
+done
+seed_artifacts CHG-902 L0 claude/s-1
+printf '{"change_id":"CHG-902","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
+scripts/agent-gate begin CHG-902 >/dev/null 2>&1
+report "T18c begin resolves a bug_ref bound to a batched defect group" 0 $?
+mkdir -p docs/bugs/BUG-902
+for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
+  printf '# %s\n' "$d6" > "docs/bugs/BUG-902/$d6.md"
+done
+{ printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: %sT00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n' "$(date -u +%Y-%m-%d)"; cat docs/bugs/BUG-902/01-diagnosis.md; } > docs/bugs/BUG-902/01-diagnosis.md.tmp && mv docs/bugs/BUG-902/01-diagnosis.md.tmp docs/bugs/BUG-902/01-diagnosis.md
+echo y > src/z.js   # staged/stop 只在存在代码路径改动时执法（对齐 T4/T5 夹具）
+git add -A          # staged 以暂存区为准，空暂存即空转放行
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18c defect groups join the same-day batch (standalone today is rejected)" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T18c refusal names the batch and the escape hatch" "move it into the day batch.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
+AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18c explicit override allows a standalone same-day group" 0 $?
+printf '%s\n' "BUG-902 # legacy standalone, registered" > docs/bugs/.gate-allowlist
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18c allowlisted legacy standalone group passes" 0 $?
+rm -f docs/bugs/.gate-allowlist
+sed -i '' 's/generated_at: [0-9-]*/generated_at: 2020-01-01/' docs/bugs/BUG-902/01-diagnosis.md 2>/dev/null \
+  || sed -i 's/generated_at: [0-9-]*/generated_at: 2020-01-01/' docs/bugs/BUG-902/01-diagnosis.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18c pre-v3.35.0 standalone groups (old provenance date) stay legal" 0 $?
+
+# ------------------------------------------------ T23 项目总册机校（v3.35.0，§1.3/CHG-035）
+new_repo
+seed_artifacts CHG-910 L1 claude/s-1
+rm -rf docs/project
+scripts/agent-gate begin CHG-910 >/dev/null 2>&1
+report "T23 begin refuses to start without project masters" 2 $?
+out=$(scripts/agent-gate begin CHG-910 2>&1 || true)
+check_output "T23 refusal names the masters and the escape hatch" "project masters not initialized.*AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS" "$out"
+seed_project_masters
+scripts/agent-gate begin CHG-910 >/dev/null 2>&1
+report "T23 begin passes once the twelve masters exist" 0 $?
+rm docs/project/11-decision-log.md
+scripts/agent-gate begin CHG-910 >/dev/null 2>&1
+report "T23 begin refuses with an incomplete master set" 2 $?
+seed_project_masters
+scripts/agent-gate begin CHG-910 >/dev/null 2>&1
+# 交付侧：09 缺回填清单 → stop 拒；行不完整 → 拒；补齐后（stub 溯源块）放行
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-910/09-changelog.md
+printf 'cr\n' > docs/changes/CHG-910/04.5-coding-record.md
+printf 'tr\n' > docs/changes/CHG-910/05-test-results.md
+printf '未命中，不适用（无配置变更）\n' > docs/changes/CHG-910/06.5-deployment-config.md
+printf '# 交付总结\n#### 遗留\n- FU-001 演示\n' > docs/changes/CHG-910/06-delivery-summary.md
+for pf9 in docs/changes/CHG-910/*.md; do
+  { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf9"; } > "$pf9.tmp" && mv "$pf9.tmp" "$pf9"
+done
+echo y > src/t23.js   # stop 只在存在代码路径改动时执法（对齐 T5 夹具）
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T23 project-master backfill checklist is enforced at stop" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T23 refusal names the missing checklist" "项目总册回填清单" "$out"
+append_masters docs/changes/CHG-910/09-changelog.md
+sed -i '' 's/^- \[x\] P03/- [ ] P03/' docs/changes/CHG-910/09-changelog.md 2>/dev/null \
+  || sed -i 's/^- \[x\] P03/- [ ] P03/' docs/changes/CHG-910/09-changelog.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T23 an unchecked row without a reason keeps stop red" 2 $?
+sed -i '' 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' docs/changes/CHG-910/09-changelog.md 2>/dev/null \
+  || sed -i 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' docs/changes/CHG-910/09-changelog.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T23 an explicit 未命中 row with a reason passes" 0 $?
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

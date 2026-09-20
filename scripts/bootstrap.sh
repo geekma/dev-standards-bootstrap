@@ -30,7 +30,8 @@ Usage: scripts/bootstrap.sh [flags] [target_root]
 
 Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
-               methodologies/ (4), bugfix-log.md, <docs>/bugs/_templates/ (6),
+               methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
+               <docs>/templates/project/ (总册 12 册 + 评审模板, v3.35.0),
                <docs>/06.5-deployment-config.md, <docs>/06-delivery-summary.md
                (八类最低文档集里原先无模板的两类，CHG-004),
                <tests>/audit-docs-consistency.sh (通用层审计)
@@ -561,8 +562,14 @@ run_layer() {
       install_file - "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" resources/DEVELOPMENT_STANDARDS.md
       install_file standards-changelog "$DOCS_DIR/STANDARDS_CHANGELOG.md" resources/STANDARDS_CHANGELOG.md
       install_file - "$DOCS_DIR/METHODOLOGY.md" resources/METHODOLOGY.md
-      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md; do
+      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md; do
         install_file - "$DOCS_DIR/methodologies/$m" "resources/methodologies/$m"
+      done
+      # v3.35.0（§1.3）：项目级总册 12 册 + 评审记录模板骨架 → <docs>/templates/project/，
+      # 首次变更时由用户复制到 <docs>/project/ 并回填现状（begin 机校 12 册在位）。
+      mkdir -p "$DOCS_DIR/templates/project/reviews"
+      for p in 00-project-charter.md 01-requirements-master.md 02-architecture-master.md 03-interface-registry.md 04-data-dictionary.md 05-task-plan.md 06-test-master.md 07-test-verdicts.md 08-deployment-master.md 09-risk-register.md 10-change-ledger.md 11-decision-log.md reviews/_template.review.md; do
+        install_file - "$DOCS_DIR/templates/project/$p" "resources/templates/project/$p"
       done
       install_file bugfix-log "$DOCS_DIR/bugfix-log.md" resources/templates/bugfix-log.md
       for b in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-config.md bug-tasks.md; do
