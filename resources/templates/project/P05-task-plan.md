@@ -1,6 +1,6 @@
 # P05 · 任务计划册（Task Plan Master）
 
-> **总册编号：P05** ｜ 落点：`docs/project/05-task-plan.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P05** ｜ 落点：`docs/project/P05-task-plan.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——任务/里程碑/发布计划变化必须同步本册（§2.5 阶段 3 总册联动 ⑧）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删。任务行唯一权威在各功能 `03.5-tasks.md`，本册做跨功能聚合。
 

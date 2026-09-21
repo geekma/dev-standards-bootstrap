@@ -245,12 +245,13 @@
 
 **落点**：`docs/project/`（`P00`–`P11` 十二册 + `reviews/` 逐册评审记录，册号见 §1.1 编号表）。回答"**项目现在整体是什么**"——总需求/总架构（含架构总图与关键时序总图）/接口索引/数据字典/任务计划/测试脚本与结论/部署/风险遗留/变更总日志/决策总册，SDLC 全环节无遗漏；功能轨与变更轨不变，总册只做**聚合与索引**（编号体系不新造，引用既有 REQ/DES/TASK/TC/CHG/BUG/FU/CFG/DB）。
 
-**五条硬规则**：
+**六条硬规则**：
 1. **每次变更强制回填**：09 CHG 必含「项目总册回填清单」节——P00–P11 逐册一行 `[x] 已回填（章节；变更注记 CHG-xxx）` / `[ ] 未命中（理由）`，禁止删行/留空/整节无理由（§2.16.6 第 3 条）；gate stop/CI 逐册机校（§0 门禁 4）。**P10 无条件追加**本次 CHG 索引行。
 2. **独立完整**：每册必含章节的正文**写在本册内**，跨册只允许引用链接补充，禁止唯一内容寄存他册；每册头部含 `总册编号：Pxx` 与 `独立完整声明` 行，单册可独立评审。
 3. **变更注记 + 原值可查**：被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`（注记行只增不删）；总册活文档回填的历史原文由变更目录快照 + 09「方案」承担（§2.15 规则 2）。
-4. **逐册评审配对**：每册一份 `docs/project/reviews/<同册文件名>.review.md`（如 `00-project-charter.md.review.md`；追加式，新节置顶），评审人 ≠ 册作者（§2.1 规则 10）；实文回填后追加评审节。必含形状见 `docs/methodologies/project-masters.md` §4。
+4. **逐册评审配对**：每册一份 `docs/project/reviews/<同册文件名>.review.md`（如 `P00-project-charter.md.review.md`；追加式，新节置顶），评审人 ≠ 册作者（§2.1 规则 10）；实文回填后追加评审节。必含形状见 `docs/methodologies/project-masters.md` §4。
 5. **首次变更强制初始化**：`agent-gate begin` 机校 12 册存在（骨架含 TEMPLATE-MARKER 亦放行，填充义务由 stop/Review 承担）；存量仓库升级后下一个变更同样强制；豁免 `AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1` + 09「重要上下文」理由登记（fail-closed，非静默旁路）。
+6. **评审与产物落点唯一（v3.37.1）**：评审记录唯一落点 = 变更轨 `07-review-report.md`（变更/缺陷评审）+ 总册 `reviews/`（逐册配对）；**功能目录不建 `reviews/` 等落点表外子目录**，功能级评审结论并入该功能 `01-spec.md` 评审节或变更轨 07。任何新产物先查 §2.16.5 落点表，**表外文件默认禁止**；细节见 `docs/methodologies/project-masters.md` §1 第 5 条。
 
 **Bug 处置联动（§2.5 阶段 6 同款条款）**：诊断前必读 P01/P02/P03/P04 相关章节并在 `01-diagnosis.md` 引用（防"只见代码不见设计"）；修复落点必须被 TC 直接覆盖，既有 TC 不可覆盖**必须新增防回归 TC**（04 + `03-test-plan.md`），禁止"修复无 TC/仅复跑不新增"。
 
@@ -1020,18 +1021,18 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 #### 项目总册回填清单（每次 CHG 必填，§1.3，v3.35.0；gate stop/CI 逐册机校）
 逐册勾选（`[x] 已回填（章节：…；变更注记 CHG-xxx）` / `[ ] 未命中（理由）`）；实文回填处须留 `> 变更注记 CHG-xxx（日期）：<摘要>` 行；**P10 无条件 `[x]`**（CHG 总索引追加本次条目）；禁止删行、禁止留空：
-- [ ] P00 项目章程（00-project-charter.md）
-- [ ] P01 总需求册（01-requirements-master.md）
-- [ ] P02 总架构册（02-architecture-master.md）
-- [ ] P03 接口索引册（03-interface-registry.md）
-- [ ] P04 数据字典（04-data-dictionary.md）
-- [ ] P05 任务计划册（05-task-plan.md）
-- [ ] P06 测试总册（06-test-master.md）
-- [ ] P07 测试结论总册（07-test-verdicts.md）
-- [ ] P08 部署总册（08-deployment-master.md）
-- [ ] P09 风险与遗留登记册（09-risk-register.md）
-- [ ] P10 变更总日志（10-change-ledger.md）
-- [ ] P11 决策总册（11-decision-log.md）
+- [ ] P00 项目章程（P00-project-charter.md）
+- [ ] P01 总需求册（P01-requirements-master.md）
+- [ ] P02 总架构册（P02-architecture-master.md）
+- [ ] P03 接口索引册（P03-interface-registry.md）
+- [ ] P04 数据字典（P04-data-dictionary.md）
+- [ ] P05 任务计划册（P05-task-plan.md）
+- [ ] P06 测试总册（P06-test-master.md）
+- [ ] P07 测试结论总册（P07-test-verdicts.md）
+- [ ] P08 部署总册（P08-deployment-master.md）
+- [ ] P09 风险与遗留登记册（P09-risk-register.md）
+- [ ] P10 变更总日志（P10-change-ledger.md）
+- [ ] P11 决策总册（P11-decision-log.md）
 
 #### Bug 修复回填清单（Bug 修复类 CHG 必填，§2.5 阶段 6；非缺陷类删除本节）
 [条件必填] 逐项勾选（`[x]` 已更新 / `[ ] 未命中`并写理由）；须与 `docs/bugfix-log.md` 索引行的回填清单逐项一致（log 侧为除"log 本身"外的 9 项——log 自身的登记确认仅落本清单第 1 项）：
@@ -1147,4 +1148,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.36.0 | 更新时间：2026-09-20 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.37.1 | 更新时间：2026-09-21 | 全局维护责任人：geekma (geekma@gmail.com)*

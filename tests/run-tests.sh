@@ -136,9 +136,9 @@ commit_all() { # message
 seed_project_masters() {
   mkdir -p docs/project/reviews
   local p
-  for p in 00-project-charter 01-requirements-master 02-architecture-master 03-interface-registry 04-data-dictionary 05-task-plan 06-test-master 07-test-verdicts 08-deployment-master 09-risk-register 10-change-ledger 11-decision-log; do
-    printf '# master\n总册编号：P%s\n独立完整声明：fixture\n' "${p%%-*}" > "docs/project/$p.md"
-    printf '# review R-P%s\n' "${p%%-*}" > "docs/project/reviews/$p.md.review.md"
+  for p in P00-project-charter P01-requirements-master P02-architecture-master P03-interface-registry P04-data-dictionary P05-task-plan P06-test-master P07-test-verdicts P08-deployment-master P09-risk-register P10-change-ledger P11-decision-log; do
+    printf '# master\n总册编号：%s\n独立完整声明：fixture\n' "${p%%-*}" > "docs/project/$p.md"
+    printf '# review R-%s\n' "${p%%-*}" > "docs/project/reviews/$p.md.review.md"
   done
 }
 
@@ -969,6 +969,19 @@ sed -i '' 's/REQ-00[12]//g' "$FX2/docs/feata/09-changelog.md" 2>/dev/null \
   || sed -i 's/REQ-00[12]//g' "$FX2/docs/feata/09-changelog.md"
 bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
 report "audit exempts matrix when latest CHG has no REQ refs" 0 $?
+
+# CHG-037/FU-105（v3.37.1）：功能目录表外 reviews/ 拦截（spec §1.3 第 6 条执法面）
+audit_fixture "$FX2"
+mkdir -p "$FX2/docs/feata/reviews"
+printf '# stray review\n' > "$FX2/docs/feata/reviews/01-spec.md.review.md"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit rejects out-of-table reviews/ in feature dir" 1 $?
+out=$(bash "$AUDIT_SRC" "$FX2" 2>&1 || true)
+check_output "audit out-of-table refusal names the feature dir" "out-of-table reviews.*feata" "$out"
+rm -f "$FX2/docs/feata/reviews/01-spec.md.review.md"
+rmdir "$FX2/docs/feata/reviews"
+bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
+report "audit passes once the out-of-table reviews/ is removed" 0 $?
 
 SKIPD=$(mktemp -d)
 bash "$AUDIT_SRC" "$SKIPD" >/dev/null 2>&1
@@ -2005,7 +2018,7 @@ check_output "T23 refusal names the masters and the escape hatch" "project maste
 seed_project_masters
 scripts/agent-gate begin CHG-910 >/dev/null 2>&1
 report "T23 begin passes once the twelve masters exist" 0 $?
-rm docs/project/11-decision-log.md
+rm docs/project/P11-decision-log.md
 scripts/agent-gate begin CHG-910 >/dev/null 2>&1
 report "T23 begin refuses with an incomplete master set" 2 $?
 seed_project_masters

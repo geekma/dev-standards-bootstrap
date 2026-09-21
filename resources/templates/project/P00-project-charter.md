@@ -1,6 +1,6 @@
 # P00 · 项目章程（Project Charter）
 
-> **总册编号：P00** ｜ 落点：`docs/project/00-project-charter.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P00** ｜ 落点：`docs/project/P00-project-charter.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——每次变更按 09「项目总册回填清单」逐册勾选（§1.3）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删；覆盖旧正文的历史由变更目录快照 + 09「方案」承担。
 

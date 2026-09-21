@@ -29,6 +29,9 @@
 #      声明时校验，纯 bug 轨处置 16 组只写 01-diagnosis 亦无红灯。**委托必须落在会跑的
 #      执法点上，否则就是循环踢皮球**：审计直接接管（存在性是时间不变量）。豁免 = 登记
 #      `<bugs_root>/.gate-allowlist`（一行一 id，行尾注释写理由），登记组仍逐行点名可见。
+#   G9 项目级总册存在与自证（v3.35.0，§1.3）+ 功能目录表外 reviews/ 拦截（v3.37.1，§1.3 第 6 条）：
+#      12 册在位/自证/评审成对/最新变更回填清单；功能目录（01-spec 或 01.5 信号）内出现
+#      reviews/ 即红（FU-105：评审唯一落点=变更轨 07 + 总册 reviews/，表外默认禁止）
 #   A20 变更目录溯源盖章互证（v3.28.0）：①同目录 ≥1 件已盖而其余未盖 = 盖章半途而废
 #      （时间不变的不一致，CHG-071 实测 2/9）；②`standard_version >= v3.26.0` 的变更目录
 #      必须全 `*.md` 盖章（其规范版本自身要求）。**不触发历史回填禁令**：不要求 v3.26 前
@@ -518,13 +521,13 @@ fi
 PROJECT_DIR="$ROOT/$DOCS_DIR/project"
 if [[ -d "$PROJECT_DIR" ]]; then
   gm_missing=0; gself=0; grev=0
-  for f in 00-project-charter.md 01-requirements-master.md 02-architecture-master.md 03-interface-registry.md 04-data-dictionary.md 05-task-plan.md 06-test-master.md 07-test-verdicts.md 08-deployment-master.md 09-risk-register.md 10-change-ledger.md 11-decision-log.md; do
+  for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md; do
     pm="$PROJECT_DIR/$f"
     if [[ ! -s "$pm" ]]; then
       gm_missing=$((gm_missing+1)); echo "     G9 missing master: project/$f"
       continue
     fi
-    px="P${f%%-*}"
+    px="${f%%-*}"
     grep -q "总册编号：${px}" "$pm" || { gself=$((gself+1)); echo "     G9 no master id: project/$f (expect 总册编号：$px)"; }
     grep -q "独立完整声明" "$pm" || { gself=$((gself+1)); echo "     G9 no self-containment claim: project/$f (expect 独立完整声明)"; }
     rev="$PROJECT_DIR/reviews/$f.review.md"
@@ -544,6 +547,28 @@ if [[ -d "$PROJECT_DIR" ]]; then
   fi
 else
   report "G9 VACUOUS SKIP — no $DOCS_DIR/project/ directory (masters not initialized; init on next change, standards §1.3)" ok ok
+fi
+
+# ---------- G9 功能目录表外子目录 sweep（v3.37.1 CHG-037/FU-105，§1.3 第 6 条执法面） ----------
+# 评审留痕唯一落点 = 变更轨 07-review-report.md + 总册 reviews/（§1.3 第 6 条）；功能目录
+# （含 01-spec.md 或 01.5-rtvm-matrix.md，与 gate "看起来像功能目录"判据同源）内出现
+# reviews/ 等表外子目录即红。表外文件默认禁止——本断言只拦 FU-105 裁定的 reviews/ 形态。
+# 结构目录与隐藏目录豁免；功能目录集合为空时显式空转（防静默假绿，§1.1）。
+ooot=0; ofeat=0
+for d2 in "$ROOT/$DOCS_DIR"/*/; do
+  b2=$(basename "$d2")
+  case "$b2" in changes|bugs|project|templates|methodologies|review) continue ;; esac
+  [[ -f "$d2/01-spec.md" || -f "$d2/01.5-rtvm-matrix.md" ]] || continue
+  ofeat=$((ofeat+1))
+  if [[ -d "$d2/reviews" ]]; then
+    ooot=$((ooot+1))
+    echo "     G9 out-of-table reviews/ in feature dir $b2 (spec §1.3 rule 6: unique locations = change-track 07 + project reviews/)"
+  fi
+done
+if [[ "$ofeat" -gt 0 ]]; then
+  report "G9 feature dirs carry no out-of-table reviews/ (spec §1.3 rule 6)" 0 "$ooot"
+else
+  report "G9 out-of-table feature-dir sweep VACUOUS SKIP — no feature dirs under $DOCS_DIR/ (did NOT run; do not read this as a pass)" ok ok
 fi
 
 rm -f "$S3TMP"

@@ -1,6 +1,6 @@
 # P10 · 变更总日志（Change Ledger）
 
-> **总册编号：P10** ｜ 落点：`docs/project/10-change-ledger.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P10** ｜ 落点：`docs/project/P10-change-ledger.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（追加为主）——**每次变更无条件在「CHG 总索引」追加一行**（回填清单中 P10 永远 `[x]`）；条目追加不改写；CHG 条目正文唯一权威在各变更 `09-changelog.md`（已闭合禁止改写，§2.15）。
 

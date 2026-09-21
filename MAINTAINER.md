@@ -170,6 +170,8 @@ v3.17.0 的重校准记录：v3.16.0 的改动已把 120 KiB 上界的余量吃�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.37.1** | **FU-105 闭合（CHG-037）**：audit G9 面内新增功能目录表外 `reviews/` sweep（信号判据+结构/隐藏目录豁免+空集 VACUOUS）+ golden 三断言 + A25 双 pin。**存量仓回填义务：无**——存量表外 reviews/ 由升级后首跑审计显式亮红（删除/迁移或登记理由）。golden 335，源层断言 320（基线 319）。 |
+| **v3.37.0** | **总册命名分层 + P01 瘦身 + 评审落点明文 + 文档地图（CHG-036）**：12 总册+评审配对文件改 P 前缀（`P01-requirements-master.md` 等）；P01 需求全景索引改统计+指针形态（禁逐 REQ 行展开）；评审唯一落点=变更轨 07+总册 reviews/（§1.3 第 6 条，表外默认禁止）；bootstrap `--core` 安装一页文档地图 `<docs>/README.md`。**存量仓回填义务（下一变更 begin 前）**：12 册+12 评审按 P 前缀改名（G9 显式红即清单）、P01 实册瘦身。golden 332，源层断言 318（基线 317）。 |
 | **v3.36.0** | **缺陷批次扁平化（BUG-006）**：`docs/bugs/BATCH-YYYYMMDD/` 扁平形态（六件套同名文件 + `## BUG-xxx` 锚点、当天同文件追加）；v3.35.0 嵌套子目录形态历史合法不回改；gate `bug_group_dir`/`validate_bug_groups`、stamp `--bug`、audit G8/A21 三形态统一解析——`--upgrade` 带走 agent-gate/stamp-provenance/audit + 两模板。**存量仓回填义务：无**（嵌套存量合法；旧"单文件日文件夹"被判红时按 §2.14 补锚点或登记 `.gate-allowlist`）。 |
 | **v3.35.0** | **项目级总册体系 + 缺陷三条款（CHG-035/BUG-005）**：`docs/project/` 12 册+逐册评审、09「项目总册回填清单」机校（stop/CI）、begin 强制初始化、缺陷六件套按天入批（v3.36.0 扁平化为 `docs/bugs/BATCH-YYYYMMDD/` 同名文件 + `## BUG-xxx` 锚点）+ 诊断必读总册 + TC 覆盖强制——`--upgrade` 带走 agent-gate/stamp-provenance/audit/project-masters.md/**templates/project(13)**。**存量仓回填义务**：升级后下一变更 begin 前初始化 `<docs>/project/`（复制骨架+回填现状+逐册初评）。golden 324，源层断言 309。 |
 | **v3.34.0** | **四项打包**：gate L0/L1 评审独立机校（FU-042 闭环）+ metrics `expert_sessions` 观测字段 + session-gate 规则 10 自查表注入 + 能力卡合规样例——`--upgrade` 带走 agent-gate/session-gate/expert-capabilities 三件。**无回填义务**。golden 310。 |

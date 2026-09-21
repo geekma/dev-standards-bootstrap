@@ -720,7 +720,7 @@ validate_master_backfill() { # change-dir
 validate_project_masters() {
   local f missing=""
   [[ -d "$docs_dir/project" ]] || die "project masters not initialized: $docs_dir/project/ missing — copy <docs>/templates/project/ (skill resources/templates/project/) first (standards §1.3); set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 only with a recorded justification"
-  for f in 00-project-charter.md 01-requirements-master.md 02-architecture-master.md 03-interface-registry.md 04-data-dictionary.md 05-task-plan.md 06-test-master.md 07-test-verdicts.md 08-deployment-master.md 09-risk-register.md 10-change-ledger.md 11-decision-log.md; do
+  for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md; do
     [[ -s "$docs_dir/project/$f" ]] || missing="$missing $f"
   done
   [[ -z "$missing" ]] || die "project masters incomplete:$missing — initialize all twelve under $docs_dir/project/ (standards §1.3)"

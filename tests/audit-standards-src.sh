@@ -864,17 +864,22 @@ report "A25 audit carries G9 masters checks" 1 "$(a17_at_least_1 "$(grep -c 'G9 
 report "A25 audit sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$AUDIT_TPL" || true)")"
 report "A25 audit sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c '扁平批次锚点缺件' "$AUDIT_TPL" || true)")"
 masters_n=0
-for mf in 00-project-charter 01-requirements-master 02-architecture-master 03-interface-registry 04-data-dictionary 05-task-plan 06-test-master 07-test-verdicts 08-deployment-master 09-risk-register 10-change-ledger 11-decision-log; do
+for mf in P00-project-charter P01-requirements-master P02-architecture-master P03-interface-registry P04-data-dictionary P05-task-plan P06-test-master P07-test-verdicts P08-deployment-master P09-risk-register P10-change-ledger P11-decision-log; do
   [[ -s "$ROOT/resources/templates/project/$mf.md" ]] && masters_n=$((masters_n+1))
 done
 report "A25 twelve master templates exist" 12 "$masters_n"
 report "A25 review-record template exists" 1 "$([[ -s "$ROOT/resources/templates/project/reviews/_template.review.md" ]] && echo 1 || echo 0)"
+report "A25 docs map template exists" 1 "$([[ -s "$ROOT/resources/templates/docs-readme.md" ]] && echo 1 || echo 0)"
+report "A25 docs map shipped by bootstrap core" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/docs-readme.md' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A25 audit sweeps out-of-table feature-dir reviews" 1 "$(a17_at_least_1 "$(grep -c 'G9 feature dirs carry no out-of-table reviews/' "$ROOT/resources/templates/audit-docs-consistency.sh" || true)")"
+report "A25 golden pins the out-of-table reviews sweep" 1 "$(a17_at_least_1 "$(grep -c 'audit rejects out-of-table reviews/ in feature dir' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(grep -c 'T23 project-master backfill checklist is enforced at stop' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'T18c defect groups join the same-day batch' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the flat bug batch form" 1 "$(a17_at_least_1 "$(grep -c 'T18d flat bug batch' "$ROOT/tests/run-tests.sh" || true)")"
 at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.35.0'
 at_least "A25 changelog carries the v3.36.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.36.0'
+at_least "A25 changelog carries the v3.37.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.37.0'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

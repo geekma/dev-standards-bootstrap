@@ -1,6 +1,6 @@
 # P07 · 测试结论总册（Test Verdicts）
 
-> **总册编号：P07** ｜ 落点：`docs/project/07-test-verdicts.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P07** ｜ 落点：`docs/project/P07-test-verdicts.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——每个测试批次结论必须同步本册（§2.5 阶段 7 总册联动）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删。批次证据原文唯一权威在 `05-test-results.md`（历史批次不可覆盖），本册做结论聚合。
 

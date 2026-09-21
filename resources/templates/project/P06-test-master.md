@@ -1,6 +1,6 @@
 # P06 · 测试总册（Test Master：策略与脚本索引）
 
-> **总册编号：P06** ｜ 落点：`docs/project/06-test-master.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P06** ｜ 落点：`docs/project/P06-test-master.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——测试策略/TC/SC 增删必须同步本册（§2.5 阶段 4 总册联动）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删。TC 明细唯一权威在各功能 `04-test-scripts.md`，本册做跨功能索引。**bug 修复落点不被既有 TC 覆盖时必须新增 TC（§1.3 Bug 条款 ②）**。
 

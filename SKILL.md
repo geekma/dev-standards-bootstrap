@@ -1,12 +1,12 @@
 ---
 name: dev-standards-bootstrap
-version: 3.36.0
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.36.0，低于此版本即需升级。
+version: 3.37.1
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.37.1，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
 
-> **当前携带版本：v3.36.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+> **当前携带版本：v3.37.1**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
 >
 > **自查是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章。低于上方版本号就该升级——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。也可直接 `bash scripts/bootstrap.sh --check <目标仓库>` 看三处版本比对。
 
@@ -37,7 +37,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
    - `--all` 是"用户说初始化"的**一条完成路径**（默认全量自动注入）。分层 flag（`--core` / `--claude` / `--ci` / `--guard` / `--pipeline`）**只在用户明确要求最小化安装或排障时**使用。
    - **各层的精确文件清单以 `bash scripts/bootstrap.sh --help` 为唯一权威源**，本文件不复制——同一份清单维护两处必然腐烂。
    - 安装器**幂等**、**失败即拒绝（fail-closed）**、目标已有不同内容时展示 diff 并要求 `--force` 才覆盖——这是"检测已有文件、绝不静默覆盖"红线的机器化兜底。`--all` 还会**自动接线**（`core.hooksPath` / 客户端适配器 / 验证命令探测），零手工。
-   - 核心层含跨文档一致性机器审计 `<tests>/audit-docs-consistency.sh`（八组不变量 G1–G8 + A 组盖章互证，逐组定义以脚本头部注释与 `resources/AGENTS.md` 锚点表为唯一权威；支持 `--only-fail` 只打 FAIL 行与空转声明，存量红仓复跑免全量重放）；文档变更后或接入 CI 时运行，失败项即 §2.14 存量回填清单。核心层还含 `METHODOLOGY.md` 与 `methodologies/`（`development.md` / `data-structures.md` / `state-trigger-audit.md` / `expert-capabilities.md` / `project-masters.md`，v3.35.0 起含项目总册细节层）与项目总册骨架 `<docs>/templates/project/`（12 册+评审模板，v3.35.0）。
+   - 核心层含跨文档一致性机器审计 `<tests>/audit-docs-consistency.sh`（九组不变量 G1–G9 + A 组盖章互证，逐组定义以脚本头部注释与 `resources/AGENTS.md` 锚点表为唯一权威；支持 `--only-fail` 只打 FAIL 行与空转声明，存量红仓复跑免全量重放）；文档变更后或接入 CI 时运行，失败项即 §2.14 存量回填清单。核心层还含 `METHODOLOGY.md` 与 `methodologies/`（`development.md` / `data-structures.md` / `state-trigger-audit.md` / `expert-capabilities.md` / `project-masters.md`，v3.35.0 起含项目总册细节层）与项目总册骨架 `<docs>/templates/project/`（12 册+评审模板，v3.35.0）与一页文档地图 `<docs>/README.md`（五层职责+更新时机，v3.37.0）。
    - 强制包层含 Git Hook 归因闸门（`pre-commit` / `pre-push` / `commit-msg`）、`<scripts>/agent-gate`、**会话内执法 `<scripts>/session-gate.sh` + `<scripts>/install-hook-adapter`（按当前客户端自适应接线，v3.34.0）**、`.agent-governance.yml`、`.github/workflows/agent-governance.yml`（required-check 名 `agent-governance`）与治理自测试 `<tests>/run-tests.sh`。
    - **缺陷文档组**模板为**六件套**（`bug-diagnosis.md` / `bug-impact.md` / `bug-test-plan.md` / `bug-matrix.md` / `bug-config.md` / `bug-tasks.md`），落 `<docs>/bugs/_templates/`；编码记录模板 `coding-record.md` 在变更起编时落 `<docs>/changes/<变更号>/04.5-coding-record.md`。
    - **变更起编时**（非安装期）再从模板生成 per-change 产物：`00-intent.md` → `<docs>/changes/<变更号>/00-intent.md`、`governance-state.json` → `00-governance.json`（须由用户/编排者填真实风险等级与执行主体）。同一天的多个 L0/L1 变更可改落 `<docs>/changes/BATCH-YYYYMMDD/`（见「变更批次」节）。
@@ -125,6 +125,6 @@ derived_from_version: <你派生时本 Skill 携带的版本，如 3.22.0>
 
 ## 版本同步
 
-- **当前携带版本 v3.36.0**（见规范页脚，页脚是唯一权威源）。
+- **当前携带版本 v3.37.1**（见规范页脚，页脚是唯一权威源）。
 - **版本号三载体**：frontmatter `version:`、`description` 尾注、正文顶部横幅——升级规范时**页脚 + 三处一起改**，漏改即审计红；平台事实论证（frontmatter 无 `version` 字段等）以 [`MAINTAINER.md`](MAINTAINER.md) §6 为权威，本文件不复述。
 - **改本 Skill 本身的人**（改脚本 / 改规范 / 改模板 / 动断言）请读 **[`MAINTAINER.md`](MAINTAINER.md)**：文件角色表、改哪里必须同时改哪里的联动表、两道自测试的用法与顺序、断言数生成器、审计的 PART A/B 分区、逐版本升级推送清单。**装规范的人不需要读它。**

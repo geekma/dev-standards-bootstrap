@@ -1,6 +1,6 @@
 # P02 · 总架构册（Architecture Master）
 
-> **总册编号：P02** ｜ 落点：`docs/project/02-architecture-master.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P02** ｜ 落点：`docs/project/P02-architecture-master.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——流程/顺序/时序/架构变化必须同步本册（§2.5 阶段 3 总册联动 ⑧）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删；覆盖旧正文的历史由变更目录快照 + 09「方案」承担。
 

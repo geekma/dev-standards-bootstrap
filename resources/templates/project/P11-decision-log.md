@@ -1,6 +1,6 @@
 # P11 · 决策总册（Decision Log / ADR Index）
 
-> **总册编号：P11** ｜ 落点：`docs/project/11-decision-log.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P11** ｜ 落点：`docs/project/P11-decision-log.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（追加为主）——决策产生/废止必须同步本册（§2.5 阶段 3 总册联动 ⑧）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删；已废止决策正文不改写。
 

@@ -1,6 +1,6 @@
 # P03 · 接口索引册（Interface Registry）
 
-> **总册编号：P03** ｜ 落点：`docs/project/03-interface-registry.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P03** ｜ 落点：`docs/project/P03-interface-registry.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——接口/契约/事件变化必须同步本册（§2.5 阶段 3 总册联动 ⑧、§2.13.3 弃用登记）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删。
 

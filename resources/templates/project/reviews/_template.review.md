@@ -1,6 +1,6 @@
 # <册名> 评审记录（R-Pxx）——模板
 
-> 复制本文件为 `docs/project/reviews/<同册文件名>.review.md`（如 `00-project-charter.md.review.md`），一册一份，成对强制（§1.3 第 4 条）。
+> 复制本文件为 `docs/project/reviews/<同册文件名>.review.md`（如 `P00-project-charter.md.review.md`），一册一份，成对强制（§1.3 第 4 条）。
 > **总册编号：Pxx** ｜ 评审对象：`docs/project/<册文件名>` ｜ 更新语义：追加式（新评审节置顶，旧结论保留，作废须在追加节显式声明）。
 > **独立性**：评审人 ≠ 册主要作者（§2.1 规则 10，L0/L1 最低线=评审独立）。
 
