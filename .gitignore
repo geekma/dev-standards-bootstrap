@@ -49,4 +49,6 @@ cover-image/
 #   · 未跟踪的**分发载荷**文件（如新增的 resources/templates/*.sh）若不 `git add`，克隆式安装会拿不到
 #     ——载荷是否入库**与该裁定无关**，见 FU-032。
 # 如需恢复审计链：删掉下面这行 → `git add docs/` → 接线 `core.hooksPath`（当前为空），并在新变更里说明。
-docs
+# v3.39.0（CHG-043）：两份公开对比文档发布在仓库根目录（CAPABILITY-COMPARISON.md / 能力对比分析.md），
+#   不受本行影响；docs/ 治理产物忽略语义与此前的 `docs` 行为逐字节一致。
+docs/*

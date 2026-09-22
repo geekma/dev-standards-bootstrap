@@ -26,10 +26,10 @@
 
 ## Agent 执行资源纪律（八条，违反按 §5 反模式登记）
 
-1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。
+1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化）**：单会话 `bash` 调用 ≤20 次、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。
 2. **一次拉全**：同文件检索一次 grep 合并全部 pattern（`-e` / `-E`），禁止多 pattern 分次重扫。
 3. **先定位后小窗**：read 大文件前先 `grep -n` 定位行号，再小窗读（±80 行）；同文件不重复大窗读。
-4. **勘探下放**：勘探类任务（预计读 >2 文件或 >100 行日志/代码定位）委派只读子代理执行，只回结论与行号，原始输出不进主上下文。
+4. **勘探下放（v3.39.0 起默认强制，非建议）**：预计读 >2 文件或 >100 行日志/代码定位、或 >2 pattern 的检索，**必须**合并单次调用或委派只读子代理执行，只回结论与行号，原始输出不进主上下文；子代理超出派发输入清单的读盘动作须在结论中声明原因（§2.2 输入契约）。
 5. **无匹配 ≠ 通过**：过滤后无输出不等于校验通过——以命令退出码与 FAIL 汇总行为准，FAIL 汇总行不得被过滤吞掉。
 6. **并行批量**：写产物、相互独立的编辑必须单消息并行批量调用；仅内容依赖前序输出时才拆轮。
 7. **定向验证**：模块/单测级验证命令先行；全量回归仅由门禁（stop/staged/CI）统一触发，禁止随手裸跑全量。
@@ -39,7 +39,7 @@
 
 若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
 
-1. 在 `docs/changes/<变更号>/` 创建并完成 `00-intent.md`、`00-governance.json`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`；`00-intent.md` 是变更管线入口（问题/预期结果/开放问题/约束等，§2.17；`begin` 硬校验"预期结果"与"开放问题"两节），02 是先分析后方案的强制前提（业务/技术/风险三维 + 回滚策略，§2.5 阶段 2），JSON 必须声明风险等级和执行主体（含规格/文档作者 `spec_author`，§2.1 规则 10），L2/L3 的开发、测试、Review 主体必须不同。**同一天的多个 L0/L1 变更默认共用 `docs/changes/BATCH-YYYYMMDD/` 一个目录**（§1.1，v3.18.0；v3.24.0 默认化）：产物文件名不变、同批变更用 `## <变更号>` 小节锚点分开、`00-governance.json` **推荐**一行一个变更（v3.20.0 起读取器格式无关，单行/多行皆可，推荐只为逐变更 diff 可读）；**L2/L3 不得入批**。同日第二个 L0/L1 变更起，begin 将强制入批（当日批次已存在时独立目录被拒；豁免须 `AGENT_GUARD_ALLOW_INDEPENDENT=1` 并登记理由，v3.27.0）。涉及需求或功能行为的变更，交付前还须建立并回填功能级 RTVM 矩阵 `docs/<feature>/01.5-rtvm-matrix.md`（REQ→DES→TASK→TC 四维链路 + 验证状态，门禁 4；八类最低文档集之一）：changelog 引用的每个 REQ 编号都必须有对应矩阵回填行，缺失即未闭环（stop/CI 与 audit G5 均拦截）。
+1. 在 `docs/changes/<变更号>/` 创建并完成 `00-intent.md`、`00-governance.json`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**入口骨架可由 `scripts/new-change <变更号> --risk Lx` 生成，v3.38.0；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）；`00-intent.md` 是变更管线入口（问题/预期结果/开放问题/约束等，§2.17；`begin` 硬校验"预期结果"与"开放问题"两节），02 是先分析后方案的强制前提（业务/技术/风险三维 + 回滚策略，§2.5 阶段 2），JSON 必须声明风险等级和执行主体（含规格/文档作者 `spec_author`，§2.1 规则 10），L2/L3 的开发、测试、Review 主体必须不同。**同一天的多个 L0/L1 变更默认共用 `docs/changes/BATCH-YYYYMMDD/` 一个目录**（§1.1，v3.18.0；v3.24.0 默认化）：产物文件名不变、同批变更用 `## <变更号>` 小节锚点分开、`00-governance.json` **推荐**一行一个变更（v3.20.0 起读取器格式无关，单行/多行皆可，推荐只为逐变更 diff 可读）；**L2/L3 不得入批**。同日第二个 L0/L1 变更起，begin 将强制入批（当日批次已存在时独立目录被拒；豁免须 `AGENT_GUARD_ALLOW_INDEPENDENT=1` 并登记理由，v3.27.0）。涉及需求或功能行为的变更，交付前还须建立并回填功能级 RTVM 矩阵 `docs/<feature>/01.5-rtvm-matrix.md`（REQ→DES→TASK→TC 四维链路 + 验证状态，门禁 4；八类最低文档集之一）：changelog 引用的每个 REQ 编号都必须有对应矩阵回填行，缺失即未闭环（stop/CI 与 audit G5 均拦截）。
 2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。**begin 同时机校项目总册 12 册在位（§1.3）**：`docs/project/` 缺失或不全时，先复制 `<docs>/templates/project/` 骨架、回填现状并完成逐册初评，再 begin（豁免 `AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1` 须在 09「重要上下文」登记理由）。
 3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」的 Observation 记录，§2.16.2）与**「项目总册回填清单」节**（P00–P11 逐册勾选/未命中，受影响册实文回填+变更注记，§1.3）。**交付前还须给变更目录全部 `*.md` 产物盖溯源块**：执行 `scripts/stamp-provenance.sh --all <变更号>`（真值从 git / 主机 / UTC 时间读出，**禁手写**；v3.26.0 起全产物强制、gate stop 逐一校验，缺一件不可交付；只校验当前活跃变更，**历史产物不得回填**，§1.1）。**变更 `bug_ref` 绑定的缺陷六件套同样盖章**：`scripts/stamp-provenance.sh --bug <BUG-id>`（v3.34.0，六件不齐 gate staged/stop/CI 与审计 G8 均拦截；豁免须 `<docs>/bugs/.gate-allowlist` 登记理由；v3.35.0 起六件套按天入批，**v3.36.0 扁平化**：`docs/bugs/BATCH-YYYYMMDD/` 同名文件 + `## BUG-xxx` 锚点分节，当天追加同文件更新，嵌套子目录为历史合法形态，§1.1）。启用 Stop Hook 时，源码改动后的结束回复同样会自动检查这些产物（含门禁 4：changelog 引用的 REQ 须已回填 `docs/<feature>/01.5-rtvm-matrix.md`）；启用会话内执法（v3.34.0）时，会话开始自动跑审计亮存量红灯、会话收尾自动跑 stop 等价检查。
 4. 传动与事故重入（§2.17.1/§2.17.2）：`01-spec.md` 合入会自动派发 02/03/03.5/04 骨架 PR，`09-changelog.md` 合入会自动开发布检查单 issue；生产事故经 incident 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架，接手者须走完整变更流程，禁止"修完不留痕"。启用会话内执法时，会话开始自动注入规则 10 四主体自查表（§2.1 规则 10，冲突点名）。
@@ -52,7 +52,7 @@
 | 我要做什么 | 读哪一节 |
 |---|---|
 | 判断这次改动风险等级、要不要跨平台交叉验证 | §0.5 |
-| 分阶段专家评审、九专家职责映射与上下文贴近契约（防泛泛而谈）；专家能力卡见 `docs/methodologies/expert-capabilities.md` | §2.2 |
+| 分阶段专家评审、九专家职责映射与上下文贴近契约（防泛泛而谈）；评审/测试子代理派发必须附**输入契约**（变更文件清单+diff 摘要+待核对产物路径+行号锚点，§2.2 v3.39.0）；专家能力卡见 `docs/methodologies/expert-capabilities.md` | §2.2 |
 | 确认本次变更作者/实现/测试/评审四主体互异（能否兼任） | §2.1 规则 10 |
 | 只加载本次任务需要的规范层（宪法/流程/操作/历史） | §头部「分层阅读路由」 |
 | 新建功能，第一次接触本仓库 | §2.5 阶段 1-10 全部 |
@@ -80,4 +80,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.37.1_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.39.0_

@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.37.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.39.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -52,6 +52,23 @@
   <sub><b>实战记录 2 —— 标准活在磁盘上，不在上下文里。</b>Agent 接到任务的第一个动作是 <code>wc -l docs/DEVELOPMENT_STANDARDS.md</code> 与 <code>ls docs/</code>：它把规范当作"必须去读的文件"，而不是"恰好记得的规则"——对话可能早已被压缩。</sub>
 </p>
 
+## 实测收益
+
+不是理论——基于 11 个真实工作会话的三方能力贡献分析（会话 DB 实测 + git 历史 + 治理产物交叉验证；[完整分析](能力对比分析.md)）：
+
+| 维度 | 模型（LLM） | Agent Harness | **dev-standards-bootstrap** |
+|---|---|---|---|
+| 20 个 SDLC 环节贡献平均 | 36% | 17% | **44%** |
+| 最强环节 | 编码实现 70% | 测试执行 70% | **经验沉淀 70%** |
+| 去掉它还剩什么 | — | — | 编码/测试仍保留 85~95%；**沉淀、跨会话交接、合规审计、立项留痕只剩 25~40%** |
+| 配对配置达成度（有 vs 无） | — | — | **约 59% → 100%（高约 41 个百分点）** |
+
+**这能给你带来什么：**
+
+- **方差压缩，不是更聪明。** 治理不提高模型智力，而是把"聪明但失忆、局部强但全局弱、单次准但复现差"的结构性缺陷用机校 + 记忆 + 独立性钉死。没有它，交付质量是抽签：实测样本包括同一函数六连修、测试断言示例值伪造家族。
+- **价值集中在组织记忆。** 会话一压缩/结束，无治理的 Agent 从失忆重启；这里状态活在 12 册项目总册与磁盘产物里。
+- **税是可测量且正在被砍的。** 治理机制成本约 25% 工具调用 + 常驻底座，而 token 账单的 97.5%+ 是不换挡会话的 cache-read prefill——v3.38/v3.39 把会话纪律升级为机器执法（水位门、勘探预算黄灯、评审输入契约）正是冲着它去的：**约 90% 达成度 + 30~50% 成本下降**——规范的质量，接近裸奔的成本。
+
 ## 核心功能
 
 | 功能 | 说明 |
@@ -65,7 +82,7 @@
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（335 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（367 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。项目级版本历史见[更新日志](CHANGELOG.md)。
 
@@ -320,7 +337,7 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # 源层专用（不下发）：审计执行断言数的入库基线（断言 A10 对漂移判红）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.37.1（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.39.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
@@ -332,6 +349,8 @@ dev-standards-bootstrap/
     └── templates/
         ├── docs-readme.md                  # 一页文档地图（v3.37.0）：五层职责+更新时机（→ <docs>/README.md）
         ├── project                           # 项目级总册（v3.35.0）：SDLC 12 册 P00–P11 + 评审记录模板（→ docs/templates/project/）
+        ├── entry                             # 变更入口骨架（v3.39.0）：begin 必检七件模板（→ docs/templates/entry/）
+        ├── new-change.sh                   # 变更入口脚手架（v3.39.0）：专用目录/当日批次自动判定（→ scripts/new-change）
         ├── CLAUDE.md                       # Claude Code 一行导入
         ├── PULL_REQUEST_TEMPLATE.md        # 带门禁自检的 GitHub PR 模板
         ├── check-standards-compliance.sh   # CI 合规检查脚本
@@ -380,7 +399,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.37.1 | **最后更新：** 2026-09-21 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.39.0 | **最后更新：** 2026-09-22 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](CHANGELOG.md)
 

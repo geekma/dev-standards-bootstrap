@@ -32,6 +32,7 @@ Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
                methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
                <docs>/templates/project/ (总册 12 册 + 评审模板, v3.35.0),
+               <docs>/templates/entry/ (变更入口骨架 7 件, v3.38.0),
                <docs>/README.md (一页文档地图, v3.37.0),
                <docs>/06.5-deployment-config.md, <docs>/06-delivery-summary.md
                (八类最低文档集里原先无模板的两类，CHG-004),
@@ -39,6 +40,7 @@ Flags (layers; default --core when none given):
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, <scripts>/check-standards-compliance.sh
   --guard      强制执行包: <scripts>/agent-gate, <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
+               <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
                <github>/workflows/agent-governance.yml,
@@ -579,6 +581,11 @@ run_layer() {
       for b in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-config.md bug-tasks.md; do
         install_file - "$DOCS_DIR/bugs/_templates/$b" "resources/templates/$b"
       done
+      # v3.38.0（CHG-038）：变更管线入口骨架（begin 必检七件模板）+ 脚手架脚本。
+      mkdir -p "$DOCS_DIR/templates/entry"
+      for e in 00-intent.md 00-governance.json 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+        install_file - "$DOCS_DIR/templates/entry/$e" "resources/templates/entry/$e"
+      done
       # 八类最低文档集（规范 §1.1）中此前既无模板、也无门禁的两类（CHG-004 / BUG-002）：
       # 未命中时也必须存在并显式声明"未命中，不适用"——不能靠"不建文件"来表达不适用。
       install_file deployment-config "$DOCS_DIR/06.5-deployment-config.md" resources/templates/06.5-deployment-config.md
@@ -595,6 +602,7 @@ run_layer() {
     guard)
       install_file - "$SCRIPTS_DIR/agent-gate" resources/templates/agent-gate.sh 755
       install_file - "$SCRIPTS_DIR/stamp-provenance.sh" resources/templates/stamp-provenance.sh 755
+      install_file - "$SCRIPTS_DIR/new-change" resources/templates/new-change.sh 755
       install_file - "$GITHOOKS_DIR/pre-commit" resources/templates/pre-commit 755
       install_file - "$GITHOOKS_DIR/pre-push" resources/templates/pre-push 755
       install_file - "$GITHOOKS_DIR/commit-msg" resources/templates/commit-msg 755

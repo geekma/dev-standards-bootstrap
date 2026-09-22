@@ -277,6 +277,12 @@ validate_artifact_content() {
       || die "$d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
     grep -q "里程碑" "$d/03.5-tasks.md" \
       || die "$d/03.5-tasks.md missing milestone (里程碑) info (A-layer, standards §2.5 stage 3)"
+    # v3.39.0 (CHG-041): review/test subagents must receive their evidence pack
+    # from the orchestrator, not re-explore the repo for it (standards §2.2
+    # input contract). The field must exist on every non-trivial task list;
+    # the lightweight one-line channel stays exempt by the branch above.
+    grep -q "评审输入" "$d/03.5-tasks.md" \
+      || die "$d/03.5-tasks.md missing review-input (评审输入) field (A-layer, standards §2.2 input contract, v3.39.0)"
   fi
 }
 
@@ -984,8 +990,19 @@ emit_metrics() {
       esess=$(printf '%s' "$sigs" | grep -c . || true)
       esess_over=false
       if [[ "$risk" == '"L2"' || "$risk" == '"L3"' ]] && [[ "${esess:-0}" -gt 3 ]]; then esess_over=true; fi
-      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
-        "$id" "$risk" "${esess:-0}" "$esess_over" \
+      # v3.38.0 (CHG-040): artifact cost observation — md file count and byte
+      # volume of the change's containing directory. In a BATCH the files are
+      # SHARED by every member, so each member reports the same directory-wide
+      # numbers: they measure the batch, not the individual change — do not
+      # sum them across members. Governance JSON is deliberately not counted
+      # (machine-read contract, mirrors the stamp exclusion).
+      a_files=$(find "$dir" -maxdepth 1 -name '*.md' 2>/dev/null | grep -c . || true)
+      # `|| true` keeps an empty directory (no *.md → cat fails under pipefail)
+      # from aborting metrics mid-run; wc still prints 0.
+      a_bytes=$(cat "$dir"/*.md 2>/dev/null | wc -c | tr -d ' ' || true)
+      [[ "$a_bytes" =~ ^[0-9]+$ ]] || a_bytes=0
+      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
+        "$id" "$risk" "${esess:-0}" "$esess_over" "${a_files:-0}" "${a_bytes:-0}" \
         "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
         "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
         "$(ts_or_null "$t_chg")" \
@@ -1044,6 +1061,20 @@ case "$command" in
     # v3.35.0 (standards §1.3): project masters must be initialized before any
     # change starts — first change initializes them (docs edits precede begin).
     [[ "${AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS:-}" == "1" ]] || validate_project_masters
+    # v3.38.0 (CHG-039): session water level (standards §2.9.6). The OpenCode
+    # adapter counts user turns into .agent-state/session-water.json; the gate
+    # still reads only DISK (never the client runtime), so clients without the
+    # hook have no water file and degrade fail-open (§2.17.3.2: semantics
+    # unchanged, defense line moves back). Threshold is env-tunable until the
+    # metrics cost data (v3.38.0) justifies hardening it.
+    water_file="$repo_root/.agent-state/session-water.json"
+    if [[ -s "$water_file" && "${AGENT_GUARD_ALLOW_OVER_WATER:-}" != "1" ]]; then
+      w_turns=$(sed -n 's/.*"turns":[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$water_file" | head -1)
+      w_limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
+      if [[ "$w_turns" =~ ^[0-9]+$ ]] && [[ "$w_turns" -gt "$w_limit" ]]; then
+        die "session water level ${w_turns} turns exceeds the ${w_limit}-turn limit (standards §2.9.6) — handoff to a fresh session (state rebuilds from disk, §2.16.1) and re-begin there, or set AGENT_GUARD_ALLOW_OVER_WATER=1 with the justification recorded in 09「重要上下文」"
+      fi
+    fi
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     echo "agent-gate: active change is $id"
@@ -1108,7 +1139,8 @@ A-layer content checks (standards §2.5): 00-intent.md must contain the
 expected-outcome and open-questions sections; 01-spec.md must use REQ-
 numbering; 02 must cover business impact, risk and rollback; 03-modification-
 plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
-carry dependencies/milestones or an explicit no-breakdown exemption; 04-test-
+carry dependencies/milestones plus a review-input (评审输入) field, or an
+explicit no-breakdown exemption; 04-test-
 scripts.md must use TC- numbering, a coverage-dimension column, and SC-
 scenario numbering. Hollow skeletons fail.
 
@@ -1142,6 +1174,16 @@ line, trailing comment = reason); allowlisted groups WARN instead of dying.
 
 metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.
+v3.38.0 adds artifact_files / artifact_bytes (md files in the change's
+directory; in a BATCH they measure the shared directory — do not sum across
+members).
+
+Session water level (v3.38.0, generalized v3.39.0, standards §2.9.6): begin reads
+.agent-state/session-water.json, maintained by `session-gate.sh count turn` —
+the harness-agnostic telemetry layer that Claude/OpenCode adapters forward
+events to. Over AGENT_GUARD_SESSION_TURN_LIMIT (default 50) begin refuses
+the new change; AGENT_GUARD_ALLOW_OVER_WATER=1 escapes with a justification
+recorded in 09「重要上下文」. No water file (no hook client) = check skipped.
 
 Configuration (v3.15.0): directory ROOTS come from the `paths:` block of
 .agent-governance.yml (docs / scripts / tests / githooks), each overridable by

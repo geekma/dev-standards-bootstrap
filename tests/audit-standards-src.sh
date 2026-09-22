@@ -877,6 +877,26 @@ report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(g
 report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'T18c defect groups join the same-day batch' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the flat bug batch form" 1 "$(a17_at_least_1 "$(grep -c 'T18d flat bug batch' "$ROOT/tests/run-tests.sh" || true)")"
+# --- A25 v3.38.0：会话水位门 / 产物体量度量 / 入口脚手架（CHG-038/039/040）---
+report "A25 gate begin reads the session water level" 1 "$(a17_at_least_1 "$(grep -c 'session-water.json' "$GATE_TPL" || true)")"
+report "A25 gate water refusal names the escape hatch" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_ALLOW_OVER_WATER' "$GATE_TPL" || true)")"
+report "A25 adapter counts chat.message turns" 1 "$(a17_at_least_1 "$(grep -c 'chat.message' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
+report "A25 session-gate maintains the water file" 1 "$(a17_at_least_1 "$(grep -c 'session-water.json' "$ROOT/resources/templates/session-gate.sh" || true)")"
+report "A25 metrics emits artifact cost fields" 1 "$(a17_at_least_1 "$(grep -c 'artifact_bytes' "$GATE_TPL" || true)")"
+report "A25 scaffolder template exists" 1 "$([[ -s "$ROOT/resources/templates/new-change.sh" ]] && echo 1 || echo 0)"
+report "A25 scaffolder shipped by bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/new-change.sh' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A25 seven entry templates exist" 7 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
+report "A25 entry templates shipped by bootstrap core" 1 "$(a17_at_least_1 "$(grep -c 'templates/entry' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A25 golden pins the water gate" 1 "$(a17_at_least_1 "$(grep -c 'T24 begin names the water level' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden pins the scaffolder" 1 "$(a17_at_least_1 "$(grep -c 'T25 filled scaffold passes begin' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden pins the artifact cost metrics" 1 "$(a17_at_least_1 "$(grep -c 'metrics emits artifact cost fields' "$ROOT/tests/run-tests.sh" || true)")"
+# --- A25 v3.39.0：评审输入契约 / 会话遥测通用层（CHG-041/042）---
+report "A25 gate enforces the review-input field" 1 "$(a17_at_least_1 "$(grep -c 'missing review-input' "$GATE_TPL" || true)")"
+report "A25 entry 03.5 template carries the input contract" 1 "$(a17_at_least_1 "$(grep -c '评审输入' "$ROOT/resources/templates/entry/03.5-tasks.md" || true)")"
+report "A25 telemetry lives in the session-gate common layer" 1 "$(a17_at_least_1 "$(grep -c 'count tool' "$ROOT/resources/templates/session-gate.sh" || true)")"
+report "A25 claude adapter forwards telemetry hooks" 1 "$(a17_at_least_1 "$(grep -c 'UserPromptSubmit' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
+report "A25 opencode plugin is a thin forwarder" 1 "$(a17_at_least_1 "$(grep -c 'session-gate.sh count turn' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
+report "A25 golden pins the telemetry suite" 1 "$(a17_at_least_1 "$(grep -c 'T26 idle carries yellow light' "$ROOT/tests/run-tests.sh" || true)")"
 at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.35.0'
 at_least "A25 changelog carries the v3.36.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.36.0'
 at_least "A25 changelog carries the v3.37.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.37.0'

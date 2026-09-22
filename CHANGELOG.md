@@ -8,6 +8,13 @@
 
 ### 新增
 
+- **评审输入契约（规范 v3.39.0，CHG-041）**：§2.2 增补——主 Agent 派发评审/测试子代理必须随包供给证据（变更文件清单+diff 摘要、待核对产物路径、行号锚点），子代理超清单读盘须声明原因；`03.5-tasks.md` 增「评审输入」字段，begin A 层机校（轻量通道豁免不受影响）。实测单个 Review 子代理 12.6 分钟全仓重勘探的根因关闭。
+- **会话遥测通用层（规范 v3.39.0，CHG-042）**：轮次/工具计数从 OpenCode 插件下沉 `session-gate.sh count turn|count tool`（bash，harness 无关）——Claude 走 UserPromptSubmit/PostToolUse hook、OpenCode 插件降为薄转发，其余 harness 接等价事件即可；新增勘探预算机校：单会话 bash >20 亮黄灯（软执法）要求 09 登记；AGENTS.md 纪律 1 量化、纪律 4 勘探下放改默认强制；§2.9.6 增交付前「换挡检查」登记项。golden 359→367，源层断言 332→338。
+
+- **会话水位机校（规范 v3.38.0，CHG-039）**：OpenCode 适配器插件对 `chat.message` 计轮落盘 `.agent-state/session-water.json`（会话开始清零，超阈值每 10 轮硬提醒）；`agent-gate begin` 读磁盘水位超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即拒开新变更——gate 只读磁盘不碰客户端运行时；无水位文件客户端跳过（防线后移语义不变）；豁免 `AGENT_GUARD_ALLOW_OVER_WATER=1` 须 09 登记理由。§2.9.6 从纯文字升 A 层。
+- **变更入口脚手架（规范 v3.38.0，CHG-038）**：`scripts/new-change <id> --risk Lx` 从 `<docs>/templates/entry/`（`--core` 新发 7 件 begin 必检骨架模板）生成入口件，自动判定专用目录/当日批次归并（L0/L1 入批、L2/L3 专用、`AGENT_GUARD_ALLOW_INDEPENDENT` 同 gate 语义）；治理 JSON 占位 `PENDING` 由 begin 拒绝——脚手架不豁免任何门禁，只消除入口三件无模板的空白。golden 335→359。
+- **metrics 产物体量观测（规范 v3.38.0，CHG-040）**：`agent-gate metrics` 每行新增 `artifact_files`/`artifact_bytes`（变更目录 `*.md` 件数与字节量；批次内共享目录级数值不跨成员求和）——"规范瘦身"决策数据化（加一删一预算的上限量依据）；token 级成本裁定为平台 adapter 职责不进核心契约。源层断言 320→332（A25 增 12 pin）。
+
 - **功能目录表外 reviews/ 审计拦截（规范 v3.37.1，CHG-037/FU-105）**：audit G9 面内 sweep——功能目录（01-spec/01.5 信号）含 `reviews/` 即 FAIL 点名，结构/隐藏目录豁免，空集显式 VACUOUS SKIP；golden 335，源层断言 320。
 - **总册命名分层 + P01 瘦身 + 评审落点明文 + 文档地图（规范 v3.37.0，CHG-036）**：12 总册+评审配对文件改 P 前缀（与功能轨 `01-spec.md` 消歧）；P01 需求全景索引改统计+指针形态（禁逐 REQ 行展开）；评审唯一落点=变更轨 07+总册 reviews/（§1.3 第 6 条，表外默认禁止）；bootstrap `--core` 安装一页文档地图 `<docs>/README.md`。golden 332，源层断言 318。
 - **缺陷批次扁平化（规范 v3.36.0，BUG-006）**：同日多缺陷落 `docs/bugs/BATCH-YYYYMMDD/` 扁平目录——六件套同名文件 + `## BUG-xxx` 锚点分节，当天追加落在同一套文件里（与变更批次同构）；v3.35.0 嵌套子目录形态降为历史合法；gate/stamp/audit 三形态统一解析（独立→嵌套→扁平锚点，多处命中 fail-closed）。

@@ -115,6 +115,7 @@ EOF
   cat > "$d/03.5-tasks.md" <<'EOF'
 # tasks
 - T-001: do something（依赖: 无；里程碑: M1）
+- 评审输入: 变更文件清单 + 待核对产物 + 行号锚点（§2.2 输入契约）
 EOF
   cat > "$d/04-test-scripts.md" <<'EOF'
 # tests
@@ -789,6 +790,8 @@ out=$(scripts/agent-gate metrics)
 check_output "metrics flips delivery_ready after evidence" '"delivery_ready":true' "$out"
 # v3.34.0（CHG-034）：专家会话数观测字段（只观测不拦截）
 check_output "metrics emits expert_sessions field" '"expert_sessions":[0-9]+,"expert_sessions_over_guardrail":(true|false)' "$out"
+# v3.38.0（CHG-040）：产物体量观测字段（瘦身决策数据化）
+check_output "metrics emits artifact cost fields" '"artifact_files":[0-9]+,"artifact_bytes":[0-9]+' "$out"
 
 new_repo
 seed_artifacts CHG-710 L0 claude/s-1
@@ -884,7 +887,7 @@ printf '{"change_id":"CUSTOM-1","risk_level":"L0","spec_author":"author/a-1","im
 echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > changes/CUSTOM-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > changes/CUSTOM-1/03-modification-plan.md
-printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n' > changes/CUSTOM-1/03.5-tasks.md
+printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > changes/CUSTOM-1/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > changes/CUSTOM-1/04-test-scripts.md
 scripts/agent-gate begin CUSTOM-1 >/dev/null 2>&1
 report "begin honors AGENT_GUARD_CHANGE_ROOT" 0 $?
@@ -1201,7 +1204,7 @@ printf '{"change_id":"CFG-1","risk_level":"L0","spec_author":"author/a-1","imple
 echo "REQ-001 s" > doc/changes/CFG-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > doc/changes/CFG-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-1/03-modification-plan.md
-printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n' > doc/changes/CFG-1/03.5-tasks.md
+printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > doc/changes/CFG-1/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > doc/changes/CFG-1/04-test-scripts.md
 out=$(scripts/agent-gate begin CFG-1 2>&1); rc=$?
 report "T14 gate honors paths.docs from config" 0 "$rc"
@@ -1222,7 +1225,7 @@ printf '{"change_id":"CFG-2","risk_level":"L0","spec_author":"author/a-1","imple
 echo "REQ-001 s" > doc/changes/CFG-2/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > doc/changes/CFG-2/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-2/03-modification-plan.md
-printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n' > doc/changes/CFG-2/03.5-tasks.md
+printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > doc/changes/CFG-2/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > doc/changes/CFG-2/04-test-scripts.md
 out=$(scripts/agent-gate begin CFG-2 2>&1); rc=$?
 report "T14 change_root derives from paths.docs" 0 "$rc"
@@ -2046,6 +2049,112 @@ sed -i '' 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' do
   || sed -i 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' docs/changes/CHG-910/09-changelog.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T23 an explicit 未命中 row with a reason passes" 0 $?
+
+# ------------------------------------------------ T24 session water level (v3.38.0)
+new_repo
+seed_artifacts CHG-920 L1 claude/s-1
+mkdir -p .agent-state
+printf '{"turns":80,"session":"s-1","updated_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-water.json
+out=$(scripts/agent-gate begin CHG-920 2>&1); rc=$?
+check_output "T24 begin names the water level and both escapes" "session water level 80 turns exceeds the 50-turn limit" "$out"
+check_output "T24 refusal names handoff path" "handoff to a fresh session" "$out"
+check_output "T24 refusal names escape env" "AGENT_GUARD_ALLOW_OVER_WATER=1" "$out"
+report "T24 begin exit 2 over water" 2 "$rc"
+AGENT_GUARD_ALLOW_OVER_WATER=1 scripts/agent-gate begin CHG-920 >/dev/null 2>&1
+report "T24 explicit escape passes over water" 0 $?
+printf '{"turns":10,"session":"s-2","updated_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-water.json
+AGENT_GUARD_SESSION_TURN_LIMIT=5 scripts/agent-gate begin CHG-920 >/dev/null 2>&1
+report "T24 tuned limit below turns refuses (exit 2)" 2 $?
+rm -f .agent-state/session-water.json
+AGENT_GUARD_SESSION_TURN_LIMIT=5 scripts/agent-gate begin CHG-920 >/dev/null 2>&1
+report "T24 no water file degrades fail-open" 0 $?
+
+# ------------------------------------------------ T25 new-change scaffolder (v3.38.0)
+new_repo
+NEWCHANGE_SRC="$ROOT/resources/templates/new-change.sh"
+if [[ -f "$NEWCHANGE_SRC" ]]; then
+  cp "$NEWCHANGE_SRC" scripts/new-change
+  chmod +x scripts/new-change
+  # 夹具内联最小入口模板（内容契约由 audit-standards-src pin 覆盖；此处测脚手架逻辑）
+  mkdir -p docs/templates/entry
+  cat > docs/templates/entry/00-intent.md <<'EOF'
+# <__CHANGE_ID__> 意图
+## 预期结果
+__RISK__
+## 开放问题
+open
+EOF
+  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
+  printf '# <__CHANGE_ID__> spec (__RISK__)\n- REQ-001: tbd\n' > docs/templates/entry/01-spec.md
+  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n' > docs/templates/entry/02-code-impact-analysis.md
+  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
+  printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填（§2.2 输入契约）\n' > docs/templates/entry/03.5-tasks.md
+  printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
+
+  scripts/new-change CHG-930 --risk L1 >/dev/null 2>&1
+  report "T25 dedicated scaffold exits 0" 0 $?
+  report "T25 scaffold creates seven entry files" 7 "$(ls docs/changes/CHG-930/*.md docs/changes/CHG-930/*.json 2>/dev/null | wc -l | tr -d ' ')"
+  check_output "T25 id substituted in governance" '"change_id": "CHG-930"' "$(cat docs/changes/CHG-930/00-governance.json)"
+  check_output "T25 risk substituted in spec" "L1" "$(cat docs/changes/CHG-930/01-spec.md)"
+  out=$(scripts/agent-gate begin CHG-930 2>&1 || true)
+  check_output "T25 PENDING owners rejected by begin" "must name a concrete owner" "$out"
+  sed -i '' 's/PENDING/op\/s-930/g' docs/changes/CHG-930/00-governance.json 2>/dev/null \
+    || sed -i 's/PENDING/op\/s-930/g' docs/changes/CHG-930/00-governance.json
+  scripts/agent-gate begin CHG-930 >/dev/null 2>&1
+  report "T25 filled scaffold passes begin (A-layer satisfied by skeleton)" 0 $?
+
+  mkdir -p "docs/changes/BATCH-$(date +%Y%m%d)"
+  printf '# intent\n## CHG-931\n## 预期结果\n## 开放问题\n' > "docs/changes/BATCH-$(date +%Y%m%d)/00-intent.md"
+  printf '{"change_id": "CHG-931", "risk_level": "L0", "spec_author": "op/s-x", "implementation_owner": "op/s-x"}\n' > "docs/changes/BATCH-$(date +%Y%m%d)/00-governance.json"
+  scripts/new-change CHG-932 --risk L0 >/dev/null 2>&1
+  report "T25 batch-join exits 0" 0 $?
+  report "T25 no dedicated dir for batch member" 0 "$(test ! -e docs/changes/CHG-932; echo $?)"
+  grep -q '^## CHG-932' "docs/changes/BATCH-$(date +%Y%m%d)/01-spec.md"
+  report "T25 batch shared file carries ## CHG-932 anchor" 0 $?
+  report "T25 governance.json gains one line per member" 2 "$(wc -l < "docs/changes/BATCH-$(date +%Y%m%d)/00-governance.json" | tr -d ' ')"
+  out=$(scripts/new-change CHG-932 --risk L0 2>&1 || true)
+  check_output "T25 duplicate id in batch refused" "already has a section" "$out"
+  out=$(scripts/new-change CHG-933 --risk L2 2>&1 || true)
+  report "T25 L2 on a batch day goes dedicated (exit 0)" 0 $?
+  report "T25 L2 dir is dedicated" 0 "$(test -d docs/changes/CHG-933; echo $?)"
+  AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/new-change CHG-934 --risk L0 >/dev/null 2>&1
+  report "T25 ALLOW_INDEPENDENT escapes to dedicated dir" 0 "$(test -d docs/changes/CHG-934; echo $?)"
+  out=$(scripts/new-change CHG-935 2>&1 || true)
+  check_output "T25 missing --risk refused" "--risk L0|L1|L2|L3 required" "$out"
+  out=$(scripts/new-change CHG-936 --risk L9 2>&1 || true)
+  check_output "T25 invalid risk refused" "--risk L0|L1|L2|L3 required" "$out"
+else
+  echo "SKIP T25: new-change.sh absent (bootstrap --guard 未安装) — 跳过脚手架 golden cases"
+fi
+
+# ------------------------------------------------ T26 session telemetry (v3.39.0)
+new_repo
+SESSION_GATE_SRC="$ROOT/resources/templates/session-gate.sh"
+if [[ -f "$SESSION_GATE_SRC" ]]; then
+  cp "$SESSION_GATE_SRC" scripts/session-gate.sh
+  chmod +x scripts/session-gate.sh
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  report "T26 telemetry files reset by start" 0 "$(test -s .agent-state/session-tool-stats.json && test -s .agent-state/session-water.json; echo $?)"
+  bash scripts/session-gate.sh count turn >/dev/null 2>&1
+  bash scripts/session-gate.sh count turn >/dev/null 2>&1
+  check_output "T26 turn count lands in water file" '"turns":2' "$(cat .agent-state/session-water.json)"
+  bash scripts/session-gate.sh count tool Bash >/dev/null 2>&1
+  bash scripts/session-gate.sh count tool Grep >/dev/null 2>&1
+  check_output "T26 tool counts classified" '"bash":1,"grep":1' "$(cat .agent-state/session-tool-stats.json)"
+  printf '{"tool_name":"Read"}\n' | bash scripts/session-gate.sh count tool - >/dev/null 2>&1
+  check_output "T26 stdin tool_name parsed (PostToolUse shape)" '"other":1' "$(cat .agent-state/session-tool-stats.json)"
+  out=$(AGENT_GUARD_SESSION_TURN_LIMIT=3 bash scripts/session-gate.sh count turn 2>&1)
+  check_output "T26 turn-limit warning emitted" "TURN LIMIT" "$out"
+  for i in $(seq 1 25); do bash scripts/session-gate.sh count tool bash >/dev/null 2>&1; done
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  check_output "T26 exploration yellow light on status" "bash calls 26 > 20" "$out"
+  out=$(bash scripts/session-gate.sh idle 2>&1 || true)
+  check_output "T26 idle carries yellow light" "bash calls 26 > 20" "$out"
+  out=$(AGENT_GUARD_SESSION_TURN_LIMIT=5 bash scripts/session-gate.sh count turn 2>&1)
+  if printf '%s' "$out" | grep -q "TURN LIMIT"; then report "T26 under-limit stays silent" 1 0; else report "T26 under-limit stays silent" 0 0; fi
+else
+  echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

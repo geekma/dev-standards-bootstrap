@@ -114,4 +114,4 @@ public Either<AnalysisFallback, AnalysisDTO> analyze(String sessionId) {
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.37.1_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.39.0_

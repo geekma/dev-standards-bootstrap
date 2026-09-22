@@ -21,8 +21,8 @@ set -uo pipefail
 
 mode="${1:-}"
 case "$mode" in
-  start|idle|status) ;;
-  *) echo "usage: scripts/session-gate.sh start|idle|status" >&2; exit 2 ;;
+  start|idle|status|count) ;;
+  *) echo "usage: scripts/session-gate.sh start|idle|status|count turn|count tool <name|->" >&2; exit 2 ;;
 esac
 
 ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)
@@ -33,12 +33,90 @@ GATE="scripts/agent-gate"
 AUDIT="tests/audit-docs-consistency.sh"
 STATE_DIR=".agent-state"
 REPORT="$STATE_DIR/session-gate-last.md"
+STATS_FILE="$STATE_DIR/session-tool-stats.json"
+WATER_FILE="$STATE_DIR/session-water.json"
 
 mkdir -p "$STATE_DIR"
+
+# ---- 会话遥测（v3.39.0，CHG-042）：轮次/工具计数的通用层 --------------------
+# 设计裁定：计数逻辑只活在这里（bash，任意 harness 可接线），客户端适配器只做
+# 事件转发——Claude 走 UserPromptSubmit/PostToolUse hook，OpenCode 插件走
+# chat.message / message.part.updated；无适配器的 harness 天然零开销跳过。
+# gate begin 只读磁盘水位文件（§2.9.6），永不依赖客户端运行时。
+
+now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S; }
+
+reset_state() {
+  printf '{"turns":0,"bash":0,"grep":0,"other":0,"total":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
+  printf '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)" > "$WATER_FILE"
+}
+
+stat_get() { sed -n "s/.*\"$1\":[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$STATS_FILE" 2>/dev/null | head -1; }
+
+stat_write() { # turns bash grep other total
+  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"total":%s,"updated_at":"%s"}\n' \
+    "$1" "$2" "$3" "$4" "$5" "$(now_iso)" > "$STATS_FILE"
+}
+
+water_write() { # <turns>
+  printf '{"turns":%s,"session":"","updated_at":"%s"}\n' "$1" "$(now_iso)" > "$WATER_FILE"
+}
+
+stats_line() {
+  printf 'session-gate: session stats — turns %s, bash %s, grep %s, other %s (resource discipline baseline: bash <= 20)' \
+    "$(stat_get turns)" "$(stat_get bash)" "$(stat_get grep)" "$(stat_get other)"
+}
+
+stats_warnings() { # 软执法黄灯：idle/status 时提示，不阻断（硬执法在 gate begin/stop）
+  local b t limit
+  b=$(stat_get bash); t=$(stat_get turns); limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
+  if [[ "${b:-0}" -gt 20 ]]; then
+    emit "session-gate: YELLOW — bash calls ${b} > 20 this session (AGENTS.md 纪律 1/2 勘探预算)——合并检索或下放子代理，超标原因在 09「重要上下文」登记"
+    report_add "- YELLOW: bash 调用 ${b} 次超勘探预算（20）——合并/下放，超标原因登记 09"
+  fi
+  if [[ "${t:-0}" -gt "$limit" ]]; then
+    emit "session-gate: YELLOW — ${t} turns > ${limit} (§2.9.6)——handoff 换挡，gate begin 已拒开新变更"
+    report_add "- YELLOW: 会话 ${t} 轮超 ${limit} 换挡线（§2.9.6）——handoff"
+  fi
+}
 
 emit() { # 摘要进 stdout（Claude SessionStart 会把 stdout 注入上下文）+ 全文落盘
   printf '%s\n' "$1"
 }
+
+if [[ "$mode" == "count" ]]; then
+  sub="${2:-}"
+  case "$sub" in
+    turn)
+      [[ -s "$STATS_FILE" ]] || reset_state
+      t=$(stat_get turns); t=$(( ${t:-0} + 1 ))
+      b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other); tot=$(stat_get total)
+      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${tot:-0}"
+      water_write "$t"
+      limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
+      if [[ "$t" -ge "$limit" && $(( (t - limit) % 10 )) -eq 0 ]]; then
+        emit "session-gate: TURN LIMIT — ${t} turns >= ${limit} (§2.9.6)——handoff 换挡；gate begin 拒开新变更（AGENT_GUARD_ALLOW_OVER_WATER=1 豁免须登记 09）"
+      fi
+      ;;
+    tool)
+      name="${3:-}"
+      if [[ "$name" == "-" ]]; then
+        name=$(sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' 2>/dev/null | head -1)
+      fi
+      lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+      [[ -s "$STATS_FILE" ]] || reset_state
+      t=$(stat_get turns); b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other); tot=$(stat_get total)
+      case "$lc" in
+        bash) b=$(( ${b:-0} + 1 )) ;;
+        grep) g=$(( ${g:-0} + 1 )) ;;
+        *)    o=$(( ${o:-0} + 1 )) ;;
+      esac
+      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "$(( ${tot:-0} + 1 ))"
+      ;;
+    *) echo "usage: scripts/session-gate.sh count turn|count tool <name|->" >&2; exit 2 ;;
+  esac
+  exit 0
+fi
 
 report_init() {
   {
@@ -62,6 +140,12 @@ has_code_changes() {
 case "$mode" in
   status)
     [[ -f "$REPORT" ]] && cat "$REPORT" || echo "session-gate: no report yet (run start/idle)"
+    # v3.39.0（CHG-042）：会话水位 + 勘探统计观测（§2.9.6 / AGENTS.md 纪律节）——只展示；执法在 gate begin
+    if [[ -s "$STATS_FILE" ]]; then
+      stats_line
+      echo
+      stats_warnings
+    fi
     exit 0
     ;;
 esac
@@ -69,6 +153,7 @@ esac
 report_init
 
 if [[ "$mode" == "start" ]]; then
+  reset_state
   if [[ ! -f "$AUDIT" ]]; then
     emit "session-gate: $AUDIT not found — cross-doc audit skipped (install --core first)"
     report_add "- $AUDIT 缺失，审计未跑（先接 --core 层）"
@@ -166,5 +251,8 @@ else
     report_add "- 无活跃变更、无代码改动：无事可查"
   fi
 fi
+
+# v3.39.0（CHG-042）：勘探预算 + 换挡黄灯（软执法，idle 收尾可见；硬执法在 gate begin）
+stats_warnings
 
 exit 0
