@@ -2156,6 +2156,146 @@ else
   echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
 fi
 
+# ------------------------------------------------ T27 pre-commit auto-stamp (v3.40.0)
+new_repo
+STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
+HOOK_SRC="$ROOT/resources/templates/pre-commit"
+if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
+  cp "$STAMP_SRC" scripts/stamp-provenance.sh
+  mkdir -p .githooks && cp "$HOOK_SRC" .githooks/pre-commit
+  chmod +x .githooks/pre-commit scripts/stamp-provenance.sh scripts/agent-gate
+  seed_artifacts CHG-940 L1 claude/s-27
+  scripts/agent-gate begin CHG-940 >/dev/null 2>&1
+  report "T27 fixture begins clean" 0 $?
+  bash .githooks/pre-commit >/dev/null 2>&1
+  report "T27 pre-commit exits 0 (stamp + staged)" 0 $?
+  check_output "T27 hook stamped provenance block" "generated_by: stamp-provenance.sh" "$(cat docs/changes/CHG-940/00-intent.md)"
+  bash .githooks/pre-commit >/dev/null 2>&1
+  report "T27 idempotent rerun keeps a single block" 1 "$(grep -c '^<!-- provenance$' docs/changes/CHG-940/00-intent.md | tr -d ' ')"
+  scripts/agent-gate end >/dev/null 2>&1
+  out=$(bash .githooks/pre-commit 2>&1 || true)
+  if printf '%s' "$out" | grep -q "stamping provenance"; then report "T27 skip path prints no stamping line" 1 0; else report "T27 skip path prints no stamping line" 0 0; fi
+  # bug_ref binding: the hook stamps the bound defect group too
+  mkdir -p docs/bugs/BUG-940
+  for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+    printf '# %s\n' "$doc" > "docs/bugs/BUG-940/$doc"
+  done
+  sed -i '' 's/}$/,"bug_ref":"BUG-940"}/' docs/changes/CHG-940/00-governance.json 2>/dev/null \
+    || sed -i 's/}$/,"bug_ref":"BUG-940"}/' docs/changes/CHG-940/00-governance.json
+  scripts/agent-gate begin CHG-940 >/dev/null 2>&1
+  bash .githooks/pre-commit >/dev/null 2>&1
+  report "T27 hook exits 0 with bug_ref bound" 0 $?
+  check_output "T27 bound defect group stamped" "generated_by: stamp-provenance.sh" "$(cat docs/bugs/BUG-940/01-diagnosis.md)"
+  # comma-joined batch governance (the §1.1 recommended shape): each member's
+  # bug_ref must be extracted in isolation — no cross-member bleed
+  mkdir -p docs/bugs/BUG-943 docs/bugs/BUG-944
+  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; done
+  mkdir -p docs/changes/BATCH-990922
+  printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
+  seed_artifacts CHG-944 L0 claude/s-27
+  scripts/agent-gate begin CHG-944 >/dev/null 2>&1
+  bash .githooks/pre-commit >/dev/null 2>&1
+  report "T27 hook exits 0 on comma-joined batch member" 0 $?
+  check_output "T27 member bug_ref stamped in isolation" "generated_by: stamp-provenance.sh" "$(cat docs/bugs/BUG-944/01-diagnosis.md)"
+  if grep -q '^<!-- provenance$' docs/bugs/BUG-943/01-diagnosis.md; then report "T27 no cross-member bleed" 1 0; else report "T27 no cross-member bleed" 0 0; fi
+else
+  echo "SKIP T27: stamp-provenance.sh/pre-commit absent (bootstrap --guard 未安装) — 跳过自动章 golden cases"
+fi
+
+# ------------------------------------------------ T28 P3 defect lightweight channel (v3.40.0)
+new_repo
+seed_artifacts CHG-950 L1 claude/s-28
+mkdir -p docs/bugs/BUG-950
+printf '# 诊断\nseverity: P3\n现象：文案错别字\n' > docs/bugs/BUG-950/01-diagnosis.md
+printf '# 防回归\n| TC |\n' > docs/bugs/BUG-950/03-test-plan.md
+printf '# 矩阵\n| REQ |\n' > docs/bugs/BUG-950/04-matrix.md
+sed -i '' 's/}$/,"bug_ref":"BUG-950"}/' docs/changes/CHG-950/00-governance.json 2>/dev/null \
+  || sed -i 's/}$/,"bug_ref":"BUG-950"}/' docs/changes/CHG-950/00-governance.json
+scripts/agent-gate begin CHG-950 >/dev/null 2>&1
+report "T28 P3 severity waives 02/05/06 at begin" 0 $?
+sed -i '' '/^severity: P3$/d' docs/bugs/BUG-950/01-diagnosis.md 2>/dev/null \
+  || sed -i '/^severity: P3$/d' docs/bugs/BUG-950/01-diagnosis.md
+scripts/agent-gate begin CHG-950 >/dev/null 2>&1
+report "T28 undeclared severity keeps full six-piece (fail-closed)" 2 $?
+printf 'severity: P2\n' >> docs/bugs/BUG-950/01-diagnosis.md
+scripts/agent-gate begin CHG-950 >/dev/null 2>&1
+report "T28 non-P3 value keeps full six-piece" 2 $?
+# flat batch: severity must live inside the member's own section (same repo —
+# standalone BUG-950 and the flat day batch coexist; same-day enforcement for
+# the change track only fires when a CHANGE batch exists, none does here)
+B9="docs/bugs/BATCH-$(date -u +%Y%m%d)"
+mkdir -p "$B9"
+printf '# 批次诊断\n## BUG-951\nseverity: P3\n文案\n## BUG-952\n无 severity 行\n' > "$B9/01-diagnosis.md"
+printf '# 防回归\n## BUG-951\n## BUG-952\n' > "$B9/03-test-plan.md"
+printf '# 矩阵\n## BUG-951\n## BUG-952\n' > "$B9/04-matrix.md"
+seed_artifacts CHG-951 L1 claude/s-28b
+sed -i '' 's/}$/,"bug_ref":"BUG-951"}/' docs/changes/CHG-951/00-governance.json 2>/dev/null \
+  || sed -i 's/}$/,"bug_ref":"BUG-951"}/' docs/changes/CHG-951/00-governance.json
+scripts/agent-gate begin CHG-951 >/dev/null 2>&1
+report "T28 flat P3 severity read from member section" 0 $?
+seed_artifacts CHG-952 L1 claude/s-28c
+sed -i '' 's/}$/,"bug_ref":"BUG-952"}/' docs/changes/CHG-952/00-governance.json 2>/dev/null \
+  || sed -i 's/}$/,"bug_ref":"BUG-952"}/' docs/changes/CHG-952/00-governance.json
+scripts/agent-gate begin CHG-952 >/dev/null 2>&1
+report "T28 flat member without severity keeps six-piece" 2 $?
+
+# ------------------------------------------------ T29 session RED blocks new changes (v3.40.0)
+new_repo
+seed_artifacts CHG-960 L1 claude/s-29
+mkdir -p .agent-state
+printf '# session-gate 报告\n- GATE RED — stop 未通过\n' > .agent-state/session-gate-last.md
+scripts/agent-gate begin CHG-960 >/dev/null 2>&1
+report "T29 no changelog baseline degrades fail-open" 0 $?
+# a DELIVERED sibling change (its own 09, mtime older than the report) gives the
+# comparison a baseline; CHG-960 itself stays open (no 09 of its own)
+mkdir -p docs/changes/CHG-959
+printf '# changelog\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t |\n' > docs/changes/CHG-959/09-changelog.md
+touch -t 202001010000 docs/changes/CHG-959/09-changelog.md
+out=$(scripts/agent-gate begin CHG-960 2>&1); rc=$?
+report "T29 fresh RED report blocks begin" 2 "$rc"
+check_output "T29 refusal names the unresolved red" "session audit RED unresolved" "$out"
+check_output "T29 refusal names escape env" "AGENT_GUARD_ALLOW_OVER_RED=1" "$out"
+touch -t 201901010000 .agent-state/session-gate-last.md
+scripts/agent-gate begin CHG-960 >/dev/null 2>&1
+report "T29 stale report passes (delivered after red)" 0 $?
+touch -t 203501010000 .agent-state/session-gate-last.md
+AGENT_GUARD_ALLOW_OVER_RED=1 scripts/agent-gate begin CHG-960 >/dev/null 2>&1
+report "T29 explicit escape passes over red" 0 $?
+
+# ------------------------------------------------ T30 die error codes (v3.40.0)
+total_die=$(grep -c 'die "' "$GATE_SRC" || true)
+coded_die=$(grep -cE 'die "(GATE|NC|ADAPTER)-E[0-9]{2}: ' "$GATE_SRC" || true)
+report "T30 every gate die carries an Exx code" 0 "$(( total_die - coded_die ))"
+out=$(scripts/agent-gate begin CHG-404 2>&1 || true)
+check_output "T30 refusal output carries GATE-E" "GATE-E" "$out"
+NEWCHANGE_SRC="$ROOT/resources/templates/new-change.sh"
+if [[ -f "$NEWCHANGE_SRC" ]]; then
+  report "T30 new-change die count equals coded" 0 "$(( $(grep -c 'die "' "$NEWCHANGE_SRC") - $(grep -cE 'die "NC-E[0-9]{2}: ' "$NEWCHANGE_SRC") ))"
+fi
+ADAPTER_SRC="$ROOT/resources/templates/install-hook-adapter.sh"
+if [[ -f "$ADAPTER_SRC" ]]; then
+  report "T30 adapter die count equals coded" 0 "$(( $(grep -c 'die "' "$ADAPTER_SRC") - $(grep -cE 'die "ADAPTER-E[0-9]{2}: ' "$ADAPTER_SRC") ))"
+fi
+
+# ------------------------------------------------ T31 G10 deprecated-clause sweep (v3.40.0)
+AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
+if [[ -f "$AUDIT_SRC" ]]; then
+  new_repo
+  mkdir -p tests
+  cp "$AUDIT_SRC" tests/audit-docs-consistency.sh
+  mkdir -p docs
+  printf '# 规范\n- 旧条款（v3.22.0 废止，改由 v3.35.0 批次）\n- 坏例：旧条款废止，无版本指向\n' > docs/DEVELOPMENT_STANDARDS.md
+  printf '# AGENTS\n' > docs/AGENTS.md
+  out=$(bash tests/audit-docs-consistency.sh 2>&1 || true)
+  check_output "T31 G10 flags pointer-less 废止 marker" "废止标记缺版本指向" "$out"
+  printf '# 规范\n- 旧条款（v3.22.0 废止，改由 v3.35.0 批次）\n- 好例：旧条款废止（v3.35.0 起由批次承担）\n' > docs/DEVELOPMENT_STANDARDS.md
+  out=$(bash tests/audit-docs-consistency.sh 2>&1 || true)
+  if printf '%s' "$out" | grep -q "废止标记缺版本指向"; then report "T31 G10 clean spec passes" 1 0; else report "T31 G10 clean spec passes" 0 0; fi
+  check_output "T31 G10 ok line present (anti-crash-false-green)" "G10 every 废止 marker carries a superseding v3.x pointer" "$out"
+else
+  echo "SKIP T31: audit-docs-consistency.sh absent — 跳过 G10 golden cases"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

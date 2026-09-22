@@ -65,9 +65,9 @@ note() { echo "install-hook-adapter: $1" >&2; }
 ok() { echo "install-hook-adapter: $1"; }
 
 need_gate() {
-  [[ -x scripts/agent-gate ]] || die "scripts/agent-gate not found or not executable — install the enforcement package first (bootstrap --guard)"
-  [[ -f scripts/session-gate.sh ]] || die "scripts/session-gate.sh not found — upgrade the enforcement package (v3.28.0+)"
-  bash -n scripts/session-gate.sh || die "scripts/session-gate.sh fails bash -n"
+  [[ -x scripts/agent-gate ]] || die "ADAPTER-E01: scripts/agent-gate not found or not executable — install the enforcement package first (bootstrap --guard)"
+  [[ -f scripts/session-gate.sh ]] || die "ADAPTER-E02: scripts/session-gate.sh not found — upgrade the enforcement package (v3.28.0+)"
+  bash -n scripts/session-gate.sh || die "ADAPTER-E03: scripts/session-gate.sh fails bash -n"
 }
 
 # ---------- claude：JSON 合并（保用户既有 hooks，按 command 串幂等去重） ----------
@@ -188,11 +188,11 @@ MD
   # 生成后验证：模块必须能被加载且导出 DevStandardsGate（bun 直接求值；node 走
   # --check 的 .mjs 拷贝）。验证不过 = 安装失败，绝不留下"看似接上"的假绿。
   if command -v bun >/dev/null 2>&1; then
-    bun "$OPENCODE_PLUGIN" >/dev/null 2>&1 || die "opencode plugin failed load check (bun)"
+    bun "$OPENCODE_PLUGIN" >/dev/null 2>&1 || die "ADAPTER-E04: opencode plugin failed load check (bun)"
   elif command -v node >/dev/null 2>&1; then
     _mjs="$(mktemp).mjs"
     cp "$OPENCODE_PLUGIN" "$_mjs"
-    node --check "$_mjs" || { rm -f "$_mjs"; die "opencode plugin failed syntax check (node)"; }
+    node --check "$_mjs" || { rm -f "$_mjs"; die "ADAPTER-E05: opencode plugin failed syntax check (node)"; }
     rm -f "$_mjs"
   else
     note "bun/node not found — opencode plugin written but NOT load-verified; opencode will surface any error at startup"
@@ -254,7 +254,7 @@ static_schema() { # name path
   mkdir -p "$(dirname "$path")"
   printf '%s\n' "$content" > "$path"
   # 静态 schema 同样过验证
-  python3 -m json.tool "$path" >/dev/null 2>&1 || die "$tool -> $path is not valid JSON after write"
+  python3 -m json.tool "$path" >/dev/null 2>&1 || die "ADAPTER-E06: $tool -> $path is not valid JSON after write"
   ok "$tool -> $path written + JSON verified (pre-write wired; session audit relies on Git hooks + CI)"
 }
 
@@ -271,7 +271,7 @@ all=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --detect) mode_install=false ;;
-    --client) client="${2:-}"; [[ -n "$client" ]] || die "--client requires a name"; shift ;;
+    --client) client="${2:-}"; [[ -n "$client" ]] || die "ADAPTER-E07: --client requires a name"; shift ;;
     --force) export FORCE=true ;;
     --all) all=true ;;
     -h|--help) usage; exit 0 ;;
@@ -298,7 +298,7 @@ need_gate
 if [[ -n "$client" ]]; then
   case "$client" in
     claude|opencode|cursor|gemini|codex) ;;
-    *) die "unsupported client '$client' (supported: claude opencode cursor gemini codex)" ;;
+    *) die "ADAPTER-E08: unsupported client '$client' (supported: claude opencode cursor gemini codex)" ;;
   esac
   targets="$client"
 else

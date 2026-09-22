@@ -9,7 +9,7 @@ die() {
   exit 2
 }
 
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "run inside a Git repository"
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "GATE-E01: run inside a Git repository"
 cd "$repo_root"
 
 # --- path roots (v3.15.0) ---------------------------------------------------
@@ -225,10 +225,10 @@ required_docs_present() {
   local id="$1" doc d
   # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
   # (kills "-foo", "foo.", "a..b"; existing CHG-xxx / BUG-<ts> forms all pass).
-  [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
+  [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "GATE-E02: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
   d=$(change_dir "$id")
   for doc in "${required_docs[@]}"; do
-    [[ -s "$d/$doc" ]] || die "missing required artifact: $d/$doc"
+    [[ -s "$d/$doc" ]] || die "GATE-E03: missing required artifact: $d/$doc"
   done
   validate_artifact_content "$id"
 }
@@ -241,25 +241,25 @@ validate_artifact_content() {
   local id="$1" d
   d=$(change_dir "$id")
   grep -q "预期结果" "$d/00-intent.md" \
-    || die "$d/00-intent.md missing expected-outcome section (A-layer acceptance, standards §2.5)"
+    || die "GATE-E04: $d/00-intent.md missing expected-outcome section (A-layer acceptance, standards §2.5)"
   grep -q "开放问题" "$d/00-intent.md" \
-    || die "$d/00-intent.md missing open-questions section (A-layer acceptance, standards §2.5)"
+    || die "GATE-E05: $d/00-intent.md missing open-questions section (A-layer acceptance, standards §2.5)"
   grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
-    || die "$d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
+    || die "GATE-E06: $d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
   grep -qE "DES-[0-9]+" "$d/03-modification-plan.md" \
-    || die "$d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
+    || die "GATE-E07: $d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
   grep -qE "TC-[0-9]+" "$d/04-test-scripts.md" \
-    || die "$d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
+    || die "GATE-E08: $d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
   # v3.3.0 scenario inventory: business scenarios enumerated with SC-
   # numbering and mapped to TCs (standards §2.5 stage 4).
   grep -qE "SC-[0-9]+" "$d/04-test-scripts.md" \
-    || die "$d/04-test-scripts.md has no SC- scenario numbering (A-layer, standards §2.5 stage 4, v3.3.0)"
+    || die "GATE-E09: $d/04-test-scripts.md has no SC- scenario numbering (A-layer, standards §2.5 stage 4, v3.3.0)"
   # v2.20.0 professional-role markers: option comparison in the plan and a
   # coverage-dimension column in the test matrix (standards §2.5 stages 3-4).
   grep -qE "备选|选型" "$d/03-modification-plan.md" \
-    || die "$d/03-modification-plan.md has no option-comparison (备选/选型) content (A-layer, standards §2.5 stage 3)"
+    || die "GATE-E10: $d/03-modification-plan.md has no option-comparison (备选/选型) content (A-layer, standards §2.5 stage 3)"
   grep -q "覆盖维度" "$d/04-test-scripts.md" \
-    || die "$d/04-test-scripts.md has no coverage-dimension (覆盖维度) column (A-layer, standards §2.5 stage 4)"
+    || die "GATE-E11: $d/04-test-scripts.md has no coverage-dimension (覆盖维度) column (A-layer, standards §2.5 stage 4)"
   # Stage 2 is unconditional: "analyze before designing" (standards §2.5
   # stage 2) is a hard gate, not an optional extra. 03.5 may alternatively
   # carry an explicit no-breakdown exemption marker instead of task rows.
@@ -267,22 +267,22 @@ validate_artifact_content() {
   # bold list item), not anywhere in prose — a negated or passing mention like
   # "本变更无业务影响" used to satisfy a bare substring grep.
   grep -qE "^(#{1,6}[[:space:]].*业务影响|\|.*业务影响|[[:space:]]*[-*][[:space:]]+\*\*业务影响)" "$d/02-code-impact-analysis.md" \
-    || die "$d/02-code-impact-analysis.md missing business-impact (业务影响) section (A-layer, standards §2.5 stage 2)"
+    || die "GATE-E12: $d/02-code-impact-analysis.md missing business-impact (业务影响) section (A-layer, standards §2.5 stage 2)"
   grep -qE "^(#{1,6}[[:space:]].*风险|\|.*风险|[[:space:]]*[-*][[:space:]]+\*\*风险)" "$d/02-code-impact-analysis.md" \
-    || die "$d/02-code-impact-analysis.md missing risk (风险) content (A-layer, standards §2.5 stage 2)"
+    || die "GATE-E13: $d/02-code-impact-analysis.md missing risk (风险) content (A-layer, standards §2.5 stage 2)"
   grep -qE "^(#{1,6}[[:space:]].*回滚策略|\|.*回滚策略|[[:space:]]*[-*][[:space:]]+\*\*回滚策略)" "$d/02-code-impact-analysis.md" \
-    || die "$d/02-code-impact-analysis.md missing rollback (回滚策略) content (A-layer, standards §2.5 stage 2)"
+    || die "GATE-E14: $d/02-code-impact-analysis.md missing rollback (回滚策略) content (A-layer, standards §2.5 stage 2)"
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
-      || die "$d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
+      || die "GATE-E15: $d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
     grep -q "里程碑" "$d/03.5-tasks.md" \
-      || die "$d/03.5-tasks.md missing milestone (里程碑) info (A-layer, standards §2.5 stage 3)"
+      || die "GATE-E16: $d/03.5-tasks.md missing milestone (里程碑) info (A-layer, standards §2.5 stage 3)"
     # v3.39.0 (CHG-041): review/test subagents must receive their evidence pack
     # from the orchestrator, not re-explore the repo for it (standards §2.2
     # input contract). The field must exist on every non-trivial task list;
     # the lightweight one-line channel stays exempt by the branch above.
     grep -q "评审输入" "$d/03.5-tasks.md" \
-      || die "$d/03.5-tasks.md missing review-input (评审输入) field (A-layer, standards §2.2 input contract, v3.39.0)"
+      || die "GATE-E17: $d/03.5-tasks.md missing review-input (评审输入) field (A-layer, standards §2.2 input contract, v3.39.0)"
   fi
 }
 
@@ -293,7 +293,7 @@ reject_placeholder_owner() { # file field value
   local file="$1" field="$2" value="$3" norm
   norm=$(printf '%s' "$value" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
   case "$norm" in
-    PENDING|TODO|TBD|*待定*) die "$file field '$field' must name a concrete owner (placeholder '$value' rejected)" ;;
+    PENDING|TODO|TBD|*待定*) die "GATE-E18: $file field '$field' must name a concrete owner (placeholder '$value' rejected)" ;;
   esac
 }
 
@@ -311,68 +311,68 @@ provenance_block() { # file -> block lines, or empty
 validate_provenance() { # file
   local f="$1" blk k norm
   blk=$(provenance_block "$f")
-  [[ -n "$blk" ]] || die "cannot finish: $f carries no provenance block — run scripts/stamp-provenance.sh <CHG-id> (standards §1.1)"
+  [[ -n "$blk" ]] || die "GATE-E19: cannot finish: $f carries no provenance block — run scripts/stamp-provenance.sh <CHG-id> (standards §1.1)"
   # Placeholder first: an unfilled template should hear "run the script", not a
   # downstream symptom about date formats.
   norm=$(printf '%s' "$blk" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
   case "$norm" in
-    *PENDING*|*TODO*|*TBD*|*待定*) die "cannot finish: $f provenance block still holds a placeholder — run scripts/stamp-provenance.sh <CHG-id>" ;;
+    *PENDING*|*TODO*|*TBD*|*待定*) die "GATE-E20: cannot finish: $f provenance block still holds a placeholder — run scripts/stamp-provenance.sh <CHG-id>" ;;
   esac
   for k in author email generated_at generated_by; do
     printf '%s\n' "$blk" | grep -qE "^${k}:[[:space:]]*[^[:space:]]" \
-      || die "cannot finish: $f provenance block is missing '$k' — regenerate with scripts/stamp-provenance.sh"
+      || die "GATE-E21: cannot finish: $f provenance block is missing '$k' — regenerate with scripts/stamp-provenance.sh"
   done
   printf '%s\n' "$blk" | grep -qE '^generated_at:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' \
-    || die "cannot finish: $f provenance 'generated_at' is not an ISO-8601 date — regenerate with scripts/stamp-provenance.sh"
+    || die "GATE-E22: cannot finish: $f provenance 'generated_at' is not an ISO-8601 date — regenerate with scripts/stamp-provenance.sh"
   printf '%s\n' "$blk" | grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' \
-    || die "cannot finish: $f provenance block was not produced by scripts/stamp-provenance.sh (a hand-written block cannot pass this)"
+    || die "GATE-E23: cannot finish: $f provenance block was not produced by scripts/stamp-provenance.sh (a hand-written block cannot pass this)"
 }
 
 validate_governance_state() {
   local id="$1" file risk implementation test_owner review_owner declared_id d rec
   d=$(change_dir "$id")
   file="$d/00-governance.json"
-  [[ -s "$file" ]] || die "missing required artifact: $file"
+  [[ -s "$file" ]] || die "GATE-E24: missing required artifact: $file"
   # A dedicated <CHG>/ directory holds one record; a batch holds one line per
   # bundled change. Scope to THIS change's line so a sibling's risk/owners can
   # never satisfy our checks (or be misread as ours).
   rec=$(gov_record "$file" "$id")
-  [[ -n "$rec" ]] || die "$file declares no governance record for '$id' (expected a JSON line with \"change_id\": \"$id\")"
+  [[ -n "$rec" ]] || die "GATE-E25: $file declares no governance record for '$id' (expected a JSON line with \"change_id\": \"$id\")"
   declared_id=$(json_field "$rec" change_id)
-  [[ "$declared_id" == "$id" ]] || die "$file must declare change_id '$id'"
+  [[ "$declared_id" == "$id" ]] || die "GATE-E26: $file must declare change_id '$id'"
   risk=$(json_field "$rec" risk_level)
-  [[ "$risk" =~ ^L[0-3]$ ]] || die "$file must declare risk_level L0, L1, L2, or L3"
+  [[ "$risk" =~ ^L[0-3]$ ]] || die "GATE-E27: $file must declare risk_level L0, L1, L2, or L3"
   # v3.18.0 change batches are L0/L1 ONLY (standards §1.1). Bundling weakens the
   # per-change evidence boundary — artifacts of several changes share one file —
   # which is tolerable for low-risk work and not for anything needing role
   # independence or release authorization. Enforced here, on the record, so it
   # cannot be bypassed by simply dropping artifacts into a BATCH-*/ directory.
   if is_batch_dir "$d" && [[ "$risk" != L0 && "$risk" != L1 ]]; then
-    die "$d is a change batch but '$id' declares risk_level $risk — batches are L0/L1 only; move '$id' to $change_root/$id/ (standards §1.1)"
+    die "GATE-E28: $d is a change batch but '$id' declares risk_level $risk — batches are L0/L1 only; move '$id' to $change_root/$id/ (standards §1.1)"
   fi
   implementation=$(json_field "$rec" implementation_owner)
-  [[ -n "$implementation" ]] || die "$file must declare implementation_owner"
+  [[ -n "$implementation" ]] || die "GATE-E29: $file must declare implementation_owner"
   reject_placeholder_owner "$file" implementation_owner "$implementation"
   # v3.33.0 (FU-039/FU-041, CHG-033): standards §2.1 rule 10 (one role per
   # subject) enforced on the record — the spec/document author must be
   # declared at every level, differ from the reviewer at the lowest bar, and
   # differ from all three owners for L2/L3 (two-batch separation, §2.2).
   spec_author=$(json_field "$rec" spec_author)
-  [[ -n "$spec_author" ]] || die "$file must declare spec_author (standards §2.1 rule 10: author, implementer, tester, reviewer are distinct subjects)"
+  [[ -n "$spec_author" ]] || die "GATE-E30: $file must declare spec_author (standards §2.1 rule 10: author, implementer, tester, reviewer are distinct subjects)"
   reject_placeholder_owner "$file" spec_author "$spec_author"
   if [[ "$risk" == L2 || "$risk" == L3 ]]; then
     test_owner=$(json_field "$rec" test_owner)
     review_owner=$(json_field "$rec" review_owner)
-    [[ -n "$test_owner" && -n "$review_owner" ]] || die "$file must declare test_owner and review_owner for $risk"
+    [[ -n "$test_owner" && -n "$review_owner" ]] || die "GATE-E31: $file must declare test_owner and review_owner for $risk"
     reject_placeholder_owner "$file" test_owner "$test_owner"
     reject_placeholder_owner "$file" review_owner "$review_owner"
-    [[ "$implementation" != "$test_owner" && "$implementation" != "$review_owner" && "$test_owner" != "$review_owner" ]] || die "$file requires distinct implementation, test, and review owners for $risk"
-    [[ "$spec_author" != "$implementation" && "$spec_author" != "$test_owner" && "$spec_author" != "$review_owner" ]] || die "$file requires spec_author distinct from implementation, test, and review owners for $risk (standards §2.1 rule 10)"
+    [[ "$implementation" != "$test_owner" && "$implementation" != "$review_owner" && "$test_owner" != "$review_owner" ]] || die "GATE-E32: $file requires distinct implementation, test, and review owners for $risk"
+    [[ "$spec_author" != "$implementation" && "$spec_author" != "$test_owner" && "$spec_author" != "$review_owner" ]] || die "GATE-E33: $file requires spec_author distinct from implementation, test, and review owners for $risk (standards §2.1 rule 10)"
   else
     review_owner=$(json_field "$rec" review_owner)
     if [[ -n "$review_owner" ]]; then
-      [[ "$spec_author" != "$review_owner" ]] || die "$file: spec_author must differ from review_owner (lowest bar, standards §2.1 rule 10)"
-      [[ "$implementation" != "$review_owner" ]] || die "$file: review_owner must differ from implementation_owner (reviewer independence at the lowest bar, standards §2.1 rule 10)"
+      [[ "$spec_author" != "$review_owner" ]] || die "GATE-E34: $file: spec_author must differ from review_owner (lowest bar, standards §2.1 rule 10)"
+      [[ "$implementation" != "$review_owner" ]] || die "GATE-E35: $file: review_owner must differ from implementation_owner (reviewer independence at the lowest bar, standards §2.1 rule 10)"
     fi
   fi
   # v3.5.0 L3 release authorization: flat string fields, not a nested object —
@@ -382,10 +382,10 @@ validate_governance_state() {
     auth_by=$(json_field "$rec" release_authorized_by)
     auth_at=$(json_field "$rec" release_authorized_at)
     auth_ev=$(json_field "$rec" release_authorization_evidence)
-    [[ -n "$auth_by" ]] || die "$file must declare release_authorized_by for L3"
+    [[ -n "$auth_by" ]] || die "GATE-E36: $file must declare release_authorized_by for L3"
     reject_placeholder_owner "$file" release_authorized_by "$auth_by"
-    [[ -n "$auth_at" ]] || die "$file must declare release_authorized_at for L3"
-    [[ -n "$auth_ev" ]] || die "$file must declare release_authorization_evidence for L3"
+    [[ -n "$auth_at" ]] || die "GATE-E37: $file must declare release_authorized_at for L3"
+    [[ -n "$auth_ev" ]] || die "GATE-E38: $file must declare release_authorization_evidence for L3"
   fi
   # v3.6.0 bug document set: bug_ref binds this change to defect document group(s)
   # under <bugs_root>/<bug_ref>/; when declared, the six-piece set must exist and
@@ -408,22 +408,33 @@ validate_governance_state() {
       if printf '%s' "$rec" | grep -qE "\"bug_ref\"[[:space:]]*:[[:space:]]*(\"\"|\[[[:space:]]*\])"; then
         :
       else
-        die "$file field 'bug_ref' is present but unparseable — use a flat string or a flat JSON string array of defect ids"
+        die "GATE-E39: $file field 'bug_ref' is present but unparseable — use a flat string or a flat JSON string array of defect ids"
       fi
     fi
     for bug_ref in $bug_refs_current; do
-      [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "$file field 'bug_ref' has invalid defect id '$bug_ref'"
-      local bug_gdir
-      bug_gdir=$(bug_group_dir "$bug_ref") || die "$file bug_ref '$bug_ref': defect group not found under $bugs_root (standalone, BATCH-*/<id>, or flat BATCH-*/ anchor — standards §1.1)"
+      [[ "$bug_ref" =~ ^[A-Za-z0-9._-]+$ ]] || die "GATE-E40: $file field 'bug_ref' has invalid defect id '$bug_ref'"
+      local bug_gdir p3_exempt=""
+      bug_gdir=$(bug_group_dir "$bug_ref") || die "GATE-E41: $file bug_ref '$bug_ref': defect group not found under $bugs_root (standalone, BATCH-*/<id>, or flat BATCH-*/ anchor — standards §1.1)"
+      # v3.40.0 (CHG-045): P3 copy-class groups may omit the three optional
+      # pieces; flat batches read severity from the member's own section.
+      local re_bid
+      re_bid=$(printf '%s' "$bug_ref" | sed 's/[.[\*^$]/\\&/g')
+      if [[ "$(basename "$bug_gdir")" =~ ^BATCH- ]] \
+        && grep -qE "^##[[:space:]]+${re_bid}([[:space:]]|\$)" "$bug_gdir/01-diagnosis.md" 2>/dev/null; then
+        bug_p3_lightweight "$bug_gdir" "$bug_ref" && p3_exempt=" 02-impact.md 05-config.md 06-tasks.md "
+      else
+        bug_p3_lightweight "$bug_gdir" && p3_exempt=" 02-impact.md 05-config.md 06-tasks.md "
+      fi
       for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
-        [[ -s "$bug_gdir/$doc" ]] || die "$file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
+        [[ " $p3_exempt " == *" $doc "* ]] && continue
+        [[ -s "$bug_gdir/$doc" ]] || die "GATE-E42: $file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
       done
     done
   fi
 }
 
 active_change() {
-  [[ -s "$active_file" ]] || die "no active change. Create documents, then run: scripts/agent-gate begin CHG-123"
+  [[ -s "$active_file" ]] || die "GATE-E43: no active change. Create documents, then run: scripts/agent-gate begin CHG-123"
   tr -d '[:space:]' < "$active_file"
 }
 
@@ -483,15 +494,15 @@ check_delivery_doc() { # change-dir filename content-regex label
       f="$cand"; break
     done
   fi
-  [[ -n "$f" ]] || die "cannot finish: missing $label ($name) — standards §1.1 eight-category minimum doc set"
+  [[ -n "$f" ]] || die "GATE-E44: cannot finish: missing $label ($name) — standards §1.1 eight-category minimum doc set"
   # Sentinel must be the template's own first-line marker form, anchored to
   # line start — a bare substring match false-positives on prose that merely
   # MENTIONS the marker (live-found when a ledger row describing it tripped).
   if grep -q '^<!-- TEMPLATE-MARKER' "$f"; then
-    die "cannot finish: $f is still the unfilled template — delete the TEMPLATE-MARKER line once filled (standards §1.1)"
+    die "GATE-E45: cannot finish: $f is still the unfilled template — delete the TEMPLATE-MARKER line once filled (standards §1.1)"
   fi
   grep -qE "$pat" "$f" \
-    || die "cannot finish: $f must declare '未命中，不适用' with evidence, or carry real $label rows (standards §1.1)"
+    || die "GATE-E46: cannot finish: $f must declare '未命中，不适用' with evidence, or carry real $label rows (standards §1.1)"
 }
 
 # Delivery evidence a change must carry before it may leave the machine: the
@@ -503,13 +514,13 @@ validate_delivery() { # change-id
   d=$(change_dir "$id")
   # v3.7.0: the coding record (changed-file list, CHG-xxx anchors, WHY
   # decisions) is part of the delivery bar (standards §2.5 stage 5).
-  [[ -s "$d/04.5-coding-record.md" ]] || die "cannot finish: missing coding record $d/04.5-coding-record.md"
-  [[ -s "$d/05-test-results.md" ]] || die "cannot finish: missing test evidence $d/05-test-results.md"
-  [[ -s "$d/09-changelog.md" ]] || die "cannot finish: missing changelog $d/09-changelog.md"
+  [[ -s "$d/04.5-coding-record.md" ]] || die "GATE-E47: cannot finish: missing coding record $d/04.5-coding-record.md"
+  [[ -s "$d/05-test-results.md" ]] || die "GATE-E48: cannot finish: missing test evidence $d/05-test-results.md"
+  [[ -s "$d/09-changelog.md" ]] || die "GATE-E49: cannot finish: missing changelog $d/09-changelog.md"
   # Every executed stage must leave an Observation record (verification
   # command + actual output) in the changelog.
   grep -q "Observation" "$d/09-changelog.md" \
-    || die "cannot finish: changelog missing ReAct Observation records (standards §2.16.2)"
+    || die "GATE-E50: cannot finish: changelog missing ReAct Observation records (standards §2.16.2)"
   # Gate 4 (v3.7.0): every REQ id referenced by the changelog must be backfilled
   # as a row in some docs/<feature>/01.5-rtvm-matrix.md. Changelogs without REQ
   # references (pure fixes / docs changes) are exempt — same semantics as the
@@ -524,7 +535,7 @@ validate_delivery() { # change-id
       [[ -f "$m" ]] || continue
       grep -qE "^\| \`?${req}\`?" "$m" && { hit=1; break; }
     done
-    [[ "$hit" == 1 ]] || die "cannot finish: REQ $req referenced in changelog but not backfilled in $docs_dir/<feature>/01.5-rtvm-matrix.md (gate 4)"
+    [[ "$hit" == 1 ]] || die "GATE-E51: cannot finish: REQ $req referenced in changelog but not backfilled in $docs_dir/<feature>/01.5-rtvm-matrix.md (gate 4)"
   done
   # CHG-004 / REQ-022: the remaining two of the eight-category minimum doc set.
   check_delivery_doc "$d" 06.5-deployment-config.md '^([#>-][[:space:]]*)*未命中|^[|].*(未命中|(CFG|DB)-[0-9]+)|(CFG|DB)-[0-9]+' 'config/DB record'
@@ -555,7 +566,7 @@ validate_delivery() { # change-id
     # strings do NOT match (review finding: evidence paths inside the section
     # must not satisfy the signature check).
     echo "$sigsec" | grep -Eq '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / [A-Za-z0-9_-]+' \
-      || die "$d/$sigf 专家评审记录 section lacks an agent signature (§2.1.7 'platform / model / task') — standards §2.2 two-batch rule"
+      || die "GATE-E52: $d/$sigf 专家评审记录 section lacks an agent signature (§2.1.7 'platform / model / task') — standards §2.2 two-batch rule"
   done
   local pf
   for pf in "$d"/*.md; do
@@ -579,7 +590,7 @@ bug_group_dir() { # <BUG-id> -> prints the group dir (exit 1 if absent)
   for b in "$bugs_root"/BATCH-*/; do
     if [[ -d "${b}${id}" ]]; then
       if [[ -n "$nested" ]]; then
-        die "defect group '$id' exists in more than one day batch under $bugs_root — keep one (standards §1.1)"
+        die "GATE-E53: defect group '$id' exists in more than one day batch under $bugs_root — keep one (standards §1.1)"
       fi
       nested="${b%/}/$id"
     fi
@@ -588,7 +599,7 @@ bug_group_dir() { # <BUG-id> -> prints the group dir (exit 1 if absent)
     if [[ -s "${b}01-diagnosis.md" ]] \
       && grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "${b}01-diagnosis.md" 2>/dev/null; then
       if [[ -n "$flat" ]]; then
-        die "defect group '$id' is anchored in more than one day batch under $bugs_root — keep one (standards §1.1)"
+        die "GATE-E54: defect group '$id' is anchored in more than one day batch under $bugs_root — keep one (standards §1.1)"
       fi
       flat="${b%/}"
     fi
@@ -598,12 +609,36 @@ bug_group_dir() { # <BUG-id> -> prints the group dir (exit 1 if absent)
   [[ -n "$nested" ]] && hits=$((hits+1))
   [[ -n "$flat" ]] && hits=$((hits+1))
   if [[ "$hits" -gt 1 ]]; then
-    die "defect group '$id' exists in more than one legal layout under $bugs_root (standalone=$standalone nested=$nested flat=$flat) — keep exactly one (standards §1.1)"
+    die "GATE-E55: defect group '$id' exists in more than one legal layout under $bugs_root (standalone=$standalone nested=$nested flat=$flat) — keep exactly one (standards §1.1)"
   fi
   if [[ -n "$standalone" ]]; then printf '%s' "$standalone"; return 0; fi
   if [[ -n "$nested" ]]; then printf '%s' "$nested"; return 0; fi
   if [[ -n "$flat" ]]; then printf '%s' "$flat"; return 0; fi
   return 1
+}
+
+# v3.40.0 (CHG-045, FU-106②): P3 lightweight channel for defect doc groups.
+# A group whose 01-diagnosis HEAD carries the EXACT line `severity: P3` (copy-class
+# defect) may omit 02-impact/05-config/06-tasks entirely. Everything else stays
+# fail-closed: no declaration, a different value, a shape mismatch, or a
+# severity line outside the first 20 lines → the full six-piece check. The
+# mandatory pieces (01-diagnosis/03-test-plan/04-matrix) can never be waived.
+# Flat batches must declare severity INSIDE their own `## <BUG-id>` section
+# (pass <gid>); for standalone/nested groups the file head is scanned (omit
+# <gid>). <gid> is escaped before it is used in a regex (BUG ids may contain '.').
+bug_p3_lightweight() { # <group-or-batch-dir> [<BUG-id>] -> 0 if channel applies
+  local dir="$1" gid="${2:-}" re
+  re=$(printf '%s' "$gid" | sed 's/[.[\*^$]/\\&/g')
+  if [[ -n "$gid" ]]; then
+    [[ -s "$dir/01-diagnosis.md" ]] || return 1
+    awk -v id="$re" '
+      $0 ~ ("^##[[:space:]]+" id "([[:space:]]|$)") { on=1; next }
+      on && /^##[[:space:]]/ { on=0 }
+      on { print }
+    ' "$dir/01-diagnosis.md" 2>/dev/null | head -20 | grep -qE '^severity:[[:space:]]*P3[[:space:]]*$'
+  else
+    head -20 "$dir/01-diagnosis.md" 2>/dev/null | grep -qE '^severity:[[:space:]]*P3[[:space:]]*$'
+  fi
 }
 
 # v3.28.0 (CHG-071 / BUG-040~055 复盘): defect doc groups are enforced by
@@ -623,7 +658,11 @@ validate_bug_groups() {
     [[ -d "$group" ]] || continue
     [[ -s "$group/01-diagnosis.md" ]] || continue
     missing=""
+    # v3.40.0 (CHG-045): P3 copy-class groups may omit the three optional pieces.
+    local p3_exempt=""
+    bug_p3_lightweight "$group" && p3_exempt=" 02-impact.md 05-config.md 06-tasks.md "
     for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+      [[ " $p3_exempt " == *" $doc "* ]] && continue
       [[ -s "$group/$doc" ]] || missing="$missing $doc"
     done
     [[ -z "$missing" ]] && continue
@@ -635,7 +674,7 @@ validate_bug_groups() {
     if [[ -n "$listed" ]]; then
       echo "agent-gate: WARN defect group $gid incomplete (allowlisted):$missing"
     else
-      die "defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
+      die "GATE-E56: defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
     fi
   done
   # v3.36.0 (BUG-006): FLAT day-batches — the six pieces live directly in
@@ -648,8 +687,15 @@ validate_bug_groups() {
     [[ -s "${batch}01-diagnosis.md" ]] || continue
     for gid in $(sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+)([[:space:]].*)?$/\1/p' "${batch}01-diagnosis.md" | sort -u); do
       missing=""
+      # v3.40.0 (CHG-045): severity must be declared inside the member's own
+      ## `## <BUG-id>` section; undeclared members keep the full anchor set.
+      p3_exempt=""
+      bug_p3_lightweight "$batch" "$gid" && p3_exempt=" 02-impact.md 05-config.md 06-tasks.md "
+      local re_gid
+      re_gid=$(printf '%s' "$gid" | sed 's/[.[\*^$]/\\&/g')
       for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
-        grep -qE "^##[[:space:]]+${gid}([[:space:]]|\$)" "$batch/$doc" 2>/dev/null || missing="$missing $doc"
+        [[ " $p3_exempt " == *" $doc "* ]] && continue
+        grep -qE "^##[[:space:]]+${re_gid}([[:space:]]|\$)" "$batch/$doc" 2>/dev/null || missing="$missing $doc"
       done
       [[ -z "$missing" ]] && continue
       listed=""
@@ -659,7 +705,7 @@ validate_bug_groups() {
       if [[ -n "$listed" ]]; then
         echo "agent-gate: WARN defect group $gid incomplete (allowlisted):$missing"
       else
-        die "defect group $gid is missing:$missing — complete the six-piece anchor set in $batch (standards §2.5 stage 6, v3.36.0 flat form) or register a reason in $allow"
+        die "GATE-E57: defect group $gid is missing:$missing — complete the six-piece anchor set in $batch (standards §2.5 stage 6, v3.36.0 flat form) or register a reason in $allow"
       fi
     done
   done
@@ -681,7 +727,7 @@ validate_bug_groups() {
       gid=$(basename "$group")
       listed=""
       [[ -f "$allow" ]] && listed=$(grep -vE '^[[:space:]]*(#|$)' "$allow" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
-      [[ -n "$listed" ]] || die "standalone defect group $gid was created today ($pdate) while $bugs_root/BATCH-$(date -u +%Y%m%d) exists — move it into the day batch (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      [[ -n "$listed" ]] || die "GATE-E58: standalone defect group $gid was created today ($pdate) while $bugs_root/BATCH-$(date -u +%Y%m%d) exists — move it into the day batch (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
     done
   fi
 }
@@ -709,12 +755,12 @@ validate_bug_ref_provenance() {
 validate_master_backfill() { # change-dir
   local d="$1" p row
   grep -q "项目总册回填清单" "$d/09-changelog.md" \
-    || die "cannot finish: 09-changelog.md missing 「项目总册回填清单」 section (standards §1.3)"
+    || die "GATE-E59: cannot finish: 09-changelog.md missing 「项目总册回填清单」 section (standards §1.3)"
   for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11; do
     row=$(grep -E "^- \[[ x]\] ${p}([^0-9]|$)" "$d/09-changelog.md" | head -1)
-    [[ -n "$row" ]] || die "cannot finish: 项目总册回填清单 missing row for $p (standards §1.3)"
+    [[ -n "$row" ]] || die "GATE-E60: cannot finish: 项目总册回填清单 missing row for $p (standards §1.3)"
     echo "$row" | grep -qE "^- \[x\]|未命中" \
-      || die "cannot finish: 项目总册回填清单 row $p is neither '[x]' nor '未命中（理由）' (standards §1.3)"
+      || die "GATE-E61: cannot finish: 项目总册回填清单 row $p is neither '[x]' nor '未命中（理由）' (standards §1.3)"
   done
 }
 
@@ -725,11 +771,11 @@ validate_master_backfill() { # change-dir
 # with the justification recorded in 09 重要上下文 — fail-closed, never silent.
 validate_project_masters() {
   local f missing=""
-  [[ -d "$docs_dir/project" ]] || die "project masters not initialized: $docs_dir/project/ missing — copy <docs>/templates/project/ (skill resources/templates/project/) first (standards §1.3); set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 only with a recorded justification"
+  [[ -d "$docs_dir/project" ]] || die "GATE-E62: project masters not initialized: $docs_dir/project/ missing — copy <docs>/templates/project/ (skill resources/templates/project/) first (standards §1.3); set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 only with a recorded justification"
   for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md; do
     [[ -s "$docs_dir/project/$f" ]] || missing="$missing $f"
   done
-  [[ -z "$missing" ]] || die "project masters incomplete:$missing — initialize all twelve under $docs_dir/project/ (standards §1.3)"
+  [[ -z "$missing" ]] || die "GATE-E63: project masters incomplete:$missing — initialize all twelve under $docs_dir/project/ (standards §1.3)"
 }
 
 validate_stop() {
@@ -770,7 +816,7 @@ validate_stop() {
   fi
   if [[ -n "$vcmd" ]]; then
     echo "agent-gate: verification command from $vsrc: $vcmd"
-    bash -lc "$vcmd" || die "cannot finish: verification command failed (from $vsrc): $vcmd"
+    bash -lc "$vcmd" || die "GATE-E64: cannot finish: verification command failed (from $vsrc): $vcmd"
   fi
 }
 
@@ -781,7 +827,7 @@ changed_files() {
     branch)
       if [[ -n "$base" ]]; then git diff --name-only --diff-filter=ACMR "$base"...HEAD
       else git diff --name-only --diff-filter=ACMR HEAD~1...HEAD; fi ;;
-    *) die "unknown diff mode '$mode'" ;;
+    *) die "GATE-E65: unknown diff mode '$mode'" ;;
   esac
 }
 
@@ -875,7 +921,7 @@ validate_diff() {
     if [[ "$mode" == staged ]] && complete_valid_change_exists; then
       return 0
     fi
-    die "source changes require change artifacts under $change_root/<change-id>/ (spec, plan, test plan, evidence)"
+    die "GATE-E66: source changes require change artifacts under $change_root/<change-id>/ (spec, plan, test plan, evidence)"
   fi
 }
 
@@ -886,7 +932,7 @@ validate_diff() {
 # point at a change that exists with a valid governance state.
 validate_commit_msg() { # message-file
   local msgfile="$1" msg f id files code_found=false
-  [[ -s "$msgfile" ]] || die "commit message file is empty"
+  [[ -s "$msgfile" ]] || die "GATE-E67: commit message file is empty"
   msg=$(cat "$msgfile")
   # Ladder written in if-form: a bare `[[ x ]] && return` leaves the whole
   # statement returning 1 on the fall-through path, which a commit-msg hook
@@ -902,7 +948,7 @@ validate_commit_msg() { # message-file
   # no id, and the assignment must not abort the gate before the die below.
   id=$(printf '%s\n' "$msg" | grep -Eo '[A-Z][A-Z0-9_]*-[0-9]+' | head -n 1 || true)
   if [[ -z "$id" ]]; then
-    die "code commit must reference its change id (e.g. 'feat: CHG-123 implement ...')"
+    die "GATE-E68: code commit must reference its change id (e.g. 'feat: CHG-123 implement ...')"
   fi
   required_docs_present "$id"
   validate_governance_state "$id"
@@ -1020,14 +1066,14 @@ command="${1:-help}"
 case "$command" in
   begin)
     id="${2:-}"
-    [[ -n "$id" ]] || die "usage: scripts/agent-gate begin <change-id>"
+    [[ -n "$id" ]] || die "GATE-E69: usage: scripts/agent-gate begin <change-id>"
     # FU-015 (BUG-003): a change dir carrying a changelog is a CLOSED change —
     # re-opening it would let a new change write into a read-only artifact set
     # (standards §2.15 rule 4, one change one document set).
     # S1/S2 (independent review): -s misses zero-size and symlinked markers;
     # '.'/'..' would escape the change dir. Both are closed here.
     if [[ "$id" == "." || "$id" == ".." ]]; then
-      die "invalid change id '$id'"
+      die "GATE-E70: invalid change id '$id'"
     fi
     # In a BATCH the changelog file is SHARED by every bundled change, so "the
     # file exists" cannot mean "this change is closed" — a sibling's changelog
@@ -1038,10 +1084,10 @@ case "$command" in
     if is_batch_dir "$d"; then
       if [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]] \
          && grep -qE "$(anchor_re "$id")" "$d/09-changelog.md" 2>/dev/null; then
-        die "change $id is already closed ($d/09-changelog.md carries a '## $id' section) — open a new change id (standards §2.15 rule 4, FU-015)"
+        die "GATE-E71: change $id is already closed ($d/09-changelog.md carries a '## $id' section) — open a new change id (standards §2.15 rule 4, FU-015)"
       fi
     elif [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]]; then
-      die "change $id is already closed ($d/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
+      die "GATE-E72: change $id is already closed ($d/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
     fi
     required_docs_present "$id"
     validate_governance_state "$id"
@@ -1056,7 +1102,7 @@ case "$command" in
     if [[ "$b_risk" == L0 || "$b_risk" == L1 ]] && ! is_batch_dir "$d" \
        && [[ -d "$change_root/BATCH-$(date +%Y%m%d)" ]] \
        && [[ "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
-      die "same-day batch exists ($change_root/BATCH-$(date +%Y%m%d)) — L0/L1 changes must join it (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      die "GATE-E73: same-day batch exists ($change_root/BATCH-$(date +%Y%m%d)) — L0/L1 changes must join it (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
     fi
     # v3.35.0 (standards §1.3): project masters must be initialized before any
     # change starts — first change initializes them (docs edits precede begin).
@@ -1072,8 +1118,23 @@ case "$command" in
       w_turns=$(sed -n 's/.*"turns":[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$water_file" | head -1)
       w_limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
       if [[ "$w_turns" =~ ^[0-9]+$ ]] && [[ "$w_turns" -gt "$w_limit" ]]; then
-        die "session water level ${w_turns} turns exceeds the ${w_limit}-turn limit (standards §2.9.6) — handoff to a fresh session (state rebuilds from disk, §2.16.1) and re-begin there, or set AGENT_GUARD_ALLOW_OVER_WATER=1 with the justification recorded in 09「重要上下文」"
+        die "GATE-E74: session water level ${w_turns} turns exceeds the ${w_limit}-turn limit (standards §2.9.6) — handoff to a fresh session (state rebuilds from disk, §2.16.1) and re-begin there, or set AGENT_GUARD_ALLOW_OVER_WATER=1 with the justification recorded in 09「重要上下文」"
       fi
+    fi
+    # v3.40.0 (CHG-046, FU-106⑤): unresolved session RED blocks new changes.
+    # .agent-state/session-gate-last.md is the last start/idle audit report; a
+    # `GATE RED` report FRESHER than the newest delivered 09-changelog means the
+    # red arose after the last delivery and was never cleared (带病开工). A
+    # missing report, or a changelog newer than the report, degrades fail-open —
+    # same ladder as the water gate above. No changelog baseline at all → the
+    # comparison is meaningless → fail-open. Escape: AGENT_GUARD_ALLOW_OVER_RED=1
+    # with the justification recorded in 09「重要上下文」.
+    red_report="$repo_root/.agent-state/session-gate-last.md"
+    if [[ -s "$red_report" && "${AGENT_GUARD_ALLOW_OVER_RED:-}" != "1" ]] \
+       && grep -q "GATE RED" "$red_report" \
+       && [[ -n "$(find "$change_root" -mindepth 2 -type f -name 09-changelog.md 2>/dev/null)" ]] \
+       && ! find "$change_root" -mindepth 2 -type f -name 09-changelog.md -newer "$red_report" 2>/dev/null | grep -q .; then
+      die "GATE-E75: session audit RED unresolved ($red_report is fresher than the last delivered 09-changelog) — clear the red list (§2.14 backfill) before opening a new change, or set AGENT_GUARD_ALLOW_OVER_RED=1 with the justification recorded in 09「重要上下文」"
     fi
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
@@ -1095,7 +1156,7 @@ case "$command" in
         else file=$(extract_file_from_hook_input); fi
         # A hook that cannot identify a path must fail closed: otherwise a
         # client schema change silently turns this policy into a no-op.
-        [[ -n "$file" ]] || die "cannot determine the target file from hook input"
+        [[ -n "$file" ]] || die "GATE-E76: cannot determine the target file from hook input"
         if is_code_path "$file"; then
           validate_active_change
         fi
@@ -1110,11 +1171,11 @@ case "$command" in
       commit-msg)
         msgfile="${1:-}"
         if [[ -z "$msgfile" ]]; then
-          die "usage: scripts/agent-gate --stage commit-msg <message-file>"
+          die "GATE-E77: usage: scripts/agent-gate --stage commit-msg <message-file>"
         fi
         validate_commit_msg "$msgfile"
         ;;
-      *) die "unknown stage '$stage'" ;;
+      *) die "GATE-E78: unknown stage '$stage'" ;;
     esac
     ;;
   help|--help|-h)
@@ -1197,5 +1258,5 @@ required check name) — they are what makes a repo comparable to every other re
 using this package.
 EOF
     ;;
-  *) die "unknown command '$command'" ;;
+  *) die "GATE-E79: unknown command '$command'" ;;
 esac

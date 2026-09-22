@@ -571,6 +571,27 @@ else
   report "G9 out-of-table feature-dir sweep VACUOUS SKIP — no feature dirs under $DOCS_DIR/ (did NOT run; do not read this as a pass)" ok ok
 fi
 
+# ---------- G10 废弃条款 sweep（v3.40.0 CHG-048 / FU-106⑥，减法机制执法面） ----------
+# 规范只加不减 = 无限膨胀（A11 上界多次重校准为证）。本门只做可确定性判定的
+# 形态校验：DEVELOPMENT_STANDARDS.md / AGENTS.md 内每一行含「废止」字样的文字，
+# 必须同行携带被替代版本指向（v3. 数字），使被替代条款可追溯、可清扫；缺指向
+# 的废止标记 = 只废未清，FAIL 并列行。「加一删一」预算本身是政策层
+# （MAINTAINER §5.2，B 层），不在此机校（防过度设计，METHODOLOGY M2）。
+g10_bad=0; g10_hits=0
+for f10 in "$STD" "$ROOT/$DOCS_DIR/AGENTS.md"; do
+  [[ -f "$f10" ]] || continue
+  while IFS= read -r l10; do
+    g10_hits=$((g10_hits+1))
+    printf '%s' "$l10" | grep -qE 'v3\.[0-9]' \
+      || { g10_bad=$((g10_bad+1)); echo "     G10 废止标记缺版本指向: $(basename "$f10"): $(printf '%s' "$l10" | cut -c1-72)"; }
+  done < <(grep -Fn "废止" "$f10" 2>/dev/null | sed 's/^[0-9]*://')
+done
+if [[ "$g10_hits" -gt 0 ]]; then
+  report "G10 every 废止 marker carries a superseding v3.x pointer" 0 "$g10_bad"
+else
+  report "G10 废止-marker sweep VACUOUS SKIP — no markers in STD/AGENTS (did NOT run; do not read this as a pass)" ok ok
+fi
+
 rm -f "$S3TMP"
 echo
 echo "$pass passed, $fail failed"

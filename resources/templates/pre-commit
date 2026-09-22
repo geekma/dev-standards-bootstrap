@@ -1,3 +1,35 @@
 #!/usr/bin/env bash
+# pre-commit — 溯源自动章 + staged 门禁（v3.40.0，CHG-044 / FU-106①）
+# 盖章幂等（stamp-provenance.sh 写前删旧块，重跑=覆盖替换）。fail 边界：
+#   · 无活跃变更 / stamp 脚本缺失 → 显式提示并跳过（fail-open，gate staged 对
+#     代码路径仍拦；溯源缺口由 gate stop 与审计 A20/A21 兜底拦截）；
+#   · stamp 执行失败（--all 或 --bug）→ exit 1 阻断 commit（fail-closed，
+#     对齐「缺章不可交付」）。
+# bug_ref 提取按治理记录级解析（压平→按顶层对象切分→按 change_id 选中），
+# 与 agent-gate gov_record 同语义，单行/多行 JSON 皆可。路径根为内置默认，
+# 自定义目录根的仓库由 bootstrap transform_src 随装随改。
 set -euo pipefail
+
+active=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+if [[ -n "${active:-}" && -s "$active" && -f scripts/stamp-provenance.sh ]]; then
+  id=$(tr -d '[:space:]' < "$active")
+  if [[ -n "$id" ]]; then
+    govs=$(ls docs/changes/*/00-governance.json docs/changes/BATCH-*/00-governance.json 2>/dev/null || true)
+    refs=""
+    for g in $govs; do
+      rec=$(tr -d '\n\r' < "$g" 2>/dev/null | sed -E 's/\}[[:space:]]*,?[[:space:]]*\{/}\n{/g' \
+        | grep "\"change_id\"[[:space:]]*:[[:space:]]*\"$id\"" | head -1 || true)
+      [[ -n "$rec" ]] || continue
+      refs="$refs $(printf '%s' "$rec" | sed -nE 's/.*"bug_ref"[[:space:]]*:[[:space:]]*"([A-Za-z0-9._-]+)".*/\1/p' || true)"
+      refs="$refs $(printf '%s' "$rec" | sed -nE 's/.*"bug_ref"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p' | tr -d '"' | tr ',' ' ' || true)"
+    done
+    echo "pre-commit: stamping provenance for $id (idempotent)"
+    scripts/stamp-provenance.sh --all "$id"
+    for b in $refs; do
+      [[ "$b" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+      scripts/stamp-provenance.sh --bug "$b"
+    done
+  fi
+fi
+
 scripts/agent-gate --stage staged

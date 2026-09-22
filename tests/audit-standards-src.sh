@@ -897,6 +897,19 @@ report "A25 telemetry lives in the session-gate common layer" 1 "$(a17_at_least_
 report "A25 claude adapter forwards telemetry hooks" 1 "$(a17_at_least_1 "$(grep -c 'UserPromptSubmit' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
 report "A25 opencode plugin is a thin forwarder" 1 "$(a17_at_least_1 "$(grep -c 'session-gate.sh count turn' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
 report "A25 golden pins the telemetry suite" 1 "$(a17_at_least_1 "$(grep -c 'T26 idle carries yellow light' "$ROOT/tests/run-tests.sh" || true)")"
+# --- A25 v3.40.0：pre-commit 自动章 / P3 缺陷轻量通道 / 红灯门 / die 错误码 / G10 减法（CHG-044~048）---
+report "A25 pre-commit stamps provenance automatically" 1 "$(a17_at_least_1 "$(grep -c 'stamp-provenance.sh --all' "$ROOT/resources/templates/pre-commit" || true)")"
+report "A25 gate resolves the P3 defect channel" 1 "$(a17_at_least_1 "$(grep -c 'bug_p3_lightweight' "$GATE_TPL" || true)")"
+report "A25 gate begin blocks on unresolved session red" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_ALLOW_OVER_RED' "$GATE_TPL" || true)")"
+report "A25 gate die messages carry error codes" 1 "$(a17_at_least_1 "$(grep -cE 'die \"GATE-E[0-9]{2}: ' "$GATE_TPL" || true)")"
+report "A25 audit sweeps pointer-less deprecated clauses" 1 "$(a17_at_least_1 "$(grep -c '废止标记缺版本指向' "$ROOT/resources/templates/audit-docs-consistency.sh" || true)")"
+report "A25 golden pins the auto-stamp suite" 1 "$(a17_at_least_1 "$(grep -c 'T27 pre-commit exits 0' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden pins the P3 channel" 1 "$(a17_at_least_1 "$(grep -c 'T28 P3 severity waives' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden pins the red gate" 1 "$(a17_at_least_1 "$(grep -c 'T29 fresh RED report blocks begin' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 golden pins the G10 sweep" 1 "$(a17_at_least_1 "$(grep -c 'T31 G10 flags pointer-less' "$ROOT/tests/run-tests.sh" || true)")"
+at_least "A25 changelog carries the v3.38.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.38.0'
+at_least "A25 changelog carries the v3.39.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.39.0'
+at_least "A25 changelog carries the v3.40.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.40.0'
 at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.35.0'
 at_least "A25 changelog carries the v3.36.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.36.0'
 at_least "A25 changelog carries the v3.37.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.37.0'

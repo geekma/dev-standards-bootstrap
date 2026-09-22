@@ -19,24 +19,24 @@ set -uo pipefail
 die() { printf 'new-change: %s\n' "$1" >&2; exit 2; }
 
 id="${1:-}"
-[[ -n "$id" ]] || die "usage: scripts/new-change <change-id> --risk L0|L1|L2|L3"
+[[ -n "$id" ]] || die "NC-E01: usage: scripts/new-change <change-id> --risk L0|L1|L2|L3"
 shift || true
 risk=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --risk)
-      [[ $# -ge 2 && -n "${2:-}" ]] || die "--risk requires a value (L0|L1|L2|L3)"
+      [[ $# -ge 2 && -n "${2:-}" ]] || die "NC-E02: --risk requires a value (L0|L1|L2|L3)"
       risk="$2"; shift 2 ;;
-    *) die "unknown argument '$1'" ;;
+    *) die "NC-E03: unknown argument '$1'" ;;
   esac
 done
-[[ "$risk" =~ ^L[0-3]$ ]] || die "--risk L0|L1|L2|L3 required"
-[[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
+[[ "$risk" =~ ^L[0-3]$ ]] || die "NC-E04: --risk L0|L1|L2|L3 required"
+[[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "NC-E05: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
 
 docs_dir="${AGENT_GUARD_DOCS_DIR:-docs}"
 change_root="${AGENT_GUARD_CHANGE_ROOT:-$docs_dir/changes}"
 tmpl_dir="${AGENT_GUARD_TEMPLATES_DIR:-$docs_dir/templates/entry}"
-[[ -d "$tmpl_dir" ]] || die "entry templates not found at $tmpl_dir (run bootstrap --core/--guard first)"
+[[ -d "$tmpl_dir" ]] || die "NC-E06: entry templates not found at $tmpl_dir (run bootstrap --core/--guard first)"
 [[ -d "$change_root" ]] || mkdir -p "$change_root"
 
 fill() { # <src> -> stdout with placeholders replaced
@@ -63,7 +63,7 @@ fi
 
 if [[ "$use_batch" == 1 ]]; then
   grep -qE "^##[[:space:]]+$id([[:space:]]|$)" "$batch/00-intent.md" 2>/dev/null \
-    && die "change $id already has a section in $batch — open a new change id"
+    && die "NC-E07: change $id already has a section in $batch — open a new change id"
   for doc in "${entry_docs[@]}"; do
     if [[ ! -e "$batch/$doc" ]]; then
       if [[ "$doc" == 00-governance.json ]]; then
@@ -82,7 +82,7 @@ if [[ "$use_batch" == 1 ]]; then
   d="$batch"
 else
   d="$change_root/$id"
-  [[ -e "$d" ]] && die "$d already exists — open a new change id (standards §2.15 rule 4)"
+  [[ -e "$d" ]] && die "NC-E08: $d already exists — open a new change id (standards §2.15 rule 4)"
   mkdir -p "$d"
   for doc in "${entry_docs[@]}"; do
     fill "$tmpl_dir/$doc" > "$d/$doc"
