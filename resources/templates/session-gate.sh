@@ -165,6 +165,13 @@ if [[ "$mode" == "start" ]]; then
   reds=$(printf '%s' "$out" | grep -c '^FAIL' || true)
   if [[ "${reds:-0}" -gt 0 ]]; then
     emit "session-gate: GATE RED — $summary; 存量缺口见 ${REPORT}（失败项即 §2.14 回填清单）"
+    # v3.43.0 (REQ-959): 缺陷发现入口——会话内信号交互三选项（软执法，fail-open）。
+    # 主 Agent 须就红灯信号询问用户并按选择动态处置，不得静默跳过（忽略须 09 理由）。
+    if [[ -x "scripts/bug-autointent" ]]; then
+      emit "session-gate: 缺陷信号交互三选项（§2.17.2 v3.43.0）——①建骨架：scripts/bug-autointent --source audit-red --failing \"<失败项>\"；②登记 FU（P09 追加行）；③忽略（须 09「重要上下文」理由）"
+    else
+      emit "session-gate: 缺陷信号交互提示（降级）：bug-autointent 未安装——登记 FU 或在 09「重要上下文」登记忽略理由"
+    fi
   else
     emit "session-gate: audit GREEN — $summary"
   fi

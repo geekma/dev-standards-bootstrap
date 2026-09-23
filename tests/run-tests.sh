@@ -2417,6 +2417,51 @@ else
   echo "SKIP T33: stamp-provenance.sh absent (bootstrap --guard 未安装) — 跳过派生 golden cases"
 fi
 
+# ------------------------------------------------ T34 bug-autointent (v3.43.0)
+new_repo
+AUTO_SRC="$ROOT/resources/templates/bug-autointent.sh"
+if [[ -f "$AUTO_SRC" ]]; then
+  mkdir -p scripts docs/bugs/_templates docs
+  cp "$AUTO_SRC" scripts/bug-autointent
+  chmod +x scripts/bug-autointent
+  cp "$ROOT"/resources/templates/bug-*.md docs/bugs/_templates/
+  printf '# Bug 修复记录日志\n\n## 登记格式\n\n<!-- x -->\n' > docs/bugfix-log.md
+  bash scripts/bug-autointent --repo-root "$REPO" --source ci-regression --failing "TestA,TestB" --run-url "http://run/1" >/dev/null 2>&1
+  report "T34 scaffold creates six-piece flat batch" 6 "$(ls docs/bugs/BATCH-*/01-diagnosis.md docs/bugs/BATCH-*/02-impact.md docs/bugs/BATCH-*/03-test-plan.md docs/bugs/BATCH-*/04-matrix.md docs/bugs/BATCH-*/05-config.md docs/bugs/BATCH-*/06-tasks.md 2>/dev/null | wc -l | tr -d ' ')"
+  report "T34 one anchor per piece" 1 "$(grep -c '^## BUG-' docs/bugs/BATCH-*/01-diagnosis.md)"
+  report "T34 first-registration line present" 1 "$(grep -c '首次登记' docs/bugs/BATCH-*/01-diagnosis.md)"
+  report "T34 fingerprint ledger has one row" 1 "$(wc -l < docs/bugs/.autofingerprint.tsv | tr -d ' ')"
+  report "T34 bugfix-log index row registered" 1 "$(grep -c '^### BUG-' docs/bugfix-log.md)"
+  bash scripts/bug-autointent --repo-root "$REPO" --source ci-regression --failing "TestB, TestA" --run-url "http://run/2" >/dev/null 2>&1
+  report "T34 rate-limit: no new anchor in window" 1 "$(grep -c '^## BUG-' docs/bugs/BATCH-*/01-diagnosis.md)"
+  report "T34 rate-limit: reproduction appended" 1 "$(grep -c '再次复现' docs/bugs/BATCH-*/01-diagnosis.md)"
+  bash scripts/bug-autointent --repo-root "$REPO" --source ci-regression --failing "TestC" --window 0 --run-url "http://run/3" >/dev/null 2>&1
+  report "T34 expired window scaffolds new BUG" 2 "$(grep -c '^## BUG-' docs/bugs/BATCH-*/01-diagnosis.md)"
+  bash scripts/bug-autointent --repo-root /nonexistent-xyz --source x --failing A >/dev/null 2>&1
+  report "T34 no-repo degrade exits 2" 2 $?
+else
+  echo "SKIP T34: bug-autointent.sh absent (bootstrap --guard 未安装) — 跳过自动登记 golden cases"
+fi
+
+# ------------------------------------------------ T36 gate friction metrics (v3.43.0)
+new_repo
+GATE_T36="$ROOT/resources/templates/agent-gate.sh"
+[[ -f "$GATE_T36" ]] || GATE_T36="$ROOT/scripts/agent-gate"
+if [[ -f "$GATE_T36" ]]; then
+  mkdir -p scripts .agent-state
+  cp "$GATE_T36" scripts/agent-gate
+  chmod +x scripts/agent-gate
+  git config user.name t36; git config user.email t36@x
+  git add -A >/dev/null 2>&1; git commit -qm init >/dev/null 2>&1
+  bash scripts/agent-gate begin CHG-990 >/dev/null 2>&1
+  report "T36 die event appended to friction ledger" 1 "$(wc -l < .agent-state/gate-friction.tsv | tr -d ' ')"
+  report "T36 friction code is GATE-E format" 1 "$(grep -cE '^GATE-E[0-9]+' .agent-state/gate-friction.tsv)"
+  out36=$(bash scripts/agent-gate metrics 2>/dev/null | grep -c 'friction_code' || true)
+  report "T36 metrics aggregates friction" 1 "$out36"
+else
+  echo "SKIP T36: agent-gate absent — 跳过摩擦 metrics golden cases"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

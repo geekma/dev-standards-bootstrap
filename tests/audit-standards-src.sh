@@ -452,8 +452,13 @@ report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_int
 # 总数都不计它（A10 基线按缺失它的口径固化，缺陷完全不可见）。
 # 修法：复用本仓 shipped 模板 audit-docs-consistency.sh check_seq() 的既有范式——
 # 在取值阶段用 awk '%d' 做十进制归一（非数字归一为 0，产生 gap 报错而非静默跳过）。
-chg_nums=$(basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/null \
-  | sed 's/CHG-//' | awk '{printf "%d\n", $1}' | sort -n)
+# v3.43.0（REQ-961 / FU-111 闭合，用户裁定放宽）：编号集 = 独立 CHG-* 目录 ∪
+# BATCH-*/ 内 `## CHG-xxx` 锚点成员——批后独立目录不再误报跳号（§1.1 同日语义）。
+chg_nums=$( { basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/null \
+  | sed 's/CHG-//';
+  grep -hoE '^##[[:space:]]+CHG-[0-9]+' "$REPO_CHANGES"/BATCH-*/[0-9A-Za-z]*.md 2>/dev/null \
+  | sed -E 's/^##[[:space:]]+CHG-//'; } \
+  | awk '{printf "%d\n", $1}' | sort -nu)
 a6c_ran=0
 if [[ -n "$chg_nums" ]]; then
   chg_prev=0
@@ -566,8 +571,13 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.35.0 行；
 #   ③ 上界按 KiB 步进（+12KB，跨 4KB 档取整）重设为 156KB，余量约 6.2KB——
 #      不是按当前体量贴合。
+# v3.43.0 重校准 156KB → 164KB 的依据（CHG-053，FU-106④）：
+#   ① §2.17.2b 缺陷发现入口（三信号双通道 + 频控 + 自主权）吃到负值（160,160 字节）；
+#   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.43.0 行；
+#   ③ 上界按 KiB 步进（+8KB，跨 4KB 档取整）重设为 164KB，余量约 7.5KB——
+#      不是按当前体量贴合。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 156KB (FU-017, recalibrated v3.35.0)" 1 "$([[ "$std_bytes" -le 159744 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 164KB (FU-017, recalibrated v3.43.0)" 1 "$([[ "$std_bytes" -le 167936 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
@@ -928,6 +938,15 @@ at_least "A26 stamp-provenance implements derive_trace_block (REQ-955)" 2 "$ROOT
 at_least "A26 stamp-provenance wires --trace arg (REQ-955)" 1 "$ROOT/resources/templates/stamp-provenance.sh" 'stamp_trace=true'
 at_least "A26 audit G5 asserts 01.5 REQ subset of 01-spec (REQ-956)" 1 "$ROOT/resources/templates/audit-docs-consistency.sh" '01.5 REQ rows all defined in 01-spec'
 at_least "A26 golden T33 anchors trace derivation (REQ-955)" 1 "$ROOT/tests/run-tests.sh" 'T33 --trace derives'
+
+# v3.43.0 (REQ-958~961, FU-106④ + FU-111): defect discovery entry + A6c union pins.
+at_least "A26 bug-autointent exists with rate-limit window (REQ-958)" 2 "$ROOT/resources/templates/bug-autointent.sh" 'AGENT_GUARD_AUTOBUG_WINDOW'
+at_least "A26 bootstrap --guard carries bug-autointent (REQ-958)" 1 "$ROOT/scripts/bootstrap.sh" 'templates/bug-autointent.sh'
+at_least "A26 uninstall Tier1 covers bug-autointent (REQ-958)" 1 "$ROOT/resources/templates/uninstall-standards.sh" 'bug-autointent'
+at_least "A26 regression workflow template exists (REQ-958)" 1 "$ROOT/resources/templates/github-regression-to-bug.yml" 'workflow_run'
+at_least "A26 session-gate emits defect-signal interactive options (REQ-959)" 1 "$ROOT/resources/templates/session-gate.sh" '缺陷信号交互三选项'
+at_least "A26 gate die writes friction ledger (REQ-960)" 1 "$ROOT/resources/templates/agent-gate.sh" 'gate-friction.tsv'
+at_least "A26 A6c unions batch anchor members (REQ-961/FU-111)" 1 "$ROOT/tests/audit-standards-src.sh" '编号集 = 独立 CHG'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

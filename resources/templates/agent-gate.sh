@@ -6,6 +6,13 @@ set -euo pipefail
 
 die() {
   echo "agent-gate: $*" >&2
+  # v3.43.0 (REQ-960): gate 摩擦事件账（append-only TSV，metrics 侧聚合）。
+  # fail-open：缺 .agent-state 或写失败不影响拒绝语义；TSV 而非 JSON——bash 零依赖。
+  local _code="${1%%:*}" _re='^GATE-E[0-9]+$'
+  if [[ -d ".agent-state" && "$_code" =~ $_re ]]; then
+    printf '%s\t%s\n' "$_code" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+      >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+  fi
   exit 2
 }
 
@@ -1060,6 +1067,11 @@ emit_metrics() {
         "$(delivery_ready "$dir")"
     done
   done
+  # v3.43.0 (REQ-960): gate 摩擦聚合——append-only TSV（die 事件账）按错误码聚合计数。
+  if [[ -f ".agent-state/gate-friction.tsv" ]]; then
+    awk -F'\t' '{ c[$1]++ } END { for (k in c) printf "{\"friction_code\":\"%s\",\"count\":%d}\n", k, c[k] }' \
+      .agent-state/gate-friction.tsv 2>/dev/null || true
+  fi
 }
 
 command="${1:-help}"

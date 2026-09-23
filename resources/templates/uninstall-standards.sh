@@ -69,6 +69,7 @@ if [[ "$FORCE" == 1 ]]; then echo "uninstall-standards: --force ON — Tier3 ass
 # own T-sections), so both live in Tier3 (keep & report; --force backup-moves).
 for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_DIR/new-change" \
          "$SCRIPTS_DIR/session-gate.sh" "$SCRIPTS_DIR/install-hook-adapter" \
+         "$SCRIPTS_DIR/bug-autointent" \
          "$SCRIPTS_DIR/check-standards-compliance.sh"; do
   act_rm "$f"
 done
@@ -102,6 +103,7 @@ tier2 ".github/PULL_REQUEST_TEMPLATE.md" "门禁[1-5]|agent-gate" "PR template"
 tier2 ".github/workflows/agent-governance.yml"  "agent-gate|audit-docs-consistency" "workflow"
 tier2 ".github/workflows/artifact-pipeline.yml" "agent-gate|audit-docs-consistency" "workflow"
 tier2 ".github/workflows/incident-to-intent.yml" "agent-gate|incident" "workflow"
+tier2 ".github/workflows/regression-to-bug.yml" "bug-autointent|regression" "workflow"
 # scaffold trees: each file must carry its installer marker; foreign files stay
 if [[ -d "$DOCS_DIR/templates" ]]; then
   while IFS= read -r f; do

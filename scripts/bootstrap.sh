@@ -610,6 +610,7 @@ run_layer() {
       install_file - ".github/workflows/agent-governance.yml" resources/templates/github-agent-governance.yml
       install_file - "$SCRIPTS_DIR/install-hook-adapter" resources/templates/install-hook-adapter.sh 755
       install_file - "$SCRIPTS_DIR/session-gate.sh" resources/templates/session-gate.sh 755
+      install_file - "$SCRIPTS_DIR/bug-autointent" resources/templates/bug-autointent.sh 755
       install_file - "$SCRIPTS_DIR/uninstall-standards" resources/templates/uninstall-standards.sh 755
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases
@@ -618,6 +619,7 @@ run_layer() {
     pipeline)
       install_file - ".github/workflows/artifact-pipeline.yml" resources/templates/github-artifact-pipeline.yml
       install_file - ".github/workflows/incident-to-intent.yml" resources/templates/github-incident-to-intent.yml
+      install_file - ".github/workflows/regression-to-bug.yml" resources/templates/github-regression-to-bug.yml
       ;;
   esac
 }

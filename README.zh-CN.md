@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.42.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.43.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -76,13 +76,13 @@
 | **五道门禁 + 两层验收** | 文档先行 / 测试先行 / 证据闭环 / 追踪矩阵 / 独立验证——不可绕过；每阶段过机器可验的 A 层标记 + 独立角色 B 层判定（§2.5） |
 | **风险分级 × 角色独立性** | L0–L3 矩阵驱动独立性：独立执行主体，L2/L3 要求不同平台/模型厂商，L3 强制人类 Release Owner 授权（§0.5） |
 | **分阶段专家评审（9 专家，§2.2）** | 业务/行业/技术/架构/项目管理/安全/性能/测试/整体验收专家，作为既有角色的细分执行主体；PMP 对齐的分阶段评审矩阵 + 上下文贴近契约（无项目证据的模板泛评一律退回）+ 会话成本护栏 |
-| **RTVM 追踪矩阵 + 一次变更一组文档** | REQ→DES→TASK→TC 全链路矩阵；每次变更新开 `docs/changes/<新变更号>/` 文档组（满足**八类最低文档集**，§2.15）；每个缺陷新开六件套 |
+| **RTVM 追踪矩阵 + 一次变更一组文档** | REQ→DES→TASK→TC 全链路矩阵；每次变更新开 `docs/changes/<新变更号>/` 文档组（满足**八类最低文档集**，§1.1）；每个缺陷新开六件套 |
 | **10 阶段生命周期 + AI 防跳过规则** | 每步 ReAct（Thought→Action→Observation）；禁止总结式"已完成"、静默降级、提前标完成（§2.16） |
 | **测试覆盖标准（11 维度）** | 逐维设计或显式"不适用"；分支覆盖率 ≥60%（L2+）；LLM 评估集回归；**业务场景覆盖率 ≥80%**（SC-xxx，L3 ≥90%） |
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（419 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（431 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -181,11 +181,12 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | Agent 将要写源码 | 客户端 pre-write Hook 校验活跃变更的产物与治理状态 |
 | 你（或 Agent）提交 | `pre-commit`/`commit-msg` Hook 校验暂存产物与变更归因；代码提交不带变更号即被拒 |
 | 源码改动后一轮结束 | stop Hook 要求编码记录（带脚本盖章溯源）、测试证据、含 ReAct Observation 的 changelog |
-| 会话开始 / 收尾 | 会话门禁开始时跑一致性审计、空闲时跑 stop 等价检查——存量红灯在会话内即可见（v3.28.0） |
+| 会话开始 / 收尾 | 会话门禁开始时跑一致性审计、空闲时跑 stop 等价检查——存量红灯在会话内即可见（v3.28.0）；红灯同时输出缺陷信号交互三选项提示（建骨架/登记 FU/忽略须 09 理由，v3.43.0） |
 | PR 打开 | CI 重跑产物校验**和项目真实验证命令**，并要求 `agent-governance` 检查 |
 | `01-spec.md` 合入主干 | 自动创建骨架分支并派发 `02`/`03`/`03.5`/`04` 骨架 PR（产物管线） |
 | `09-changelog.md` 合入主干 | 自动开发布检查单 issue |
 | 生产事故触发 | `repository_dispatch type=incident` 自动创建 `BUG-<UTC时间戳>` 意图骨架 PR——每个事故都以记录过的意图重入管线 |
+| 主干测试运行失败 | `regression-to-bug` workflow 调用 `scripts/bug-autointent`：自动建**完整缺陷六件套**骨架（按天扁平批、元数据预填），带**指纹频控**——窗口内（默认 24h，env 可覆）同一失败集合只追加复现行，不重复建组（v3.43.0） |
 
 命令参考（由上述事件自动调用；手动执行用于排障）：
 
@@ -197,9 +198,9 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | `--stage commit-msg <msgfile>` | 归因闸门：含代码的提交必须引用有效变更号（合并/回退/纯文档豁免） |
 | `--stage stop` | 源码改动后收尾要求 `04.5-coding-record.md`、`05-test-results.md`、`09-changelog.md`（含 ReAct Observation）及验证命令通过；changelog 引用的 REQ 须回填 `01.5-rtvm-matrix.md`（门禁 4 闭环） |
 | `--stage ci [--base <ref>]` | 复查分支/PR diff 并运行真实验证命令 |
-| `metrics` | 只读管线度量（JSON Lines）——仅观察 |
+| `metrics` | 只读管线度量（JSON Lines）——仅观察；聚合 gate 摩擦事件账（die 错误码→计数，v3.43.0） |
 
-**文件溯源**：编码记录必须携带由 `scripts/stamp-provenance.sh <变更号>` 生成的 `<!-- provenance -->` 块——作者、提交者、提交哈希、主机、平台、UTC 时间全部从运行环境读出，手写编不出来。`--all` 可给变更目录全部 `*.md` 产物盖章（治理 JSON 刻意排除）。门禁校验块形状与生产者；`author` 值本身是否属实**不可机器验证**——设计如实说明而非假装已解决。不追溯既往：历史永不回填，因为回填会把 `generated_at` 伪造成"今天"——那正是溯源块要防的事。
+**文件溯源**：编码记录必须携带由 `scripts/stamp-provenance.sh <变更号>` 生成的 `<!-- provenance -->` 块——作者、提交者、提交哈希、主机、平台、UTC 时间全部从运行环境读出，手写编不出来。`--all` 可给变更目录全部 `*.md` 产物盖章（治理 JSON 刻意排除）；v3.41.0 起 pre-commit Hook 自动执行，v3.42.0 增 `--trace`——changelog §4 的追踪矩阵编号从 `01.5-rtvm-matrix.md` 确定性派生，不再手抄。门禁校验块形状与生产者；`author` 值本身是否属实**不可机器验证**——设计如实说明而非假装已解决。不追溯既往：历史永不回填，因为回填会把 `generated_at` 伪造成"今天"——那正是溯源块要防的事。
 
 **验证命令自动探测**：安装时从项目布局（package.json / Makefile / pom.xml / go.mod / pyproject / Cargo）探测真实构建/测试命令并预填 `.agent-governance.yml`——可在该文件修改，或用 `AGENT_GUARD_VERIFY_COMMAND` 环境变量覆盖（最高优先级）。yml 里的验证命令**在该文件本身处于待定变更中时不会执行**（防篡改——PR 无法把命令注入审查者的 Hook）；先提交它，或改用环境变量。
 
@@ -306,7 +307,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 - **执行侧 token 纪律（v3.24.0/v3.25.0）**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**八条**（管道过滤/一次 grep 合并/先定位后小窗/勘探下放只读子代理/无匹配≠通过/并行批量写/定向验证/有状态 mock 隔离）；规范 §2.9.6 会话与上下文纪律（单会话单主题，>50 轮或主题切换即 handoff）；§2.5 产物最小表达形态 + 单产物 ≤40 行软上限——目标：压 cache_read（= 上下文水位 × 轮数）。
 - **同日变更批次（v3.18.0；v3.24.0 默认化）**：同一天的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/` 一个目录，而不是各建一个。放宽的只有目录——产物文件名一字不改，同批变更用 `## <变更号>` 小节锚点区分，批次变更集合从 `00-governance.json` 的权威名单读取（绝不从标题反推）。风险上限不放宽：**L2/L3 必须独立目录**，门禁按治理记录拒绝批次内的 L2/L3（以 `00-governance.json` 名单为准）。
-- **缺陷组刻意不入批**：每个缺陷在 `docs/bugs/<BUG-xxx>/` 保有独立六件套（诊断/影响/测试计划/矩阵/配置DB/任务），逐缺陷证据边界不共享；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）本身就是天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
+- **缺陷六件套默认按天入批（v3.35.0；v3.36.0 扁平化）**：同日多个缺陷共落扁平 `docs/bugs/BATCH-YYYYMMDD/`——六件套文件名一字不改，用 `## BUG-xxx` 小节锚点区分，当天的追加/回填落在同一套文件里（逐缺陷子目录为历史合法形态，存量不回改）；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）保持天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
 - **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md`、`docs/methodologies/expert-capabilities.md` 与 `docs/methodologies/project-masters.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱）。
 - **自进化**：从本 Skill 派生（声明 `derived_from: dev-standards-bootstrap`）的 Skill 独立演进，安装/升级的每条写入路径都会跳过它们；`--force` 也不越过。`bash scripts/bootstrap.sh --derived-report` 可列出派生清单。
 - **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽 / G8 缺陷六件套存在性 / G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截 / A 组盖章互证）可在 CI 或本地运行；失败项即回填清单。
@@ -336,7 +337,7 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # 源层专用（不下发）：审计执行断言数的入库基线（断言 A10 对漂移判红）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.42.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.43.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
@@ -348,13 +349,13 @@ dev-standards-bootstrap/
     └── templates/
         ├── docs-readme.md                  # 一页文档地图（v3.37.0）：五层职责+更新时机（→ <docs>/README.md）
         ├── project                           # 项目级总册（v3.35.0）：SDLC 12 册 P00–P11 + 评审记录模板（→ docs/templates/project/）
-        ├── entry                             # 变更入口骨架（v3.42.0）：begin 必检七件模板（→ docs/templates/entry/）
-        ├── new-change.sh                   # 变更入口脚手架（v3.42.0）：专用目录/当日批次自动判定（→ scripts/new-change）
+        ├── entry                             # 变更入口骨架（v3.43.0）：begin 必检七件模板（→ docs/templates/entry/）
+        ├── new-change.sh                   # 变更入口脚手架（v3.43.0）：专用目录/当日批次自动判定（→ scripts/new-change）
         ├── CLAUDE.md                       # Claude Code 一行导入
         ├── PULL_REQUEST_TEMPLATE.md        # 带门禁自检的 GitHub PR 模板
         ├── check-standards-compliance.sh   # CI 合规检查脚本
         ├── agent-gate.sh                   # pre-write / commit-msg / Git / CI 共享校验器（+ metrics、+ 变更批次解析）
-        ├── uninstall-standards.sh          # 一键卸载：三层分类 + 标记核验删除 + 共享资产备份移动（v3.42.0）
+        ├── uninstall-standards.sh          # 一键卸载：三层分类 + 标记核验删除 + 共享资产备份移动（v3.43.0）
         ├── intent.md                       # 每次变更 00-intent.md 的管线入口模板（不下发——由 Agent 按变更生成）
         ├── coding-record.md                # docs/changes/<CHG>/04.5-coding-record.md 的编码记录模板（不下发——由 Agent 按变更生成）
         ├── stamp-provenance.sh             # 溯源盖章脚本：从运行环境读作者/主机/时间（v3.17.0；批感知 v3.18.0；--all v3.22.0）
@@ -367,10 +368,12 @@ dev-standards-bootstrap/
         ├── agent-governance.yml            # 团队可复核的治理配置记录（复制到 .agent-governance.yml）
         ├── pre-commit、pre-push、commit-msg  # Git Hook 模板（commit-msg：归因闸门）
         ├── install-hook-adapter.sh         # 探测本地 AI 客户端并自适应接线会话内执法（v3.34.0）
-        ├── session-gate.sh                  # 会话内执法：start=审计亮红灯，idle=stop 等价检查
+        ├── session-gate.sh                  # 会话内执法：start=审计亮红灯+缺陷信号交互三选项，idle=stop 等价检查
+        ├── bug-autointent.sh               # 缺陷发现入口：信号 -> 完整六件套骨架 + 指纹频控（v3.43.0）
         ├── github-agent-governance.yml     # 必需检查 workflow 模板
         ├── github-artifact-pipeline.yml    # 产物管线：spec 合入 -> 02/03/03.5/04 骨架 PR；changelog 合入 -> 发布检查单 issue
-        └── github-incident-to-intent.yml   # 事故回路：告警派发 -> BUG-<ts> 意图骨架 PR
+        ├── github-incident-to-intent.yml   # 事故回路：告警派发 -> BUG-<ts> 意图骨架 PR
+        └── github-regression-to-bug.yml    # 回归回路：主干测试红 -> 六件套缺陷骨架 PR（频控，v3.43.0）
 ```
 
 ## FAQ
@@ -381,11 +384,11 @@ dev-standards-bootstrap/
 
 **会把数据发到服务器吗？** 不会。门禁、溯源盖章与审计都是零依赖 shell 脚本，只读你的文件系统与 git 元数据。`install.sh` 仅克隆本公开仓库。
 
-**同一天的多个低风险变更能共用一套文档吗？** 能——见[治理细节](#治理细节)：同日 L0/L1 变更可并入 `BATCH-YYYYMMDD/`（文件名不变、`## <变更号>` 锚点区分）。缺陷组按设计保持逐缺陷独立。
+**同一天的多个低风险变更能共用一套文档吗？** 能——见[治理细节](#治理细节)：同日 L0/L1 变更可并入 `BATCH-YYYYMMDD/`（文件名不变、`## <变更号>` 锚点区分）。缺陷六件套默认并入当日扁平批次（v3.35.0/3.36.0）；逐缺陷子目录为历史合法形态。
 
 **这些文件是谁生成的——能回溯吗？** 每次变更的编码记录（用 `stamp-provenance.sh --all` 则是活跃变更的全部产物）都带溯源块：作者、提交者、提交哈希、主机、平台、UTC 时间，全部从运行环境读出。
 
-**GitHub 之外能用吗？** 强制语义平台无关（Git Hook + 任意 CI）。三个随包 workflow 是 GitHub Actions 参考实现；§2.17.1 定义的是语义而非平台。
+**GitHub 之外能用吗？** 强制语义平台无关（Git Hook + 任意 CI）。四个随包 workflow 是 GitHub Actions 参考实现；§2.17.1 定义的是语义而非平台。
 
 ## 参与贡献
 
@@ -399,7 +402,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.42.0 | **最后更新：** 2026-09-22 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.43.0 | **最后更新：** 2026-09-23 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

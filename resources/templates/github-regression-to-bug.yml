@@ -1,0 +1,74 @@
+# Regression-to-bug: 主干合入后测试回归红 → 自动六件套骨架（v3.43.0，REQ-958 / FU-106④）
+#
+# 与 incident-to-intent.yml 互补（事故通道语义不变）：
+#   · 监听本仓测试类 workflow（下方 `workflows:` 列表按仓实际名修改）；
+#   · 仅当 conclusion == failure 且发生在**默认分支**（主干合入后回归）时触发；
+#   · 从失败 run 提取失败 job 名集合作为失败指纹，调用 scripts/bug-autointent：
+#       - 频控窗口内同指纹 → 仅向既有 BUG 组 01-diagnosis 追加复现行（不新建）；
+#       - 窗口外/首次 → docs/bugs/BATCH-<UTCday>/ 完整六件套骨架 + bugfix-log 双登记。
+#   · 骨架承载在独立分支 + PR，接手者按 §2.5 阶段 6 走完整处置（§2.17.2）。
+#
+# 安装：bootstrap --guard 复制到 .github/workflows/；`workflows:` 名与脚本路径按仓调整。
+# 频控窗口：仓库可设 Actions variable AGENT_GUARD_AUTOBUG_WINDOW（秒，默认 86400）。
+
+name: Regression to bug
+
+on:
+  workflow_run:
+    workflows:
+      - "CI"            # ← 按仓实际测试 workflow 名修改（可列多个）
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+concurrency:
+  group: regression-to-bug
+  cancel-in-progress: false
+
+jobs:
+  create-bug-skeleton:
+    name: Scaffold defect six-piece (rate-limited)
+    runs-on: ubuntu-latest
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == github.event.repository.default_branch
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Collect failing job names as fingerprint basis
+        id: failing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          names=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/jobs" \
+            --jq '[.jobs[] | select(.conclusion=="failure") | .name] | unique | join(",")')
+          [[ -n "$names" ]] || names="unknown-failure"
+          echo "names=$names" >> "$GITHUB_OUTPUT"
+
+      - name: Scaffold six-piece skeleton (bug-autointent handles rate limiting)
+        env:
+          BUG_SOURCE: ci-regression
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          FAILING: ${{ steps.failing.outputs.names }}
+          AUTOBUG_WINDOW: ${{ vars.AGENT_GUARD_AUTOBUG_WINDOW }}
+        run: |
+          set -eu
+          branch="autobug/$(date -u +%Y%m%d%H%M%S)"
+          git checkout -b "$branch"
+          bash scripts/bug-autointent \
+            --source "$BUG_SOURCE" \
+            --failing "$FAILING" \
+            --run-url "$RUN_URL" \
+            ${AUTOBUG_WINDOW:+--window "$AUTOBUG_WINDOW"}
+          git add docs/bugs docs/bugfix-log.md
+          git commit -m "autobug: defect skeleton from regression (fingerprint rate-limited)"
+          git push origin "$branch"
+          gh pr create --title "autobug: regression defect skeleton ($FAILING)" --body \
+            "由主干回归红自动创建（§2.17.2 v3.43.0 回归通道，频控窗口内同指纹不重复建）。接手者：按 §2.5 阶段 6 补全六件套正文、登记 00-governance.json 后执行缺陷处置流程。"

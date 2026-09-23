@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.42.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.43.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -76,13 +76,13 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **5 Quality Gates + Two-Layer Acceptance** | Doc-First, Test-First, Evidence, Traceability, Independent Verification — non-bypassable; every stage passes machine-verifiable A-layer markers plus independent-role B-layer judgment (§2.5) |
 | **Risk Classification × Role Independence** | L0–L3 matrix drives independence: separate execution entities, L2/L3 distinct platform/model vendors, L3 needs human Release Owner approval (§0.5) |
 | **Stage-Gated Expert Review (9 experts, §2.2)** | Business/Industry/Tech/Architecture/PM/Security/Performance/Test/Acceptance experts as refined subjects of existing roles; PMP-aligned per-stage review matrix, context-grounding contract (a template review without project evidence is rejected), session-cost guardrails |
-| **RTVM Traceability + One Change, One Document Set (一次变更一组文档)** | REQ→DES→TASK→TC full-chain matrix; every change opens a fresh `docs/changes/<new-id>/` group meeting the **eight-category** minimum (§2.15), every defect a fresh six-file bug group |
+| **RTVM Traceability + One Change, One Document Set (一次变更一组文档)** | REQ→DES→TASK→TC full-chain matrix; every change opens a fresh `docs/changes/<new-id>/` group meeting the **eight-category** minimum (§1.1), every defect a fresh six-file bug group |
 | **10-Stage Lifecycle + AI Anti-Skip Rules** | ReAct (Thought→Action→Observation) on every step; anti-skip rules ban summary-style "done", silent downgrades, premature completion (§2.16) |
 | **Test Coverage Standard (11 dimensions)** | Per-dimension design or explicit N/A; branch coverage ≥60% (L2+); LLM eval-set regression; **business-scenario coverage ≥80%** (SC-xxx, L3 ≥90%) |
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (419 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (431 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -181,11 +181,12 @@ After install, enforcement is event-driven — **you never run the gate yourself
 | Agent is about to write source code | Client pre-write hook validates the active change's artifacts and governance state |
 | You (or the agent) commit | `pre-commit`/`commit-msg` hooks verify staged artifacts and change attribution; a code commit without a change id is rejected |
 | A turn ends after source edits | The stop hook requires the coding record (with script-stamped provenance), test evidence, and a changelog with ReAct Observation records |
-| A session starts / goes idle | Session gate runs the consistency audit at start and a stop-equivalent check at idle — stale red lights become visible in-session (v3.28.0) |
+| A session starts / goes idle | Session gate runs the consistency audit at start and a stop-equivalent check at idle — stale red lights become visible in-session (v3.28.0); a red light also prints the defect-signal interactive options (scaffold / register FU / ignore with a 09 justification, v3.43.0) |
 | A PR opens | CI re-runs the artifact checks **and the project's real verification command**, then requires the `agent-governance` check |
 | `01-spec.md` merges to main | A scaffold branch with `02`/`03`/`03.5`/`04` skeleton PRs is created (artifact pipeline) |
 | `09-changelog.md` merges to main | A release-checklist issue is opened automatically |
 | A production incident fires | `repository_dispatch type=incident` creates a `BUG-<UTC-timestamp>` intent skeleton PR — every incident re-enters the pipeline as recorded intent |
+| A main-branch test run fails | `regression-to-bug` workflow calls `scripts/bug-autointent`: a **full six-file defect skeleton** (flat daily batch, metadata pre-filled) is scaffolded with **fingerprint rate-limiting** — the same failing set inside the window (default 24h, env-overridable) only appends a reproduction line instead of a new group (v3.43.0) |
 
 Command reference (invoked by the above; manual runs are for debugging):
 
@@ -197,9 +198,9 @@ Command reference (invoked by the above; manual runs are for debugging):
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
 | `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md`, `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing verification command; changelog REQ ids must be backfilled in `01.5-rtvm-matrix.md` (Gate 4 closure) |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff and runs the real verification command |
-| `metrics` | Read-only pipeline metrics as JSON Lines — observations only |
+| `metrics` | Read-only pipeline metrics as JSON Lines — observations only; aggregates the gate-friction ledger (die codes → counts, v3.43.0) |
 
-**File provenance**: the coding record must carry a `<!-- provenance -->` block produced by `scripts/stamp-provenance.sh <change-id>` — author, committer, commit, host, platform and UTC time are read from the running environment, so they cannot be typed by hand. `--all` stamps every `*.md` artifact of the change directory (the governance JSON is deliberately excluded). The gate checks block shape and producer; truthfulness of `author` itself is *not* machine-verifiable, and the design says so. No retroactive stamping: history is never back-filled, because back-filling would forge `generated_at` — the very thing the block exists to prevent.
+**File provenance**: the coding record must carry a `<!-- provenance -->` block produced by `scripts/stamp-provenance.sh <change-id>` — author, committer, commit, host, platform and UTC time are read from the running environment, so they cannot be typed by hand. `--all` stamps every `*.md` artifact of the change directory (the governance JSON is deliberately excluded); since v3.41.0 the pre-commit hook runs it automatically, and v3.42.0 adds `--trace` — the changelog's §4 traceability ids are derived from the `01.5-rtvm-matrix.md` instead of hand-typed. The gate checks block shape and producer; truthfulness of `author` itself is *not* machine-verifiable, and the design says so. No retroactive stamping: history is never back-filled, because back-filling would forge `generated_at` — the very thing the block exists to prevent.
 
 **Verification command auto-detection**: at bootstrap, the real build/test command is detected from the project layout (package.json / Makefile / pom.xml / go.mod / pyproject / Cargo) and prefilled into `.agent-governance.yml` — edit it there, or override with `AGENT_GUARD_VERIFY_COMMAND` (highest priority). A yml verification command is **not executed while the file itself is part of the pending change** (anti-tamper — a PR cannot inject commands into the reviewer's hook); commit it first, or use the env var.
 
@@ -306,7 +307,7 @@ Any change that fails any gate is **blocked from merge to main**.
 
 - **Execution-side token discipline (v3.24.0/v3.25.0)**: the shipped `AGENTS.md` carries an **8-rule** "Agent execution resource discipline" section (piped filtering / single-pass grep / locate-then-window reads / exploration delegated to read-only subagents / no-match ≠ pass / parallel batch writes / targeted verification / stateful mock isolation); §2.9.6 session-context discipline (one topic per session, handoff beyond 50 turns or on topic switch); §2.5 minimal-expression artifact shapes with a ≤40-line soft cap — targeting cache_read (= context level × turns).
 - **Same-day change batches (v3.18.0; defaulted in v3.24.0)**: several **L0/L1** changes from the **same day** default to sharing one `<docs>/changes/BATCH-YYYYMMDD/` directory instead of one directory each. Only the directory is relaxed — artifact filenames are unchanged, bundled changes are told apart by a `## <change-id>` section anchor, and the batch's change set is read from the authoritative roster in `00-governance.json` (never inferred from headings). The risk ceiling is not relaxed: **L2/L3 must live in their own directory**, and the gate refuses an L2/L3 record found inside a batch (per the governance roster).
-- **Defect groups are not batched, on purpose**: each defect keeps its own six-file group under `docs/bugs/<BUG-xxx>/` (diagnosis / impact / test plan / matrix / config / tasks) so per-defect evidence stays isolated; the append-only `docs/bugfix-log.md` index (one dated row per bug) is already the day-level retrieval layer, and a defect's change-track entry (`BUG-*`) may still join a batch like any other change.
+- **Defect groups join daily batches by default (v3.35.0, flat since v3.36.0)**: same-day defects share one flat `docs/bugs/BATCH-YYYYMMDD/` directory — six files named exactly as before, told apart by `## BUG-xxx` section anchors, same-day appends land in the same files (per-defect subdirectories remain a legal legacy form). The append-only `docs/bugfix-log.md` index (one dated row per bug) stays the day-level retrieval layer, and a defect's change-track entry (`BUG-*`) may still join a change batch like any other change.
 - **Methodology selection (M0–M3)**: `docs/METHODOLOGY.md` is the sole authority for which methodologies are allowed at which level; `docs/methodologies/development.md`, `docs/methodologies/data-structures.md`, `docs/methodologies/state-trigger-audit.md`, `docs/methodologies/expert-capabilities.md` and `docs/methodologies/project-masters.md` carry the per-item engineering rationale (SOLID/DRY applicability, weak-typing ban, implicit state/trigger-link three-way traversal, expert theory toolboxes).
 - **Self-evolution**: skills derived from this one (declaring `derived_from: dev-standards-bootstrap`) live and evolve independently, and every installer/upgrade write path skips them; `--force` does not override that. `bash scripts/bootstrap.sh --derived-report` lists them.
 - **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
@@ -336,7 +337,7 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # Source-layer only (NOT shipped): committed baseline of the audit's executed-assertion count (assertion A10 fails on drift)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.42.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.43.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
@@ -348,13 +349,13 @@ dev-standards-bootstrap/
     └── templates/
         ├── docs-readme.md                  # One-page docs map (v3.37.0): five layers, roles, update timing (→ <docs>/README.md)
         ├── project                           # Project master set (v3.35.0): 12 SDLC masters P00–P11 + review-record template (→ docs/templates/project/)
-        ├── entry                             # Change-entry skeletons (v3.42.0): the seven begin-required artifacts (→ docs/templates/entry/)
-        ├── new-change.sh                   # Change-entry scaffolder (v3.42.0): dedicated-dir vs same-day-batch resolution (→ scripts/new-change)
+        ├── entry                             # Change-entry skeletons (v3.43.0): the seven begin-required artifacts (→ docs/templates/entry/)
+        ├── new-change.sh                   # Change-entry scaffolder (v3.43.0): dedicated-dir vs same-day-batch resolution (→ scripts/new-change)
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
         ├── check-standards-compliance.sh   # CI compliance check script
         ├── agent-gate.sh                   # Shared pre-write / commit-msg / Git / CI validator (+ metrics, + change-batch resolution)
-        ├── uninstall-standards.sh          # One-step uninstall: tiered removal + marker-verified delete + backup-move for shared assets (v3.42.0)
+        ├── uninstall-standards.sh          # One-step uninstall: tiered removal + marker-verified delete + backup-move for shared assets (v3.43.0)
         ├── intent.md                       # Pipeline entry template for each change's 00-intent.md (NOT shipped — the agent writes this artifact per change)
         ├── coding-record.md                # Per-change coding record template for docs/changes/<CHG>/04.5-coding-record.md (NOT shipped — the agent writes it per change)
         ├── stamp-provenance.sh             # Provenance stamper: reads author/host/time from the environment (v3.17.0; batch-aware v3.18.0; --all v3.22.0)
@@ -367,10 +368,12 @@ dev-standards-bootstrap/
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
         ├── pre-commit, pre-push, commit-msg  # Git hook templates (commit-msg: attribution gate)
         ├── install-hook-adapter.sh         # Detects local AI clients and wires session-time enforcement (adaptive, v3.34.0)
-        ├── session-gate.sh                  # Session-time enforcement: start = audit red-light, idle = gate stop equivalent
+        ├── session-gate.sh                  # Session-time enforcement: start = audit red-light + defect-signal interactive options, idle = gate stop equivalent
+        ├── bug-autointent.sh               # Defect discovery entry: signal -> full six-piece skeleton + fingerprint rate-limit (v3.43.0)
         ├── github-agent-governance.yml     # Required-check workflow template
         ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/03.5/04 skeletons PR; changelog merged -> release checklist issue
-        └── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
+        ├── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
+        └── github-regression-to-bug.yml    # Regression loop: main-branch test failure -> six-piece defect skeleton PR (rate-limited, v3.43.0)
 ```
 
 ## FAQ
@@ -381,15 +384,15 @@ dev-standards-bootstrap/
 
 **Is anything sent to a server?** No. The gate, the stamper and the audit are dependency-free shell scripts that read your filesystem and git metadata. `install.sh` only clones this public repository.
 
-**Can several low-risk changes from the same day share one document set?** Yes — see [Governance Details](#governance-details): same-day L0/L1 changes may join a `BATCH-YYYYMMDD/` directory (filenames unchanged, `## <change-id>` anchors). Defect groups stay per-bug by design.
+**Can several low-risk changes from the same day share one document set?** Yes — see [Governance Details](#governance-details): same-day L0/L1 changes may join a `BATCH-YYYYMMDD/` directory (filenames unchanged, `## <change-id>` anchors). Defect six-file groups join the same-day flat batch by default (v3.35.0/3.36.0); per-bug directories remain legal legacy.
 
 **Who generated these files — can I trace it?** Every change's coding record (and, with `stamp-provenance.sh --all`, every artifact of the active change) carries a provenance block read from the running environment: author, committer, commit hash, host, platform, UTC time.
 
-**Does this work outside GitHub?** The enforcement semantics are platform-neutral (Git hooks + any CI). The three bundled workflows are GitHub Actions reference implementations; §2.17.1 defines the semantics, not the platform.
+**Does this work outside GitHub?** The enforcement semantics are platform-neutral (Git hooks + any CI). The four bundled workflows are GitHub Actions reference implementations; §2.17.1 defines the semantics, not the platform.
 
 ## Contributing
 
-Contributions are welcome! Please follow the standards defined in this repository: documentation before code (Gate 1), tests first (Gate 2), real test output (Gate 3), closed RTVM (Gate 4), independent review (Gate 5). Pull requests should use the [PR template](resources/templates/PULL_REQUEST_TEMPLATE.md) and complete all gate self-checks. Maintainers should read [MAINTAINER.md](MAINTAINER.md) first; user-visible changes belong in the.
+Contributions are welcome! Please follow the standards defined in this repository: documentation before code (Gate 1), tests first (Gate 2), real test output (Gate 3), closed RTVM (Gate 4), independent review (Gate 5). Pull requests should use the [PR template](resources/templates/PULL_REQUEST_TEMPLATE.md) and complete all gate self-checks. Maintainers should read [MAINTAINER.md](MAINTAINER.md) first; user-visible changes belong in the [standards changelog](resources/STANDARDS_CHANGELOG.md) (one row per version).
 
 ## License
 
@@ -399,7 +402,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.42.0 | **Last Updated:** 2026-09-23 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.43.0 | **Last Updated:** 2026-09-23 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 
