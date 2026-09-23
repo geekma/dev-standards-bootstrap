@@ -110,6 +110,12 @@ report "skill frontmatter version == footer version" "$V" \
   "$(grep -m1 -oE '^version: [0-9.]+' "$SKILL" | grep -oE '[0-9.]+')"
 report "skill description carries carried version" 1 "$(grep_count "$SKILL" "携带规范版本 v${V}")"
 report "skill body version banner present" 1 "$(grep_count "$SKILL" "当前携带版本：v${V}")"
+# CHG-050 勘误：plugin.json/marketplace.json 版本必须与页脚同源（MAINTAINER §1 明文，
+# 实测漂移 3.37.1 四个版本无人发现——存在性断言（A24）查不出版本漂移）
+report "plugin manifests version == footer version" "$V" \
+  "$(grep -m1 -oE '"version": "[0-9.]+"' "$ROOT/.claude-plugin/plugin.json" | grep -oE '[0-9.]+')"
+report "marketplace manifest version == footer version" "$V" \
+  "$(grep -m1 -oE '"version": "[0-9.]+"' "$ROOT/.claude-plugin/marketplace.json" | grep -oE '[0-9.]+')"
 
 # 升级日志（v3.8.0 起外置 STANDARDS_CHANGELOG.md，CHG-005）：新文件存在、
 # 新条目置顶且首行版本 == 页脚版本、规范正文不再内嵌历史日志行
