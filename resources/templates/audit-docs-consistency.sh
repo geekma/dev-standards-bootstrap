@@ -296,6 +296,20 @@ while IFS= read -r c; do
       grep -qE "^\| \`?${r}\`?" "$c/01.5-rtvm-matrix.md" || unreached=$(( unreached + 1 ))
     done
     report "G5 $fname CHG REQ rows all backfilled in 01.5 matrix" 0 "$unreached"
+    # v3.42.0 (REQ-956): G5 second assertion — the matrix's REQ set must be a
+    # subset of the feature's own 01-spec definitions (single-source upstream,
+    # FU-106③). 01-spec absent → exempt (aligned with the fail-open ladder).
+    if [[ -f "$c/01-spec.md" ]]; then
+      undefined=0
+      for r in $(grep -oE 'REQ-[0-9]+' "$c/01.5-rtvm-matrix.md" | sort -u); do
+        # F4 (review): digit-boundary match — a bare substring grep would let
+        # REQ-95 satisfy via REQ-9550 (prefix collision false-green).
+        grep -qE "${r}([^0-9]|$)" "$c/01-spec.md" || undefined=$(( undefined + 1 ))
+      done
+      report "G5 $fname 01.5 REQ rows all defined in 01-spec" 0 "$undefined"
+    else
+      report "G5 $fname 01.5 REQ subset check exempt (01-spec absent)" ok ok
+    fi
   elif grep -qE 'REQ-[0-9]+' "$CHG_BLOCK"; then
     report "G5 $fname CHG references REQ but 01.5-rtvm-matrix.md missing (gate 4 backfill)" 0 1
   else

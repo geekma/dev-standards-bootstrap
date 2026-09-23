@@ -2334,6 +2334,89 @@ else
   echo "SKIP T32: uninstall-standards.sh absent (bootstrap --guard 未安装) — 跳过卸载 golden cases"
 fi
 
+# ------------------------------------------------ T33 trace derivation (v3.42.0)
+new_repo
+STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
+[[ -f "$STAMP_SRC" ]] || STAMP_SRC="$ROOT/scripts/stamp-provenance.sh"
+if [[ -f "$STAMP_SRC" ]]; then
+  cp "$STAMP_SRC" scripts/stamp-provenance.sh
+  chmod +x scripts/stamp-provenance.sh
+  mkdir -p docs/feature-f
+  cat > docs/feature-f/01-spec.md <<'EOF'
+# feature-f spec
+REQ-955 trace derivation.
+REQ-956 G5 subset.
+EOF
+  cat > docs/feature-f/01.5-rtvm-matrix.md <<'EOF'
+# feature-f RTVM
+| REQ | 简述 | DES | 方案 | TASK | 实现 | TC | 方法 | 状态 |
+|---|---|---|---|---|---|---|---|---|
+| `REQ-955` | derive | `DES-900` | d | T1 | i | `TC-950` | unit | ✅ |
+| `REQ-956` | subset | `DES-901` | d | T2 | i | `TC-951` | unit | ✅ |
+EOF
+  mkdir -p docs/changes/CHG-980
+  cat > docs/changes/CHG-980/09-changelog.md <<'EOF'
+# 09 changelog
+## CHG-980 · trace derivation
+#### 追踪矩阵映射 (Traceability)
+- 完整矩阵：docs/feature-f/01.5-rtvm-matrix.md（短引用，v3.23.0）
+#### 现象
+n/a
+EOF
+  bash scripts/stamp-provenance.sh --trace CHG-980 >/dev/null 2>&1
+  report "T33 --trace derives the §4 block" 1 "$(grep -c 'trace-derive begin' docs/changes/CHG-980/09-changelog.md)"
+  check_output "T33 REQ rows derived from matrix" '对应需求（派生）：`REQ-955`、`REQ-956`' "$(cat docs/changes/CHG-980/09-changelog.md)"
+  check_output "T33 TC rows derived" '对应测试（派生）：`TC-950`、`TC-951`' "$(cat docs/changes/CHG-980/09-changelog.md)"
+  cp docs/changes/CHG-980/09-changelog.md .t33-first
+  bash scripts/stamp-provenance.sh --trace CHG-980 >/dev/null 2>&1
+  report "T33 --trace is idempotent" 0 "$(diff -q .t33-first docs/changes/CHG-980/09-changelog.md >/dev/null; echo $?)"
+  bash scripts/stamp-provenance.sh --all CHG-980 >/dev/null 2>&1
+  report "T33 --all keeps the derived block" 1 "$(grep -c 'trace-derive begin' docs/changes/CHG-980/09-changelog.md)"
+  report "T33 --all stamped provenance too" 1 "$(grep -c '^<!-- provenance$' docs/changes/CHG-980/09-changelog.md)"
+  # F3 (review): fail-open ladder — matrix WITH REQ rows but WITHOUT DES/TC
+  # tokens (legal upstream shape) must derive a REQ-only block, not die
+  # (exercises the `|| true` guards; would have caught F1).
+  mkdir -p docs/feature-g
+  cat > docs/feature-g/01.5-rtvm-matrix.md <<'EOF'
+# feature-g RTVM
+| REQ | 需求 | 状态 |
+|---|---|---|
+| `REQ-958` | req-only | ✅ |
+EOF
+  mkdir -p docs/changes/CHG-982
+  cat > docs/changes/CHG-982/09-changelog.md <<'EOF'
+# 09
+## CHG-982 · req-only matrix
+#### 追踪矩阵映射 (Traceability)
+- 完整矩阵：docs/feature-g/01.5-rtvm-matrix.md
+EOF
+  out33=$(bash scripts/stamp-provenance.sh --trace CHG-982 2>&1); rc33=$?
+  report "T33 REQ-only matrix derives without dying (F1 guard)" 0 "$rc33"
+  check_output "T33 REQ-only block emits REQ row" '对应需求（派生）：`REQ-958`' "$(cat docs/changes/CHG-982/09-changelog.md)"
+  report "T33 REQ-only block emits DES placeholder" 1 "$(grep -c '对应设计（派生）：—（01.5 未含 DES 编号）' docs/changes/CHG-982/09-changelog.md)"
+  # F3 (review): --trace single-run block == --all derived block (equivalence)
+  b1=$(sed -n '/^<!-- trace-derive begin/,/^<!-- trace-derive end/p' docs/changes/CHG-980/09-changelog.md)
+  bash scripts/stamp-provenance.sh --all CHG-980 >/dev/null 2>&1
+  b2=$(sed -n '/^<!-- trace-derive begin/,/^<!-- trace-derive end/p' docs/changes/CHG-980/09-changelog.md)
+  report "T33 --trace block == --all block (equivalence)" 0 "$(printf '%s\n' "$b1" | diff - <(printf '%s\n' "$b2") >/dev/null; echo $?)"
+  new_repo
+  cp "$STAMP_SRC" scripts/stamp-provenance.sh
+  chmod +x scripts/stamp-provenance.sh
+  mkdir -p docs/changes/CHG-981
+  cat > docs/changes/CHG-981/09-changelog.md <<'EOF'
+# 09
+## CHG-981 · no matrix
+#### 追踪矩阵映射 (Traceability)
+- 对应需求：`REQ-970`（见 01-spec.md）
+EOF
+  out33=$(bash scripts/stamp-provenance.sh --trace CHG-981 2>&1); rc33=$?
+  report "T33 --trace without matrix exits 0 (fail-open)" 0 "$rc33"
+  check_output "T33 missing matrix announces skip" "trace skip" "$out33"
+  report "T33 no marker block written on skip" 0 "$(grep -c 'trace-derive begin' docs/changes/CHG-981/09-changelog.md)"
+else
+  echo "SKIP T33: stamp-provenance.sh absent (bootstrap --guard 未安装) — 跳过派生 golden cases"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

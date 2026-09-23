@@ -923,6 +923,12 @@ at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_
 at_least "A25 changelog carries the v3.36.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.36.0'
 at_least "A25 changelog carries the v3.37.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.37.0'
 
+# v3.42.0 (REQ-955/956, FU-106③): trace derivation + G5 subset extension pins.
+at_least "A26 stamp-provenance implements derive_trace_block (REQ-955)" 2 "$ROOT/resources/templates/stamp-provenance.sh" 'derive_trace_block'
+at_least "A26 stamp-provenance wires --trace arg (REQ-955)" 1 "$ROOT/resources/templates/stamp-provenance.sh" 'stamp_trace=true'
+at_least "A26 audit G5 asserts 01.5 REQ subset of 01-spec (REQ-956)" 1 "$ROOT/resources/templates/audit-docs-consistency.sh" '01.5 REQ rows all defined in 01-spec'
+at_least "A26 golden T33 anchors trace derivation (REQ-955)" 1 "$ROOT/tests/run-tests.sh" 'T33 --trace derives'
+
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达
 # 死调用）而未同步基线 → 红；红即提示跑 scripts/update-assertion-count.sh 同步。

@@ -9,6 +9,7 @@
 # 用法：
 #   scripts/stamp-provenance.sh <CHG-id> [file ...]   # 就地写入（默认 04.5-coding-record.md）
 #   scripts/stamp-provenance.sh --all <CHG-id>        # 全量盖章：活跃变更目录下全部 *.md（v3.22.0）
+#   scripts/stamp-provenance.sh --trace <CHG-id>      # 从 01.5 矩阵派生 09 §4 追踪矩阵块（v3.42.0）
 #   scripts/stamp-provenance.sh --bug <BUG-id>        # 缺陷六件套盖章：docs/bugs/<id>/*.md（v3.28.0）
 #   scripts/stamp-provenance.sh --print <CHG-id>      # 只打印块，不写文件
 #   scripts/stamp-provenance.sh --check <file>        # 校验已有块（CI 用，形状 + 非占位）
@@ -49,8 +50,9 @@ INCLUDE_EMAIL="${AGENT_GUARD_PROVENANCE_EMAIL:-$(cfg_path include_email true)}"
 usage() {
   cat <<'EOF'
 Usage: scripts/stamp-provenance.sh <CHG-id> [file ...]
-       scripts/stamp-provenance.sh --all <CHG-id>
-       scripts/stamp-provenance.sh --bug <BUG-id>
+        scripts/stamp-provenance.sh --all <CHG-id>
+        scripts/stamp-provenance.sh --trace <CHG-id>
+        scripts/stamp-provenance.sh --bug <BUG-id>
        scripts/stamp-provenance.sh --print <CHG-id>
        scripts/stamp-provenance.sh --check <file>
 
@@ -73,6 +75,7 @@ EOF
 
 mode=write
 stamp_all=false
+stamp_trace=false
 stamp_bug=false
 bug_id=""
 case "${1:-}" in
@@ -80,6 +83,7 @@ case "${1:-}" in
   --print)   mode=print; shift ;;
   --check)   mode=check; shift ;;
   --all)     stamp_all=true; shift ;;
+  --trace)   stamp_trace=true; shift ;;
   --bug)     stamp_bug=true; bug_id="${2:-}"; shift 2 ;;
   "")        usage >&2; exit 2 ;;
 esac
@@ -127,6 +131,10 @@ else
     echo "stamp-provenance: --all cannot be combined with an explicit file list" >&2
     exit 2
   fi
+  if [[ "$stamp_trace" == true && "$#" -gt 0 ]]; then
+    echo "stamp-provenance: --trace cannot be combined with an explicit file list" >&2
+    exit 2
+  fi
 fi
 
 # Batch-aware resolution (v3.18.0): a same-day L0/L1 batch keeps its artifacts in
@@ -149,6 +157,84 @@ resolve_dir() { # <change-id> -> directory
     fi
   done
   printf '%s' "$d"
+}
+
+# v3.42.0 (REQ-955): derive the 09 §4 traceability block from the 01.5 matrix —
+# single-source (§1.2): REQ/DES/TC ids are copied from the matrix, never
+# hand-typed again. Fail-open: any missing input skips with a loud stderr line
+# and exit 0 (derivation is an optimization; G5/gate 4 remain the enforcement).
+derive_trace_block() { # <chg-id> <chg-dir>
+  local id="$1" dir="$2" nine="$2/09-changelog.md"
+  [[ -f "$nine" ]] || { echo "stamp-provenance: trace skip (no 09-changelog.md in $dir)" >&2; return 0; }
+  local blk; blk=$(mktemp)
+  # this change's own section (batch-aware; same anchor shape as the gate/audit)
+  awk -v id="$id" '
+    $0 ~ ("^##[[:space:]]+" id "([[:space:]]|$)") { on=1; print; next }
+    on && /^##[[:space:]]/ { exit }
+    on { print }
+  ' "$nine" > "$blk"
+  grep -q "^#### 追踪矩阵映射" "$blk" \
+    || { echo "stamp-provenance: trace skip (no §4 traceability heading in CHG section)" >&2; rm -f "$blk"; return 0; }
+  # matrix resolution (gate 门禁 4 double-placement protocol, §2.17):
+  # 1) an explicit path mentioned in the section, 2) depth-1 scan of both roots.
+  local matrix="" cand m found=""
+  # path-char class only (letters/digits/._/): CJK prose like `完整矩阵：` must
+  # not glue onto the candidate path (would make "$ROOT/$cand" nonexistent and
+  # silently fall through to the scan — masked by single-matrix fixtures).
+  cand=$(grep -oE '[A-Za-z0-9._/-]*01\.5-rtvm-matrix\.md' "$blk" | head -1 || true)
+  if [[ -n "$cand" && -f "$ROOT/$cand" ]]; then matrix="$ROOT/$cand"; fi
+  if [[ -z "$matrix" ]]; then
+    for m in "$DOCS_DIR"/*/01.5-rtvm-matrix.md "$CHANGE_ROOT"/*/01.5-rtvm-matrix.md; do
+      [[ -f "$m" ]] || continue
+      if [[ -n "$found" ]]; then
+        echo "stamp-provenance: trace skip (multiple 01.5 matrices found — ambiguous)" >&2
+        rm -f "$blk"; return 0
+      fi
+      found="$m"
+    done
+    matrix="$found"
+  fi
+  [[ -n "$matrix" ]] || { echo "stamp-provenance: trace skip (no 01.5-rtvm-matrix.md found)" >&2; rm -f "$blk"; return 0; }
+  local reqs dess tcs
+  # F1 (review): `|| true` guards — grep exits 1 on zero matches; with
+  # `set -euo pipefail` a bare pipeline would kill the script mid-derivation
+  # (the REQ-empty / DES-empty / TC-empty fail-open branches were dead code,
+  # and --all would abort after stamping). Empty set → the loud SKIP below.
+  reqs=$(grep -oE 'REQ-[0-9]+' "$matrix" | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
+  [[ -n "$reqs" ]] || { echo "stamp-provenance: trace skip (01.5 matrix has no REQ rows)" >&2; rm -f "$blk"; return 0; }
+  dess=$(grep -oE 'DES-[0-9]+' "$matrix" | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
+  tcs=$(grep -oE 'TC-[0-9]+' "$matrix" | sort -u | tr '\n' ' ' | sed 's/ $//' || true)
+  join_bt() { printf '%s' "$1" | tr ' ' '\n' | sed '/^$/d' | awk '{printf "%s`%s`", sep, $0; sep="、"}'; }
+  local req_l des_l tc_l
+  req_l="- 对应需求（派生）：$(join_bt "$reqs")"
+  if [[ -n "$dess" ]]; then des_l="- 对应设计（派生）：$(join_bt "$dess")"; else des_l="- 对应设计（派生）：—（01.5 未含 DES 编号）"; fi
+  if [[ -n "$tcs" ]]; then tc_l="- 对应测试（派生）：$(join_bt "$tcs")"; else tc_l="- 对应测试（派生）：—（01.5 未含 TC 编号）"; fi
+  local tb; tb=$(mktemp)
+  {
+    echo "<!-- trace-derive begin (stamp-provenance.sh v3.42.0; 派生自 01.5-rtvm-matrix.md，勿手改) -->"
+    printf '%s\n' "$req_l" "$des_l" "$tc_l"
+    echo "<!-- trace-derive end -->"
+  } > "$tb"
+  # idempotent rewrite (F2, review): ONE awk pass — marker deletion is scoped
+  # to THIS change's section (a shared batch 09 must never have a sibling's
+  # delivered trace block swept), then the fresh block is inserted after the
+  # §4 heading of this section only.
+  local tmp; tmp=$(mktemp)
+  awk -v bf="$tb" -v id="$id" '
+    $0 ~ ("^##[[:space:]]+" id "([[:space:]]|$)") { on=1; print; next }
+    on && /^##[[:space:]]/ { on=0 }
+    on && /^<!-- trace-derive begin/ { del=1; next }
+    on && /^<!-- trace-derive end/ { del=0; next }
+    del { next }
+    { print }
+    on && !done && /^#### 追踪矩阵映射/ {
+      while ((getline l < bf) > 0) print l
+      close(bf); done=1
+    }
+  ' "$nine" > "$tmp" && mv "$tmp" "$nine"
+  rm -f "$blk" "$tb"
+  echo "trace-derive  $nine"
+  return 0
 }
 if [[ "$stamp_bug" == true ]]; then
   # v3.35.0 (BUG-005): defect groups live standalone OR inside a per-day batch
@@ -187,6 +273,12 @@ if [[ "$stamp_bug" == true ]]; then
   fi
 else
   CHG_DIR=$(resolve_dir "$chg")
+fi
+
+# v3.42.0 --trace: derive-only mode (no provenance stamping).
+if [[ "$stamp_trace" == true ]]; then
+  derive_trace_block "$chg" "$CHG_DIR"
+  exit 0
 fi
 
 if [[ "$#" -gt 0 ]]; then
@@ -363,4 +455,7 @@ for f in "${targets[@]}"; do
 done
 
 [[ "$stamped" -gt 0 ]] || { echo "stamp-provenance: nothing stamped" >&2; exit 2; }
+if [[ "$stamp_all" == true ]]; then
+  derive_trace_block "$chg" "$CHG_DIR"
+fi
 exit 0
