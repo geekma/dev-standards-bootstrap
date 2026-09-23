@@ -11,7 +11,7 @@
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
-[English](README.md) | [中文](README.zh-CN.md) | [Changelog](CHANGELOG.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
 </div>
 
@@ -84,7 +84,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
 | **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (406 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
-`agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). Project-level release history lives in the [Changelog](CHANGELOG.md).
+`agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
 ## Supported AI Coding Tools
 
@@ -318,7 +318,6 @@ dev-standards-bootstrap/
 ├── SKILL.md                                # Skill manifest (trigger, execution steps, red lines)
 ├── README.md                               # English documentation (this file)
 ├── README.zh-CN.md                         # Chinese documentation
-├── CHANGELOG.md                            # Project-level release history (user-facing)
 ├── LICENSE                                 # MIT License
 ├── MAINTAINER.md                           # Maintainer notes (NOT shipped with the skill): file roles / change-coupling table / the two self-tests and their order / version carriers / per-version upgrade actions
 ├── .github/
@@ -378,7 +377,7 @@ dev-standards-bootstrap/
 
 **Does it modify my code?** No. The whole package is documentation, templates, hooks and validators around your workflow. The gate *rejects* commits; it never edits files.
 
-**How do I uninstall it?** Delete everything the installer laid down: `AGENTS.md` (and `CLAUDE.md` if generated), the governance docs under `docs/` (`DEVELOPMENT_STANDARDS.md`, `STANDARDS_CHANGELOG.md`, `METHODOLOGY.md`, `methodologies/`, `bugfix-log.md`, `bugs/`, `06-delivery-summary.md`, `06.5-deployment-config.md`), the injected scripts (`scripts/agent-gate`, `scripts/stamp-provenance.sh`, `scripts/check-standards-compliance.sh`, `scripts/install-hook-adapter`), the test/audit files (`tests/run-tests.sh`, `tests/audit-docs-consistency.sh`), `.githooks/`, `.agent-governance.yml`, the injected `.github/` workflows + PR template, any client adapter config (`.claude/` / `.cursor/` / `.gemini/` / `.opencode/`), and the change artifacts your team created. Then `git config --unset core.hooksPath`.
+**How do I uninstall it?** Run the one-step uninstaller shipped with `--guard`: `scripts/uninstall-standards` (`--dry-run` previews, `--force` also moves shared assets aside). It deletes installer runtime files outright (gate scripts, hooks path, `.agent-state`), deletes template files only when their installer marker is intact (modified files are kept and reported), and **keeps shared knowledge assets** — `AGENTS.md`, `CLAUDE.md`, the governance history under `docs/` (`changes/`, `bugs/`, project masters), and merged client-adapter settings (`.claude/` etc.) — unless `--force`, which **backup-moves** them to `.uninstall-backup-<timestamp>/` instead of deleting. `core.hooksPath` is unset for you when it points at the managed hooks dir. Reinstall anytime with `bootstrap --core/--guard`.
 
 **Is anything sent to a server?** No. The gate, the stamper and the audit are dependency-free shell scripts that read your filesystem and git metadata. `install.sh` only clones this public repository.
 
@@ -390,7 +389,7 @@ dev-standards-bootstrap/
 
 ## Contributing
 
-Contributions are welcome! Please follow the standards defined in this repository: documentation before code (Gate 1), tests first (Gate 2), real test output (Gate 3), closed RTVM (Gate 4), independent review (Gate 5). Pull requests should use the [PR template](resources/templates/PULL_REQUEST_TEMPLATE.md) and complete all gate self-checks. Maintainers should read [MAINTAINER.md](MAINTAINER.md) first; user-visible changes belong in the [Changelog](CHANGELOG.md).
+Contributions are welcome! Please follow the standards defined in this repository: documentation before code (Gate 1), tests first (Gate 2), real test output (Gate 3), closed RTVM (Gate 4), independent review (Gate 5). Pull requests should use the [PR template](resources/templates/PULL_REQUEST_TEMPLATE.md) and complete all gate self-checks. Maintainers should read [MAINTAINER.md](MAINTAINER.md) first; user-visible changes belong in the.
 
 ## License
 
@@ -402,6 +401,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 **Standards Version:** v3.41.0 | **Last Updated:** 2026-09-22 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
-[Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](CHANGELOG.md)
+[Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
 
 </div>

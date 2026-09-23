@@ -502,7 +502,7 @@ report "A6e closed change dirs are complete (BUG-003 guard)" 0 "$closed_missing"
 # README 已在宣传 curl 一条命令）。`git ls-files` 匹配=tracked（CI 干净 checkout 下即
 # committed）；与"树↔磁盘"断言互补：那条管"README 树=磁盘实际"，本条管"README 命令=提交内容"。
 a24_missing=0
-for a24f in scripts/install.sh CHANGELOG.md MAINTAINER.md resources/templates/stamp-provenance.sh .claude-plugin/marketplace.json .claude-plugin/plugin.json; do
+for a24f in scripts/install.sh MAINTAINER.md resources/templates/stamp-provenance.sh .claude-plugin/marketplace.json .claude-plugin/plugin.json; do
   git -C "$ROOT" ls-files --error-unmatch "$a24f" >/dev/null 2>&1 \
     || { echo "audit: quick-start surface not committed (untracked): $a24f" >&2; a24_missing=$(( a24_missing + 1 )); }
 done
@@ -832,7 +832,7 @@ report "A23 stamper --all targets every md artifact" 1 "$(a17_at_least_1 "$(grep
 report "A23 stamper documents why the governance JSON is excluded" 1 "$(a17_at_least_1 "$(grep -c 'deliberately NOT stamped' "$STAMP_TPL" || true)")"
 report "A23 golden suite covers --all end-to-end" 1 "$(a17_at_least_1 "$(grep -c 'T17b --all stamps the whole change directory' "$ROOT/tests/run-tests.sh" || true)")"
 report "A23 golden suite covers the one-command installer" 1 "$(a17_at_least_1 "$(grep -c 'T21 install.sh --from performs a full offline install' "$ROOT/tests/run-tests.sh" || true)")"
-report "A23 project CHANGELOG.md exists (version narrative lives outside the READMEs)" 1 "$([[ -s "$ROOT/CHANGELOG.md" ]] && echo 1 || echo 0)"
+report "A23 project CHANGELOG.md removed — sole history is STANDARDS_CHANGELOG (CHG-050)" 0 "$([[ -e "$ROOT/CHANGELOG.md" ]] && echo 1 || echo 0)"
 at_least "A23 README en points at install.sh" 1 "$RM_EN" 'install.sh'
 at_least "A23 README zh points at install.sh" 1 "$RM_ZH" 'install.sh'
 at_least "A23 MAINTAINER documents the install.sh role" 1 "$ROOT/MAINTAINER.md" 'install.sh'

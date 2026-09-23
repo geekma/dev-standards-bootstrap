@@ -43,6 +43,7 @@ Flags (layers; default --core when none given):
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
+               <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
                <github>/workflows/agent-governance.yml,
                .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4)
   --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml

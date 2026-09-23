@@ -11,7 +11,7 @@
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
-[English](README.md) | [中文](README.zh-CN.md) | [Changelog](CHANGELOG.md)
+[English](README.md) | [中文](README.zh-CN.md)
 
 </div>
 
@@ -84,7 +84,7 @@
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
 | **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（406 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
-`agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。项目级版本历史见[更新日志](CHANGELOG.md)。
+`agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
 ## 支持的 AI 编码工具
 
@@ -318,7 +318,6 @@ dev-standards-bootstrap/
 ├── SKILL.md                                # Skill 清单（触发、执行步骤、红线）
 ├── README.md                               # 英文文档
 ├── README.zh-CN.md                         # 中文文档（本文件）
-├── CHANGELOG.md                            # 项目级版本历史（面向用户）
 ├── LICENSE                                 # MIT 许可证
 ├── MAINTAINER.md                           # 维护者须知（不随 Skill 分发）：文件角色 / 变更联动表 / 两道自测试与顺序 / 版本载体 / 逐版本升级动作
 ├── .github/
@@ -378,7 +377,7 @@ dev-standards-bootstrap/
 
 **会改我的代码吗？** 不会。整套包是围绕你工作流的文档、模板、Hook 与校验器。门禁只会**拒绝**提交，从不编辑文件。
 
-**如何卸载？** 删除安装器落下的全部内容：`AGENTS.md`（及生成的 `CLAUDE.md`）、`docs/` 下的治理文档（`DEVELOPMENT_STANDARDS.md`、`STANDARDS_CHANGELOG.md`、`METHODOLOGY.md`、`methodologies/`、`bugfix-log.md`、`bugs/`、`06-delivery-summary.md`、`06.5-deployment-config.md`）、注入的脚本（`scripts/agent-gate`、`scripts/stamp-provenance.sh`、`scripts/check-standards-compliance.sh`、`scripts/install-hook-adapter`）、测试/审计文件（`tests/run-tests.sh`、`tests/audit-docs-consistency.sh`）、`.githooks/`、`.agent-governance.yml`、注入的 `.github/` workflows 与 PR 模板、客户端适配器配置（`.claude/` / `.cursor/` / `.gemini/` / `.opencode/`），以及团队自己产出的变更文档。然后 `git config --unset core.hooksPath`。
+**如何卸载？** 跑随 `--guard` 附带的一键卸载器：`scripts/uninstall-standards`（`--dry-run` 预览、`--force` 连共享资产一起处理）。它**直接删除**安装器运行时件（gate 脚本、hooksPath、`.agent-state`）；模板件只在安装器标记完好时删除（被改动的保留并报告）；**共享知识资产默认保留**——`AGENTS.md`、`CLAUDE.md`、`docs/` 下的治理历史（`changes/`、`bugs/`、项目总册）与合并型客户端接线（`.claude/` 等），`--force` 也只是**备份移动**到 `.uninstall-backup-<时间戳>/`，永不 `rm`。`core.hooksPath` 指向托管钩子目录时自动解除。随时可用 `bootstrap --core/--guard` 重装。
 
 **会把数据发到服务器吗？** 不会。门禁、溯源盖章与审计都是零依赖 shell 脚本，只读你的文件系统与 git 元数据。`install.sh` 仅克隆本公开仓库。
 
@@ -390,7 +389,7 @@ dev-standards-bootstrap/
 
 ## 参与贡献
 
-欢迎贡献！请遵循本仓库定义的规范：文档先行（门禁 1）、测试先行（门禁 2）、真实测试输出（门禁 3）、RTVM 闭环（门禁 4）、独立评审（门禁 5）。PR 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)并完成全部门禁自检。维护者请先读 [MAINTAINER.md](MAINTAINER.md)；用户可感知的变更请写入[更新日志](CHANGELOG.md)。
+欢迎贡献！请遵循本仓库定义的规范：文档先行（门禁 1）、测试先行（门禁 2）、真实测试输出（门禁 3）、RTVM 闭环（门禁 4）、独立评审（门禁 5）。PR 请使用 [PR 模板](resources/templates/PULL_REQUEST_TEMPLATE.md)并完成全部门禁自检。维护者请先读 [MAINTAINER.md](MAINTAINER.md)；版本条目写入 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（一版本一行）。
 
 ## 许可证
 
@@ -402,6 +401,6 @@ dev-standards-bootstrap/
 
 **规范版本：** v3.41.0 | **最后更新：** 2026-09-22 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
-[报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](CHANGELOG.md)
+[报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md)
 
 </div>

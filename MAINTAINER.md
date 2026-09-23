@@ -18,9 +18,10 @@
 | `resources/AGENTS.md` / `METHODOLOGY.md` / `methodologies/` | 上下文层与方法论层 | ✅ → `<docs>/` |
 | `resources/templates/project/`（12 册 + 评审模板，v3.35.0） | 项目级总册骨架（§1.3） | ✅ → `<docs>/templates/project/`（目标仓首次变更复制为 `<docs>/project/` 并回填） |
 | `resources/templates/**` | 落到目标仓库的模板与脚本 | ✅（按清单逐项） |
+| `resources/templates/uninstall-standards.sh`（v3.41.0） | 一键卸载器：三层分类（运行时直删 / 标记核验删 / 共享资产备份移动永不 rm）；随 `--guard` 安装为 `<scripts>/uninstall-standards`；清单与安装器同源，改动须同步 bootstrap usage 与双 README FAQ | ✅ → `<scripts>/` |
 | `scripts/bootstrap.sh` | 清单驱动安装器（**清单即单一权威源**） | ✅ |
 | `scripts/install.sh` | 一键安装/升级器（v3.22.0，源层工具）：克隆 checkout + 薄委托 bootstrap，**不复制任何安装逻辑**；`--as-skill` 把 Skill 本体以 symlink 注册进 AI 客户端技能目录（不动目标仓，与安装/升级模式互斥） | ❌（不随 Skill 分发，同 bootstrap.sh 自身） |
-| `CHANGELOG.md` | 项目级版本历史（用户可感知变更）；规范条款级历史在 `resources/STANDARDS_CHANGELOG.md` | ❌ |
+| `CHANGELOG.md` | **已删除（CHG-050，用户裁定"不要两套"）**：版本历史唯一落点 = `resources/STANDARDS_CHANGELOG.md`（项目叙事并入对应版本行） | — |
 | `tests/run-tests.sh` | 治理自测试（golden cases），随 `--guard` 分发 | ✅ → `<tests>/` |
 | `tests/audit-standards-src.sh` | **规范源层**审计，仅本仓库使用 | ❌ |
 | `scripts/update-assertion-count.sh` | 断言数生成器，仅本仓库使用 | ❌ |
