@@ -11,7 +11,7 @@
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 
 </div>
 
@@ -401,6 +401,6 @@ This project is licensed under the [MIT License](LICENSE).
 
 **Standards Version:** v3.41.0 | **Last Updated:** 2026-09-22 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
-[Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md)
+[Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 
 </div>

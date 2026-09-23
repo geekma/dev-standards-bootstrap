@@ -11,7 +11,7 @@
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](README.md) | [中文](README.zh-CN.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 
 </div>
 
@@ -401,6 +401,6 @@ dev-standards-bootstrap/
 
 **规范版本：** v3.41.0 | **最后更新：** 2026-09-22 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
-[报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md)
+[报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 
 </div>
