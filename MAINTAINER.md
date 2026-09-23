@@ -182,6 +182,7 @@ v3.17.0 的重校准记录：v3.16.0 的改动已把 120 KiB 上界的余量吃�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.44.0** | **维护税装牙批（CHG-054，Top2）**：L0 最小不可占位集 5→3（04.5/05 轻量声明 + GATE-E52 拦越道空壳）；08-supplement 并入 09「补充说明」节（产物 15→14 件，存量合法）；audit A25 改 SLOG 派生组 + PART B 快照转正脱版本化（升级零审计手改）。**`--upgrade` 带走 agent-gate + 规范/AGENTS**（audit-standards-src 为源层件）。**回填义务：无**——L0 声明仅新变更生效；存量 08 文件合法。golden 436，源层断言 369（基线 368）。 |
 | **v3.43.0** | **缺陷发现入口扩展（CHG-053，FU-106④ + FU-111 闭合）**：新增 `bug-autointent`（信号→完整六件套骨架+指纹频控）与 `regression-to-bug.yml` workflow；session-gate 红灯交互三选项提示；gate die 摩擦账 + metrics 聚合；A6c 编号集并入批次锚点成员。**`--upgrade` 带走 bug-autointent/regression workflow/session-gate/agent-gate/audit-standards-src + 规范/AGENTS**。**回填义务：无**——workflow 按仓测试名改 `workflows:` 列表后才生效；不启用=零影响。golden 431，源层断言 366（基线 365）。 |
 | **v3.42.0** | **追踪矩阵单源派发切片（CHG-051，FU-106③）**：`stamp-provenance.sh` 增 `--trace` 派生（并入 `--all`）、audit G5 扩「01.5 REQ ⊆ 01-spec」第二断言。**`--upgrade` 带走 stamp-provenance.sh + audit + 规范/AGENTS 四件**。**存量仓回填义务：无**——手写 §4 行保持合法；新变更 pre-commit 自动获得派生块。golden 419，源层断言 359（基线 358）。 |
 | **v3.37.1** | **FU-105 闭合（CHG-037）**：audit G9 面内新增功能目录表外 `reviews/` sweep（信号判据+结构/隐藏目录豁免+空集 VACUOUS）+ golden 三断言 + A25 双 pin。**存量仓回填义务：无**——存量表外 reviews/ 由升级后首跑审计显式亮红（删除/迁移或登记理由）。golden 335，源层断言 320（基线 319）。 |

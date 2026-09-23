@@ -512,6 +512,37 @@ check_delivery_doc() { # change-dir filename content-regex label
     || die "GATE-E46: cannot finish: $f must declare '未命中，不适用' with evidence, or carry real $label rows (standards §1.1)"
 }
 
+# REQ-962 (v3.44.0): a lightweight-channel declaration stub may only carry the
+# delivery bar for L0 (standards §1.1 two-tier non-placeholder sets). Off-L0 it
+# is the channel escaping its lane → literal GATE-E52 (T30 static Exx check).
+# The stub test is deliberately SHAPE-AGNOSTIC (review P1 fix): one content line
+# (HTML comment spans stripped — single-line and multi-line, so a `<!-- x -->`
+# prefix cannot blind the counter) containing 未命中 in any bracket variant is
+# still a stub. L0's own admission stays on the strict §1.1 declaration shape.
+stub_guard() { # file risk id
+  local f="$1" risk="$2" id="$3" stub
+  stub=$(awk '
+    { line=$0
+      while (1) {
+        if (!c) {
+          i = index(line, "<!--"); if (!i) break
+          pre = substr(line, 1, i - 1); rest = substr(line, i + 4)
+          j = index(rest, "-->")
+          if (j) { line = pre substr(rest, j + 3) } else { c = 1; line = pre; break }
+        } else {
+          j = index(line, "-->"); if (!j) { line = ""; break }
+          line = substr(line, j + 3); c = 0
+        }
+      }
+      if (line ~ /[^ \t]/) n++
+    }
+    END { print n + 0 }' "$f")
+  if [[ "$stub" -eq 1 ]] && grep -q '未命中' "$f" 2>/dev/null; then
+    die "GATE-E52: cannot finish: $f is a declaration-only stub but '$id' declares risk_level ${risk:-unknown} — the L0 minimal-set carve-out (standards §1.1) does not apply"
+  fi
+  return 0
+}
+
 # Delivery evidence a change must carry before it may leave the machine: the
 # v3.7.0 coding record, test results, a changelog, and the v2.21.0 ReAct
 # Observation records in it (standards §2.16.2). Shared by --stage stop and
@@ -519,10 +550,28 @@ check_delivery_doc() { # change-dir filename content-regex label
 validate_delivery() { # change-id
   local id="$1" d
   d=$(change_dir "$id")
-  # v3.7.0: the coding record (changed-file list, CHG-xxx anchors, WHY
-  # decisions) is part of the delivery bar (standards §2.5 stage 5).
-  [[ -s "$d/04.5-coding-record.md" ]] || die "GATE-E47: cannot finish: missing coding record $d/04.5-coding-record.md"
-  [[ -s "$d/05-test-results.md" ]] || die "GATE-E48: cannot finish: missing test evidence $d/05-test-results.md"
+  # REQ-962 (v3.44.0): L0 minimal-set carve-out — 04.5/05 may be satisfied by a
+  # §1.1 lightweight-channel single-line declaration. risk_level comes from the
+  # same governance record begin validated; a missing record stays on the hard
+  # path (fail-closed: the carve-out is the exception, never the default).
+  # Die codes stay LITERAL (T30 static Exx check): the stub rule is factored
+  # into stub_guard below, the missing-file dies stay inline.
+  local rec risk="" \
+    dcl='^[[:space:]]*-[[:space:]]*\*\*.*\*\*(：|:)[[:space:]]*未命中，不适用（.+）'
+  rec=$(gov_record "$d/00-governance.json" "$id")
+  [[ -n "$rec" ]] && risk=$(json_field "$rec" risk_level)
+  if [[ "$risk" == "L0" ]] && grep -qE "$dcl" "$d/04.5-coding-record.md" 2>/dev/null; then
+    : # L0 declaration satisfies the coding-record bar (standards §1.1, REQ-962)
+  else
+    [[ -s "$d/04.5-coding-record.md" ]] || die "GATE-E47: cannot finish: missing coding record $d/04.5-coding-record.md"
+    stub_guard "$d/04.5-coding-record.md" "$risk" "$id"
+  fi
+  if [[ "$risk" == "L0" ]] && grep -qE "$dcl" "$d/05-test-results.md" 2>/dev/null; then
+    : # L0 declaration satisfies the test-evidence bar (standards §1.1, REQ-962)
+  else
+    [[ -s "$d/05-test-results.md" ]] || die "GATE-E48: cannot finish: missing test evidence $d/05-test-results.md"
+    stub_guard "$d/05-test-results.md" "$risk" "$id"
+  fi
   [[ -s "$d/09-changelog.md" ]] || die "GATE-E49: cannot finish: missing changelog $d/09-changelog.md"
   # Every executed stage must leave an Observation record (verification
   # command + actual output) in the changelog.

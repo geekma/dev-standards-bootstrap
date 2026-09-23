@@ -2462,6 +2462,50 @@ else
   echo "SKIP T36: agent-gate absent — 跳过摩擦 metrics golden cases"
 fi
 
+# ------------------------------------------------ T37 L0 最小集三态（v3.44.0，REQ-962）
+if [[ -x scripts/agent-gate ]]; then
+  t37_stamp() { for pf in docs/changes/$1/*.md; do
+    { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"; done; }
+  t37_fill() { # id -> declaration-only 04.5/05 + minimal delivery set
+    printf -- '- **编码记录**：未命中，不适用（L0 纯文档变更，无源码改动）\n' > docs/changes/$1/04.5-coding-record.md
+    printf -- '- **测试结果**：未命中，不适用（L0 纯文档变更，无行为面）\n' > docs/changes/$1/05-test-results.md
+    printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/$1/09-changelog.md
+    printf '未命中，不适用（无配置变更）\n' > docs/changes/$1/06.5-deployment-config.md
+    printf '# 交付总结\n#### 遗留\n- FU-001 演示\n' > docs/changes/$1/06-delivery-summary.md
+    append_masters docs/changes/$1/09-changelog.md
+    t37_stamp "$1"
+  }
+  # ① L0 + 04.5/05 单行声明 → stop PASS
+  new_repo
+  seed_artifacts CHG-991 L0 claude/s-1
+  scripts/agent-gate begin CHG-991 >/dev/null 2>&1
+  t37_fill CHG-991
+  echo y > src/t37.js   # stop 只在存在代码路径改动时执法（对齐 T5/T23 夹具）
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  report "T37 L0 minimal-set: declaration satisfies 04.5/05" 0 $?
+  # ② L0 + 04.5/05 缺失 → 拒绝（E47 先于 E48）
+  rm docs/changes/CHG-991/04.5-coding-record.md docs/changes/CHG-991/05-test-results.md
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  report "T37 L0 minimal-set: missing 04.5/05 still refused" 2 $?
+  # ③ L1 + 仅声明行空壳 → GATE-E52（轻量通道越道拦截；盖章注释不计内容行）
+  new_repo
+  seed_artifacts CHG-992 L1 claude/s-1
+  scripts/agent-gate begin CHG-992 >/dev/null 2>&1
+  t37_fill CHG-992
+  echo y > src/t37.js
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  report "T37 L1 declaration-only stub escapes its lane: stop refused" 2 $?
+  out=$(scripts/agent-gate --stage stop 2>&1 || true)
+  check_output "T37 refusal names the stub rule" "GATE-E52.*declaration-only stub" "$out"
+  # ④ L1 + 半角括号/变体声明行 → E52 仍拦（评审 P1 修复：判定与形状解耦）
+  { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'
+    printf -- '- **编码记录**: 未命中, 不适用(纯文档)\n'; } > docs/changes/CHG-992/04.5-coding-record.md
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  report "T37 L1 bracket-variant stub still refused (P1 fix)" 2 $?
+else
+  echo "SKIP T37: agent-gate absent — 跳过 L0 最小集 golden cases"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

@@ -12,9 +12,11 @@
 #
 # 【断言分区——防脚本腐烂】
 #   PART A 永久结构不变量：版本链、清单同源、编号体系、防恒真、7+1 对齐、锚点存在性、
-#          树↔磁盘、日志排序——跨规范版本有效，仅随结构变化维护。
-#   PART B 版本快照不变量（当前锚定 v<页脚版本> 的特性落点）：关键词矩阵、措辞锚点——
-#          规范每次升级（§2.14）时随升级日志更新本区；旧版本快照可归档或删除，不影响 A 区。
+#          树↔磁盘、日志排序、关键词落点矩阵——跨规范版本有效，仅随结构变化维护
+#          （v3.44.0：原 PART B 手写关键词快照就地转正入本区，脱版本化）。
+#   PART B 版本派生不变量（v3.44.0 起取代逐版本手写 pin）：升级日志连续性断言全部由
+#          resources/STANDARDS_CHANGELOG.md 派生——行数下限 + 严格降序 + 首版行==页脚版本；
+#          规范升级不再手改本区。能力级 A26 pin 随能力落地追加、不随版本退役。
 #
 # 零依赖：bash 3.2+、grep、awk、diff。修改规范正文 / 模板 / README 后必须先跑通本脚本（SKILL.md 版本同步红线）。
 #
@@ -127,9 +129,9 @@ at_least "standards §2.14 rule points to STANDARDS_CHANGELOG" 1 "$STD" 'STANDAR
 std_log_rows=$(grep -cE '^\| v[0-9]+\.[0-9]+\.[0-9]+ \| 20[0-9]{2}-' "$STD")
 report "standards body carries no historical upgrade-log rows" 0 "$std_log_rows"
 
-# ===================== PART B：版本快照不变量（v<页脚版本> 特性落点，升级时随 §2.14 日志更新本区） =====================
+# ===================== PART A（续）：关键词落点矩阵（永久不变量；v3.44.0 由版本快照转正，脱版本化） =====================
 
-# ---------- 关键词落点矩阵（v3.4.0：状态/触发链路审计 + 同族推演） ----------
+# ---------- 关键词矩阵：状态/触发链路审计 + 同族推演（v3.4.0 引入） ----------
 for f in "$STD" "$METH" "$STA" "$BFLOG" "$AGENTS" "$RM_ZH"; do
   at_least "keyword 同族推演 in $(basename "$f")" 1 "$f" "同族推演"
 done
@@ -141,7 +143,7 @@ for f in "$SKILL" "$RM_ZH" "$RM_EN" "$AGENTS" "$PIPE" "$STD" "$METH"; do
   at_least "route state-trigger-audit in $(basename "$f")" 1 "$f" "state-trigger-audit"
 done
 
-# ---------- v3.5.0 快照：占位符拒绝 + L3 释放授权 + commit-msg 归因闸门 ----------
+# ---------- 关键词矩阵：占位符拒绝 + L3 释放授权 + commit-msg 归因闸门（v3.5.0 引入） ----------
 for f in "$STD" "$RM_EN" "$RM_ZH"; do
   at_least "keyword release_authorized_by in $(basename "$f")" 1 "$f" "release_authorized_by"
 done
@@ -149,7 +151,7 @@ for f in "$SKILL" "$RM_EN" "$RM_ZH"; do
   at_least "keyword commit-msg attribution gate in $(basename "$f")" 1 "$f" "commit-msg"
 done
 
-# ---------- v3.6.0 快照：一次变更一组文档 + 缺陷文档组三件套 ----------
+# ---------- 关键词矩阵：一次变更一组文档 + 缺陷文档组（v3.6.0 引入） ----------
 for f in "$STD" "$RM_EN" "$RM_ZH"; do
   at_least "keyword 一次变更一组文档 in $(basename "$f")" 1 "$f" "一次变更一组文档"
 done
@@ -165,7 +167,7 @@ for t in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-confi
 done
 report "bug doc-set templates present (6 files)" 6 "$tpl6"
 
-# ---------- v3.7.0 快照：最低文档集八类映射 + 编码记录 04.5 + 缺陷六件套 ----------
+# ---------- 关键词矩阵：最低文档集八类映射 + 编码记录 04.5 + 缺陷六件套（v3.7.0 引入） ----------
 at_least "keyword 最低文档集八类映射 in DEVELOPMENT_STANDARDS" 1 "$STD" "最低文档集八类映射"
 at_least "keyword eight-category in README en" 1 "$RM_EN" "eight-category"
 at_least "keyword 六件套 in DEVELOPMENT_STANDARDS" 1 "$STD" "六件套"
@@ -231,7 +233,7 @@ report "2.16.4 self-check includes SC"              1 "$(grep_count "$STD" "是�
 # ---------- 占位符 vs A 层断言（防恒真统计，R-A 轮） ----------
 report "bugfix-log placeholder not matched by ^### BUG-[0-9]" 0 "$(grep -cE '^### BUG-[0-9]' "$BFLOG" 2>/dev/null || true)"
 
-# ---------- 骨架 vs A 层关键词（防空骨架绕过；关键词属 v3.4.0 快照） ----------
+# ---------- 骨架 vs A 层关键词（防空骨架绕过） ----------
 report "pipeline 02 skeleton free of A-layer keyword" 0 "$(grep_count "$PIPE" "隐式链路三向遍历")"
 
 # ---------- 00 管线件落点（R-A 轮） ----------
@@ -297,11 +299,11 @@ for t in 06.5-deployment-config.md 06-delivery-summary.md; do
   report "template exists and non-empty: $t" 1 "$([[ -s "$ROOT/resources/templates/$t" ]] && echo 1 || echo 0)"
 done
 
-# ---------- 阶段 6/8 专项与 §5 拦截（v3.4.0 快照） ----------
+# ---------- 阶段 6/8 专项与 §5 拦截 ----------
 report "stage-8 defect-fix special check" 1 "$(grep_count "$STD" '缺陷修复类 CHG 专项')"
 at_least "section5 same-family interceptor" 1 "$STD" '同族推演」行 / 同族行空口'
 
-# ---------- METHODOLOGY 分级行（v3.4.0 快照） ----------
+# ---------- METHODOLOGY 分级行 ----------
 report "methodology 3.2 implicit-link row" 1 "$(grep_count "$METH" '隐式链路三向遍历（正向调用点')"
 report "methodology 3.6 same-family row"   1 "$(grep_count "$METH" '同族推演（同根因旁路扫描）')"
 report "methodology 4 conditional note"    1 "$(grep_count "$METH" '条件命中：涉及状态/触发/事件链路时必须')"
@@ -926,12 +928,17 @@ report "A25 golden pins the G10 sweep" 1 "$(a17_at_least_1 "$(grep -c 'T31 G10 f
 report "A25 uninstaller ships with bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'uninstall-standards' "$ROOT/scripts/bootstrap.sh" || true)")"
 report "A25 uninstaller self-removes on real run" 1 "$(a17_at_least_1 "$(grep -c 'self — removed last below' "$ROOT/resources/templates/uninstall-standards.sh" || true)")"
 report "A25 golden pins the uninstall suite" 1 "$(a17_at_least_1 "$(grep -c 'T32 backup holds the moved asset' "$ROOT/tests/run-tests.sh" || true)")"
-at_least "A25 changelog carries the v3.38.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.38.0'
-at_least "A25 changelog carries the v3.39.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.39.0'
-at_least "A25 changelog carries the v3.40.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.40.0'
-at_least "A25 changelog carries the v3.35.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.35.0'
-at_least "A25 changelog carries the v3.36.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.36.0'
-at_least "A25 changelog carries the v3.37.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.37.0'
+# REQ-964 (v3.44.0): changelog continuity is DERIVED from the ledger itself —
+# no per-version hand pins anymore. The floor is a single number; the ordering
+# check makes duplicate/reordered version rows fail loudly (BSD/GNU sort -r).
+slog_rows=$(grep -cE '^\| v[0-9]+\.[0-9]+\.[0-9]+ \|' "$SLOG" || true)
+report "A25 changelog version rows >= 8 (derived floor, no per-version pins)" 1 "$([[ "$slog_rows" -ge 8 ]] && echo 1 || echo 0)"
+slog_vs=$(grep -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+ ' "$SLOG" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+slog_n=$(printf '%s\n' "$slog_vs" | grep -c . || true)
+# Strict descending via awk (BSD sort has no -V; per-component numeric compare,
+# equal neighbouring rows are duplicates → fail).
+slog_order=$(printf '%s\n' "$slog_vs" | awk -F. 'NR==1{p1=$1;p2=$2;p3=$3;next}{if($1+0>p1+0)bad=1;else if($1+0==p1+0){if($2+0>p2+0)bad=1;else if($2+0==p2+0&&$3+0>=p3+0)bad=1}p1=$1;p2=$2;p3=$3}END{if(bad)print 0;else print 1}')
+report "A25 changelog version rows strictly descending (continuity, dups fail)" 1 "$([[ "$slog_n" -ge 1 && "$slog_order" == 1 ]] && echo 1 || echo 0)"
 
 # v3.42.0 (REQ-955/956, FU-106③): trace derivation + G5 subset extension pins.
 at_least "A26 stamp-provenance implements derive_trace_block (REQ-955)" 2 "$ROOT/resources/templates/stamp-provenance.sh" 'derive_trace_block'
@@ -947,6 +954,16 @@ at_least "A26 regression workflow template exists (REQ-958)" 1 "$ROOT/resources/
 at_least "A26 session-gate emits defect-signal interactive options (REQ-959)" 1 "$ROOT/resources/templates/session-gate.sh" '缺陷信号交互三选项'
 at_least "A26 gate die writes friction ledger (REQ-960)" 1 "$ROOT/resources/templates/agent-gate.sh" 'gate-friction.tsv'
 at_least "A26 A6c unions batch anchor members (REQ-961/FU-111)" 1 "$ROOT/tests/audit-standards-src.sh" '编号集 = 独立 CHG'
+
+# v3.44.0 (REQ-962~964): L0 minimal set + 08 merge + snapshot derivation pins.
+# 能力级 pin 随能力落地追加、不随版本退役（REQ-964 脱版本化语义自指）。
+at_least "A26 gate carries L0 minimal-set carve-out (REQ-962)" 1 "$ROOT/resources/templates/agent-gate.sh" 'L0 minimal-set carve-out'
+at_least "A26 gate rejects declaration-only stubs off L0 (REQ-962)" 1 "$ROOT/resources/templates/agent-gate.sh" 'GATE-E52'
+at_least "A26 standards split L0/L1 non-placeholder sets (REQ-962)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" 'L0 最小不可占位集'
+at_least "A26 standards retire 08-supplement into 09 (REQ-963)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '「补充说明」节'
+at_least "A26 standards declare 14-artifact contract (REQ-963)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '14 件'
+at_least "A26 audit derives changelog continuity from SLOG (REQ-964)" 1 "$ROOT/tests/audit-standards-src.sh" 'strictly descending'
+at_least "A26 golden T37 anchors L0 minimal-set states (REQ-962)" 1 "$ROOT/tests/run-tests.sh" 'T37 L0 minimal-set'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达
