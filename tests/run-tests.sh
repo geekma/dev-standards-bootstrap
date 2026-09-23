@@ -2296,6 +2296,44 @@ else
   echo "SKIP T31: audit-docs-consistency.sh absent — 跳过 G10 golden cases"
 fi
 
+# ------------------------------------------------ T32 one-step uninstall (v3.41.0)
+new_repo
+UNINST_SRC="$ROOT/resources/templates/uninstall-standards.sh"
+if [[ -f "$UNINST_SRC" ]]; then
+  cp "$UNINST_SRC" scripts/uninstall-standards
+  chmod +x scripts/uninstall-standards
+  seed_artifacts CHG-970 L1 claude/s-32
+  # AGENTS.md is a shared asset: installer header + user-added content
+  printf '# AGENTS\n## 门禁\n' > AGENTS.md
+  printf '\nuser custom section\n' >> AGENTS.md
+  mkdir -p .githooks
+  cp "$ROOT/resources/templates/pre-commit" .githooks/pre-commit
+  printf '#!/bin/sh\necho foreign\n' > .githooks/foreign-hook
+  mkdir -p .github
+  cp "$ROOT/resources/templates/PULL_REQUEST_TEMPLATE.md" .github/PULL_REQUEST_TEMPLATE.md
+  git config core.hooksPath .githooks
+  bash scripts/uninstall-standards --dry-run >/dev/null 2>&1
+  report "T32 dry-run exits 0" 0 $?
+  report "T32 dry-run removes nothing" 0 "$(test -f scripts/agent-gate && test -f .githooks/pre-commit && test -f AGENTS.md; echo $?)"
+  bash scripts/uninstall-standards >/dev/null 2>&1
+  report "T32 uninstall exits 0" 0 $?
+  report "T32 runtime tier removed" 0 "$(test ! -e scripts/agent-gate && test ! -e scripts/uninstall-standards && test ! -d .agent-state; echo $?)"
+  report "T32 marked hook removed" 0 "$(test ! -e .githooks/pre-commit; echo $?)"
+  report "T32 PR template removed by marker" 0 "$(test ! -e .github/PULL_REQUEST_TEMPLATE.md; echo $?)"
+  report "T32 foreign hook kept" 0 "$(test -f .githooks/foreign-hook; echo $?)"
+  report "T32 diverged AGENTS.md kept without --force" 0 "$(test -f AGENTS.md; echo $?)"
+  report "T32 core.hooksPath unset" 0 "$(git config core.hooksPath >/dev/null 2>&1 && echo 1 || echo 0)"
+  # --force round (re-seed the uninstaller: the first run self-removed it —
+  # that is the designed one-step behavior; here we exercise Tier3 backup-move)
+  cp "$UNINST_SRC" scripts/uninstall-standards
+  bash scripts/uninstall-standards --force >/dev/null 2>&1
+  report "T32 force never rm's shared assets" 0 "$(test ! -e AGENTS.md && test -f .githooks/foreign-hook; echo $?)"
+  B32=$(ls -d .uninstall-backup-* 2>/dev/null | head -1)
+  report "T32 backup holds the moved asset" 0 "$([[ -n "$B32" && -f "$B32/AGENTS.md" ]]; echo $?)"
+else
+  echo "SKIP T32: uninstall-standards.sh absent (bootstrap --guard 未安装) — 跳过卸载 golden cases"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

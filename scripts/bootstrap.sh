@@ -609,6 +609,7 @@ run_layer() {
       install_file - ".github/workflows/agent-governance.yml" resources/templates/github-agent-governance.yml
       install_file - "$SCRIPTS_DIR/install-hook-adapter" resources/templates/install-hook-adapter.sh 755
       install_file - "$SCRIPTS_DIR/session-gate.sh" resources/templates/session-gate.sh 755
+      install_file - "$SCRIPTS_DIR/uninstall-standards" resources/templates/uninstall-standards.sh 755
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases
       install_file - "$TESTS_DIR/run-tests.sh" tests/run-tests.sh 755

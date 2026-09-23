@@ -907,6 +907,9 @@ report "A25 golden pins the auto-stamp suite" 1 "$(a17_at_least_1 "$(grep -c 'T2
 report "A25 golden pins the P3 channel" 1 "$(a17_at_least_1 "$(grep -c 'T28 P3 severity waives' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden pins the red gate" 1 "$(a17_at_least_1 "$(grep -c 'T29 fresh RED report blocks begin' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden pins the G10 sweep" 1 "$(a17_at_least_1 "$(grep -c 'T31 G10 flags pointer-less' "$ROOT/tests/run-tests.sh" || true)")"
+report "A25 uninstaller ships with bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'uninstall-standards' "$ROOT/scripts/bootstrap.sh" || true)")"
+report "A25 uninstaller self-removes on real run" 1 "$(a17_at_least_1 "$(grep -c 'self — removed last below' "$ROOT/resources/templates/uninstall-standards.sh" || true)")"
+report "A25 golden pins the uninstall suite" 1 "$(a17_at_least_1 "$(grep -c 'T32 backup holds the moved asset' "$ROOT/tests/run-tests.sh" || true)")"
 at_least "A25 changelog carries the v3.38.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.38.0'
 at_least "A25 changelog carries the v3.39.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.39.0'
 at_least "A25 changelog carries the v3.40.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.40.0'
