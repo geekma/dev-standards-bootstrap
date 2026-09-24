@@ -63,3 +63,4 @@
 | R39 | 协作/供应链/接口生命周期（§2.13） | DEVELOPMENT_STANDARDS.md::## 2.13 协作、依赖供应链与接口生命周期 | L2-architecture | 硬 | 结构 |
 | R40 | 回滚标准与决策（§2.7.3） | DEVELOPMENT_STANDARDS.md::### 2.7.3 回滚标准与决策 | L3-critical | 硬 | 结构 |
 | R41 | 风险等级判定表（§0.5.1） | DEVELOPMENT_STANDARDS.md::### 0.5.1 风险等级判定表 | L3-critical | 硬 | 结构 |
+| R42 | 版本载体全链清单（§2.14） | DEVELOPMENT_STANDARDS.md::版本载体全链清单 | universal | 硬 | 结构 |

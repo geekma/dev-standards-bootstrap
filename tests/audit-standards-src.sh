@@ -629,6 +629,10 @@ at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
 at_least "A31 G10 enumerated in SKILL" 1 "$ROOT/SKILL.md" 'G10'
 at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bugfix-log.md" '历史相似'
 
+# A32 版本载体全链清单条款（CHG-061 / REQ-984，对等减法=§2.16.5 标准升级行退役合并）
+at_least "A32 carrier full-chain clause present" 1 "$STD" '版本载体全链清单（v3.49.0）'
+report "A32 retired 2.16.5 row absent" 0 "$(grep_count "$STD" '标准升级 | 版本 + 影响清单')"
+
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
 at_least "A12 root-cause classification present (REQ-057)" 1 "$STD" '根因分类'
 at_least "A12 change dynamic constraints present (REQ-058)" 1 "$STD" '变更动态约束'

@@ -2281,17 +2281,17 @@ report "T29 explicit escape passes over red" 0 $?
 
 # ------------------------------------------------ T30 die error codes (v3.40.0)
 total_die=$(grep -c 'die "' "$GATE_SRC" || true)
-coded_die=$(grep -cE 'die "(GATE|NC|ADAPTER)-E[0-9]{2}: ' "$GATE_SRC" || true)
+coded_die=$(grep -cE 'die "(GATE|NC|ADAPTER)-E[0-9]+: ' "$GATE_SRC" || true)
 report "T30 every gate die carries an Exx code" 0 "$(( total_die - coded_die ))"
 out=$(scripts/agent-gate begin CHG-404 2>&1 || true)
 check_output "T30 refusal output carries GATE-E" "GATE-E" "$out"
 NEWCHANGE_SRC="$ROOT/resources/templates/new-change.sh"
 if [[ -f "$NEWCHANGE_SRC" ]]; then
-  report "T30 new-change die count equals coded" 0 "$(( $(grep -c 'die "' "$NEWCHANGE_SRC") - $(grep -cE 'die "NC-E[0-9]{2}: ' "$NEWCHANGE_SRC") ))"
+  report "T30 new-change die count equals coded" 0 "$(( $(grep -c 'die "' "$NEWCHANGE_SRC") - $(grep -cE 'die "NC-E[0-9]+: ' "$NEWCHANGE_SRC") ))"
 fi
 ADAPTER_SRC="$ROOT/resources/templates/install-hook-adapter.sh"
 if [[ -f "$ADAPTER_SRC" ]]; then
-  report "T30 adapter die count equals coded" 0 "$(( $(grep -c 'die "' "$ADAPTER_SRC") - $(grep -cE 'die "ADAPTER-E[0-9]{2}: ' "$ADAPTER_SRC") ))"
+  report "T30 adapter die count equals coded" 0 "$(( $(grep -c 'die "' "$ADAPTER_SRC") - $(grep -cE 'die "ADAPTER-E[0-9]+: ' "$ADAPTER_SRC") ))"
 fi
 
 # ------------------------------------------------ T31 G10 deprecated-clause sweep (v3.40.0)
@@ -2543,7 +2543,7 @@ report "T38 graded ambiguity rule" 1 "$(grep -c '歧义分级裁定' "$ROOT/reso
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  report "T39 registry row count" 41 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 42 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
@@ -2631,7 +2631,7 @@ fi
 GATE_T41="$ROOT/resources/templates/agent-gate.sh"
 [[ -s "$GATE_T41" ]] || GATE_T41="$ROOT/scripts/agent-gate"
 if [[ -s "$GATE_T41" ]]; then
-  report "T41 gate die E-codes unique" 0 "$(grep -oE 'die "GATE-E[0-9]{2}: ' "$GATE_T41" | sort | uniq -d | wc -l | tr -d ' ')"
+  report "T41 gate die E-codes unique" 0 "$(grep -oE 'die "GATE-E[0-9]+: ' "$GATE_T41" | sort | uniq -d | wc -l | tr -d ' ')"
 else
   echo "SKIP T41: agent-gate absent — 跳过码唯一性 golden case"
 fi
