@@ -2506,6 +2506,15 @@ else
   echo "SKIP T37: agent-gate absent — 跳过 L0 最小集 golden cases"
 fi
 
+# ------------------------------------------------ T38 断言预算制静态 pin（v3.45.0，REQ-965/967）
+# audit 源层脚本 ROOT 绑定真仓——soft 行为面由交付实跑承载（对齐 T35/REQ-964 偏离先例）；
+# 此处 pin 机制存在性与接线，防静默移除。
+report "T38 audit soft bucket defined" 1 "$(grep -c 'report_soft()' "$ROOT/tests/audit-standards-src.sh")"
+report "T38 audit soft env switch" 1 "$(grep -c 'SOFT="${AGENT_GUARD_AUDIT_SOFT:-}"' "$ROOT/tests/audit-standards-src.sh")"
+report "T38 CI wires soft mode" 1 "$(grep -c 'AGENT_GUARD_AUDIT_SOFT' "$ROOT/.github/workflows/ci.yml")"
+report "T38 assertion lifecycle section" 1 "$(grep -c '^### 5.3 断言生命周期' "$ROOT/MAINTAINER.md")"
+report "T38 graded ambiguity rule" 1 "$(grep -c '歧义分级裁定' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

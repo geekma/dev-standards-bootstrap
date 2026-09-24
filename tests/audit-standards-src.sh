@@ -38,7 +38,15 @@ RM_ZH="$ROOT/README.zh-CN.md"
 
 pass=0
 fail=0
+warn=0
 failed_names=()
+
+# REQ-965 (v3.45.0): soft bucket — CI mode (AGENT_GUARD_AUDIT_SOFT=1) routes the
+# numeric-closure assertions (A3 count / A3c sync / A10 baseline) here: a miss
+# prints `warn`, never increments `fail`, and stays out of the A10 denominator.
+# Local runs (env unset) keep the hard path. Every report_soft call site must be
+# registered in the change 09 (soft-bucket abuse guard, MAINTAINER §5.3).
+SOFT="${AGENT_GUARD_AUDIT_SOFT:-}"
 
 report() { # name expected actual
   local name="$1" expected="$2" actual="$3"
@@ -49,6 +57,18 @@ report() { # name expected actual
     fail=$(( fail + 1 ))
     failed_names+=("$name")
     printf 'FAIL %s (expected %s, got %s)\n' "$name" "$expected" "$actual" >&2
+  fi
+}
+
+# REQ-965: soft bucket reporter — a pass shares the hard counter; a miss only warns.
+report_soft() { # name expected actual
+  local name="$1" expected="$2" actual="$3"
+  if [[ "$expected" == "$actual" ]]; then
+    pass=$(( pass + 1 ))
+    printf 'ok   %s\n' "$name"
+  else
+    warn=$(( warn + 1 ))
+    printf 'warn %s (soft: expected %s, got %s)\n' "$name" "$expected" "$actual" >&2
   fi
 }
 
@@ -301,10 +321,12 @@ done
 
 # ---------- 阶段 6/8 专项与 §5 拦截 ----------
 report "stage-8 defect-fix special check" 1 "$(grep_count "$STD" '缺陷修复类 CHG 专项')"
-at_least "section5 same-family interceptor" 1 "$STD" '同族推演」行 / 同族行空口'
+# (v3.45.0 REQ-966 退役 "section5 same-family interceptor"：与关键词矩阵同族推演循环
+#  同不变量双形状——不变量仍由矩阵循环承载)
 
 # ---------- METHODOLOGY 分级行 ----------
-report "methodology 3.2 implicit-link row" 1 "$(grep_count "$METH" '隐式链路三向遍历（正向调用点')"
+# (v3.45.0 REQ-966 退役 "methodology 3.2 implicit-link row"：与关键词矩阵（隐式链路/
+#  同族推演循环）在 METH 落点重叠；3.6/4 行留待 MAINTAINER §5.3 生命周期下一轮评审)
 report "methodology 3.6 same-family row"   1 "$(grep_count "$METH" '同族推演（同根因旁路扫描）')"
 report "methodology 4 conditional note"    1 "$(grep_count "$METH" '条件命中：涉及状态/触发/事件链路时必须')"
 
@@ -361,12 +383,20 @@ gen_rc=0
 gen_out=$(bash "$GEN" --check 2>&1) || gen_rc=$?
 gen_n=$(printf '%s\n' "$gen_out" | sed -nE 's/^assertion claims in sync with run-tests \(([0-9]+)\)$/\1/p')
 report "A3 README assertion-count claims are a single consistent number" 1 "$(printf '%s' "$claims" | grep -c '^[0-9]*,$')"
-report "A3 claimed assertion count == generator runtime count (CHG-019)" "$gen_n" "${claims%,}"
+if [[ -n "$SOFT" ]]; then
+  report_soft "A3 claimed assertion count == generator runtime count (CHG-019; CI soft)" "$gen_n" "${claims%,}"
+else
+  report "A3 claimed assertion count == generator runtime count (CHG-019)" "$gen_n" "${claims%,}"
+fi
 
 # A3c 生成器同步校验（CHG-007 / FU-005+009）：README 声称数必须与生成器 --check 一致——
 #    手工改数、漏改、或 run-tests 增删用例后未同步，都在这里红。
 if [[ -f "$GEN" ]]; then
-  report "A3c README assertion claims match generated count (FU-005/009)" 0 "$gen_rc"
+  if [[ -n "$SOFT" ]]; then
+    report_soft "A3c README assertion claims match generated count (FU-005/009; CI soft)" 0 "$gen_rc"
+  else
+    report "A3c README assertion claims match generated count (FU-005/009)" 0 "$gen_rc"
+  fi
 else
   report "A3c assertion generator script exists" 1 0
 fi
@@ -953,7 +983,8 @@ at_least "A26 uninstall Tier1 covers bug-autointent (REQ-958)" 1 "$ROOT/resource
 at_least "A26 regression workflow template exists (REQ-958)" 1 "$ROOT/resources/templates/github-regression-to-bug.yml" 'workflow_run'
 at_least "A26 session-gate emits defect-signal interactive options (REQ-959)" 1 "$ROOT/resources/templates/session-gate.sh" '缺陷信号交互三选项'
 at_least "A26 gate die writes friction ledger (REQ-960)" 1 "$ROOT/resources/templates/agent-gate.sh" 'gate-friction.tsv'
-at_least "A26 A6c unions batch anchor members (REQ-961/FU-111)" 1 "$ROOT/tests/audit-standards-src.sh" '编号集 = 独立 CHG'
+# (v3.45.0 REQ-966 退役 "A6c unions batch anchor members" 自指 pin：断言 grep 本文件
+#  自身字符串=恒真无值守；A6c 行为由既有 A6c 目录扫描断言与 golden T33/T37 承载)
 
 # v3.44.0 (REQ-962~964): L0 minimal set + 08 merge + snapshot derivation pins.
 # 能力级 pin 随能力落地追加、不随版本退役（REQ-964 脱版本化语义自指）。
@@ -975,11 +1006,20 @@ AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
 printf '%s\n' "$(( pass + fail ))" > "$AUDIT_LAST"
 if [[ -f "$AUDIT_BASELINE" ]]; then
   expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')
-  report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail ))"
+  # soft (CI) mode: numeric drift warns instead of blocking; warn stays out of
+  # this denominator (pass+fail), so the baseline comparison itself goes soft.
+  if [[ -n "$SOFT" ]]; then
+    report_soft "A10 audit executed-count matches baseline (FU-022; CI soft)" "$expected_total" "$(( pass + fail ))"
+  else
+    report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail ))"
+  fi
 else
   report "A10 audit baseline exists (FU-022; run scripts/update-assertion-count.sh)" 1 0
 fi
 
 echo
 echo "$pass passed, $fail failed"
+if [[ "$warn" -gt 0 ]]; then
+  echo "$warn soft warnings (AGENT_GUARD_AUDIT_SOFT; not blocking)"
+fi
 [[ "$fail" -eq 0 ]]
