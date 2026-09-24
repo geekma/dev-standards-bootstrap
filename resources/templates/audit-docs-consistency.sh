@@ -395,6 +395,13 @@ if [[ -f "$BFLOG" ]]; then
   # 陈旧模板占位自检：旧版模板占位标题含数字（### BUG-001：<一句话现象标题>），
   # 会被规范阶段 6 A 层 ^### BUG-[0-9] 计入 → 恒真统计。存在即判未替换。
   report "G4 stale numeric placeholder absent" 0 "$(grep -cE '^### BUG-0+1：<一句话现象标题>' "$BFLOG" 2>/dev/null || true)"
+  # v3.48.0（CHG-058）：历史相似字段增量执法——最新一条 BUG 登记须含「历史相似」行
+  # （沿用/推翻裁决或"未命中（检索词）"）；存量条目不追（升级零回填义务，§2.14）；无登记=空转绿。
+  g4_hist=0
+  if grep -q '^### BUG-' "$BFLOG" 2>/dev/null; then
+    awk '/^### BUG-/{if(found)exit; found=1} found{print}' "$BFLOG" | grep -q '历史相似' && g4_hist=1
+  fi
+  report "G4 newest BUG entry carries history-similarity field (incremental)" 1 "$g4_hist"
   # 两个方向都必须遍历**全树** changelog，而不只是功能目录：变更轨的 09-changelog
   # 落在 <change_root>/<变更号>/（深度 2），而旧实现只看 <docs>/ 下一层的
   # `$c/09-changelog.md`。**同一根因**造成一对不对称的假判定：

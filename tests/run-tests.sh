@@ -105,6 +105,7 @@ call chain: c
 risk: r
 ## 回滚策略
 rollback: ok
+延伸发现：未发现
 EOF
   cat > "$d/03-modification-plan.md" <<'EOF'
 # plan
@@ -212,7 +213,7 @@ scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects impact doc without business-impact section" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
-printf '# impact\n## 业务影响\nx\n## 风险\ny\n' > docs/changes/CHG-110/02-code-impact-analysis.md
+printf '# impact\n## 业务影响\nx\n## 风险\ny\n延伸发现：未发现\n' > docs/changes/CHG-110/02-code-impact-analysis.md
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects impact doc without rollback strategy" 2 $?
 
@@ -833,7 +834,7 @@ check_output "metrics word-bounds id (CHG-7 stays null)" \
 new_repo
 seed_artifacts CHG-800 L1 claude/s-1
 mkdir -p docs/bugs/BUG-042
-printf '# diagnosis\n' > docs/bugs/BUG-042/01-diagnosis.md
+printf '# diagnosis\n延伸发现：未发现\n' > docs/bugs/BUG-042/01-diagnosis.md
 printf '# impact\n' > docs/bugs/BUG-042/02-impact.md
 printf '# test plan\n' > docs/bugs/BUG-042/03-test-plan.md
 printf '# matrix\n' > docs/bugs/BUG-042/04-matrix.md
@@ -856,7 +857,13 @@ printf '# impact recreated\n' > docs/bugs/BUG-042/02-impact.md
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin rejects empty defect doc" 2 $?
 
-printf '# diagnosis restored\n' > docs/bugs/BUG-042/01-diagnosis.md
+printf '# diagnosis restored\n延伸发现：未发现\n' > docs/bugs/BUG-042/01-diagnosis.md
+scripts/agent-gate begin CHG-800 >/dev/null 2>&1
+report "begin accepts restored defect doc with 延伸发现" 0 $?
+sed -i '' '/延伸发现/d' docs/bugs/BUG-042/01-diagnosis.md 2>/dev/null || sed -i '/延伸发现/d' docs/bugs/BUG-042/01-diagnosis.md
+out=$(scripts/agent-gate begin CHG-800 2>&1 || true)
+check_output "begin rejects bug doc missing 延伸发现 (E16)" "GATE-E16.*延伸发现" "$out"
+printf '# diagnosis restored\n延伸发现：未发现\n' > docs/bugs/BUG-042/01-diagnosis.md
 rm docs/bugs/BUG-042/04-matrix.md   # v3.7.0：六件套缺一件同样拦截
 out=$(scripts/agent-gate begin CHG-800 2>&1 || true)
 check_output "begin names a v3.7.0 defect doc when missing" "missing defect document: docs/bugs/BUG-042/04-matrix.md" "$out"
@@ -885,7 +892,7 @@ o
 EOF
 printf '{"change_id":"CUSTOM-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > changes/CUSTOM-1/00-governance.json
 echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
-printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > changes/CUSTOM-1/02-code-impact-analysis.md
+printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n' > changes/CUSTOM-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > changes/CUSTOM-1/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > changes/CUSTOM-1/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > changes/CUSTOM-1/04-test-scripts.md
@@ -917,7 +924,7 @@ audit_fixture() { # dest -> 构造合规目标仓库 fixture
   printf '# plan\n\nDES-001 设计\n' > "$dest/docs/feata/03-modification-plan.md"
   printf '# tests\n\n| TC | 场景 | 覆盖维度 | 覆盖的 REQ-DES |\n|---|---|---|---|\n| TC-001 | a | 正常流 | REQ-001 |\n| TC-002 | b | 边界 | REQ-002 |\n\n## 业务场景清单\n\nSC-001 场景（覆盖: TC-001）\n' > "$dest/docs/feata/04-test-scripts.md"
   printf '| REQ-001 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n| REQ-002 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n' > "$dest/docs/feata/01.5-rtvm-matrix.md"
-  { echo "### BUG-001：现象（严重度 P1）"; echo; echo "| 字段 | 内容 |"; echo "|---|---|"; echo "| 关联变更 | CHG-001 |"; } > "$dest/docs/bugfix-log.md"
+  { echo "### BUG-001：现象（严重度 P1）"; echo; echo "| 字段 | 内容 |"; echo "|---|---|"; echo "| 关联变更 | CHG-001 |"; echo "| 历史相似 | 未命中（根因关键词检索） |"; } > "$dest/docs/bugfix-log.md"
   awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD_SRC" > "$dest/s3block.md"
   { echo '## 2026-09-09'; echo; echo '任务编号：CHG-001 / TASK-001   日期：2026-09-09   执行者：dev'; echo;
     echo '#### 追踪矩阵映射 (Traceability)';
@@ -941,6 +948,11 @@ FX=$(mktemp -d)
 audit_fixture "$FX"
 bash "$AUDIT_SRC" "$FX" >/dev/null 2>&1
 report "audit fixture compliant repo passes" 0 $?
+
+sed -i '' '/| 历史相似 |/d' "$FX/docs/bugfix-log.md" 2>/dev/null || sed -i '/| 历史相似 |/d' "$FX/docs/bugfix-log.md"
+bash "$AUDIT_SRC" "$FX" >/dev/null 2>&1
+report "audit rejects newest BUG entry missing history-similarity (G4 incremental)" 1 $?
+printf '| 历史相似 | 未命中（根因关键词检索） |\n' >> "$FX/docs/bugfix-log.md"
 
 FX2=$(mktemp -d)
 audit_fixture "$FX2"
@@ -1202,7 +1214,7 @@ o
 EOF
 printf '{"change_id":"CFG-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > doc/changes/CFG-1/00-governance.json
 echo "REQ-001 s" > doc/changes/CFG-1/01-spec.md
-printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > doc/changes/CFG-1/02-code-impact-analysis.md
+printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n' > doc/changes/CFG-1/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-1/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > doc/changes/CFG-1/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > doc/changes/CFG-1/04-test-scripts.md
@@ -1223,7 +1235,7 @@ o
 EOF
 printf '{"change_id":"CFG-2","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > doc/changes/CFG-2/00-governance.json
 echo "REQ-001 s" > doc/changes/CFG-2/01-spec.md
-printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n' > doc/changes/CFG-2/02-code-impact-analysis.md
+printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n' > doc/changes/CFG-2/02-code-impact-analysis.md
 printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-2/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > doc/changes/CFG-2/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > doc/changes/CFG-2/04-test-scripts.md
@@ -1535,7 +1547,7 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
     printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1"}\n' "$id" "$risk" >> "$d/00-governance.json"
     printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
     printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
-    printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n' "$id" >> "$d/02-code-impact-analysis.md"
+    printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n' "$id" >> "$d/02-code-impact-analysis.md"
     printf '## %s\nDES-901 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
     printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
     printf '## %s\nTC-901 SC-901 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
@@ -1798,7 +1810,7 @@ report "T20 in-prose REQ references do not widen the definition span" 0 $?
 
 # ⑤ G4 双登记在管线态布局下不得假红（旧实现只看 <docs>/ 下一层的 09-changelog）。
 AC4=$(mktemp -d); audit_change_fixture "$AC4"
-{ echo '### BUG-001：现象（严重度 P1）'; echo; echo '| 字段 | 内容 |'; echo '|---|---|'; echo '| 关联变更 | CHG-001 |'; } > "$AC4/docs/bugfix-log.md"
+{ echo '### BUG-001：现象（严重度 P1）'; echo; echo '| 字段 | 内容 |'; echo '|---|---|'; echo '| 关联变更 | CHG-001 |'; echo '| 历史相似 | 未命中（根因关键词检索） |'; } > "$AC4/docs/bugfix-log.md"
 printf '# CHG-001 Changelog\n\n## 2026-09-15\n\n- 对应缺陷：`BUG-001`（见 docs/bugfix-log.md）\n' > "$AC4/docs/changes/CHG-001/09-changelog.md"
 bash "$AUDIT_SRC" "$AC4" >/dev/null 2>&1
 report "T20 G4 resolves changelogs under the change root (no false orphan)" 0 $?
@@ -1941,6 +1953,7 @@ mkdir -p "docs/bugs/BATCH-$today/BUG-901"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# %s\n' "$d6" > "docs/bugs/BATCH-$today/BUG-901/$d6.md"
 done
+printf '延伸发现：未发现\n' >> "docs/bugs/BATCH-$today/BUG-901/01-diagnosis.md"
 seed_artifacts CHG-902 L0 claude/s-1
 printf '{"change_id":"CHG-902","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
 scripts/agent-gate begin CHG-902 >/dev/null 2>&1
@@ -1949,6 +1962,7 @@ mkdir -p docs/bugs/BUG-902
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# %s\n' "$d6" > "docs/bugs/BUG-902/$d6.md"
 done
+printf '延伸发现：未发现\n' >> docs/bugs/BUG-902/01-diagnosis.md
 { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: %sT00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n' "$(date -u +%Y-%m-%d)"; cat docs/bugs/BUG-902/01-diagnosis.md; } > docs/bugs/BUG-902/01-diagnosis.md.tmp && mv docs/bugs/BUG-902/01-diagnosis.md.tmp docs/bugs/BUG-902/01-diagnosis.md
 echo y > src/z.js   # staged/stop 只在存在代码路径改动时执法（对齐 T4/T5 夹具）
 git add -A          # staged 以暂存区为准，空暂存即空转放行
@@ -1979,6 +1993,7 @@ mkdir -p "docs/bugs/BATCH-$today"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# flat batch\n\n## BUG-903 flat member\n' > "docs/bugs/BATCH-$today/$d6.md"
 done
+printf '延伸发现：未发现\n' >> "docs/bugs/BATCH-$today/01-diagnosis.md"
 # 负例铺垫：BUG-904 只在诊断件锚定（其余五件缺同 id 小节 → 六件锚点不齐）
 printf '\n## BUG-904 member\n' >> "docs/bugs/BATCH-$today/01-diagnosis.md"
 seed_artifacts CHG-931 L0 claude/s-1
@@ -2005,6 +2020,7 @@ mkdir -p "docs/bugs/BATCH-$today/BUG-905"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# nested\n' > "docs/bugs/BATCH-$today/BUG-905/$d6.md"
 done
+printf '延伸发现：未发现\n' >> "docs/bugs/BATCH-$today/BUG-905/01-diagnosis.md"
 seed_artifacts CHG-932 L0 claude/s-1
 printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-905"}\n' > docs/changes/CHG-932/00-governance.json
 scripts/agent-gate begin CHG-932 >/dev/null 2>&1
@@ -2086,7 +2102,7 @@ open
 EOF
   printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
   printf '# <__CHANGE_ID__> spec (__RISK__)\n- REQ-001: tbd\n' > docs/templates/entry/01-spec.md
-  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n' > docs/templates/entry/02-code-impact-analysis.md
+  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n' > docs/templates/entry/02-code-impact-analysis.md
   printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
   printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填（§2.2 输入契约）\n' > docs/templates/entry/03.5-tasks.md
   printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
@@ -2180,6 +2196,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
     printf '# %s\n' "$doc" > "docs/bugs/BUG-940/$doc"
   done
+  printf '延伸发现：未发现\n' >> docs/bugs/BUG-940/01-diagnosis.md
   sed -i '' 's/}$/,"bug_ref":"BUG-940"}/' docs/changes/CHG-940/00-governance.json 2>/dev/null \
     || sed -i 's/}$/,"bug_ref":"BUG-940"}/' docs/changes/CHG-940/00-governance.json
   scripts/agent-gate begin CHG-940 >/dev/null 2>&1
@@ -2189,7 +2206,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   # comma-joined batch governance (the §1.1 recommended shape): each member's
   # bug_ref must be extracted in isolation — no cross-member bleed
   mkdir -p docs/bugs/BUG-943 docs/bugs/BUG-944
-  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; done
+  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; printf '延伸发现：未发现\n' >> "docs/bugs/BUG-$b/01-diagnosis.md"; done
   mkdir -p docs/changes/BATCH-990922
   printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
   seed_artifacts CHG-944 L0 claude/s-27
@@ -2206,7 +2223,7 @@ fi
 new_repo
 seed_artifacts CHG-950 L1 claude/s-28
 mkdir -p docs/bugs/BUG-950
-printf '# 诊断\nseverity: P3\n现象：文案错别字\n' > docs/bugs/BUG-950/01-diagnosis.md
+printf '# 诊断\nseverity: P3\n现象：文案错别字\n延伸发现：未发现\n' > docs/bugs/BUG-950/01-diagnosis.md
 printf '# 防回归\n| TC |\n' > docs/bugs/BUG-950/03-test-plan.md
 printf '# 矩阵\n| REQ |\n' > docs/bugs/BUG-950/04-matrix.md
 sed -i '' 's/}$/,"bug_ref":"BUG-950"}/' docs/changes/CHG-950/00-governance.json 2>/dev/null \
@@ -2225,7 +2242,7 @@ report "T28 non-P3 value keeps full six-piece" 2 $?
 # the change track only fires when a CHANGE batch exists, none does here)
 B9="docs/bugs/BATCH-$(date -u +%Y%m%d)"
 mkdir -p "$B9"
-printf '# 批次诊断\n## BUG-951\nseverity: P3\n文案\n## BUG-952\n无 severity 行\n' > "$B9/01-diagnosis.md"
+printf '# 批次诊断\n## BUG-951\nseverity: P3\n文案\n延伸发现：未发现\n## BUG-952\n无 severity 行\n' > "$B9/01-diagnosis.md"
 printf '# 防回归\n## BUG-951\n## BUG-952\n' > "$B9/03-test-plan.md"
 printf '# 矩阵\n## BUG-951\n## BUG-952\n' > "$B9/04-matrix.md"
 seed_artifacts CHG-951 L1 claude/s-28b
@@ -2483,6 +2500,13 @@ if [[ -x scripts/agent-gate ]]; then
   echo y > src/t37.js   # stop 只在存在代码路径改动时执法（对齐 T5/T23 夹具）
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T37 L0 minimal-set: declaration satisfies 04.5/05" 0 $?
+  # ⑤ v3.48.0（CHG-058）：02 缺延伸发现节 → E15（自愈还原）
+  sed -i '' '/延伸发现/d' docs/changes/CHG-991/02-code-impact-analysis.md 2>/dev/null || sed -i '/延伸发现/d' docs/changes/CHG-991/02-code-impact-analysis.md
+  out=$(scripts/agent-gate --stage stop 2>&1 || true)
+  check_output "stop refuses 02 missing 延伸发现 (E15)" "GATE-E15.*延伸发现" "$out"
+  printf '延伸发现：未发现\n' >> docs/changes/CHG-991/02-code-impact-analysis.md
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  report "T37 stop green again after 延伸发现 restored" 0 $?
   # ② L0 + 04.5/05 缺失 → 拒绝（E47 先于 E48）
   rm docs/changes/CHG-991/04.5-coding-record.md docs/changes/CHG-991/05-test-results.md
   scripts/agent-gate --stage stop >/dev/null 2>&1

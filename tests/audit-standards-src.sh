@@ -616,6 +616,18 @@ report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '164 KB / 1
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
+# A30 延伸发现/历史相似检索（CHG-058/REQ-975/976）：DS §2.5 阶段 2/6、§2.12、§2.16.5、七要素⑦ 节与关键词在位
+at_least "A30 stage-2 延伸发现 clause" 1 "$STD" '延伸发现（v3.48.0）'
+at_least "A30 stage-2 历史相似检索 clause" 1 "$STD" '历史相似检索（v3.48.0）'
+at_least "A30 stage-6 dual clause" 1 "$STD" '延伸发现与历史相似检索（v3.48.0）'
+at_least "A30 discover-register-now clause" 1 "$STD" '会话内发现即登记'
+at_least "A30 erratum cites origin CHG" 1 "$STD" '显式引用原 CHG 号'
+at_least "A30 seven-element history field" 1 "$STD" '历史检索命中的 BUG/CHG 号'
+# A31 枚举面 pin（CHG-058/REQ-978）：G 组清单于双语 README+SKILL 在册（G10 同步漏更复发防线，A29 同族）+ bugfix-log 模板历史相似字段
+at_least "A31 G10 enumerated in EN README" 1 "$ROOT/README.md" 'G10'
+at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
+at_least "A31 G10 enumerated in SKILL" 1 "$ROOT/SKILL.md" 'G10'
+at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bugfix-log.md" '历史相似'
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
 at_least "A12 root-cause classification present (REQ-057)" 1 "$STD" '根因分类'

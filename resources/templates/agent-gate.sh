@@ -279,6 +279,9 @@ validate_artifact_content() {
     || die "GATE-E13: $d/02-code-impact-analysis.md missing risk (风险) content (A-layer, standards §2.5 stage 2)"
   grep -qE "^(#{1,6}[[:space:]].*回滚策略|\|.*回滚策略|[[:space:]]*[-*][[:space:]]+\*\*回滚策略)" "$d/02-code-impact-analysis.md" \
     || die "GATE-E14: $d/02-code-impact-analysis.md missing rollback (回滚策略) content (A-layer, standards §2.5 stage 2)"
+  # v3.48.0 (CHG-058): 延伸发现即时落盘（标题或"未发现"声明行均含关键词）
+  grep -q "延伸发现" "$d/02-code-impact-analysis.md" \
+    || die "GATE-E15: $d/02-code-impact-analysis.md missing 延伸发现 section (A-layer, standards §2.5 stage 2, v3.48.0)"
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
       || die "GATE-E15: $d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
@@ -436,6 +439,9 @@ validate_governance_state() {
         [[ " $p3_exempt " == *" $doc "* ]] && continue
         [[ -s "$bug_gdir/$doc" ]] || die "GATE-E42: $file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
       done
+      # v3.48.0 (CHG-058): BUG 轨延伸发现即时落盘（文件级机校；分节质量由评审 B 层核对）
+      grep -q "延伸发现" "$bug_gdir/01-diagnosis.md" 2>/dev/null \
+        || die "GATE-E16: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现 section (BUG track, standards §2.5 stage 6, v3.48.0)"
     done
   fi
 }
