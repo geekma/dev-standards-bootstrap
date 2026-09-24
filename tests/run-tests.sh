@@ -2515,6 +2515,94 @@ report "T38 CI wires soft mode" 1 "$(grep -c 'AGENT_GUARD_AUDIT_SOFT' "$ROOT/.gi
 report "T38 assertion lifecycle section" 1 "$(grep -c '^### 5.3 断言生命周期' "$ROOT/MAINTAINER.md")"
 report "T38 graded ambiguity rule" 1 "$(grep -c '歧义分级裁定' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 
+# ------------------------------------------------ T39 条款注册表形态（v3.46.0，REQ-968）
+REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
+if [[ -s "$REG_T39" ]]; then
+  report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
+  report "T39 registry row count" 41 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
+  report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
+  for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
+    t39_lab="${t39_t%%:*}"; t39_min="${t39_t##*:}"
+    t39_n=$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' -v l="$t39_lab" '{gsub(/[[:space:]]/,"",$5); if($5==l)n++} END{print n+0}')
+    report "T39 type minimum $t39_lab >= $t39_min" 1 "$([[ "$t39_n" -ge "$t39_min" ]] && echo 1 || echo 0)"
+  done
+  t39_bad=0
+  while IFS= read -r loc; do
+    p="${loc%%::*}"; a="${loc#*::}"
+    t39_file=""
+    for t39_d in "$ROOT" "$ROOT/resources" "$ROOT/docs"; do
+      [[ -f "$t39_d/$p" ]] && { t39_file="$t39_d/$p"; break; }
+    done
+    c=$(grep -cF -- "$a" "$t39_file" 2>/dev/null || echo 0)
+    [[ "$c" == "1" ]] || t39_bad=$((t39_bad+1))
+  done < <(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}')
+  report "T39 all anchors resolve uniquely" 0 "$t39_bad"
+  report "T39 generator present" 1 "$(test -x "$ROOT/resources/templates/generate-reading-pack.sh" && echo 1 || echo 0)"
+else
+  echo "SKIP T39: CLAUSE_REGISTRY.md absent — 跳过注册表 golden cases"
+fi
+
+# ------------------------------------------------ T40 阅读包生成器多态（v3.46.0，REQ-969/970/971）
+GEN_T40="$ROOT/resources/templates/generate-reading-pack.sh"
+if [[ -x "$GEN_T40" ]]; then
+  new_repo
+  mkdir -p resources
+  cp "$GEN_T40" resources/generate-reading-pack.sh && chmod +x resources/generate-reading-pack.sh
+  printf '### 阶段 6\nfake clause body\n## 2.15 文档\nfake body 2\n## 2.7 发布\nrelease body\n### 0.5.1 风险\nrisk body\n### 1.1 编号\nnumbering body\n' > resources/fake-standards.md
+  printf '路由行 content here\n' > resources/agents.md
+  cat > resources/CLAUSE_REGISTRY.md <<'REG40'
+| Rxx | 条款标题 | 权威落点 | 类型标签 | 强制级别 | 生命周期 |
+| --- | --- | --- | --- | --- | --- |
+| R01 | 缺陷主线 | resources/fake-standards.md::### 阶段 6 | L0-bugfix | 硬 | 结构 |
+| R02 | 防覆盖 | resources/fake-standards.md::## 2.15 文档 | universal | 软 | 行为 |
+| R03 | 前置 | resources/agents.md::路由行 | L1-standards | 硬 | 结构 |
+| R04 | 发布 | resources/fake-standards.md::## 2.7 发布 | L2-architecture | 硬 | 结构 |
+| R05 | 风险 | resources/fake-standards.md::### 0.5.1 风险 | L3-critical | 硬 | 结构 |
+| R06 | 编号 | resources/fake-standards.md::### 1.1 编号 | L1-standards | 硬 | 结构 |
+REG40
+  out40="$(bash resources/generate-reading-pack.sh L0-bugfix 2>/dev/null)"; rc40=$?
+  report "T40 normal generation exits 0" 0 "$rc40"
+  report "T40 normal pack includes universal rows" 1 "$(printf '%s' "$out40" | grep -c '条款数：2')"
+  report "T40 pack resolves line numbers" 1 "$(printf '%s' "$out40" | grep -c 'fake-standards.md:1')"
+  out41="$(bash resources/generate-reading-pack.sh L1-standards 2>/dev/null)"; rc41=$?
+  report "T40 L1 generation exits 0" 0 "$rc41"
+  report "T40 L1 pack includes type rows" 1 "$(printf '%s' "$out41" | grep -c '条款数：3')"
+  out42="$(bash resources/generate-reading-pack.sh L2-architecture 2>/dev/null)"; rc42=$?
+  report "T40 L2 generation exits 0" 0 "$rc42"
+  report "T40 L2 pack includes type rows" 1 "$(printf '%s' "$out42" | grep -c 'R04')"
+  out43="$(bash resources/generate-reading-pack.sh L3-critical 2>/dev/null)"; rc43=$?
+  report "T40 L3 generation exits 0" 0 "$rc43"
+  report "T40 L3 pack includes type rows" 1 "$(printf '%s' "$out43" | grep -c 'R05')"
+  bash resources/generate-reading-pack.sh L9-nope >/dev/null 2>&1
+  report "T40 unknown type refused" 2 $?
+  printf '| R01 | 坏锚 | resources/fake-standards.md::不存在的锚 | L0-bugfix | 硬 | 结构 |\n' > resources/reg-bad-miss.md
+  CLAUSE_REGISTRY_FILE="$PWD/resources/reg-bad-miss.md" bash resources/generate-reading-pack.sh L0-bugfix >/dev/null 2>&1
+  report "T40 anchor miss fail-closed" 3 $?
+  printf '### 阶段 6\nfake clause body\n### 阶段 6\nduplicate anchor body\n' > resources/dup-standards.md
+  printf '| R01 | 重锚 | resources/dup-standards.md::### 阶段 6 | L0-bugfix | 硬 | 结构 |\n' > resources/reg-bad-dup.md
+  CLAUSE_REGISTRY_FILE="$PWD/resources/reg-bad-dup.md" bash resources/generate-reading-pack.sh L0-bugfix >/dev/null 2>&1
+  report "T40 anchor not-unique fail-closed" 3 $?
+  printf '| R01 | 缺文件 | resources/nofile.md::锚 | L0-bugfix | 硬 | 结构 |\n' > resources/reg-bad-file.md
+  CLAUSE_REGISTRY_FILE="$PWD/resources/reg-bad-file.md" bash resources/generate-reading-pack.sh L0-bugfix >/dev/null 2>&1
+  report "T40 anchor file missing fail-closed" 3 $?
+  printf '| R01 | 无关 | resources/fake-standards.md::### 阶段 6 | L2-architecture | 硬 | 结构 |\n' > resources/reg-empty.md
+  CLAUSE_REGISTRY_FILE="$PWD/resources/reg-empty.md" bash resources/generate-reading-pack.sh L0-bugfix >/dev/null 2>&1
+  report "T40 empty type set refused" 4 $?
+  v40="$(bash resources/generate-reading-pack.sh L0-bugfix --verify 2>/dev/null)"; rc40=$?
+  report "T40 verify green silent exit 0" "0:0" "$rc40:${#v40}"
+  # 接线静态 pin（源仓）
+  report "T40 bootstrap ships generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/scripts/bootstrap.sh")"
+  report "T40 bootstrap ships registry" 1 "$(grep -c 'resources/CLAUSE_REGISTRY.md' "$ROOT/scripts/bootstrap.sh")"
+  report "T40 uninstall lists generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/templates/uninstall-standards.sh")"
+  report "T40 gate exempt generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/templates/agent-gate.sh")"
+  report "T40 AGENTS pack route row" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/AGENTS.md")"
+  report "T40 DS registry clause" 1 "$(grep -c '2.17.2c' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+  report "T40 changelog v3.46.0 row" 1 "$(grep -c '^| v3.46.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+else
+  echo "SKIP T40: generator absent — 跳过阅读包生成器 golden cases"
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

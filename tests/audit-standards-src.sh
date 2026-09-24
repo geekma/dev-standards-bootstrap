@@ -572,7 +572,7 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
 # A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 144KB。
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 164KB（167,936 字节）。
 # v3.29.0（CHG-028）重校准 132KB → 140KB 的依据：§2.1 九专家行 + §2.2 分阶段专家评审矩阵为
 # 新增规范性内容（两轮措辞压缩后仍超 136KB 约 1.6KB），按 KiB 步进 +4KB；STANDARDS_CHANGELOG v3.29.0 行即依据。
 # v3.25.0（CHG-025）重校准 128KB → 132KB 的依据（按既有三个条件）：
@@ -611,6 +611,11 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
 report "A11 standards body size <= 164KB (FU-017, recalibrated v3.43.0)" 1 "$([[ "$std_bytes" -le 167936 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
+# A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '164 KB / 167,936 字节' "$ROOT/MAINTAINER.md")"
+# A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
+report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
+report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
 at_least "A12 root-cause classification present (REQ-057)" 1 "$STD" '根因分类'
@@ -995,6 +1000,19 @@ at_least "A26 standards retire 08-supplement into 09 (REQ-963)" 1 "$ROOT/resourc
 at_least "A26 standards declare 14-artifact contract (REQ-963)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '14 件'
 at_least "A26 audit derives changelog continuity from SLOG (REQ-964)" 1 "$ROOT/tests/audit-standards-src.sh" 'strictly descending'
 at_least "A26 golden T37 anchors L0 minimal-set states (REQ-962)" 1 "$ROOT/tests/run-tests.sh" 'T37 L0 minimal-set'
+
+# v3.46.0 (REQ-968~971): clause registry + reading-pack generator pins.
+# 能力级 pin 随能力落地追加（同 A26 脱版本化语义）。
+at_least "A27 registry schema and authority declaration (REQ-968)" 1 "$ROOT/resources/CLAUSE_REGISTRY.md" '权威关系声明'
+at_least "A27 bootstrap core ships registry (REQ-971)" 1 "$ROOT/scripts/bootstrap.sh" 'CLAUSE_REGISTRY.md'
+at_least "A27 bootstrap guard ships generator (REQ-969)" 1 "$ROOT/scripts/bootstrap.sh" 'templates/generate-reading-pack.sh'
+at_least "A27 uninstall covers generator (REQ-969)" 1 "$ROOT/resources/templates/uninstall-standards.sh" 'generate-reading-pack'
+at_least "A27 uninstall covers registry (REQ-971)" 1 "$ROOT/resources/templates/uninstall-standards.sh" 'CLAUSE_REGISTRY.md'
+at_least "A27 gate exempts generator from code-path (REQ-969)" 1 "$ROOT/resources/templates/agent-gate.sh" 'generate-reading-pack'
+at_least "A27 standards define registry clause (REQ-971)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '2.17.2c 条款注册表与阅读包'
+at_least "A27 AGENTS routes reading pack (REQ-971)" 1 "$ROOT/resources/AGENTS.md" 'generate-reading-pack'
+at_least "A27 golden T39 anchors registry capability (REQ-970)" 1 "$ROOT/tests/run-tests.sh" 'T39 registry schema header'
+at_least "A27 golden T40 anchors generator capability (REQ-969)" 1 "$ROOT/tests/run-tests.sh" 'T40 normal generation exits 0'
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达

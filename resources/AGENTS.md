@@ -66,6 +66,7 @@
 | L0/L1 变更怎么按轻量通道执行（省表达成本，不省证据边界） | §0.5 指引 + §1.1「L0/L1 轻量通道」 |
 | 怎么压会话/输出 token 成本 | 本文件「Agent 执行资源纪律」节 + §2.9.6 会话与上下文纪律 + §2.5 表达成本条款 |
 | 只是改 bug | §2.5 阶段 6（含 `docs/bugfix-log.md` 双登记 + 根因表「同族推演」行 + 「Bug 修复回填清单」；v3.35.0 三条款：诊断前必读总册相关册、TC 不覆盖必须新增防回归 TC、六件套按天入批 `docs/bugs/BATCH-YYYYMMDD/`（v3.36.0 扁平：同名文件 + `## BUG-xxx` 锚点，当天同文件追加）；**v3.41.0 P3 缺陷轻量通道：`01-diagnosis.md` 行首 `severity: P3`（文案类）免 02/05/06 三件，未声明=全六件**）+ `docs/methodologies/state-trigger-audit.md`（同族推演与反模式细则）+ §0 门禁 |
+| 按变更类型取阅读包（阅读税路由，v3.46.0） | `bash scripts/generate-reading-pack.sh <type>`（type∈`L0-bugfix|L1-standards|L2-architecture|L3-critical|universal`）——从 `CLAUSE_REGISTRY.md`（机器索引层）按需生成内容切片，锚点 fail-closed 防漂移；本表为路由入口、阅读包为切片、DS 为正文唯一权威（§2.17.2c） |
 | 交付前文档互证（CI/本地均可跑） | `bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档清单↔§3 同源 / G4 bugfix 双登记互证 / G5 RTVM 回填一致 / G6 §4 必填节 / G7 变更批次自洽 / G8 六件套存在性 / **G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截（§1.3 第 6 条，v3.37.1）** / **G10 废弃条款 sweep——废止标记须带 v3.x 被替代指向（减法机制，v3.41.0）** / A20 变更目录盖章互证 / A21 六件套盖章，v3.35.0；失败项即 §2.14 回填清单，§2.13.4） |
 | 项目级总册（总体需求/架构/接口/数据/任务/测试/部署/风险/决策） | §1.3 + `docs/methodologies/project-masters.md`（十二册清单与必含章节唯一权威；首次变更初始化，每次变更逐册回填+变更注记） |
 | 涉及配置文件/数据库变更 | §2.6 |
@@ -81,4 +82,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.45.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.47.0_

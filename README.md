@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.45.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.47.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -82,7 +82,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (441 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (474 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -310,7 +310,7 @@ Any change that fails any gate is **blocked from merge to main**.
 - **Defect groups join daily batches by default (v3.35.0, flat since v3.36.0)**: same-day defects share one flat `docs/bugs/BATCH-YYYYMMDD/` directory — six files named exactly as before, told apart by `## BUG-xxx` section anchors, same-day appends land in the same files (per-defect subdirectories remain a legal legacy form). The append-only `docs/bugfix-log.md` index (one dated row per bug) stays the day-level retrieval layer, and a defect's change-track entry (`BUG-*`) may still join a change batch like any other change.
 - **Methodology selection (M0–M3)**: `docs/METHODOLOGY.md` is the sole authority for which methodologies are allowed at which level; `docs/methodologies/development.md`, `docs/methodologies/data-structures.md`, `docs/methodologies/state-trigger-audit.md`, `docs/methodologies/expert-capabilities.md` and `docs/methodologies/project-masters.md` carry the per-item engineering rationale (SOLID/DRY applicability, weak-typing ban, implicit state/trigger-link three-way traversal, expert theory toolboxes).
 - **Self-evolution**: skills derived from this one (declaring `derived_from: dev-standards-bootstrap`) live and evolve independently, and every installer/upgrade write path skips them; `--force` does not override that. `bash scripts/bootstrap.sh --derived-report` lists them.
-- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
+- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / G10 deprecation-marker sweep — a deprecation marker must carry its replaced-by version pointer (v3.41.0) / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
 
 ## Repository Structure
 
@@ -337,7 +337,8 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # Source-layer only (NOT shipped): committed baseline of the audit's executed-assertion count (assertion A10 fails on drift)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.45.0 (copied to docs/)
+    ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.47.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
@@ -370,6 +371,7 @@ dev-standards-bootstrap/
         ├── install-hook-adapter.sh         # Detects local AI clients and wires session-time enforcement (adaptive, v3.34.0)
         ├── session-gate.sh                  # Session-time enforcement: start = audit red-light + defect-signal interactive options, idle = gate stop equivalent
         ├── bug-autointent.sh               # Defect discovery entry: signal -> full six-piece skeleton + fingerprint rate-limit (v3.43.0)
+        ├── generate-reading-pack.sh        # Reading-pack generator: clause registry -> type-filtered slice, anchors fail-closed (v3.46.0)
         ├── github-agent-governance.yml     # Required-check workflow template
         ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/03.5/04 skeletons PR; changelog merged -> release checklist issue
         ├── github-incident-to-intent.yml   # Incident loop: alert dispatch -> BUG-<ts> intent skeleton PR
@@ -402,7 +404,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.45.0 | **Last Updated:** 2026-09-23 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.47.0 | **Last Updated:** 2026-09-24 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

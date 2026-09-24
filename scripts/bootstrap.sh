@@ -29,7 +29,7 @@ usage() {
 Usage: scripts/bootstrap.sh [flags] [target_root]
 
 Flags (layers; default --core when none given):
-  --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
+  --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, CLAUSE_REGISTRY.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
                methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
                <docs>/templates/project/ (总册 12 册 + 评审模板, v3.35.0),
                <docs>/templates/entry/ (变更入口骨架 7 件, v3.38.0),
@@ -564,6 +564,9 @@ run_layer() {
     core)
       install_file - AGENTS.md resources/AGENTS.md
       install_file - "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" resources/DEVELOPMENT_STANDARDS.md
+      # v3.46.0（REQ-968/969）：条款注册表 → 阅读包生成的结构化索引层（机器面权威，
+      # DS 仍是叙事唯一权威；生成 fail-closed 防双权威源漂移）。
+      install_file - "$DOCS_DIR/CLAUSE_REGISTRY.md" resources/CLAUSE_REGISTRY.md
       # v3.37.0（REQ-937）：一页文档地图 → <docs>/README.md（与 AGENTS.md 互补的人面地图；
       # 已存在同名文件且内容不同时 CONFLICT 拒绝，fail-closed 不静默覆盖）。
       install_file - "$DOCS_DIR/README.md" resources/templates/docs-readme.md
@@ -611,6 +614,7 @@ run_layer() {
       install_file - "$SCRIPTS_DIR/install-hook-adapter" resources/templates/install-hook-adapter.sh 755
       install_file - "$SCRIPTS_DIR/session-gate.sh" resources/templates/session-gate.sh 755
       install_file - "$SCRIPTS_DIR/bug-autointent" resources/templates/bug-autointent.sh 755
+      install_file - "$SCRIPTS_DIR/generate-reading-pack.sh" resources/templates/generate-reading-pack.sh 755
       install_file - "$SCRIPTS_DIR/uninstall-standards" resources/templates/uninstall-standards.sh 755
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases

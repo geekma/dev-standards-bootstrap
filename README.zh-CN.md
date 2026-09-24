@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.45.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.47.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -82,7 +82,7 @@
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（441 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（474 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -310,7 +310,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 - **缺陷六件套默认按天入批（v3.35.0；v3.36.0 扁平化）**：同日多个缺陷共落扁平 `docs/bugs/BATCH-YYYYMMDD/`——六件套文件名一字不改，用 `## BUG-xxx` 小节锚点区分，当天的追加/回填落在同一套文件里（逐缺陷子目录为历史合法形态，存量不回改）；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）保持天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
 - **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md`、`docs/methodologies/expert-capabilities.md` 与 `docs/methodologies/project-masters.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱）。
 - **自进化**：从本 Skill 派生（声明 `derived_from: dev-standards-bootstrap`）的 Skill 独立演进，安装/升级的每条写入路径都会跳过它们；`--force` 也不越过。`bash scripts/bootstrap.sh --derived-report` 可列出派生清单。
-- **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽 / G8 缺陷六件套存在性 / G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截 / A 组盖章互证）可在 CI 或本地运行；失败项即回填清单。
+- **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽 / G8 缺陷六件套存在性 / G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截 / G10 废弃条款 sweep——废止标记须带被替代版本指向（v3.41.0） / A 组盖章互证）可在 CI 或本地运行；失败项即回填清单。
 
 ## 仓库结构
 
@@ -337,7 +337,8 @@ dev-standards-bootstrap/
 │   └── .audit-baseline                     # 源层专用（不下发）：审计执行断言数的入库基线（断言 A10 对漂移判红）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.45.0（复制到 docs/）
+    ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.47.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
@@ -370,6 +371,7 @@ dev-standards-bootstrap/
         ├── install-hook-adapter.sh         # 探测本地 AI 客户端并自适应接线会话内执法（v3.34.0）
         ├── session-gate.sh                  # 会话内执法：start=审计亮红灯+缺陷信号交互三选项，idle=stop 等价检查
         ├── bug-autointent.sh               # 缺陷发现入口：信号 -> 完整六件套骨架 + 指纹频控（v3.43.0）
+        ├── generate-reading-pack.sh        # 阅读包生成器：条款注册表 -> 按类型切片，锚点 fail-closed 防漂移（v3.46.0）
         ├── github-agent-governance.yml     # 必需检查 workflow 模板
         ├── github-artifact-pipeline.yml    # 产物管线：spec 合入 -> 02/03/03.5/04 骨架 PR；changelog 合入 -> 发布检查单 issue
         ├── github-incident-to-intent.yml   # 事故回路：告警派发 -> BUG-<ts> 意图骨架 PR
@@ -402,7 +404,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.45.0 | **最后更新：** 2026-09-23 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.47.0 | **最后更新：** 2026-09-24 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

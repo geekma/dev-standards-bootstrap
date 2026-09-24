@@ -69,7 +69,7 @@ if [[ "$FORCE" == 1 ]]; then echo "uninstall-standards: --force ON — Tier3 ass
 # own T-sections), so both live in Tier3 (keep & report; --force backup-moves).
 for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_DIR/new-change" \
          "$SCRIPTS_DIR/session-gate.sh" "$SCRIPTS_DIR/install-hook-adapter" \
-         "$SCRIPTS_DIR/bug-autointent" \
+         "$SCRIPTS_DIR/bug-autointent" "$SCRIPTS_DIR/generate-reading-pack.sh" \
          "$SCRIPTS_DIR/check-standards-compliance.sh"; do
   act_rm "$f"
 done
@@ -134,6 +134,7 @@ done <<EOF
 AGENTS.md
 CLAUDE.md
 $DOCS_DIR/DEVELOPMENT_STANDARDS.md
+$DOCS_DIR/CLAUSE_REGISTRY.md
 $DOCS_DIR/STANDARDS_CHANGELOG.md
 $DOCS_DIR/METHODOLOGY.md
 $DOCS_DIR/README.md
