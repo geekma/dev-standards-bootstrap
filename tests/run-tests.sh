@@ -862,7 +862,7 @@ scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin accepts restored defect doc with 延伸发现" 0 $?
 sed -i '' '/延伸发现/d' docs/bugs/BUG-042/01-diagnosis.md 2>/dev/null || sed -i '/延伸发现/d' docs/bugs/BUG-042/01-diagnosis.md
 out=$(scripts/agent-gate begin CHG-800 2>&1 || true)
-check_output "begin rejects bug doc missing 延伸发现 (E16)" "GATE-E16.*延伸发现" "$out"
+check_output "begin rejects bug doc missing 延伸发现 (E81)" "GATE-E81.*延伸发现" "$out"
 printf '# diagnosis restored\n延伸发现：未发现\n' > docs/bugs/BUG-042/01-diagnosis.md
 rm docs/bugs/BUG-042/04-matrix.md   # v3.7.0：六件套缺一件同样拦截
 out=$(scripts/agent-gate begin CHG-800 2>&1 || true)
@@ -2500,10 +2500,10 @@ if [[ -x scripts/agent-gate ]]; then
   echo y > src/t37.js   # stop 只在存在代码路径改动时执法（对齐 T5/T23 夹具）
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T37 L0 minimal-set: declaration satisfies 04.5/05" 0 $?
-  # ⑤ v3.48.0（CHG-058）：02 缺延伸发现节 → E15（自愈还原）
+  # ⑤ v3.48.0（CHG-058）：02 缺延伸发现节 → E80（自愈还原；v3.48.1 CHG-060 自 E15 重编）
   sed -i '' '/延伸发现/d' docs/changes/CHG-991/02-code-impact-analysis.md 2>/dev/null || sed -i '/延伸发现/d' docs/changes/CHG-991/02-code-impact-analysis.md
   out=$(scripts/agent-gate --stage stop 2>&1 || true)
-  check_output "stop refuses 02 missing 延伸发现 (E15)" "GATE-E15.*延伸发现" "$out"
+  check_output "stop refuses 02 missing 延伸发现 (E80)" "GATE-E80.*延伸发现" "$out"
   printf '延伸发现：未发现\n' >> docs/changes/CHG-991/02-code-impact-analysis.md
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T37 stop green again after 延伸发现 restored" 0 $?
@@ -2625,6 +2625,15 @@ REG40
   report "T40 changelog v3.46.0 row" 1 "$(grep -c '^| v3.46.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 else
   echo "SKIP T40: generator absent — 跳过阅读包生成器 golden cases"
+fi
+
+# ------------------------------------------------ T41 gate 码唯一性（v3.48.1，CHG-060；E15/E16 重号复发防线）
+GATE_T41="$ROOT/resources/templates/agent-gate.sh"
+[[ -s "$GATE_T41" ]] || GATE_T41="$ROOT/scripts/agent-gate"
+if [[ -s "$GATE_T41" ]]; then
+  report "T41 gate die E-codes unique" 0 "$(grep -oE 'die "GATE-E[0-9]{2}: ' "$GATE_T41" | sort | uniq -d | wc -l | tr -d ' ')"
+else
+  echo "SKIP T41: agent-gate absent — 跳过码唯一性 golden case"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
