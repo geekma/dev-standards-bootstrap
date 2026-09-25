@@ -262,7 +262,7 @@ report "2.15 table has 00-governance row"    1 "$(grep_count "$STD" '\`00-govern
 report "2.16.5 table has pipeline-entry row" 1 "$(grep_count "$STD" '管线入口（§2.17）')"
 report "2.17 governance definition present"  1 "$(grep_count "$STD" '管线治理声明')"
 at_least "2.17 dual-root convention present" 1 "$STD" '产物目录双轨约定'
-report "mainline starts with 00 files+begin" 1 "$(grep_count "$STD" '先落 00-intent.md / 00-governance.json（§2.17，变更目录）')"
+report "mainline starts with 00 files+begin" 1 "$(grep_count "$STD" '先落 00-intent.md / 00-governance.json / 00.5-communication.md（§2.17，变更目录）')"
 
 # ---------- bugfix 双登记 9+1 项对齐（R-A 轮；v3.6.0 缺陷文档组 + v3.7.0 矩阵/配置/任务拆分项） ----------
 chg_backfill=$(awk '/^#### Bug 修复回填清单/,/^#### [^B]/' "$STD" | grep -cE '^- \[ \]')
@@ -927,6 +927,11 @@ at_least "A25 standards pins every-change backfill" 1 "$STD" '项目总册回填
 at_least "A25 standards pins first-change initialization" 1 "$STD" 'AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS'
 at_least "A25 standards pins the bug diagnosis master-reading clause" 1 "$STD" '诊断前必读总册'
 at_least "A25 standards pins the TC-coverage clause for bug fixes" 1 "$STD" '不可覆盖必须新增防回归 TC'
+at_least "A36 standards pins the staged-review clause (v3.53.0, REQ-993)" 1 "$STD" '分阶段评审留痕（v3.53.0，REQ-993）'
+at_least "A36 standards pins stage-8 backfill-check row (v3.53.0)" 1 "$STD" '分阶段评审留痕核对'
+at_least "A36 standards pins the bug-track machine checkpoint (FU-902)" 1 "$STD" '缺陷轨机校点=绑定 CHG 的 begin'
+at_least "A36 AGENTS carries the staged-review hard directive" 1 "$ROOT/resources/AGENTS.md" '禁止"只做阶段 8 终审"的收敛执行'
+at_least "A37 gate checks history-similarity search (v3.54.0, REQ-998)" 1 "$ROOT/resources/templates/agent-gate.sh" 'GATE-E84'
 at_least "A25 standards reverses the v3.22.0 no-batch decision" 1 "$STD" '缺陷六件套自 v3.35.0 起同样按天入批'
 at_least "A25 standards flattens the bug batch (v3.36.0)" 1 "$STD" '扁平化'
 at_least "A25 standards pins the flat anchor form" 1 "$STD" '## <BUG-xxx>'
@@ -962,7 +967,7 @@ report "A25 session-gate maintains the water file" 1 "$(a17_at_least_1 "$(grep -
 report "A25 metrics emits artifact cost fields" 1 "$(a17_at_least_1 "$(grep -c 'artifact_bytes' "$GATE_TPL" || true)")"
 report "A25 scaffolder template exists" 1 "$([[ -s "$ROOT/resources/templates/new-change.sh" ]] && echo 1 || echo 0)"
 report "A25 scaffolder shipped by bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/new-change.sh' "$ROOT/scripts/bootstrap.sh" || true)")"
-report "A25 seven entry templates exist" 7 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
+report "A25 eight entry templates exist" 8 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
 report "A25 entry templates shipped by bootstrap core" 1 "$(a17_at_least_1 "$(grep -c 'templates/entry' "$ROOT/scripts/bootstrap.sh" || true)")"
 report "A25 golden pins the water gate" 1 "$(a17_at_least_1 "$(grep -c 'T24 begin names the water level' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden pins the scaffolder" 1 "$(a17_at_least_1 "$(grep -c 'T25 filled scaffold passes begin' "$ROOT/tests/run-tests.sh" || true)")"
@@ -1021,7 +1026,7 @@ at_least "A26 gate carries L0 minimal-set carve-out (REQ-962)" 1 "$ROOT/resource
 at_least "A26 gate rejects declaration-only stubs off L0 (REQ-962)" 1 "$ROOT/resources/templates/agent-gate.sh" 'GATE-E52'
 at_least "A26 standards split L0/L1 non-placeholder sets (REQ-962)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" 'L0 最小不可占位集'
 at_least "A26 standards retire 08-supplement into 09 (REQ-963)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '「补充说明」节'
-at_least "A26 standards declare 14-artifact contract (REQ-963)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '14 件'
+at_least "A26 standards declare 15-artifact contract (REQ-963/CHG-064)" 1 "$ROOT/resources/DEVELOPMENT_STANDARDS.md" '15 件'
 at_least "A26 audit derives changelog continuity from SLOG (REQ-964)" 1 "$ROOT/tests/audit-standards-src.sh" 'strictly descending'
 at_least "A26 golden T37 anchors L0 minimal-set states (REQ-962)" 1 "$ROOT/tests/run-tests.sh" 'T37 L0 minimal-set'
 

@@ -14,7 +14,7 @@
 #   scripts/stamp-provenance.sh --print <CHG-id>      # 只打印块，不写文件
 #   scripts/stamp-provenance.sh --check <file>        # 校验已有块（CI 用，形状 + 非占位）
 #
-# --all 把溯源块盖到解析后变更目录的**每一个 *.md**（14 件产物批量可溯；幂等整块
+# --all 把溯源块盖到解析后变更目录的**每一个 *.md**（15 件产物批量可溯；幂等整块
 # 替换，重复运行不叠加）。`00-governance.json` **刻意不盖**——JSON 里注入 HTML 注释
 # 会破坏机器读取（门禁/审计按扁平 JSON 切分记录）。强制范围（v3.26.0，CHG-026）＝全部 *.md：
 # v3.26.0（CHG-026）：--all 升为交付必跑——变更目录全部 *.md 产物均须携带溯源块，

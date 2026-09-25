@@ -24,7 +24,7 @@ cd "$repo_root"
 # hardcoded value, so a repo without a `paths:` block behaves exactly as before.
 # Precedence: AGENT_GUARD_<KEY>_DIR env > .agent-governance.yml > built-in default.
 # Only roots are configurable. Contract names (AGENTS.md, the gate filename, the
-# twelve change artifacts, the six defect artifacts, the required-check name) are
+# fifteen change artifacts (v3.52.0), the six defect artifacts, the required-check name) are
 # deliberately NOT configurable: making them configurable would break cross-repo
 # comparison and migration, which is the point of this package.
 cfg_path() { # key default
@@ -57,25 +57,21 @@ githooks_re=$(re_escape "$githooks_dir")
 change_root_re=$(re_escape "$change_root")
 # 00-intent.md is the pipeline entry point (problem / expected outcome / constraints);
 # a change without a recorded intent is treated as undocumented work.
-required_docs=(00-intent.md 00-governance.json 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md)
+# 00.5-communication.md is the communication-first gate artifact (v3.52.0,
+# standards §2.17.2d): round-1 communication draft + user overall confirmation
+# record; without it no batch doc body nor source edit may happen.
+required_docs=(00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md)
 active_file=$(git rev-parse --git-path agent-governance/active-change)
 
 # --- change batches (v3.18.0, standards §1.1) -------------------------------
-# Same-day L0/L1 changes MAY share one `<change_root>/BATCH-YYYYMMDD/` directory
-# instead of one directory per change. What is deliberately NOT changed is the
-# ARTIFACT NAMES: the twelve files keep their exact names, so every "find by
-# name" path in the gate, the audit, and the target repo keeps working. Only the
-# containing directory differs, and each artifact carries a `## CHG-xxx` section
-# anchor that tells the bundled changes apart. That anchor is what makes a batch
-# addressable without a JSON/YAML parser.
-#
-# Resolution order (first hit wins):
-#   1. a dedicated `<change_root>/<id>/` directory — the historical layout, and
-#      it always wins so existing repos are untouched;
-#   2. AGENT_GUARD_CHANGE_DIR — explicit override for tooling/tests;
-#   3. a BATCH-*/ directory containing a `## <id>` anchor.
-# If nothing matches we return the canonical dedicated path, so error messages
-# keep naming the path the user is expected to create.
+# Same-day L0/L1 changes MAY share one `<change_root>/BATCH-YYYYMMDD/` dir.
+# Artifact names never change (the fifteen files keep them); members are told
+# apart by `## <id>` section anchors — batch addressing needs no JSON parser.
+# Resolution order (first hit wins): 1. dedicated `<change_root>/<id>/`
+# (historical layout, always wins); 2. AGENT_GUARD_CHANGE_DIR; 3. a BATCH-*/
+# dir containing the anchor. No match -> canonical dedicated path (error
+# messages name the path the user is expected to create). Details: SLOG
+# v3.18-v3.21 rows / DS §1.1.
 change_dir() { # <change-id> -> directory
   # NOTE (bash 3.2): `local` expands every word BEFORE assigning any of them, so
   # a second assignment may not reference the first. Keep declarations split.
@@ -111,16 +107,9 @@ anchors_in_file() { # <file> -> ids, one per line
 }
 
 # The AUTHORITATIVE roster of a batch: the change ids declared in its
-# 00-governance.json, one per line. This — not the set of `## <heading>` lines —
-# is what defines "which changes live here".
-#
-# v3.19.0 fix: the anchor scan used to serve as the roster, but `## <heading>`
-# cannot tell a change section from a structural one, and the standards REQUIRE
-# structural headings inside the shared artifacts (e.g. `## Observation` in
-# 09-changelog.md, §2.16.2). Reading those as change ids produced a phantom
-# `{"change_id":"Observation"}` row in `metrics` and made `--stage staged`/`ci`
-# reject a perfectly valid batch ("declares no governance record for
-# 'Observation'") — a gate that fails on a heading the standards mandate.
+# 00-governance.json — never the `## <heading>` scan (v3.19.0: structural
+# headings like `## Observation` would phantom-change ids and reject valid
+# batches; details in SLOG v3.19.0 row).
 gov_ids() { # <governance-file> -> declared change ids, one per line
   [[ -s "$1" ]] || return 0
   grep -oE '"change_id"[[:space:]]*:[[:space:]]*"[A-Za-z0-9._-]+"' "$1" 2>/dev/null \
@@ -151,29 +140,13 @@ change_ids_in_dir() { # <dir> -> ids, one per line
   fi
 }
 
-# Governance records are JSON, and JSON has no meaningful newlines: a
-# pretty-printed single object and a one-object-per-line batch carry the SAME
-# data. The reader used to be line-oriented (`grep ... | head -1`), which made
-# those two shapes behave completely differently — and because the SHIPPED
-# template `resources/templates/governance-state.json`, which SKILL.md tells the
-# agent to turn into `00-governance.json`, is pretty-printed, following the
-# documented workflow produced a record the gate REFUSED with
-#   "00-governance.json must declare risk_level L0, L1, L2, or L3"
-# while the field sat two lines below the `change_id`. Measured on this repo's
-# own ledger: 16 of 16 records (CHG-001..016) are multi-line, so all 16 would
-# have been rejected by the gate that ships with them. `metrics` reported
-# `"risk_level":null` for every one of them.
-#
-# v3.20.0 fix: flatten the file, split on top-level object boundaries, then
-# select by change_id. Any valid JSON layout now reads identically — the
-# one-object-per-line batch convention stays legal (and stays recommended: it
-# keeps per-change diffs reviewable), it is simply no longer a PARSER
-# requirement. The batch clause in the standards still tells authors to write
-# one object per line; that is now a style rule, not a load-bearing one.
-#
-# Records stay FLAT (no nested objects): `json_field` is still a single-line
-# sed, and the L3 release-authorization fields are deliberately flat strings for
-# that reason. Flattening does not weaken that contract.
+# Format-agnostic record reader (v3.20.0): any valid JSON layout reads
+# identically — flatten, split on top-level object boundaries, select by
+# change_id. One-object-per-line stays the recommended batch style (reviewable
+# diffs) but is no longer a PARSER requirement — a
+# style rule, not a load-bearing one. Records stay FLAT (no nesting): `json_field` is a
+# single-line sed and the L3 release-authorization fields are deliberately flat
+# strings. Case study: SLOG v3.20.0 row.
 gov_record() { # <governance-file> <change-id> -> that change's JSON object, one line
   local file="$1" id="$2"
   local flat
@@ -235,6 +208,9 @@ required_docs_present() {
   [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "GATE-E02: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
   d=$(change_dir "$id")
   for doc in "${required_docs[@]}"; do
+    if [[ "$doc" == "00.5-communication.md" && "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]]; then
+      continue # communication-first gate explicit bypass (§2.17.2d) — 09 justification duty stays
+    fi
     [[ -s "$d/$doc" ]] || die "GATE-E03: missing required artifact: $d/$doc"
   done
   validate_artifact_content "$id"
@@ -251,6 +227,65 @@ validate_artifact_content() {
     || die "GATE-E04: $d/00-intent.md missing expected-outcome section (A-layer acceptance, standards §2.5)"
   grep -q "开放问题" "$d/00-intent.md" \
     || die "GATE-E05: $d/00-intent.md missing open-questions section (A-layer acceptance, standards §2.5)"
+  # v3.52.0 communication-first gate (standards §2.17.2d): 00.5 must exist and
+  # carry a non-empty user-overall-confirmation record before any batch doc
+  # body or source edit. Batch mode: scope to this change's `## <id>` anchor
+  # section. L0 lightweight channel: the §1.1-style single-line declaration
+  # satisfies the bar. Explicit automation bypass: AGENT_GUARD_ALLOW_UNCONFIRMED=1
+  # (justification MUST be registered in 09 重要上下文 — never a silent default).
+  # Single die point keeps the die-code domain unique (T41).
+  if [[ "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]]; then
+    : # explicit bypass — register the justification in 09 重要上下文 (§2.17.2d)
+  else
+    local comm05="$d/00.5-communication.md" scope05 e83reason=""
+    if [[ ! -s "$comm05" ]]; then
+      e83reason="missing $comm05"
+    else
+      if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$d/00-intent.md"; then
+        # batch member (§1.1): the shared 00.5 must carry THIS change's own
+        # anchor section — a sibling's confirmation never counts (fail-closed).
+        # The section runs to the NEXT SIBLING ANCHOR (not the next h2): member
+        # sections legitimately contain h2 structural headings (## 问题 /
+        # ## 用户整体确认记录 / ## Observation). Sibling ids come from the
+        # authoritative roster (00-governance.json, v3.19 semantics).
+        if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$comm05"; then
+          local others05
+          # `|| true` inside the subshell: a single-member batch leaves grep -vx
+          # with no output — with pipefail that would abort the whole script
+          # (silent exit 1), the exact trap documented at the top of this file.
+          others05=$( (change_ids_in_dir "$d" | grep -vx "$id" || true) | sort -u | tr '\n' '|')
+          others05="${others05%|}"
+          if [[ -n "$others05" ]]; then
+            scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" -v stop="^##[[:space:]]+(${others05})([[:space:]]|\$)" '$0 ~ cur {f=1; next} f && $0 ~ stop {f=0} f' "$comm05")
+          else
+            scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" '$0 ~ cur {f=1; next} f' "$comm05")
+          fi
+        else
+          e83reason="batch member $id lacks its own ## $id anchor section in $comm05"
+        fi
+      else
+        scope05=$(cat "$comm05")
+      fi
+      if [[ -z "$e83reason" ]]; then
+        local rec05 risk05=""
+        rec05=$(gov_record "$d/00-governance.json" "$id")
+        [[ -n "$rec05" ]] && risk05=$(json_field "$rec05" risk_level)
+        if printf '%s\n' "$scope05" | grep -qE '^[[:space:]]*-[[:space:]]*\*\*沟通确认\*\*(：|:)[[:space:]]*未命中，不适用（.+）'; then
+          if [[ "$risk05" == "L0" ]]; then
+            : # L0 lightweight single-line declaration satisfies the gate (§2.17.2d)
+          else
+            e83reason="L0-only single-line declaration found in $comm05 but risk_level is ${risk05:-unknown} — the lightweight channel is L0-exclusive (§2.17.2d)"
+          fi
+        elif ! printf '%s\n' "$scope05" | grep -q "用户整体确认记录"; then
+          e83reason="missing 用户整体确认记录 section in $comm05"
+        elif ! printf '%s\n' "$scope05" | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)'; then
+          e83reason="no user-overall-confirmation marker under 用户整体确认记录 in $comm05"
+        fi
+      fi
+    fi
+    [[ -z "$e83reason" ]] \
+      || die "GATE-E83: communication-first gate: $e83reason — record the user overall confirmation (standards §2.17.2d; L0 single-line declaration allowed; AGENT_GUARD_ALLOW_UNCONFIRMED=1 is the explicit automation bypass)"
+  fi
   grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
     || die "GATE-E06: $d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
   grep -qE "DES-[0-9]+" "$d/03-modification-plan.md" \
@@ -282,6 +317,13 @@ validate_artifact_content() {
   # v3.48.0 (CHG-058): 延伸发现即时落盘（标题或"未发现"声明行均含关键词）
   grep -q "延伸发现" "$d/02-code-impact-analysis.md" \
     || die "GATE-E80: $d/02-code-impact-analysis.md missing 延伸发现 section (A-layer, standards §2.5 stage 2, v3.48.0; renumbered from E15 in v3.48.1, CHG-060 — E15/E16 collide with pre-existing stage-3 codes)"
+  # v3.54.0 (CHG-067, REQ-998): stage-2 历史相似检索 step machine-checked like
+  # its sibling 延伸发现 (E80) — section heading OR an explicit
+  # 未命中（<检索词>） declaration line. Single die point keeps T41 uniqueness.
+  if ! grep -q "历史相似检索" "$d/02-code-impact-analysis.md" \
+     && ! grep -qE '未命中（[^）]*检索[^）]*）' "$d/02-code-impact-analysis.md"; then
+    die "GATE-E84: $d/02-code-impact-analysis.md missing 历史相似检索 section (or 未命中（检索词） declaration) (A-layer, standards §2.5 stage 2, v3.54.0 CHG-067)"
+  fi
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
       || die "GATE-E15: $d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
@@ -440,8 +482,11 @@ validate_governance_state() {
         [[ -s "$bug_gdir/$doc" ]] || die "GATE-E42: $file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
       done
       # v3.48.0 (CHG-058): BUG 轨延伸发现即时落盘（文件级机校；分节质量由评审 B 层核对）
-      grep -q "延伸发现" "$bug_gdir/01-diagnosis.md" 2>/dev/null \
-        || die "GATE-E81: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060 — E15/E16 collide with pre-existing stage-3 codes)"
+      # v3.54.0 (CHG-067): same grep covers 历史相似检索 (E84 semantics, BUG track)
+      if ! grep -q "延伸发现" "$bug_gdir/01-diagnosis.md" 2>/dev/null \
+         || ! { grep -q "历史相似检索" "$bug_gdir/01-diagnosis.md" 2>/dev/null || grep -qE '未命中（[^）]*检索[^）]*）' "$bug_gdir/01-diagnosis.md" 2>/dev/null; }; then
+        die "GATE-E81: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现/历史相似检索 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060; 历史相似检索 added v3.54.0 CHG-067)"
+      fi
     done
   fi
 }
@@ -909,12 +954,15 @@ complete_valid_change_exists() {
     [[ -d "$dir" ]] || continue
     complete=true
     for doc in "${required_docs[@]}"; do
+      # communication-first gate bypass (§2.17.2d): same key as required_docs_present
+      [[ "$doc" == "00.5-communication.md" && "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]] && continue
       [[ -s "$dir/$doc" ]] || { complete=false; break; }
     done
     [[ "$complete" == true ]] || continue
     # A dedicated dir names one change; a batch names every change it anchors.
+    # No-dot id rule (FU-023/GATE-E02) — dot ids here would dodge the E02 gate.
     for id in $(change_ids_in_dir "${dir%/}"); do
-      [[ "$id" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+      [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || continue
       if ( validate_governance_state "$id" ) >/dev/null 2>&1 \
          && ( validate_artifact_content "$id" ) >/dev/null 2>&1; then
         return 0
@@ -1257,14 +1305,17 @@ Usage:
   scripts/agent-gate --stage ci [--base ref]
   scripts/agent-gate --stage commit-msg <message-file>
 
-begin requires seven non-empty artifacts under the change root:
-00-intent.md, 00-governance.json, 01-spec.md, 02-code-impact-analysis.md,
-03-modification-plan.md, 03.5-tasks.md, 04-test-scripts.md. It also enforces
+begin requires eight non-empty artifacts under the change root:
+00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,
+02-code-impact-analysis.md, 03-modification-plan.md, 03.5-tasks.md,
+04-test-scripts.md. It also enforces
 the project masters (v3.35.0, standards §1.3): all twelve docs/project/ files
 must exist (escape hatch AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a
 recorded justification). It also enforces
 A-layer content checks (standards §2.5): 00-intent.md must contain the
-expected-outcome and open-questions sections; 01-spec.md must use REQ-
+expected-outcome and open-questions sections; 00.5-communication.md must
+carry a non-empty user-overall-confirmation record (v3.52.0 communication-
+first gate, §2.17.2d; L0 single-line declaration allowed); 01-spec.md must use REQ-
 numbering; 02 must cover business impact, risk and rollback; 03-modification-
 plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
 carry dependencies/milestones plus a review-input (评审输入) field, or an
@@ -1320,7 +1371,7 @@ so a repo that configures nothing behaves exactly as before.
 change_root / bugs_root keep AGENT_GUARD_CHANGE_ROOT / AGENT_GUARD_BUGS_ROOT and
 default to <docs>/changes and <docs>/bugs. Not configurable, on purpose:
 .github/ (the platform mandates the location) and the contract names (AGENTS.md,
-the gate filename, the twelve change artifacts, the six defect artifacts, the
+the gate filename, the fifteen change artifacts, the six defect artifacts, the
 required check name) — they are what makes a repo comparable to every other repo
 using this package.
 EOF

@@ -64,3 +64,4 @@
 | R40 | 回滚标准与决策（§2.7.3） | DEVELOPMENT_STANDARDS.md::### 2.7.3 回滚标准与决策 | L3-critical | 硬 | 结构 |
 | R41 | 风险等级判定表（§0.5.1） | DEVELOPMENT_STANDARDS.md::### 0.5.1 风险等级判定表 | L3-critical | 硬 | 结构 |
 | R42 | 版本载体全链清单（§2.14） | DEVELOPMENT_STANDARDS.md::版本载体全链清单 | universal | 硬 | 结构 |
+| R43 | 沟通先行门（§2.17.2d） | DEVELOPMENT_STANDARDS.md::#### 2.17.2d 沟通先行门 | universal | 硬 | 结构 |

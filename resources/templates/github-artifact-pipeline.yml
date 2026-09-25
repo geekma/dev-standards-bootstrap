@@ -167,7 +167,7 @@ jobs:
             git commit -m "chore(pipeline): scaffold impact/plan/test artifacts for $id"
             git push origin "$branch"
             gh pr create --title "pipeline: scaffold artifacts for $id" --body \
-              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03、03.5 与 04（gate begin 必检七件），经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
+              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03、03.5 与 04（gate begin 必检八件），经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
             git checkout "$DEFAULT_BRANCH"
           done < /tmp/new-specs.txt
 

@@ -74,6 +74,7 @@ for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_
   act_rm "$f"
 done
 act_rm ".agent-state"
+act_rm ".dev-standards-manifest"   # v3.51.0 install baseline ledger (runtime artifact)
 act_rm ".git/agent-governance"
 act_rm "$SCRIPTS_DIR/uninstall-standards"   # self — removed last below
 hp=$(git config core.hooksPath 2>/dev/null || true)

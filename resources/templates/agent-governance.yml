@@ -18,7 +18,7 @@
 # ⚠️ 以下**刻意不可配置**：
 #    · `.github/`——GitHub Actions 只从 `.github/workflows/` 读 workflow、
 #      只从 `.github/` 或仓库根读 PR 模板；换名即流水线静默失效，做成旋钮是假的。
-#    · 契约名：`AGENTS.md` 文件名、`scripts/agent-gate` 落点名、变更 14 件产物名、
+#    · 契约名：`AGENTS.md` 文件名、`scripts/agent-gate` 落点名、变更 15 件产物名（v3.52.0 起）
 #      缺陷六件套名、required-check 名 `agent-governance`。它们一旦随仓库而异，
 #      跨仓逐文件比对与"装一次、迁移到任意仓库"
 #      这一核心能力即失效——参数化目录根是便利，参数化契约名是解体。
@@ -53,7 +53,7 @@ required_before_merge:
   - 06-delivery-summary.md      # 须含 FU- 遗留项行（或「遗留」节）
 # CHG-017 ④（v3.21.2）：上列 5 件 = `validate_delivery` 的实检集（v3.21.2 与门禁对齐；此前只列 3 件，
 # 漏了 06.5 / 06-delivery-summary 与三项内容校验）。`required_before_source_write`
-# 的 7 件 = `begin` 的实检集。本文件是**团队可复核的摘要**，判定仍以门禁为准。
+# 的 8 件 = `begin` 的实检集。本文件是**团队可复核的摘要**，判定仍以门禁为准。
 ci:
   # The gate reads THIS command as a fallback (env AGENT_GUARD_VERIFY_COMMAND
   # wins). bootstrap auto-detects a project test command and replaces the

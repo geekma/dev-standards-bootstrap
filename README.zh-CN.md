@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.51.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.54.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -82,7 +82,7 @@
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（492 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（530 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -170,7 +170,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 **自查版本**：携带的规范版本写在 `SKILL.md` 三处——frontmatter `version:`、`description` 尾注、正文顶部横幅——技能列表里与每次加载时都能看到。与 README 顶部的 `规范版本` 徽章比对，或执行 `bash <skill目录>/scripts/bootstrap.sh --check <目标仓库>`。
 
-**自定义目录根**：默认根是 `docs/`、`scripts/`、`tests/`、`.githooks/`（另有 `.github/`——平台强制位置，因此不可移动）。**只有目录根可配置**：`AGENTS.md` 文件名、门禁落点名、变更 14 件产物名、缺陷六件套名、required-check 名是跨仓契约——做成可配置就失去了跨仓比对与迁移能力。
+**自定义目录根**：默认根是 `docs/`、`scripts/`、`tests/`、`.githooks/`（另有 `.github/`——平台强制位置，因此不可移动）。**只有目录根可配置**：`AGENTS.md` 文件名、门禁落点名、变更 15 件产物名、缺陷六件套名、required-check 名是跨仓契约——做成可配置就失去了跨仓比对与迁移能力。
 
 ## 自动化与手动边界
 
@@ -192,7 +192,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 | 命令 | 用途 |
 |---|---|
-| `begin <变更号>` / `end` | 激活或清除活跃变更；要求七件变更产物并校验治理状态（风险等级、互异的执行主体；L3 另须三个 `release_authorized_by` 系列授权字段）与 A 层内容标记 |
+| `begin <变更号>` / `end` | 激活或清除活跃变更；要求八件变更产物并校验治理状态（风险等级、互异的执行主体；L3 另须三个 `release_authorized_by` 系列授权字段）与 A 层内容标记 |
 | `--stage pre-write` | Agent 写源码前校验活跃变更；无法从 Hook 输入解析目标路径即 fail-closed |
 | `--stage staged` | 暂存的源码变更必须随带匹配的变更产物，否则提交被拒 |
 | `--stage commit-msg <msgfile>` | 归因闸门：含代码的提交必须引用有效变更号（合并/回退/纯文档豁免） |
@@ -338,7 +338,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.51.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.54.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
@@ -349,8 +349,9 @@ dev-standards-bootstrap/
     │   └── project-masters.md               # 项目级总册细节层：12 册清单/必含章节/回填注记语义（v3.35.0）
     └── templates/
         ├── docs-readme.md                  # 一页文档地图（v3.37.0）：五层职责+更新时机（→ <docs>/README.md）
+        ├── communication.md                 # 沟通先行门产物（v3.52.0）：Round-1 沟通稿+用户整体确认记录（→ docs/changes/<id>/00.5-communication.md）
         ├── project                           # 项目级总册（v3.35.0）：SDLC 12 册 P00–P11 + 评审记录模板（→ docs/templates/project/）
-        ├── entry                             # 变更入口骨架（v3.43.0）：begin 必检七件模板（→ docs/templates/entry/）
+        ├── entry                             # 变更入口骨架（v3.43.0）：begin 必检八件模板（→ docs/templates/entry/）
         ├── new-change.sh                   # 变更入口脚手架（v3.43.0）：专用目录/当日批次自动判定（→ scripts/new-change）
         ├── CLAUDE.md                       # Claude Code 一行导入
         ├── PULL_REQUEST_TEMPLATE.md        # 带门禁自检的 GitHub PR 模板
@@ -404,7 +405,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.51.0 | **最后更新：** 2026-09-24 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.54.0 | **最后更新：** 2026-09-25 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

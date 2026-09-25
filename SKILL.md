@@ -1,12 +1,12 @@
 ---
 name: dev-standards-bootstrap
-version: 3.51.0
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.51.0，低于此版本即需升级。
+version: 3.54.0
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.54.0，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
 
-> **当前携带版本：v3.51.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+> **当前携带版本：v3.54.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
 >
 > **自查是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章。低于上方版本号就该升级——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。也可直接 `bash scripts/bootstrap.sh --check <目标仓库>` 看三处版本比对。
 
@@ -56,65 +56,37 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 ## 路径根可配置
 
-安装时可用 `--docs-dir <path>`（另有 `--scripts-dir` / `--tests-dir` / `--githooks-dir`）把目录根改到仓库习惯的位置，例如 `bash scripts/bootstrap.sh --all --docs-dir doc <目标仓库>`。
-
-- **不传即用默认**（`docs` / `scripts` / `tests` / `.githooks`），行为与引入本特性前逐字节一致——这是零回归保证。
-- 解析优先级：CLI flag > 环境变量 `AGENT_GUARD_<KEY>_DIR` > 目标仓 `.agent-governance.yml` 的 `paths:` > 内置默认。
-- 非默认根会**同步写入**目标仓 `.agent-governance.yml` 的 `paths.*`（并把 `change_root` / `bugs_root` 一并改为派生值——**仅当现值仍是内置默认** `docs/changes` / `docs/bugs`；你显式 pin 的值不会被静默覆盖，脚本会打印 NOTE），同时**改写模板内部的路径引用**（Git hooks 与客户端适配器按路径调门禁，workflows 与规范模板按路径引用文档）。这两步都不可省：门禁按配置找文件，落点与配置不一致就是静默错位。
-- **只有目录根可配置**：`AGENTS.md` 文件名、`scripts/agent-gate` 落点名、变更 14 件产物名、缺陷六件套名、required-check 名 `agent-governance` 是**跨仓契约**，刻意不可配置；`.github/` 位置由平台强制、同样不可配。
+安装时可用 `--docs-dir <path>`（另有 `--scripts-dir` / `--tests-dir` / `--githooks-dir`）改目录根，如 `bash scripts/bootstrap.sh --all --docs-dir doc <目标仓库>`。**不传即默认**（`docs`/`scripts`/`tests`/`.githooks`，零回归）；解析优先级：CLI flag > `AGENT_GUARD_<KEY>_DIR` > `.agent-governance.yml` 的 `paths:` > 内置默认。非默认根会同步写入 yml `paths.*`（`change_root`/`bugs_root` 仅当仍是内置默认才派生，显式 pin 打 NOTE）并**改写模板内部路径引用**——门禁按配置找文件，落点错位即静默假绿。**只有目录根可配置**：契约名（AGENTS.md 文件名、gate 落点名、变更 15 件产物名、缺陷六件套名、required-check 名）与 `.github/` 位置刻意不可配。
 
 ## Agent 自进化契约
 
-本 Skill **允许 Agent 自进化**：基于它派生的、面向特定项目或特定 Agent 优化的 Skill **独立存在**，**不回收到本仓库**。（源仓出现派生 Skill 的副本或引用即为缺陷——那会制造第二份权威源。）
-
-**派生方义务**——在派生 Skill 的 `SKILL.md` frontmatter 声明三行：
+本 Skill **允许派生**面向特定项目/Agent 优化的 Skill，**独立演进、不回收到本仓库**（源仓出现其副本或引用=第二份权威源，即缺陷）。派生方在 `SKILL.md` frontmatter 声明：
 
 ```yaml
 agent_created: true
 derived_from: dev-standards-bootstrap
-derived_from_version: <你派生时本 Skill 携带的版本，如 3.22.0>
+derived_from_version: <派生时本 Skill 携带版本>
 ```
 
-**本 Skill 的义务**——升级时**不得覆盖派生资产**：
-
-- `--upgrade` 的**每一条**写入路径都跳过携带 `derived_from` 的目录，并打印 `derived (skip) <路径>`；
-- `--force` **不越过**该保护——`--force` 的语义是"覆盖内容不同的既有文件"，不是"覆盖别人派生出来的资产"；
-- `bash scripts/bootstrap.sh --derived-report` 只读输出：哪些目录是派生的、基于哪个版本、当前携带版本是多少，用于判断派生资产是否需要跟上。
+本 Skill 升级的**每一条**写入路径跳过携带 `derived_from` 的目录并打印 `derived (skip)`，**`--force` 不越过**（其语义是"覆盖内容不同的既有文件"，不是"覆盖别人派生的资产"）；`bash scripts/bootstrap.sh --derived-report` 只读盘点派生资产。完整机制见 DS §1.1。
 
 ## 文件溯源
 
-**强制范围（v3.34.0）＝变更目录全部 `*.md` ＋ 缺陷六件套**。交付前必跑两条命令：
+**强制范围＝变更目录全部 `*.md`（`00-governance.json` 刻意不盖）＋缺陷六件套**，交付前：`scripts/stamp-provenance.sh --all <变更号>` + 对 `bug_ref` 绑定组 `--bug <BUG-id>`（命中扁平批次时块为 `bug: <BATCH-id>`+`batch_changes:`）；gate stop 逐一校验，缺一件不可交付。溯源块从运行环境读真值（git config/log、hostname、uname、date -u），**手写块过不了 `generated_by` 指向校验**；形状校验=块存在+四字段非空+ISO 时间。**不追溯既往**：只校验当前活跃变更，历史产物不得回填（六件套 `--bug` 存量补盖为用户裁定的例外）。写入幂等；`provenance.include_email: false` 脱敏；工具缺失降级 `unknown` 不编造。
 
-- `scripts/stamp-provenance.sh --all <变更号>`——变更目录全部 `*.md` 产物盖章（`00-governance.json` 刻意不盖：HTML 注释破坏扁平 JSON 读取）；
-- `scripts/stamp-provenance.sh --bug <BUG-id>`——本变更 `bug_ref` 绑定的缺陷六件套盖章（块以 `bug:` 标注、`risk: n/a`；v3.36.0 起命中扁平批次时块为 `bug: <BATCH-id>` + `batch_changes:` 成员清单）；gate stop 逐一校验，缺一件不可交付。
+## 会话内执法
 
-（v3.20~v3.25 的"默认只盖 04.5、`--all` 可选加强"措辞自 v3.26.0 起作废；v3.34.0 把六件套纳入同一条强制线。）
-
-- 溯源块把**作者 / 邮箱 / 提交者 / 提交短哈希 / 主机名 / 平台 / UTC 时间 / 规范版本**从**运行环境**读出（`git config`、`git log -1`、`hostname`、`uname`、`date -u`）——`00-governance.json` 的 `implementation_owner` 是手写字符串，写什么就是什么；溯源块手写改不出这些真值。
-- 门禁校验**形状与非占位**：块存在、四字段非空、`generated_at` 是 ISO 日期、`generated_by` 必须指向本脚本。**手写块能编 `author`，但过不了 `generated_by`**；作者值本身是否属实**不可机器验证**，别把它当成已解决的保证。
-- **变更目录不追溯既往**：只校验当前活跃变更，**历史产物不得回填**（回填会把 `generated_at` 伪造成今天）；审计 A20 只抓"同目录半途盖章"（如 9 件只盖 2 件）与"v3.26.0 起新变更整目录未盖"，不抓时代差。**六件套例外（v3.34.0）**：对既有缺陷组跑 `--bug` 补盖写入的是当下真值、组内本无 `generated_at` 时序语义，属用户裁定的存量补齐，不算伪造。
-- 写入**幂等**（整块替换）；`provenance.include_email: false` 使邮箱写为 `<redacted>`；工具缺失时字段降级为 `unknown`，不猜不编。
-
-## 会话内执法（v3.34.0）
-
-执法点不再只锚在 commit：pre-commit/CI 校验的是仓库，但 Agent 产物长期停在工作区不提交时它们**永不点火**——CHG-071（9 件只盖 2 件）与 BUG-040~055（16 组只写 01-diagnosis 即自勾"完成"）正是这么漏过来的。`scripts/session-gate.sh` 由客户端**会话事件**调用：
-
-- **会话开始**（`start`）：跑一次 `tests/audit-docs-consistency.sh --only-fail`，存量红灯写 `.agent-state/session-gate-last.md`——Claude SessionStart 会把 stdout 注入会话上下文，opencode 插件写结构化日志并可用 `/gate-check` 命令随时复查。
-- **会话空闲/收尾**（`idle`）：有活跃变更 → 跑 `agent-gate --stage stop` 等价检查（**软执法**：设 `AGENT_GUARD_SKIP_VERIFY=1` 跳过 `verification_command` 全量回归——session.idle 可能每轮触发，`mvn test` 级命令跑不起；结构/证据校验照跑，全量回归仍由 Claude Stop hook / pre-commit / CI 承担）；无活跃变更但有源码改动 → 红灯（"修完不留痕"）。硬阻断仍由 Claude Stop hook 与 Git hooks 承担，本脚本负责"让红灯被看见"。
-- **接线由 `scripts/install-hook-adapter.sh` 自适应生成，不写死客户端**：探测（env 标记 / CLI on PATH / 仓库配置目录，三路证据）→ 按客户端 schema 生成（claude=JSON 合并、opencode=插件+命令、cursor/gemini=静态 schema、codex=如实声明由 Git hooks+CI 兜底）→ **生成后强制验证**（JSON 可解析 / 插件 bun|node 可加载 / hook 脚本 `bash -n`），验证不过即安装失败。`--detect` 只打印矩阵，`--client <name>` 显式指定。报告文件 `.agent-state/` 建议目标仓 `.gitignore` 追加忽略（运行态，不是治理产物）。
+执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（CHG-071/BUG-040~055 实证）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start`：跑 `tests/audit-docs-consistency.sh --only-fail` 亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle`：跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter.sh` 按客户端自适应生成（探测三路证据→按 schema 生成→**生成后强制验证**），`--detect` 打印矩阵。硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
 
 ## 变更批次（同日合并）
 
-**同一天**的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/` 一个目录，而不是各建一个变更目录（v3.24.0 默认化）。
+**同一天**的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/`（v3.24.0 默认化）：
 
-- **只有目录被放宽，产物文件名一字不改**——仍是 `00-intent.md` … `09-changelog.md` 那 14 件同名文件；同批变更用 `## <变更号>` 小节锚点分开，`00-governance.json` 写成**一行一个 JSON 对象**（变更号 / 风险 / 责任人各自成行；**推荐写法，但不再是解析器的硬要求**——见下条）。所有按文件名找东西的既有习惯（门禁、审计、人工检索）继续有效——**这是复用既有体系，不是新起一套**。
-- **L2/L3 不得入批**：批次让多个变更共享一套产物，会削弱逐变更证据边界与角色独立性。门禁按治理记录逐条校验并直接拒绝批次内的 L2/L3。
-- **解析顺序**：独立 `<docs>/changes/<变更号>/`（历史布局，**永远优先**，存量仓库零影响）→ `AGENT_GUARD_CHANGE_DIR` → 含该锚点的 `BATCH-*/`。
-- **闭环判定细一档**：`09-changelog.md` 被同批共享，"文件存在"不再等于"本变更已关闭"，改判**本变更自己的 `## <变更号>` 小节**是否存在。`metrics` 按**每个变更**输出一行。
-- **变更集合从权威名单读**（v3.19.0）：门禁与审计都只认 `00-governance.json` 里的 `change_id`，**不从 `## <标题>` 反推**——标题分不清"变更小节"与"结构小节"，而规范强制 `09-changelog.md` 含 Observation 记录（§2.16.2），反推会让 `metrics` 造出幽灵变更、让 `--stage staged` 拒掉整批。**批次小节标题一律写 `## <变更号>`**（不带 `§N：` 前缀；那是 `05-test-results.md` 的批次小节格式）。
-- 审计 G7 逐批次核对：每条记录在 `00-intent.md` 有自己的分节、记录 ⊆ 锚点、风险 ∈ {L0,L1}、变更号跨批次唯一。
-- **治理记录的格式无关**（v3.20.0）：`00-governance.json` 是 JSON，JSON 的换行没有语义——**格式化的单对象**与**一行一变更的批次**是同一份数据，门禁与 `metrics` 必须读得一样。此前读取器是行式的（`grep … | head -1`），于是**照着随包模板 `governance-state.json`（多行）生成的记录会被 `begin` 拒绝**（报 `must declare risk_level L0, L1, L2, or L3`，而字段就在 `change_id` 下面两行），`metrics` 则对每条记录报 `"risk_level":null`。现在读取器先压平再按顶层对象切分：**任意合法 JSON 写法等价**，单行与多行都可用。记录仍须**扁平**（不嵌套对象）——`json_field` 是单行 sed，L3 的 `release_authorized_*` 三个字段刻意是扁平字符串，正是为此。
-- **审计的覆盖面与"空转"必须如实**（v3.21.0）：`tests/audit-docs-consistency.sh` 按**不变量是否时间不变**分两轨——**G2 编号连续性**（时间不变：`REQ-001` 与 `REQ-003` 同现而缺 `002`，写下就错、今天仍错）覆盖**功能目录 ∪ 变更目录**；**G3/G5/G6**（拿**当前** §3/§4 比对）**只覆盖活文档（功能目录）**，因为冻结的变更目录按 §2.15 硬性规则 4 / §2.16.5「已闭合 CHG 禁止改写」**不可回填**，事后判它们只会产出永久无法清除的红。任一组没有目录可审时，脚本**打印一行 `VACUOUS SKIP`** 点名说明——**读到它不是"通过"，是"那一组没覆盖本仓库"**；变更轨的 §3/§4 一致性请在门禁侧确认（`agent-gate --stage stop`）。编号连续性只数**行首的定义式**（正文引用不算），区间基线取**文件自身 min**（编号空间是全仓全局的，§1.2）。
+- **只有目录被放宽，产物文件名一字不改**——仍是 15 件同名文件；同批变更用 `## <变更号>` 小节锚点分开。**L2/L3 不得入批**（削弱逐变更证据边界，门禁按记录逐条拒绝）。
+- **解析顺序**：独立 `<docs>/changes/<变更号>/`（永远优先）→ `AGENT_GUARD_CHANGE_DIR` → 含该锚点的 `BATCH-*/`。
+- **变更集合一律从权威名单读**（`00-governance.json` 的 `change_id`），**不从 `## <标题>` 反推**（v3.19.0 实测：反推会造幽灵变更、拒整批）；**批次小节标题一律写 `## <变更号>`**。
+- **治理记录格式无关**（v3.20.0）：`00-governance.json` 任意合法 JSON 写法等价（单行/多行/格式化皆可），读取器先压平再按顶层对象切分；记录须**扁平**（L3 三个 `release_authorized_*` 为扁平字符串字段）。
+- **闭环判定细一档**：共享 `09-changelog.md` 下"文件存在"≠"本变更已关闭"，改判本变更自己的锚点小节是否存在；`metrics` 每变更一行；审计 G7 逐批次核对（记录 ⊆ 锚点、风险 ∈ {L0,L1}、跨批次唯一）。
 
 ## 红线
 
@@ -125,6 +97,6 @@ derived_from_version: <你派生时本 Skill 携带的版本，如 3.22.0>
 
 ## 版本同步
 
-- **当前携带版本 v3.51.0**（见规范页脚，页脚是唯一权威源）。
+- **当前携带版本 v3.54.0**（见规范页脚，页脚是唯一权威源）。
 - **版本号三载体**：frontmatter `version:`、`description` 尾注、正文顶部横幅——升级规范时**页脚 + 三处一起改**，漏改即审计红；平台事实论证（frontmatter 无 `version` 字段等）以 [`MAINTAINER.md`](MAINTAINER.md) §6 为权威，本文件不复述。
 - **改本 Skill 本身的人**（改脚本 / 改规范 / 改模板 / 动断言）请读 **[`MAINTAINER.md`](MAINTAINER.md)**：文件角色表、改哪里必须同时改哪里的联动表、两道自测试的用法与顺序、断言数生成器、审计的 PART A/B 分区、逐版本升级推送清单。**装规范的人不需要读它。**

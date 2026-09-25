@@ -37,7 +37,7 @@ Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, CLAUSE_REGISTRY.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
                methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
                <docs>/templates/project/ (总册 12 册 + 评审模板, v3.35.0),
-               <docs>/templates/entry/ (变更入口骨架 7 件, v3.38.0),
+               <docs>/templates/entry/ (变更入口骨架 8 件, v3.38.0; v3.52.0 起 8 件含 00.5),
                <docs>/README.md (一页文档地图, v3.37.0),
                <docs>/06.5-deployment-config.md, <docs>/06-delivery-summary.md
                (八类最低文档集里原先无模板的两类，CHG-004),
@@ -93,12 +93,13 @@ Path roots (v3.15.0) — 只配置**目录根**：
   路径引用（hooks/adapter 按路径调门禁、workflows 与规范模板按路径引用文档），
   否则门禁会按默认根去找文件而与安装落点不一致（该文件不存在时会一并落一份）。
   刻意不可配置：`.github/`（平台强制位置，换名即流水线失效）与全部契约名
-  （AGENTS.md 名、agent-gate 落点名、变更 12 件产物名、缺陷六件套名、
+  （AGENTS.md 名、agent-gate 落点名、变更 15 件产物名、缺陷六件套名、
   required-check 名）——可配即失去跨仓比对与迁移能力。
 
 任何层遇到冲突文件时退出 2（fail-closed），已复制的文件保留，重跑 --force 覆盖。
-变更起编时使用的 per-change 模板（00-intent / 00-governance / coding-record）不在
-本清单：它们随变更号动态落 <docs>/changes/<变更号>/，由 SKILL.md 指导生成。
+变更起编使用的入口骨架落 <docs>/templates/entry/（8 件）、沟通稿正式模板落
+<docs>/templates/communication.md（v3.52.0）；它们由 scripts/new-change 与 SKILL.md
+指导使用，不随变更号动态落盘。
 EOF
 }
 
@@ -678,11 +679,14 @@ run_layer() {
       for b in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-config.md bug-tasks.md; do
         install_file - "$DOCS_DIR/bugs/_templates/$b" "resources/templates/$b"
       done
-      # v3.38.0（CHG-038）：变更管线入口骨架（begin 必检七件模板）+ 脚手架脚本。
+      # v3.38.0（CHG-038）：变更管线入口骨架（begin 必检模板）+ 脚手架脚本。
+      # v3.52.0（CHG-064）：八件——00.5-communication.md 为沟通先行门产物（§2.17.2d）；
+      # 正式沟通稿模板随 --core 下发（uninstall Tier2 按 __CHANGE_ID__ 标记识别）。
       mkdir -p "$DOCS_DIR/templates/entry"
-      for e in 00-intent.md 00-governance.json 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+      for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
         install_file - "$DOCS_DIR/templates/entry/$e" "resources/templates/entry/$e"
       done
+      install_file - "$DOCS_DIR/templates/communication.md" resources/templates/communication.md
       # 八类最低文档集（规范 §1.1）中此前既无模板、也无门禁的两类（CHG-004 / BUG-002）：
       # 未命中时也必须存在并显式声明"未命中，不适用"——不能靠"不建文件"来表达不适用。
       install_file deployment-config "$DOCS_DIR/06.5-deployment-config.md" resources/templates/06.5-deployment-config.md

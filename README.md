@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.51.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.54.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -82,7 +82,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (492 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (530 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -170,7 +170,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <target-repo>
 
 **Checking your version**: the carried standards version is written into `SKILL.md` in three places — frontmatter `version:`, the tail of the `description`, and a banner right under the title — so it is visible in the skill list and again whenever the skill loads. Compare it with the `Standards Version` badge at the top of this README, or run `bash <skill-dir>/scripts/bootstrap.sh --check <target>`.
 
-**Custom directory roots**: the defaults are `docs/`, `scripts/`, `tests/`, `.githooks/` (plus `.github/`, whose location the platform mandates and which is therefore not movable). **Only directory roots are configurable**: `AGENTS.md`, the gate filename, the fourteen change artifacts, the six defect artifacts and the required-check name are cross-repo contracts — making them configurable would break comparison and migration.
+**Custom directory roots**: the defaults are `docs/`, `scripts/`, `tests/`, `.githooks/` (plus `.github/`, whose location the platform mandates and which is therefore not movable). **Only directory roots are configurable**: `AGENTS.md`, the gate filename, the fifteen change artifacts, the six defect artifacts and the required-check name are cross-repo contracts — making them configurable would break comparison and migration.
 
 ## What Runs Automatically (and What Stays Manual)
 
@@ -192,7 +192,7 @@ Command reference (invoked by the above; manual runs are for debugging):
 
 | Command | Purpose |
 |---|---|
-| `begin <change-id>` / `end` | Activate or clear the active change; requires the seven change artifacts and validates governance state (risk level, distinct execution owners; L3 additionally the three `release_authorized_by`-family authorization fields) plus A-layer content markers |
+| `begin <change-id>` / `end` | Activate or clear the active change; requires the eight change artifacts and validates governance state (risk level, distinct execution owners; L3 additionally the three `release_authorized_by`-family authorization fields) plus A-layer content markers |
 | `--stage pre-write` | Validates the active change before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts, otherwise the commit is rejected |
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
@@ -338,7 +338,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.51.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.54.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── methodologies/
@@ -349,8 +349,9 @@ dev-standards-bootstrap/
     │   └── project-masters.md               # Project master set detail layer: 12 masters, sections, backfill/annotation semantics (v3.35.0)
     └── templates/
         ├── docs-readme.md                  # One-page docs map (v3.37.0): five layers, roles, update timing (→ <docs>/README.md)
+        ├── communication.md                 # Communication-first gate artifact (v3.52.0): round-1 communication draft + user overall confirmation record (→ docs/changes/<id>/00.5-communication.md)
         ├── project                           # Project master set (v3.35.0): 12 SDLC masters P00–P11 + review-record template (→ docs/templates/project/)
-        ├── entry                             # Change-entry skeletons (v3.43.0): the seven begin-required artifacts (→ docs/templates/entry/)
+        ├── entry                             # Change-entry skeletons (v3.43.0): the eight begin-required artifacts (→ docs/templates/entry/)
         ├── new-change.sh                   # Change-entry scaffolder (v3.43.0): dedicated-dir vs same-day-batch resolution (→ scripts/new-change)
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -404,7 +405,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.51.0 | **Last Updated:** 2026-09-24 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.54.0 | **Last Updated:** 2026-09-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 
