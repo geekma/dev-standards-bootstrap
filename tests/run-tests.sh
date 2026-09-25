@@ -1036,16 +1036,56 @@ report "bootstrap rerun is idempotent (exit 0)" 0 $?
 out=$(bash "$BOOT_SRC" --core "$BT" 2>&1 || true)
 check_output "bootstrap rerun reports up to date" "up to date" "$out"
 
-printf '# different content\n' > "$BT/AGENTS.md"
+grep -q "dev-standards:managed begin" "$BT/AGENTS.md"
+report "bootstrap fresh install carries managed markers" 0 $?
+# CHG-062 (v3.50.0): AGENTS.md merge-or-keep——用户内容保留；通用 conflict/--force 移 METHODOLOGY 承载
+printf '\n<!-- user: project anchor row -->\n' >> "$BT/AGENTS.md"
+out=$(bash "$BOOT_SRC" --core "$BT" 2>&1 || true)
+check_output "bootstrap merges AGENTS.md managed block" "merged.*AGENTS.md" "$out"
+grep -q "user: project anchor row" "$BT/AGENTS.md" && grep -q "本文件是所有 AI Agent" "$BT/AGENTS.md"
+report "bootstrap merge preserves user sections and managed block" 0 $?
+sed -i '' '/dev-standards:managed/d' "$BT/AGENTS.md" 2>/dev/null || sed -i '/dev-standards:managed/d' "$BT/AGENTS.md"
+bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
+grep -q "user: project anchor row" "$BT/AGENTS.md"
+report "bootstrap keeps legacy user-modified AGENTS.md" 0 $?
+bash "$BOOT_SRC" --core --force "$BT" >/dev/null 2>&1
+grep -q "user: project anchor row" "$BT/AGENTS.md"
+report "bootstrap --force still keeps legacy user-modified AGENTS.md" 0 $?
+
+printf '# different content\n' > "$BT/docs/METHODOLOGY.md"
 bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
 report "bootstrap rejects conflicting existing file" 2 $?
 out=$(bash "$BOOT_SRC" --core "$BT" 2>&1 || true)
-check_output "bootstrap names the conflicting file" "CONFLICT.*AGENTS.md" "$out"
+check_output "bootstrap names the conflicting file" "CONFLICT.*METHODOLOGY.md" "$out"
 
 bash "$BOOT_SRC" --core --force "$BT" >/dev/null 2>&1
 report "bootstrap --force overwrites conflict" 0 $?
-grep -q "本文件是所有 AI Agent" "$BT/AGENTS.md"
+grep -q "M0–M3" "$BT/docs/METHODOLOGY.md"
 report "bootstrap --force restores template content" 0 $?
+# CHG-063 (v3.51.0): 安装清单——全文件用户改动检测与保留
+[[ -s "$BT/.dev-standards-manifest" ]] && grep -q " AGENTS.md" "$BT/.dev-standards-manifest" && grep -q " docs/METHODOLOGY.md" "$BT/.dev-standards-manifest"
+report "bootstrap install writes manifest with payload entries" 0 $?
+printf '\n<!-- user: ci tweak -->\n' >> "$BT/docs/METHODOLOGY.md"
+out=$(bash "$BOOT_SRC" --core --upgrade "$BT" 2>&1 || true)
+check_output "bootstrap upgrade keeps user-modified file" "kept.*user-modified.*METHODOLOGY.md" "$out"
+grep -q "user: ci tweak" "$BT/docs/METHODOLOGY.md"
+report "bootstrap kept file preserves user content verbatim" 0 $?
+bash "$BOOT_SRC" --core --force "$BT" >/dev/null 2>&1
+grep -q "M0–M3" "$BT/docs/METHODOLOGY.md" && ! grep -q "user: ci tweak" "$BT/docs/METHODOLOGY.md"
+report "bootstrap --force overwrites user-modified and refreshes manifest" 0 $?
+printf '# simulated old template\n' > "$BT/docs/METHODOLOGY.md"
+oldc=$(cksum "$BT/docs/METHODOLOGY.md" | awk '{print $1}')
+sed -i '' "s|^[0-9]* docs/METHODOLOGY.md|$oldc docs/METHODOLOGY.md|" "$BT/.dev-standards-manifest" 2>/dev/null || sed -i "s|^[0-9]* docs/METHODOLOGY.md|$oldc docs/METHODOLOGY.md|" "$BT/.dev-standards-manifest"
+bash "$BOOT_SRC" --core --upgrade "$BT" >/dev/null 2>&1
+grep -q "M0–M3" "$BT/docs/METHODOLOGY.md"
+report "bootstrap upgrades unchanged-since-install files (pure version drift)" 0 $?
+rm "$BT/.dev-standards-manifest"
+printf '\n<!-- user: pre-manifest edit -->\n' >> "$BT/docs/METHODOLOGY.md"
+out=$(bash "$BOOT_SRC" --core --upgrade "$BT" 2>&1 || true)
+check_output "bootstrap legacy differing file kept" "kept.*legacy.*METHODOLOGY.md" "$out"
+bash "$BOOT_SRC" --core --upgrade --force "$BT" >/dev/null 2>&1
+grep -q "M0–M3" "$BT/docs/METHODOLOGY.md" && [[ -s "$BT/.dev-standards-manifest" ]]
+report "bootstrap legacy --force syncs and rebuilds manifest" 0 $?
 
 BT2=$(mktemp -d)
 bash "$BOOT_SRC" --guard "$BT2" >/dev/null 2>&1
@@ -1879,12 +1919,13 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   report "T21 version bump in source propagates via re-run" 1 \
     "$(grep -c '规范版本：v9\.9\.9' "$TGT/docs/DEVELOPMENT_STANDARDS.md" || true)"
 
-  # TC-144 冲突 fail-closed：目标已有不同 AGENTS.md → CONFLICT 拒绝，不静默覆盖
+  # TC-144（v3.50.0 CHG-062 语义升级）：目标已有用户 AGENTS.md → kept 保留原文（fail-visible），
+  # 安装继续完成——不再 CONFLICT 拒绝（bootstrap agents-md 键 merge-or-keep，--force 不越）
   TGT2=$(mktemp -d "${TMPDIR:-/tmp}/install-tgt2.XXXXXX")
   printf '# my own agents file\n' > "$TGT2/AGENTS.md"
   out=$(bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT2" 2>&1); rc=$?
-  report "T21 conflicting AGENTS.md fails closed" 2 "$rc"
-  check_output "T21 conflict path prints CONFLICT and a --force hint" "CONFLICT.*--force" "$out"
+  report "T21 user AGENTS.md kept and install completes" 0 "$rc"
+  check_output "T21 kept path names AGENTS.md" "kept.*AGENTS.md" "$out"
   report "T21 conflicting target file is NOT overwritten" 1 \
     "$(grep -c 'my own agents file' "$TGT2/AGENTS.md" || true)"
 

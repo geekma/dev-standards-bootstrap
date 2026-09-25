@@ -8,6 +8,11 @@
 # 设计：
 #   - 幂等：目标文件与源一致时跳过并提示 "up to date"。
 #   - 防覆盖：目标已有不同内容时展示 diff 并以退出码 2 拒绝；--force 覆盖。
+#     例外（v3.50.0）：AGENTS.md 永不覆盖用户内容——有托管标记=只更新标记块
+#     （用户区块保留）；无标记差异=保留原文（kept），--force 不越，删除重装可刷新。
+#     安装清单（v3.51.0）：<target>/.dev-standards-manifest 记录每文件自安装基线
+#     （cksum）——--upgrade 时用户改过的文件一律 kept（--force 显式越），legacy 仓
+#     差异文件保守 kept（--force 一次同步并采纳清单）。
 #   - 零依赖：bash 3.2+ + cp + diff（macOS/Linux）。
 #   - 分层 flags 与 SKILL.md 步骤 4 的可选增强一一对应。
 #   - 路径根可配置（v3.15.0）：默认值即历史写死值，不传参 = 行为不变。
@@ -51,6 +56,9 @@ Flags (layers; default --core when none given):
   --upgrade    升级已接入仓库：治理自有文件（规范/方法论/模板/脚本/hooks/workflows/tests）
                更新到本 Skill 携带版本；跳过 live/用户文件（bugfix-log、06-delivery-summary、
                06.5、.agent-governance.yml、<docs>/changes/**、<docs>/bugs/BUG-*/）；随后重跑自动接线。
+               AGENTS.md 托管块合并（用户区块保留，v3.50.0）。**安装清单归因（v3.51.0）**：
+               安装后未改→updated；用户改过→kept 保留（--force 显式越）；legacy 无清单→
+               差异文件保守 kept+提示（--force 一次同步并采纳清单）。
                升级前请先提交目标仓库（git history 即备份）。打印版本迁移。
                **只升级用户未显式指定的层**：`--core --upgrade` 就只升 core；一个层 flag 都不给
                才按全量 5 层升级（v3.16.0 修正：此前会静默扩为全量）。
@@ -64,6 +72,9 @@ Flags (layers; default --core when none given):
   --force      覆盖目标仓库中内容不同的既有文件（默认冲突时展示 diff 并拒绝）。
                **不越过派生保护**——--force 的语义是"覆盖内容不同的既有文件"，
                不是"覆盖别人派生出来的资产"。
+               **对 AGENTS.md 不越（v3.50.0）**——托管块合并/用户版保留语义见 --core。
+               **对用户改过的文件（v3.51.0 清单核对）**：--force 是唯一显式覆盖通道，
+               覆盖后刷新清单基线；无 --force 一律 kept。
   -h, --help   本帮助
 
 自进化契约（v3.16.0）：派生 Skill 在自己的 SKILL.md frontmatter 声明
@@ -464,6 +475,47 @@ LIVE_SKIP=(
   "agent-governance-yml"
 )
 
+# CHG-062 (v3.50.0): AGENTS.md 托管块合并——用户在 end 标记后追加的内容升级/重装时
+# 原样保留（用户指令 2026-09-24："安装文件含用户信息不要替换，保留原有内容"）。
+# 无标记的差异文件视为用户改动版：一律保留原文，--force 不越（删除文件重装=唯一
+# 强制刷新通道）。通用文件的 CONFLICT/--force 语义不受影响（仅 agents-md 键）。
+M_BEGIN='<!-- dev-standards:managed begin'
+M_END='<!-- dev-standards:managed end'
+merge_managed() { # src dest -> stdout merged; rc 2 = dest lacks markers
+  # 行首锚定（index==1）：用户区中「含」标记子串的行不受影响，仅整行标记触发分段（评审 P3-1/P3-2）
+  local src="$1" dest="$2"
+  grep -qF "$M_BEGIN" "$dest" && grep -qF "$M_END" "$dest" || return 2
+  { awk -v B="$M_BEGIN" 'index($0,B)==1{exit} {print}' "$dest"
+    awk -v B="$M_BEGIN" -v E="$M_END" 'index($0,B)==1{f=1} f{print} f&&index($0,E)==1{exit}' "$src"
+    awk -v E="$M_END" 'seen{print;next} index($0,E)==1{seen=1}' "$dest"
+  }
+}
+
+# CHG-063 (v3.51.0): 安装清单（dpkg conffile 同构）——被安装文件自安装基线。
+# 任意文件升级时核对：hash 匹配=纯版本漂移（正常升级）；不匹配=用户改过（保留，
+# --force 显式越）；无条目（legacy 仓）=保守保留+提示 --force 一次同步采纳清单。
+# 用户指令 2026-09-24：安装/升级含用户信息的文件一律不替换、保留原有内容。
+manifest_path() { printf '%s/.dev-standards-manifest' "$target"; }
+file_cksum() { cksum "$1" | awk '{print $1}'; }
+manifest_get() { awk -v k="$1" '$2==k{print $1; exit}' "$(manifest_path)" 2>/dev/null; }
+manifest_record() { # dest_rel dest — upsert（载荷写入成功后调用；manifest 自身不入账）
+  local c; c=$(file_cksum "$2")
+  [[ -f $(manifest_path) ]] || : > "$(manifest_path)"
+  if ! awk -v k="$1" -v c="$c" 'BEGIN{d=0} $2==k{print c" "k; d=1; next} {print} END{if(!d)print c" "k}' \
+    "$(manifest_path)" > "$(manifest_path).tmp" || ! mv "$(manifest_path).tmp" "$(manifest_path)"; then
+    rm -f "$(manifest_path).tmp"
+    echo "WARNING     manifest record failed for $1 (baseline entry may be stale — next upgrade will treat as user-modified)" >&2
+    return 1
+  fi
+}
+manifest_user_modified() { # dest_rel dest -> 0 = entry 存在且 hash 异（用户改过）
+  local e f
+  e=$(manifest_get "$1")
+  [[ -n "$e" ]] || return 1
+  f=$(file_cksum "$2")
+  [[ "$e" != "$f" ]]
+}
+
 # D5 (v3.16.0): the standards upgrade log belongs to the SKILL, not the target.
 # It ships with the spec and is replaced wholesale on --upgrade — so a target
 # repo that appended its own rows would lose them silently. Detect that specific
@@ -493,6 +545,24 @@ install_file() {
         return 0
       fi
     done
+  fi
+  # CHG-062 (v3.50.0): agents-md = merge-or-keep，永不覆盖用户内容。
+  # 有标记 → 只换托管区（区外保留）；无标记差异 → kept（--force 不越）。
+  if [[ "$key" == "agents-md" && -f "$dest" ]] && ! same_as_src "$src" "$dest"; then
+    local msrc="$dest.merged.tmp"
+    if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$src" > "$msrc"; else cp "$src" "$msrc"; fi
+    if merge_managed "$msrc" "$dest" > "$msrc.out" && [[ -s "$msrc.out" ]]; then
+      mv "$msrc.out" "$dest" || { rm -f "$msrc" "$msrc.out"; echo "bootstrap: AGENTS.md merge write failed — kept original" >&2; skipped=$(( skipped + 1 )); return 0; }
+      rm -f "$msrc"
+      echo "merged       $dest_rel (managed block updated; user sections outside markers preserved)"
+      upgraded=$(( upgraded + 1 ))
+      manifest_record "$dest_rel" "$dest"
+      return 0
+    fi
+    rm -f "$msrc" "$msrc.out"
+    echo "kept (user-modified AGENTS.md without managed markers — content preserved; delete it and re-run to adopt markers)  $dest_rel"
+    skipped=$(( skipped + 1 ))
+    return 0
   fi
   # Self-evolution contract: never write into a directory that declares
   # derived_from. Walk the ancestors strictly BETWEEN the destination and the
@@ -526,14 +596,36 @@ install_file() {
     if same_as_src "$src" "$dest"; then
       echo "up to date   $dest_rel"
       skipped=$(( skipped + 1 ))
+      manifest_record "$dest_rel" "$dest"
       return 0
     fi
     if [[ "$upgrade" == true ]]; then
-      echo "updated      $dest_rel (upgrade)"
-      upgraded=$(( upgraded + 1 ))
-      mkdir -p "$(dirname "$dest")"
-      copy_src "$src" "$dest"
-      [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
+      local eck
+      eck=$(manifest_get "$dest_rel")
+      if [[ -n "$eck" && "$eck" == "$(file_cksum "$dest")" ]]; then
+        echo "updated      $dest_rel (upgrade; unchanged since install)"
+        upgraded=$(( upgraded + 1 ))
+        mkdir -p "$(dirname "$dest")"
+        copy_src "$src" "$dest"
+        [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
+        manifest_record "$dest_rel" "$dest"
+        return 0
+      fi
+      if [[ "$force" == true ]]; then
+        echo "overwrite    $dest_rel (user-modified since install — --force given; previous content in git history)"
+        overwritten=$(( overwritten + 1 ))
+        mkdir -p "$(dirname "$dest")"
+        copy_src "$src" "$dest"
+        [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
+        manifest_record "$dest_rel" "$dest"
+        return 0
+      fi
+      if [[ -n "$eck" ]]; then
+        echo "kept (user-modified since install — preserved; --force overwrites, or merge manually)  $dest_rel"
+      else
+        echo "kept (no install manifest entry — legacy target preserved; run --force once to sync and adopt manifest)  $dest_rel"
+      fi
+      skipped=$(( skipped + 1 ))
       return 0
     fi
     if [[ "$force" != true ]]; then
@@ -551,6 +643,7 @@ install_file() {
   mkdir -p "$(dirname "$dest")"
   copy_src "$src" "$dest"
   [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
+  manifest_record "$dest_rel" "$dest"
 }
 
 installed=0
@@ -562,7 +655,7 @@ run_layer() {
   local layer="$1"
   case "$layer" in
     core)
-      install_file - AGENTS.md resources/AGENTS.md
+      install_file agents-md AGENTS.md resources/AGENTS.md
       install_file - "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" resources/DEVELOPMENT_STANDARDS.md
       # v3.46.0（REQ-968/969）：条款注册表 → 阅读包生成的结构化索引层（机器面权威，
       # DS 仍是叙事唯一权威；生成 fail-closed 防双权威源漂移）。

@@ -633,6 +633,14 @@ at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bu
 at_least "A32 carrier full-chain clause present" 1 "$STD" '版本载体全链清单（v3.49.0）'
 report "A32 retired 2.16.5 row absent" 0 "$(grep_count "$STD" '标准升级 | 版本 + 影响清单')"
 
+# A33 AGENTS.md 托管标记与合并机制（CHG-062 / REQ-986，安装/升级用户内容保留）
+at_least "A33 AGENTS.md carries managed markers" 1 "$ROOT/resources/AGENTS.md" 'dev-standards:managed begin'
+at_least "A33 bootstrap ships merge_managed" 1 "$ROOT/scripts/bootstrap.sh" 'merge_managed'
+
+# A34 安装清单用户改动检测（CHG-063 / REQ-987，全文件保留机制）
+at_least "A34 bootstrap ships manifest user-modified detection" 1 "$ROOT/scripts/bootstrap.sh" 'manifest_user_modified'
+at_least "A34 bootstrap manifest path pinned" 1 "$ROOT/scripts/bootstrap.sh" '.dev-standards-manifest'
+
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
 at_least "A12 root-cause classification present (REQ-057)" 1 "$STD" '根因分类'
 at_least "A12 change dynamic constraints present (REQ-058)" 1 "$STD" '变更动态约束'

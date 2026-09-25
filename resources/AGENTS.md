@@ -1,3 +1,4 @@
+<!-- dev-standards:managed begin — 本区块由 dev-standards-bootstrap 安装器整体维护（§1.1 契约名件）；用户内容请写在 end 标记之后，升级/重装时原样保留 -->
 # AGENTS.md — 本项目 AI 协作强制入口
 
 > 本文件是所有 AI Agent（不论通过 Claude Code、Cursor、Codex、Windsurf、Gemini、Antigravity、Qoder、Trae、OpenCode 等何种工具接入本仓库）在__开始任何开发任务前必须读取的第一个文件__。
@@ -82,4 +83,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.49.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.51.0_
+<!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->
