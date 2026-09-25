@@ -201,9 +201,72 @@ is_code_path() {
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
+# v3.55.0 (CHG-068): single source for the 延伸发现/历史相似检索 check family —
+# a section heading (bare substring; declaration lines self-carry it) OR an
+# explicit 未命中（…检索…） declaration line. Callers own their die messages.
+require_section_or_decl() { # <file> <keyword> [decl_regex]
+  local f="$1" kw="$2" decl="${3:-}"
+  grep -q "$kw" "$f" 2>/dev/null && return 0
+  if [[ -n "$decl" ]]; then grep -qE "$decl" "$f" 2>/dev/null && return 0; fi
+  return 1
+}
+
+# v3.55.0 (CHG-068): communication-first gate semantics, single source —
+# shared by validate_artifact_content (GATE-E83 die) and the check-confirm
+# subcommand (exit-code protocol). Sets CONFIRM_REASON ("" = confirmed).
+confirmation_gate_reason() { # <id> <dir>
+  local id="$1"
+  local d="$2"
+  CONFIRM_REASON=""
+  local comm05="$d/00.5-communication.md" scope05
+  if [[ ! -s "$comm05" ]]; then
+    CONFIRM_REASON="missing $comm05"
+    return 0
+  fi
+  if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$d/00-intent.md"; then
+    # batch member (§1.1): the shared 00.5 must carry THIS change's own anchor
+    # section — a sibling's confirmation never counts (fail-closed). The
+    # section runs to the NEXT SIBLING ANCHOR (not the next h2): member
+    # sections legitimately contain h2 structural headings. Sibling ids come
+    # from the authoritative roster (00-governance.json, v3.19 semantics).
+    if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$comm05"; then
+      local others05
+      # `|| true` inside the subshell: a single-member batch leaves grep -vx
+      # with no output — with pipefail that would abort the whole script
+      # (silent exit 1), the exact trap documented at the top of this file.
+      others05=$( (change_ids_in_dir "$d" | grep -vx "$id" || true) | sort -u | tr '\n' '|')
+      others05="${others05%|}"
+      if [[ -n "$others05" ]]; then
+        scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" -v stop="^##[[:space:]]+(${others05})([[:space:]]|\$)" '$0 ~ cur {f=1; next} f && $0 ~ stop {f=0} f' "$comm05")
+      else
+        scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" '$0 ~ cur {f=1; next} f' "$comm05")
+      fi
+    else
+      CONFIRM_REASON="batch member $id lacks its own ## $id anchor section in $comm05"
+      return 0
+    fi
+  else
+    scope05=$(cat "$comm05")
+  fi
+  local rec05 risk05=""
+  rec05=$(gov_record "$d/00-governance.json" "$id")
+  [[ -n "$rec05" ]] && risk05=$(json_field "$rec05" risk_level)
+  if printf '%s\n' "$scope05" | grep -qE '^[[:space:]]*-[[:space:]]*\*\*沟通确认\*\*(：|:)[[:space:]]*未命中，不适用（.+）'; then
+    if [[ "$risk05" == "L0" ]]; then
+      : # L0 lightweight single-line declaration satisfies the gate (§2.17.2d)
+    else
+      CONFIRM_REASON="L0-only single-line declaration found in $comm05 but risk_level is ${risk05:-unknown} — the lightweight channel is L0-exclusive (§2.17.2d)"
+    fi
+  elif ! printf '%s\n' "$scope05" | grep -q "用户整体确认记录"; then
+    CONFIRM_REASON="missing 用户整体确认记录 section in $comm05"
+  elif ! printf '%s\n' "$scope05" | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)'; then
+    CONFIRM_REASON="no user-overall-confirmation marker under 用户整体确认记录 in $comm05"
+  fi
+  return 0
+}
+
 required_docs_present() {
-  local id="$1" doc d
-  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
+  local id="$1" doc d  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
   # (kills "-foo", "foo.", "a..b"; existing CHG-xxx / BUG-<ts> forms all pass).
   [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "GATE-E02: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
   d=$(change_dir "$id")
@@ -229,62 +292,14 @@ validate_artifact_content() {
     || die "GATE-E05: $d/00-intent.md missing open-questions section (A-layer acceptance, standards §2.5)"
   # v3.52.0 communication-first gate (standards §2.17.2d): 00.5 must exist and
   # carry a non-empty user-overall-confirmation record before any batch doc
-  # body or source edit. Batch mode: scope to this change's `## <id>` anchor
-  # section. L0 lightweight channel: the §1.1-style single-line declaration
-  # satisfies the bar. Explicit automation bypass: AGENT_GUARD_ALLOW_UNCONFIRMED=1
-  # (justification MUST be registered in 09 重要上下文 — never a silent default).
-  # Single die point keeps the die-code domain unique (T41).
+  # body or source edit. Semantics live in confirmation_gate_reason (single
+  # source, shared with the check-confirm subcommand, v3.55.0).
   if [[ "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]]; then
     : # explicit bypass — register the justification in 09 重要上下文 (§2.17.2d)
   else
-    local comm05="$d/00.5-communication.md" scope05 e83reason=""
-    if [[ ! -s "$comm05" ]]; then
-      e83reason="missing $comm05"
-    else
-      if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$d/00-intent.md"; then
-        # batch member (§1.1): the shared 00.5 must carry THIS change's own
-        # anchor section — a sibling's confirmation never counts (fail-closed).
-        # The section runs to the NEXT SIBLING ANCHOR (not the next h2): member
-        # sections legitimately contain h2 structural headings (## 问题 /
-        # ## 用户整体确认记录 / ## Observation). Sibling ids come from the
-        # authoritative roster (00-governance.json, v3.19 semantics).
-        if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$comm05"; then
-          local others05
-          # `|| true` inside the subshell: a single-member batch leaves grep -vx
-          # with no output — with pipefail that would abort the whole script
-          # (silent exit 1), the exact trap documented at the top of this file.
-          others05=$( (change_ids_in_dir "$d" | grep -vx "$id" || true) | sort -u | tr '\n' '|')
-          others05="${others05%|}"
-          if [[ -n "$others05" ]]; then
-            scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" -v stop="^##[[:space:]]+(${others05})([[:space:]]|\$)" '$0 ~ cur {f=1; next} f && $0 ~ stop {f=0} f' "$comm05")
-          else
-            scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" '$0 ~ cur {f=1; next} f' "$comm05")
-          fi
-        else
-          e83reason="batch member $id lacks its own ## $id anchor section in $comm05"
-        fi
-      else
-        scope05=$(cat "$comm05")
-      fi
-      if [[ -z "$e83reason" ]]; then
-        local rec05 risk05=""
-        rec05=$(gov_record "$d/00-governance.json" "$id")
-        [[ -n "$rec05" ]] && risk05=$(json_field "$rec05" risk_level)
-        if printf '%s\n' "$scope05" | grep -qE '^[[:space:]]*-[[:space:]]*\*\*沟通确认\*\*(：|:)[[:space:]]*未命中，不适用（.+）'; then
-          if [[ "$risk05" == "L0" ]]; then
-            : # L0 lightweight single-line declaration satisfies the gate (§2.17.2d)
-          else
-            e83reason="L0-only single-line declaration found in $comm05 but risk_level is ${risk05:-unknown} — the lightweight channel is L0-exclusive (§2.17.2d)"
-          fi
-        elif ! printf '%s\n' "$scope05" | grep -q "用户整体确认记录"; then
-          e83reason="missing 用户整体确认记录 section in $comm05"
-        elif ! printf '%s\n' "$scope05" | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)'; then
-          e83reason="no user-overall-confirmation marker under 用户整体确认记录 in $comm05"
-        fi
-      fi
-    fi
-    [[ -z "$e83reason" ]] \
-      || die "GATE-E83: communication-first gate: $e83reason — record the user overall confirmation (standards §2.17.2d; L0 single-line declaration allowed; AGENT_GUARD_ALLOW_UNCONFIRMED=1 is the explicit automation bypass)"
+    confirmation_gate_reason "$id" "$d"
+    [[ -z "$CONFIRM_REASON" ]] \
+      || die "GATE-E83: communication-first gate: $CONFIRM_REASON — record the user overall confirmation (standards §2.17.2d; L0 single-line declaration allowed; AGENT_GUARD_ALLOW_UNCONFIRMED=1 is the explicit automation bypass)"
   fi
   grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
     || die "GATE-E06: $d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
@@ -315,15 +330,13 @@ validate_artifact_content() {
   grep -qE "^(#{1,6}[[:space:]].*回滚策略|\|.*回滚策略|[[:space:]]*[-*][[:space:]]+\*\*回滚策略)" "$d/02-code-impact-analysis.md" \
     || die "GATE-E14: $d/02-code-impact-analysis.md missing rollback (回滚策略) content (A-layer, standards §2.5 stage 2)"
   # v3.48.0 (CHG-058): 延伸发现即时落盘（标题或"未发现"声明行均含关键词）
-  grep -q "延伸发现" "$d/02-code-impact-analysis.md" \
+  require_section_or_decl "$d/02-code-impact-analysis.md" "延伸发现" \
     || die "GATE-E80: $d/02-code-impact-analysis.md missing 延伸发现 section (A-layer, standards §2.5 stage 2, v3.48.0; renumbered from E15 in v3.48.1, CHG-060 — E15/E16 collide with pre-existing stage-3 codes)"
   # v3.54.0 (CHG-067, REQ-998): stage-2 历史相似检索 step machine-checked like
   # its sibling 延伸发现 (E80) — section heading OR an explicit
   # 未命中（<检索词>） declaration line. Single die point keeps T41 uniqueness.
-  if ! grep -q "历史相似检索" "$d/02-code-impact-analysis.md" \
-     && ! grep -qE '未命中（[^）]*检索[^）]*）' "$d/02-code-impact-analysis.md"; then
-    die "GATE-E84: $d/02-code-impact-analysis.md missing 历史相似检索 section (or 未命中（检索词） declaration) (A-layer, standards §2.5 stage 2, v3.54.0 CHG-067)"
-  fi
+  require_section_or_decl "$d/02-code-impact-analysis.md" "历史相似检索" '未命中（[^）]*检索[^）]*）' \
+    || die "GATE-E84: $d/02-code-impact-analysis.md missing 历史相似检索 section (or 未命中（检索词） declaration) (A-layer, standards §2.5 stage 2, v3.54.0 CHG-067)"
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
       || die "GATE-E15: $d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
@@ -482,11 +495,10 @@ validate_governance_state() {
         [[ -s "$bug_gdir/$doc" ]] || die "GATE-E42: $file bug_ref '$bug_ref' is missing defect document: $bug_gdir/$doc"
       done
       # v3.48.0 (CHG-058): BUG 轨延伸发现即时落盘（文件级机校；分节质量由评审 B 层核对）
-      # v3.54.0 (CHG-067): same grep covers 历史相似检索 (E84 semantics, BUG track)
-      if ! grep -q "延伸发现" "$bug_gdir/01-diagnosis.md" 2>/dev/null \
-         || ! { grep -q "历史相似检索" "$bug_gdir/01-diagnosis.md" 2>/dev/null || grep -qE '未命中（[^）]*检索[^）]*）' "$bug_gdir/01-diagnosis.md" 2>/dev/null; }; then
-        die "GATE-E81: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现/历史相似检索 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060; 历史相似检索 added v3.54.0 CHG-067)"
-      fi
+      # v3.54.0 (CHG-067): same family covers 历史相似检索 (E84 semantics, BUG track)
+      require_section_or_decl "$bug_gdir/01-diagnosis.md" "延伸发现" 2>/dev/null \
+        && require_section_or_decl "$bug_gdir/01-diagnosis.md" "历史相似检索" '未命中（[^）]*检索[^）]*）' 2>/dev/null \
+        || die "GATE-E81: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现/历史相似检索 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060; 历史相似检索 added v3.54.0 CHG-067)"
     done
   fi
 }
@@ -1259,6 +1271,22 @@ case "$command" in
     rm -f "$active_file"
     echo "agent-gate: active change cleared"
     ;;
+  check-confirm)
+    # v3.55.0 (CHG-068, REQ-1002): read-only confirmation-gate probe for
+    # tooling (new-change wave-2). Exit 0 = confirmed; 1 = not confirmed
+    # (reason on stderr); 2 = usage error. Deliberately NOT die-shaped —
+    # keeps the GATE-Exx die domain unique (T41).
+    id="${2:-}"
+    if [[ -z "$id" ]]; then
+      printf 'agent-gate: check-confirm requires a change id\n' >&2
+      exit 2
+    fi
+    d=$(change_dir "$id")
+    confirmation_gate_reason "$id" "$d"
+    if [[ -z "$CONFIRM_REASON" ]]; then exit 0; fi
+    printf 'agent-gate: check-confirm: %s\n' "$CONFIRM_REASON" >&2
+    exit 1
+    ;;
   metrics)
     emit_metrics
     ;;
@@ -1304,6 +1332,7 @@ Usage:
   scripts/agent-gate --stage stop
   scripts/agent-gate --stage ci [--base ref]
   scripts/agent-gate --stage commit-msg <message-file>
+  scripts/agent-gate check-confirm <change-id>   # exit 0/1/2, read-only (v3.55.0)
 
 begin requires eight non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,

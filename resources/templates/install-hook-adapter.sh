@@ -326,3 +326,4 @@ if [[ "$installed" -eq 0 ]]; then
   exit 2
 fi
 ok "$installed client(s) wired; session enforcement active for supported clients"
+ok ".agent-state/ is runtime state (telemetry/audit reports), NOT a governance artifact — add it to .gitignore"

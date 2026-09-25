@@ -145,6 +145,12 @@ commit_all() { # message
   git commit -qm "$1"
 }
 
+# v3.55.0（CHG-068，REQ-1003）：缺陷诊断夹具两行强制声明（延伸发现+历史相似检索）
+# 单源 helper——散点 printf 收敛于此，机校节新增时只改一处（E84 连坐教训）。
+append_diag_lines() { # <file> [decl]
+  printf '延伸发现：未发现\n历史相似检索：未命中（%s）\n' "${2:-根因关键词检索}" >> "$1"
+}
+
 # v3.35.0（§1.3）：begin 强制项目总册在位——所有夹具仓库开箱即含 12 册最小骨架
 #（含「总册编号」与「独立完整声明」自证行 + 逐册评审存根）；T23 负例删除后再验拒绝路径。
 seed_project_masters() {
@@ -2012,7 +2018,7 @@ mkdir -p "docs/bugs/BATCH-$today/BUG-901"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# %s\n' "$d6" > "docs/bugs/BATCH-$today/BUG-901/$d6.md"
 done
-printf '延伸发现：未发现\n历史相似检索：未命中（根因关键词检索）\n' >> "docs/bugs/BATCH-$today/BUG-901/01-diagnosis.md"
+append_diag_lines "docs/bugs/BATCH-$today/BUG-901/01-diagnosis.md"
 seed_artifacts CHG-902 L0 claude/s-1
 printf '{"change_id":"CHG-902","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
 scripts/agent-gate begin CHG-902 >/dev/null 2>&1
@@ -2021,7 +2027,7 @@ mkdir -p docs/bugs/BUG-902
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# %s\n' "$d6" > "docs/bugs/BUG-902/$d6.md"
 done
-printf '延伸发现：未发现\n历史相似检索：未命中（根因关键词检索）\n' >> docs/bugs/BUG-902/01-diagnosis.md
+append_diag_lines docs/bugs/BUG-902/01-diagnosis.md
 { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: %sT00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n' "$(date -u +%Y-%m-%d)"; cat docs/bugs/BUG-902/01-diagnosis.md; } > docs/bugs/BUG-902/01-diagnosis.md.tmp && mv docs/bugs/BUG-902/01-diagnosis.md.tmp docs/bugs/BUG-902/01-diagnosis.md
 echo y > src/z.js   # staged/stop 只在存在代码路径改动时执法（对齐 T4/T5 夹具）
 git add -A          # staged 以暂存区为准，空暂存即空转放行
@@ -2052,7 +2058,7 @@ mkdir -p "docs/bugs/BATCH-$today"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# flat batch\n\n## BUG-903 flat member\n' > "docs/bugs/BATCH-$today/$d6.md"
 done
-printf '延伸发现：未发现\n历史相似检索：未命中（x）\n' >> "docs/bugs/BATCH-$today/01-diagnosis.md"
+append_diag_lines "docs/bugs/BATCH-$today/01-diagnosis.md"
 # 负例铺垫：BUG-904 只在诊断件锚定（其余五件缺同 id 小节 → 六件锚点不齐）
 printf '\n## BUG-904 member\n' >> "docs/bugs/BATCH-$today/01-diagnosis.md"
 seed_artifacts CHG-931 L0 claude/s-1
@@ -2079,7 +2085,7 @@ mkdir -p "docs/bugs/BATCH-$today/BUG-905"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# nested\n' > "docs/bugs/BATCH-$today/BUG-905/$d6.md"
 done
-printf '延伸发现：未发现\n历史相似检索：未命中（x）\n' >> "docs/bugs/BATCH-$today/BUG-905/01-diagnosis.md"
+append_diag_lines "docs/bugs/BATCH-$today/BUG-905/01-diagnosis.md"
 seed_artifacts CHG-932 L0 claude/s-1
 printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-905"}\n' > docs/changes/CHG-932/00-governance.json
 scripts/agent-gate begin CHG-932 >/dev/null 2>&1
@@ -2149,6 +2155,7 @@ new_repo
 NEWCHANGE_SRC="$ROOT/resources/templates/new-change.sh"
 if [[ -f "$NEWCHANGE_SRC" ]]; then
   cp "$NEWCHANGE_SRC" scripts/new-change
+  cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate   # v3.55.0: wave-2 确认门下沉 gate（check-confirm）
   chmod +x scripts/new-change
   # 夹具内联最小入口模板（内容契约由 audit-standards-src pin 覆盖；此处测脚手架逻辑）
   mkdir -p docs/templates/entry
@@ -2273,7 +2280,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
     printf '# %s\n' "$doc" > "docs/bugs/BUG-940/$doc"
   done
-  printf '延伸发现：未发现\n历史相似检索：未命中（x）\n' >> docs/bugs/BUG-940/01-diagnosis.md
+  append_diag_lines docs/bugs/BUG-940/01-diagnosis.md
   sed -i '' 's/}$/,"bug_ref":"BUG-940"}/' docs/changes/CHG-940/00-governance.json 2>/dev/null \
     || sed -i 's/}$/,"bug_ref":"BUG-940"}/' docs/changes/CHG-940/00-governance.json
   scripts/agent-gate begin CHG-940 >/dev/null 2>&1
@@ -2283,7 +2290,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   # comma-joined batch governance (the §1.1 recommended shape): each member's
   # bug_ref must be extracted in isolation — no cross-member bleed
   mkdir -p docs/bugs/BUG-943 docs/bugs/BUG-944
-  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; printf '延伸发现：未发现\n历史相似检索：未命中（x）\n' >> "docs/bugs/BUG-$b/01-diagnosis.md"; done
+  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; append_diag_lines "docs/bugs/BUG-$b/01-diagnosis.md x"; done
   mkdir -p docs/changes/BATCH-990922
   printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
   seed_artifacts CHG-944 L0 claude/s-27
@@ -2369,6 +2376,8 @@ fi
 ADAPTER_SRC="$ROOT/resources/templates/install-hook-adapter.sh"
 if [[ -f "$ADAPTER_SRC" ]]; then
   report "T30 adapter die count equals coded" 0 "$(( $(grep -c 'die "' "$ADAPTER_SRC") - $(grep -cE 'die "ADAPTER-E[0-9]+: ' "$ADAPTER_SRC") ))"
+  grep -q "add it to .gitignore" "$ADAPTER_SRC"
+  report "TC-1060 adapter prints .agent-state gitignore hint" 0 $?
 fi
 
 # ------------------------------------------------ T31 G10 deprecated-clause sweep (v3.40.0)
@@ -2581,7 +2590,7 @@ if [[ -x scripts/agent-gate ]]; then
   sed -i '' '/延伸发现/d' docs/changes/CHG-991/02-code-impact-analysis.md 2>/dev/null || sed -i '/延伸发现/d' docs/changes/CHG-991/02-code-impact-analysis.md
   out=$(scripts/agent-gate --stage stop 2>&1 || true)
   check_output "stop refuses 02 missing 延伸发现 (E80)" "GATE-E80.*延伸发现" "$out"
-  printf '延伸发现：未发现\n历史相似检索：未命中（x）\n' >> docs/changes/CHG-991/02-code-impact-analysis.md
+  append_diag_lines docs/changes/CHG-991/02-code-impact-analysis.md
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T37 stop green again after 延伸发现 restored" 0 $?
   # ② L0 + 04.5/05 缺失 → 拒绝（E47 先于 E48）
@@ -2755,7 +2764,7 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   { printf '# intent\n'; printf '\n## CHG-951\n\n## 预期结果\n## 开放问题\n'; printf '\n## CHG-952\n\n## 预期结果\n## 开放问题\n'; } > docs/changes/BATCH-990925/00-intent.md
   printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' > docs/changes/BATCH-990925/00-governance.json
   { printf '# spec\n\n## CHG-951\n\n- REQ-901: x\n'; printf '\n## CHG-952\n\n- REQ-902: x\n'; } > docs/changes/BATCH-990925/01-spec.md
-  { printf '# impact\n\n## CHG-951\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n历史相似检索：未命中（x）\n'; printf '\n## CHG-952\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n'; } > docs/changes/BATCH-990925/02-code-impact-analysis.md
+  { printf '# impact\n\n## CHG-951\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n'; printf '\n## CHG-952\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n'; } > docs/changes/BATCH-990925/02-code-impact-analysis.md
   { printf '# plan\n\n## CHG-951\n\n- DES-901: x\n## 技术选型\n备选: A vs B\n'; printf '\n## CHG-952\n\n- DES-902: x\n## 技术选型\n备选: A vs B\n'; } > docs/changes/BATCH-990925/03-modification-plan.md
   { printf '# tasks\n\n## CHG-951\n\n- T-901: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; printf '\n## CHG-952\n\n- T-902: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; } > docs/changes/BATCH-990925/03.5-tasks.md
   { printf '# tests\n\n## CHG-951\n\n- TC-901: x\n覆盖维度: 正常流\n- SC-901: x\n'; printf '\n## CHG-952\n\n- TC-902: x\n覆盖维度: 正常流\n- SC-902: x\n'; } > docs/changes/BATCH-990925/04-test-scripts.md
@@ -2896,6 +2905,13 @@ if [[ -s "$GATE44_SRC" ]]; then
   scripts/new-change CHG-976 --risk L1 >/dev/null 2>&1
   out=$(scripts/new-change CHG-976 --risk L1 2>&1 || true)
   check_output "T44 no cross-member confirmation bleed (NC-E09)" "NC-E09" "$out"
+  # TC-1056/1057: check-confirm 子命令 exit 协议（0/1/2）
+  scripts/agent-gate check-confirm CHG-975 >/dev/null 2>&1
+  report "T44 check-confirm exits 0 when confirmed" 0 $?
+  scripts/agent-gate check-confirm CHG-976 >/dev/null 2>&1
+  report "T44 check-confirm exits 1 when unconfirmed" 1 $?
+  scripts/agent-gate check-confirm 2>/dev/null
+  report "T44 check-confirm missing id exits 2 (non-die shape)" 2 $?
 else
   echo "SKIP T44: agent-gate absent — 跳过历史相似检索机校 golden cases"
 fi
