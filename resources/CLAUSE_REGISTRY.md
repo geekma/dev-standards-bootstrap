@@ -47,9 +47,9 @@
 | R23 | 执行主线（§2.16.2） | DEVELOPMENT_STANDARDS.md::### 2.16.2 执行主线 | L1-standards | 硬 | 结构 |
 | R24 | 配置/DB 变更规范（§2.6） | DEVELOPMENT_STANDARDS.md::## 2.6 部署、配置与数据库变更规范 | L2-architecture | 硬 | 结构 |
 | R25 | 热修复快速通道（§2.11） | DEVELOPMENT_STANDARDS.md::## 2.11 热修复快速通道 | L3-critical | 硬 | 结构 |
-| R26 | AGENTS 路由入口（锚点表速览） | AGENTS.md::交付前文档互证 | universal | 硬 | 结构 |
-| R27 | 缺陷入口速查（AGENTS 门禁 4） | AGENTS.md::bug-autointent | L0-bugfix | 硬 | 结构 |
-| R28 | bugfix 场景路由（"只是改 bug"行） | AGENTS.md::只是改 bug | L0-bugfix | 硬 | 结构 |
+| R26 | AGENTS 路由入口（锚点表速览） | resources/AGENTS.md::交付前文档互证 | universal | 硬 | 结构 |
+| R27 | 缺陷入口速查（AGENTS 门禁 4） | resources/AGENTS.md::bug-autointent | L0-bugfix | 硬 | 结构 |
+| R28 | bugfix 场景路由（"只是改 bug"行） | resources/AGENTS.md::只是改 bug | L0-bugfix | 硬 | 结构 |
 | R29 | 统一编号规范（§1.1） | DEVELOPMENT_STANDARDS.md::### 1.1 统一编号规范 | L1-standards | 硬 | 结构 |
 | R30 | RTVM 矩阵文件与编号顺序（§1.2） | DEVELOPMENT_STANDARDS.md::### 1.2 独立 RTVM 矩阵文件与编号顺序规范 | L1-standards | 硬 | 结构 |
 | R31 | 分阶段产物与规格（§2.5） | DEVELOPMENT_STANDARDS.md::## 2.5 分阶段产物与规格 | L1-standards | 硬 | 结构 |

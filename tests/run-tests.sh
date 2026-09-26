@@ -162,6 +162,39 @@ seed_project_masters() {
   done
 }
 
+# v3.57.0（CHG-071）：T25/T42/T44 共用入口模板夹具——参数化七处真实差异（P7：差异即测试点）：
+# $1 intent 标题词（意图/intent） $2 intent 预期结果体 $3 intent 开放问题体（T25=__RISK__/open，余空）
+# $4 00.5 标题词 $5 00.5 机校标记注释行（T25/T42 各异，T44 空）
+# $6 01-spec 标题后缀（T25 含 (__RISK__)） $7 03.5 评审输入后缀（T25 含 §2.2 输入契约）
+seed_entry_templates() {
+  mkdir -p docs/templates/entry
+  { printf '# <__CHANGE_ID__> %s\n## 预期结果\n' "$1"
+    [[ -n "$2" ]] && printf '%s\n' "$2"
+    printf '## 开放问题\n'
+    [[ -n "$3" ]] && printf '%s\n' "$3"; } > docs/templates/entry/00-intent.md
+  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
+  { printf '# <__CHANGE_ID__> %s\n## 用户整体确认记录\n' "$4"; [[ -n "$5" ]] && printf '%s\n' "$5"; } > docs/templates/entry/00.5-communication.md
+  printf '# <__CHANGE_ID__> spec%s\n- REQ-001: tbd\n' "$6" > docs/templates/entry/01-spec.md
+  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/templates/entry/02-code-impact-analysis.md
+  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
+  printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填%s\n' "$7" > docs/templates/entry/03.5-tasks.md
+  printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
+}
+
+# v3.57.0（CHG-071）：T44 批次成员夹具循环收拢——成员内容同构，仅 id 参数化；
+# T42 批次块不收拢（成员差异是测试点，P7 留原形）。
+seed_batch_member() { # <batch_dir> <change_id>
+  local d="$1" id="$2"
+  printf '{"change_id":"%s","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' "$id" >> "$d/00-governance.json"
+  printf '## %s\n## 问题\np\n## 预期结果\ne\n## 开放问题\no\n' "$id" >> "$d/00-intent.md"
+  printf '## %s\n## 用户整体确认记录\n' "$id" >> "$d/00.5-communication.md"
+  printf '## %s\nREQ-910: r\n' "$id" >> "$d/01-spec.md"
+  printf '## %s\n### 业务影响\n### 技术影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
+  printf '## %s\nDES-910 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
+  printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
+  printf '## %s\nTC-910 SC-910 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
+}
+
 # v3.35.0（§1.3）：交付侧 09 追加「项目总册回填清单」节（幂等；已存在则跳过）。
 append_masters() { # <09-file>
   local f="$1" p
@@ -2158,25 +2191,7 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate   # v3.55.0: wave-2 确认门下沉 gate（check-confirm）
   chmod +x scripts/new-change
   # 夹具内联最小入口模板（内容契约由 audit-standards-src pin 覆盖；此处测脚手架逻辑）
-  mkdir -p docs/templates/entry
-  cat > docs/templates/entry/00-intent.md <<'EOF'
-# <__CHANGE_ID__> 意图
-## 预期结果
-__RISK__
-## 开放问题
-open
-EOF
-  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
-  cat > docs/templates/entry/00.5-communication.md <<'EOF'
-# <__CHANGE_ID__> 沟通稿（§2.17.2d 骨架）
-## 用户整体确认记录
-<!-- 机校标记：确认达成后追加 确认状态 行 -->
-EOF
-  printf '# <__CHANGE_ID__> spec (__RISK__)\n- REQ-001: tbd\n' > docs/templates/entry/01-spec.md
-  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/templates/entry/02-code-impact-analysis.md
-  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
-  printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填（§2.2 输入契约）\n' > docs/templates/entry/03.5-tasks.md
-  printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
+  seed_entry_templates 意图 '__RISK__' 'open' '沟通稿（§2.17.2d 骨架）' '<!-- 机校标记：确认达成后追加 确认状态 行 -->' ' (__RISK__)' '（§2.2 输入契约）'
 
   scripts/new-change CHG-930 --risk L1 >/dev/null 2>&1
   report "T25 dedicated scaffold exits 0" 0 $?
@@ -2760,6 +2775,7 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   out=$(scripts/agent-gate begin CHG-958 2>&1 || true)
   check_output "T42 L0-only declaration refused for L1 (F2)" "L0-exclusive" "$out"
   # TC-1038: 批次成员按本变更锚点小节校验——兄弟成员的确认不外溢
+  # P7（CHG-071）：本块成员差异（951 缺 00.5 锚 / 952 缺历史相似检索行）是测试点，不收拢 helper，保留原形独立演进。
   mkdir -p docs/changes/BATCH-990925
   { printf '# intent\n'; printf '\n## CHG-951\n\n## 预期结果\n## 开放问题\n'; printf '\n## CHG-952\n\n## 预期结果\n## 开放问题\n'; } > docs/changes/BATCH-990925/00-intent.md
   printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' > docs/changes/BATCH-990925/00-governance.json
@@ -2774,15 +2790,7 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   scripts/agent-gate begin CHG-952 >/dev/null 2>&1
   report "T42 batch member with own anchor passes" 0 $?
   # TC-1040/1041/1042: new-change 两段式（wave1 三件 → 确认后补齐 → 越权旗标）
-  mkdir -p docs/templates/entry
-  printf '# <__CHANGE_ID__> intent\n## 预期结果\n## 开放问题\n' > docs/templates/entry/00-intent.md
-  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
-  printf '# <__CHANGE_ID__> comm\n## 用户整体确认记录\n<!-- 标记待追加 -->\n' > docs/templates/entry/00.5-communication.md
-  printf '# <__CHANGE_ID__> spec\n- REQ-001: tbd\n' > docs/templates/entry/01-spec.md
-  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/templates/entry/02-code-impact-analysis.md
-  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
-  printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填\n' > docs/templates/entry/03.5-tasks.md
-  printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
+  seed_entry_templates intent '' comm '<!-- 标记待追加 -->' '' '' ''
   scripts/new-change CHG-955 --risk L1 >/dev/null 2>&1
   report "T42 wave1-only three files" 3 "$(ls docs/changes/CHG-955/*.md docs/changes/CHG-955/*.json 2>/dev/null | wc -l | tr -d ' ')"
   out=$(scripts/new-change CHG-955 --risk L1 2>&1 || true)
@@ -2842,15 +2850,7 @@ if [[ -s "$GATE44_SRC" ]]; then
   cp "$GATE44_SRC" scripts/agent-gate
   cp "$NC44_SRC" scripts/new-change
   chmod +x scripts/agent-gate scripts/new-change
-  mkdir -p docs/templates/entry
-  printf '# <__CHANGE_ID__> intent\n## 预期结果\n## 开放问题\n' > docs/templates/entry/00-intent.md
-  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
-  printf '# <__CHANGE_ID__> comm\n## 用户整体确认记录\n' > docs/templates/entry/00.5-communication.md
-  printf '# <__CHANGE_ID__> spec\n- REQ-001: tbd\n' > docs/templates/entry/01-spec.md
-  printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/templates/entry/02-code-impact-analysis.md
-  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
-  printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填\n' > docs/templates/entry/03.5-tasks.md
-  printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
+  seed_entry_templates intent '' comm '' '' '' ''
   seed_project_masters
   # TC-1052: CHG 轨——02 无历史相似检索节且无未命中声明 → E84；有声明 → 过
   seed_artifacts CHG-970 L1 claude/s-44
@@ -2885,16 +2885,7 @@ if [[ -s "$GATE44_SRC" ]]; then
   rm -rf docs/changes/CHG-973 docs/changes/CHG-974   # seed 专用目录会抢 change_dir 解析（独立目录永远优先）——只留批次形态
   mkdir -p docs/changes/BATCH-990944
   for f in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do : > "docs/changes/BATCH-990944/$f"; done
-  for id in CHG-973 CHG-974; do
-    printf '{"change_id":"%s","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' "$id" >> docs/changes/BATCH-990944/00-governance.json
-    printf '## %s\n## 问题\np\n## 预期结果\ne\n## 开放问题\no\n' "$id" >> docs/changes/BATCH-990944/00-intent.md
-    printf '## %s\n## 用户整体确认记录\n' "$id" >> docs/changes/BATCH-990944/00.5-communication.md
-    printf '## %s\nREQ-910: r\n' "$id" >> docs/changes/BATCH-990944/01-spec.md
-    printf '## %s\n### 业务影响\n### 技术影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> docs/changes/BATCH-990944/02-code-impact-analysis.md
-    printf '## %s\nDES-910 备选方案对比\n' "$id" >> docs/changes/BATCH-990944/03-modification-plan.md
-    printf '## %s\n直接实施\n' "$id" >> docs/changes/BATCH-990944/03.5-tasks.md
-    printf '## %s\nTC-910 SC-910 覆盖维度\n' "$id" >> docs/changes/BATCH-990944/04-test-scripts.md
-  done
+  for id in CHG-973 CHG-974; do seed_batch_member docs/changes/BATCH-990944 "$id"; done
   out=$(scripts/agent-gate begin CHG-973 2>&1 || true)
   check_output "T44 own anchor with empty confirmation refused (E83)" "GATE-E83" "$out"
   # TC-1055: confirm_ok 兄弟名单外溢负例（v3.54 收口）——兄弟有确认、本成员无 → wave2 仍拒

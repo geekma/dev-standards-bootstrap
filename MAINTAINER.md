@@ -194,6 +194,7 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.57.0** | **R3 TOP13 减法余项（CHG-071，REQ-1007，纯减法零语义变化）**：tests 双 helper（entry 模板七参数化/T44 批次循环）+ gate help 段指针化 + E85/E82 `sig_head` 共享 + AGENTS/DS/模板叙事指针化；延伸发现并入 R26-R28 注册表路径纠偏（CHG-070 根 AGENTS.md 指针壳遮蔽 T39 解析）。`--upgrade` 零行为变化。**回填义务：无**。golden 537/源层 401 不变 |
 | **v3.56.1** | **A6 族 CI soft 化（CHG-070，用户裁定方案 b）**：CI 恒红根因=docs/* 忽略裁定 vs A6 断言结构性冲突；A6a/b/c 并入 soft 桶（本地恒硬），docs/ 忽略保持。**`--upgrade` 零分发变化**。**回填义务：无**。golden 537/源层 401（baseline 400）不变 |
 | **v3.56.0** | **07 评审署名/溯源机校（CHG-069，REQ-1005）**：GATE-E85（07 必含 §2.1.7 签名+task- 可追溯子任务 id；07 缺席不外溢）——自评冒充评审的机制化闭环（本轮执行违规实证）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个交付变更 07 补签名+task id。golden 534→537（T46×3 断言），源层 401（baseline 400）；A11 166,111B（余量 1,825B，09 勘误节为准） |
 | **v3.55.0** | **治理脚本单源化批（CHG-068，FU-904 全做）**：require_section_or_decl（E80/81/84 形状单源）+check-confirm 子命令（E83 语义单源 exit 0/1/2，NC-E10）+append_diag_lines（夹具收敛）+adapter gitignore 提示行。**`--upgrade` 带走 agent-gate/new-change/install-hook-adapter**。**回填义务：无**。golden 530→534，源层 400；FU-904 全闭合 |

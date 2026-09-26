@@ -94,6 +94,12 @@ is_batch_dir() { # <dir> -> 0 if it is a BATCH-YYYYMMDD directory
 # resolver and the scanners can never disagree about what an anchor is.
 anchor_re() { printf '^##[[:space:]]+%s([[:space:]]|$)' "$1"; }
 
+# §2.1.7 signature regex head, shared by GATE-E85 (07-review-report) and
+# GATE-E82 (专家评审记录): `platform / model / <trailing id>` with spaced
+# slashes. Second real use case extracted (CHG-071, CHG-068 single-source
+# precedent); the trailing id pattern and the die strings stay per-gate.
+sig_head='[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / '
+
 # The one place that parses anchors out of a file (see anchor_re for the shape).
 anchors_in_file() { # <file> -> ids, one per line
   [[ -f "$1" ]] || return 0
@@ -642,7 +648,7 @@ validate_delivery() { # change-id
     # (`- 评审主体：…`), which an ASCII-anchored pattern cannot match. The
     # quote-citation false-positive surface is accepted at the E82 precedent
     # (low risk; B-layer 评审结论 + provenance backstop).
-    grep -Eq '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / (task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)' "$d/07-review-report.md" \
+    grep -Eq "${sig_head}(task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)" "$d/07-review-report.md" \
       || die "GATE-E85: $d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
   fi
   # Every executed stage must leave an Observation record (verification
@@ -693,7 +699,7 @@ validate_delivery() { # change-id
     # slashes — paths (docs/x/y.md), URLs (https://...) and compact a/b/c
     # strings do NOT match (review finding: evidence paths inside the section
     # must not satisfy the signature check).
-    echo "$sigsec" | grep -Eq '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / [A-Za-z0-9_-]+' \
+    echo "$sigsec" | grep -Eq "${sig_head}[A-Za-z0-9_-]+" \
       || die "GATE-E82: $d/$sigf 专家评审记录 section lacks an agent signature (§2.1.7 'platform / model / task') — standards §2.2 two-batch rule; renumbered from E52 in v3.48.1, CHG-060 (E52 stays with the declaration-only stub check, whose code is pinned by T30/T37)"
   done
   local pf
@@ -1404,14 +1410,11 @@ recorded in 09「重要上下文」. No water file (no hook client) = check skip
 
 Configuration (v3.15.0): directory ROOTS come from the `paths:` block of
 .agent-governance.yml (docs / scripts / tests / githooks), each overridable by
-AGENT_GUARD_<KEY>_DIR. Every built-in default is the historical hardcoded value,
-so a repo that configures nothing behaves exactly as before.
-change_root / bugs_root keep AGENT_GUARD_CHANGE_ROOT / AGENT_GUARD_BUGS_ROOT and
-default to <docs>/changes and <docs>/bugs. Not configurable, on purpose:
-.github/ (the platform mandates the location) and the contract names (AGENTS.md,
-the gate filename, the fifteen change artifacts, the six defect artifacts, the
-required check name) — they are what makes a repo comparable to every other repo
-using this package.
+AGENT_GUARD_<KEY>_DIR; change_root / bugs_root keep AGENT_GUARD_CHANGE_ROOT /
+AGENT_GUARD_BUGS_ROOT (defaults <docs>/changes and <docs>/bugs). Every built-in
+default is the historical hardcoded value. Not configurable, on purpose:
+`.github/` and the contract names — rationale lives in DS 不可配置项 (the same
+single source cited in the path-roots header comment above).
 EOF
     ;;
   *) die "GATE-E79: unknown command '$command'" ;;
