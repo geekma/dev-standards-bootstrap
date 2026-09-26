@@ -661,7 +661,7 @@ at_least "A16 upgrade blocks on dirty target (CHG-015)" 1 "$ROOT/scripts/bootstr
 
 # A17 路径根可配置锚点（v3.15.0）——防两个反向回退：
 #   ① 参数化回退：又变回硬编码（目标仓库换根后门禁按默认根找文件 → 静默错位）；
-#   ② 过度参数化：把 AGENTS.md / 12 件产物名 / 六件套名也做成可配 →
+#   ② 过度参数化：把 AGENTS.md / 15 件产物名 / 六件套名也做成可配 →
 #      跨仓逐文件比对与"装一次迁移任意仓库"解体。
 #   形态锚点（grep -c）而非行为断言：行为由 run-tests T14 在真仓库里端到端验证。
 GOV_YML_TPL="$ROOT/resources/templates/agent-governance.yml"

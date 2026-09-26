@@ -184,7 +184,7 @@ report "begin rejects missing 00-intent.md" 2 $?
 
 printf '## 问题\nx\n## 预期结果\ny\n## 开放问题\nz\n' > docs/changes/CHG-100/00-intent.md
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
-report "begin accepts seven complete artifacts (L1)" 0 $?
+report "begin accepts eight complete artifacts (L1)" 0 $?
 
 # ------------------------------------------------- T1b A 层内容校验（§2.5）
 new_repo

@@ -20,13 +20,10 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "GATE-E01: run ins
 cd "$repo_root"
 
 # --- path roots (v3.15.0) ---------------------------------------------------
-# Directory ROOTS are configurable; each built-in default IS the historical
-# hardcoded value, so a repo without a `paths:` block behaves exactly as before.
-# Precedence: AGENT_GUARD_<KEY>_DIR env > .agent-governance.yml > built-in default.
-# Only roots are configurable. Contract names (AGENTS.md, the gate filename, the
-# fifteen change artifacts (v3.52.0), the six defect artifacts, the required-check name) are
-# deliberately NOT configurable: making them configurable would break cross-repo
-# comparison and migration, which is the point of this package.
+# Roots are configurable (env > yml > built-in default == the historical
+# hardcoded value: zero regression for repos without `paths:`). Contract names
+# and `.github/` are deliberately NOT configurable — rationale lives in DS
+# 不可配置项; duplicating it here rotted twice already.
 cfg_path() { # key default
   local k="$1" d="$2" v=""
   if [[ -f ".agent-governance.yml" ]]; then
@@ -40,11 +37,8 @@ docs_dir="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
 scripts_dir="${AGENT_GUARD_SCRIPTS_DIR:-$(cfg_path scripts scripts)}"
 tests_dir="${AGENT_GUARD_TESTS_DIR:-$(cfg_path tests tests)}"
 githooks_dir="${AGENT_GUARD_GITHOOKS_DIR:-$(cfg_path githooks .githooks)}"
-# `.github/` is deliberately NOT configurable: GitHub only reads workflows from
-# .github/workflows and PR templates from .github/ — renaming it silently kills
-# the pipeline, so a knob there would be a lie.
-# change_root / bugs_root keep their own keys and env vars; their default is
-# derived from the docs root, which is what the shipped config documents.
+# change_root / bugs_root keep their own keys and env vars (defaults derived
+# from the docs root, as the shipped config documents).
 change_root="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$docs_dir/changes")}"
 bugs_root="${AGENT_GUARD_BUGS_ROOT:-$(cfg_path bugs_root "$docs_dir/bugs")}"
 # regex-safe forms for the path-classification tests below (defaults contain a
@@ -644,6 +638,10 @@ validate_delivery() { # change-id
   # Absent report: legitimate at any risk level (not just L0 minimal set).
   # Single die point keeps the die-code domain unique (T41).
   if [[ -e "$d/07-review-report.md" ]] && [[ -s "$d/07-review-report.md" ]]; then
+    # Not line-anchored on purpose: signature lines carry CJK prefixes
+    # (`- 评审主体：…`), which an ASCII-anchored pattern cannot match. The
+    # quote-citation false-positive surface is accepted at the E82 precedent
+    # (low risk; B-layer 评审结论 + provenance backstop).
     grep -Eq '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / (task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)' "$d/07-review-report.md" \
       || die "GATE-E85: $d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
   fi
