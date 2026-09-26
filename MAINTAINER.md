@@ -194,6 +194,7 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.56.1** | **A6 族 CI soft 化（CHG-070，用户裁定方案 b）**：CI 恒红根因=docs/* 忽略裁定 vs A6 断言结构性冲突；A6a/b/c 并入 soft 桶（本地恒硬），docs/ 忽略保持。**`--upgrade` 零分发变化**。**回填义务：无**。golden 537/源层 401（baseline 400）不变 |
 | **v3.56.0** | **07 评审署名/溯源机校（CHG-069，REQ-1005）**：GATE-E85（07 必含 §2.1.7 签名+task- 可追溯子任务 id；07 缺席不外溢）——自评冒充评审的机制化闭环（本轮执行违规实证）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个交付变更 07 补签名+task id。golden 534→537（T46×3 断言），源层 401（baseline 400）；A11 166,111B（余量 1,825B，09 勘误节为准） |
 | **v3.55.0** | **治理脚本单源化批（CHG-068，FU-904 全做）**：require_section_or_decl（E80/81/84 形状单源）+check-confirm 子命令（E83 语义单源 exit 0/1/2，NC-E10）+append_diag_lines（夹具收敛）+adapter gitignore 提示行。**`--upgrade` 带走 agent-gate/new-change/install-hook-adapter**。**回填义务：无**。golden 530→534，源层 400；FU-904 全闭合 |
 | **v3.54.0** | **历史相似检索机校+防回归补测+减法收尾+FU-903 关闭（CHG-067，用户裁定）**：GATE-E84（02/01-diagnosis 历史相似检索 A 层机校）+TC-1050/1051（F5 豁免执法面+自锚点空记录防回归）+DS 减法 −~900B；FU-903 关闭（SLOG 追加式冻结政策）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个新变更 02/01-diagnosis 补节或声明行。golden 521→528（T44×8），源层 400（baseline 399）；A11 165,727B（余量 2,209B）；收口再审计：P2×2（confirm_ok 外溢 bug+解析顺序指针落空）修复+P3 对齐×5+FU-904 登记（helper 合并等候选待裁定） |
@@ -262,3 +263,15 @@ grep -rnE 'gated-defect-fix|verify-dev-standards-install' scripts/ tests/ SKILL.
 
 > 判定口径（2026-09-16 全项目 review，**两轮收敛**）：本节初版写"全仓 grep 零命中是正确状态"——被**本文件自身的举例**证伪；第二版改成"只应命中解释性文字，**且仅在 MAINTAINER.md**"——**仍不成立**：随分发的 `resources/DEVELOPMENT_STANDARDS.md`「Agent 自进化与派生资产」节当时也举例了两个派生名（该举例已于 v3.21.2 删除，概念保留、名字不留）。**结论：口径必须按"面"分**——解释性文字可以有（本文件 + `docs/review/` 的历史评审；实测命中集合还包括 `.workbuddy*/memory` 的会话笔记，它们被 `.gitignore` 忽略、不进仓库，同属解释性面），**分发载荷（`resources/**`）与可执行面（`scripts/`、`tests/`、`SKILL.md`、安装清单）必须零命中**。
 > 注：脚本内用 `grep -E` 而非 `\|` 交替——BSD grep 的 BRE 不支持 `\|`，本机实测恒空。
+
+## 9. 源仓/目标仓边界（source vs target separation，CHG-070 立规）
+
+**铁律：源仓自身的开发变更不得混入、更不得改变下发给目标仓的通用能力语义。** 评估任何源仓变更前先回答一个问题：**"这次改的是源仓自身，还是 skill 通用能力？"** 两类变更的评估准绳、影响面、CI 语义完全不同：
+
+| 维度 | 源仓自身（source-only） | 通用能力（shipped payload） |
+|---|---|---|
+| 治理产物 | `docs/changes`、`docs/bugs`、`bugfix-log.md` **本地存在、不入库**（`docs/*` 忽略，CHG-017 裁定 2026-09-16 维持） | 目标仓的 `docs/` 是 skill 规定的能力面：**必须入库**，由 shipped 执法面（gate begin/stop + `audit-docs-consistency.sh` + CI）保证 |
+| 审计 | `tests/audit-standards-src.sh` 只跑源仓（不下发）；其断言可依赖/豁免源仓本地态（如 A6 族 soft 化，CHG-070） | 目标仓执法 = gate + `audit-docs-consistency.sh` G1–G10 + `.github/workflows/agent-governance.yml`，**不受源仓 audit 断言调整波及** |
+| 变更判据 | 改 CI/忽略/源层审计=源仓自身事务（如 A6 soft 化只因此成立） | 改 `resources/**`、gate 模板、规范正文=通用能力变更，必须以目标仓视角独立评估（所有目标仓可重现的行为） |
+
+**反面教材（本仓实证）**：CI source-audit 恒红五日（2026-09-22 起）——根因即把"源仓 docs/ 不入库"（源仓自身事务）与"A6 断言"（源层审计断言）耦合后未按本节区分处置；修复时若误将 soft 桶推广到 shipped 面即违反本铁律。**自查命令**：改动涉及 `resources/**` 或规范正文时，任何"仅源仓如此"的理由都不可用。

@@ -457,12 +457,24 @@ REPO_CHANGES="$ROOT/docs/changes"
 REPO_BUGS="$ROOT/docs/bugs"
 
 # A6a bugfix-log.md 存在且含真实 BUG 条目（非占位模板）
+# v3.56.1：A6 族断言依赖 docs/ 磁盘态，而源仓裁定 docs/* 忽略（CHG-017/FU-032，
+# .gitignore:37 注释）→ CI checkout 永远缺这些文件，A6a/b/c 结构性必红——并入
+# REQ-965 soft 桶（CI 降警，本地恒硬），与 A3/A3c/A10 同款。
 if [[ -f "$REPO_BFLOG" ]]; then
   bug_count=$(grep -cE '^### BUG-[0-9]' "$REPO_BFLOG" || true)
-  report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
-    "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
+  if [[ -n "$SOFT" ]]; then
+    report_soft "A6a repo bugfix-log has real BUG entries (not placeholder; CI soft)" 1 \
+      "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
+  else
+    report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
+      "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
+  fi
 else
-  report "A6a repo bugfix-log exists" 1 0
+  if [[ -n "$SOFT" ]]; then
+    report_soft "A6a repo bugfix-log exists (CI soft)" 1 0
+  else
+    report "A6a repo bugfix-log exists" 1 0
+  fi
 fi
 
 # A6b docs/changes/ 下每个 CHG 目录至少含 00-intent.md（门禁 1 最低要求）
@@ -475,7 +487,11 @@ if [[ -n "$chg_dirs" ]]; then
 else
   chg_missing_intent=1
 fi
-report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
+if [[ -n "$SOFT" ]]; then
+  report_soft "A6b every CHG dir has 00-intent.md (gate 1 minimum; CI soft)" 0 "$chg_missing_intent"
+else
+  report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
+fi
 
 # A6c docs/changes/ 下 CHG 编号连续递增（CHG-001, CHG-002, ... 无跳号）
 # BUG-004 修复：编号去前缀后保留前导零（008），bash 算术按**八进制**解析 →
@@ -502,10 +518,18 @@ if [[ -n "$chg_nums" ]]; then
     fi
     chg_prev=$n
   done
-  report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
+  if [[ -n "$SOFT" ]]; then
+    report_soft "A6c CHG numbering continuous (no gaps; CI soft)" 0 "$chg_gap"
+  else
+    report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
+  fi
   a6c_ran=1
 else
-  report "A6c CHG numbering continuous (no gaps)" 1 0
+  if [[ -n "$SOFT" ]]; then
+    report_soft "A6c CHG numbering continuous (no gaps; CI soft)" 1 0
+  else
+    report "A6c CHG numbering continuous (no gaps)" 1 0
+  fi
   a6c_ran=1
 fi
 # BUG-004 放大器守卫：A10 基线只记**断言总数**、不记**断言名** → 任一断言被"整块
