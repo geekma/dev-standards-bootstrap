@@ -257,8 +257,8 @@ report "bugfix-log placeholder not matched by ^### BUG-[0-9]" 0 "$(grep -cE '^##
 report "pipeline 02 skeleton free of A-layer keyword" 0 "$(grep_count "$PIPE" "隐式链路三向遍历")"
 
 # ---------- 00 管线件落点（R-A 轮） ----------
-report "2.15 table has 00-intent row"        1 "$(grep_count "$STD" '\`00-intent.md\`（变更管线入口，§2.17）')"
-report "2.15 table has 00-governance row"    1 "$(grep_count "$STD" '\`00-governance.json\`（§2.17）')"
+report "2.15 table has 00-intent row"        1 "$(grep_count "$STD" '`00-intent.md`（变更管线入口，§2.17）')"
+report "2.15 table has 00-governance row"    1 "$(grep_count "$STD" '`00-governance.json`（§2.17）')"
 report "2.16.5 table has pipeline-entry row" 1 "$(grep_count "$STD" '管线入口（§2.17）')"
 report "2.17 governance definition present"  1 "$(grep_count "$STD" '管线治理声明')"
 at_least "2.17 dual-root convention present" 1 "$STD" '产物目录双轨约定'
