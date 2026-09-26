@@ -84,5 +84,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.55.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.56.0_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

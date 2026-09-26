@@ -2290,7 +2290,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   # comma-joined batch governance (the §1.1 recommended shape): each member's
   # bug_ref must be extracted in isolation — no cross-member bleed
   mkdir -p docs/bugs/BUG-943 docs/bugs/BUG-944
-  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; append_diag_lines "docs/bugs/BUG-$b/01-diagnosis.md x"; done
+  for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; append_diag_lines "docs/bugs/BUG-$b/01-diagnosis.md"; done
   mkdir -p docs/changes/BATCH-990922
   printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
   seed_artifacts CHG-944 L0 claude/s-27
@@ -2914,6 +2914,35 @@ if [[ -s "$GATE44_SRC" ]]; then
   report "T44 check-confirm missing id exits 2 (non-die shape)" 2 $?
 else
   echo "SKIP T44: agent-gate absent — 跳过历史相似检索机校 golden cases"
+fi
+
+# ------------------------------------------------ T46 07 署名/溯源机校（v3.56.0，REQ-1005）
+GATE46_SRC="$ROOT/resources/templates/agent-gate.sh"
+if [[ -s "$GATE46_SRC" ]]; then
+  new_repo
+  cp "$GATE46_SRC" scripts/agent-gate
+  chmod +x scripts/agent-gate
+  seed_project_masters
+  # TC-1061: 07 含签名行+task- id → stop 过（顺序：先 begin——09 落盘即闭合 E72）
+  seed_artifacts CHG-980 L1 claude/s-46
+  scripts/agent-gate begin CHG-980 >/dev/null 2>&1
+  report "T46 fixture begins clean" 0 $?
+  printf '## CHG-980 评审\n\n- 评审主体：opencode / glm-5.3-flash / task-ses_f276b9bcfffeHnlaJLjs2W6isv\n- 结论：APPROVE\n' > docs/changes/CHG-980/07-review-report.md
+  printf '# coding\n实现记录\n' > docs/changes/CHG-980/04.5-coding-record.md
+  printf '# results\nTests run: 1, Failures: 0\n' > docs/changes/CHG-980/05-test-results.md
+  printf '# deploy\n未命中，不适用\n' > docs/changes/CHG-980/06.5-deployment-config.md
+  printf '# delivery\n\n### 遗留\n- FU-980：T46 夹具（无实际遗留项，占位满足 E46 形态）\n' > docs/changes/CHG-980/06-delivery-summary.md
+  printf '# changelog\n\n## CHG-980\n#### 项目总册回填清单\n- [x] P00 未命中（T46 夹具）\n- [x] P01 未命中（T46 夹具）\n- [x] P02 未命中（T46 夹具）\n- [x] P03 未命中（T46 夹具）\n- [x] P04 未命中（T46 夹具）\n- [x] P05 未命中（T46 夹具）\n- [x] P06 未命中（T46 夹具）\n- [x] P07 未命中（T46 夹具）\n- [x] P08 未命中（T46 夹具）\n- [x] P09 未命中（T46 夹具）\n- [x] P10 已回填（T46 夹具行）\n- [x] P11 已回填（T46 夹具行）\n#### 执行记录（ReAct）\nObservation\n' > docs/changes/CHG-980/09-changelog.md
+  printf '#!/usr/bin/env bash\n' > scripts/probe-980.sh   # stop 的 working_code_changed 前提
+  bash "$ROOT/resources/templates/stamp-provenance.sh" --all CHG-980 >/dev/null 2>&1   # E19 溯源章
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  report "T46 stop passes with signature+task id" 0 $?
+  # TC-1062: 签名缺 task- id → E85 拒
+  sed -i '' 's|task-ses_f276b9bcfffeHnlaJLjs2W6isv|self-reviewed|' docs/changes/CHG-980/07-review-report.md 2>/dev/null || sed -i 's|task-ses_f276b9bcfffeHnlaJLjs2W6isv|self-reviewed|' docs/changes/CHG-980/07-review-report.md
+  out=$(scripts/agent-gate --stage stop 2>&1 || true)
+  check_output "T46 stop refuses 07 without traceable task id (E85)" "GATE-E85" "$out"
+else
+  echo "SKIP T46: agent-gate absent — 跳过 07 署名机校 golden cases"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

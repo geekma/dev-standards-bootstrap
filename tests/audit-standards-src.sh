@@ -932,6 +932,7 @@ at_least "A36 standards pins stage-8 backfill-check row (v3.53.0)" 1 "$STD" '分
 at_least "A36 standards pins the bug-track machine checkpoint (FU-902)" 1 "$STD" '缺陷轨机校点=绑定 CHG 的 begin'
 at_least "A36 AGENTS carries the staged-review hard directive" 1 "$ROOT/resources/AGENTS.md" '禁止"只做阶段 8 终审"的收敛执行'
 at_least "A37 gate checks history-similarity search (v3.54.0, REQ-998)" 1 "$ROOT/resources/templates/agent-gate.sh" 'GATE-E84'
+at_least "A38 gate checks review-report signature+task id (v3.56.0, REQ-1005)" 1 "$ROOT/resources/templates/agent-gate.sh" 'GATE-E85'
 at_least "A25 standards reverses the v3.22.0 no-batch decision" 1 "$STD" '缺陷六件套自 v3.35.0 起同样按天入批'
 at_least "A25 standards flattens the bug batch (v3.36.0)" 1 "$STD" '扁平化'
 at_least "A25 standards pins the flat anchor form" 1 "$STD" '## <BUG-xxx>'

@@ -335,7 +335,7 @@ validate_artifact_content() {
   # v3.54.0 (CHG-067, REQ-998): stage-2 历史相似检索 step machine-checked like
   # its sibling 延伸发现 (E80) — section heading OR an explicit
   # 未命中（<检索词>） declaration line. Single die point keeps T41 uniqueness.
-  require_section_or_decl "$d/02-code-impact-analysis.md" "历史相似检索" '未命中（[^）]*检索[^）]*）' \
+  require_section_or_decl "$d/02-code-impact-analysis.md" "历史相似检索" '未命中（[^）]+）' \
     || die "GATE-E84: $d/02-code-impact-analysis.md missing 历史相似检索 section (or 未命中（检索词） declaration) (A-layer, standards §2.5 stage 2, v3.54.0 CHG-067)"
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
@@ -497,7 +497,7 @@ validate_governance_state() {
       # v3.48.0 (CHG-058): BUG 轨延伸发现即时落盘（文件级机校；分节质量由评审 B 层核对）
       # v3.54.0 (CHG-067): same family covers 历史相似检索 (E84 semantics, BUG track)
       require_section_or_decl "$bug_gdir/01-diagnosis.md" "延伸发现" 2>/dev/null \
-        && require_section_or_decl "$bug_gdir/01-diagnosis.md" "历史相似检索" '未命中（[^）]*检索[^）]*）' 2>/dev/null \
+        && require_section_or_decl "$bug_gdir/01-diagnosis.md" "历史相似检索" '未命中（[^）]+）' 2>/dev/null \
         || die "GATE-E81: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现/历史相似检索 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060; 历史相似检索 added v3.54.0 CHG-067)"
     done
   fi
@@ -636,6 +636,17 @@ validate_delivery() { # change-id
     stub_guard "$d/05-test-results.md" "$risk" "$id"
   fi
   [[ -s "$d/09-changelog.md" ]] || die "GATE-E49: cannot finish: missing changelog $d/09-changelog.md"
+  # v3.56.0 (CHG-069, REQ-1005): when a review report exists it must carry a
+  # §2.1.7 signature line whose third token is a traceable subtask id
+  # (`task-…` or `ses-…`/`ses_…` session id — DS §2.1 rule 7 allows either).
+  # A report without one is a self-review posing as an independent review
+  # (BATCH-20260925 execution deviation, closed by the backfill review).
+  # Absent report: legitimate at any risk level (not just L0 minimal set).
+  # Single die point keeps the die-code domain unique (T41).
+  if [[ -e "$d/07-review-report.md" ]] && [[ -s "$d/07-review-report.md" ]]; then
+    grep -Eq '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / (task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)' "$d/07-review-report.md" \
+      || die "GATE-E85: $d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
+  fi
   # Every executed stage must leave an Observation record (verification
   # command + actual output) in the changelog.
   grep -q "Observation" "$d/09-changelog.md" \
@@ -1277,8 +1288,8 @@ case "$command" in
     # (reason on stderr); 2 = usage error. Deliberately NOT die-shaped —
     # keeps the GATE-Exx die domain unique (T41).
     id="${2:-}"
-    if [[ -z "$id" ]]; then
-      printf 'agent-gate: check-confirm requires a change id\n' >&2
+    if [[ -z "$id" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+      printf 'agent-gate: check-confirm requires a valid change id (FU-023 shape; probe semantics: "is the confirmation in place" — NOT "would the gate pass", which also honors AGENT_GUARD_ALLOW_UNCONFIRMED)\n' >&2
       exit 2
     fi
     d=$(change_dir "$id")

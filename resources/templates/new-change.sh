@@ -99,7 +99,7 @@ if [[ "$use_batch" == 1 ]]; then
       grep -qE "^##[[:space:]]+$id([[:space:]]|$)" "$batch/$doc" 2>/dev/null || wave2_missing+=("$doc")
     done
     if [[ ${#wave2_missing[@]} -eq 0 ]]; then
-      die "NC-E07: change $id is fully scaffolded in $batch — open a new change id"
+      die "NC-E07: change $id is fully scaffolded in $batch — open a new change id (upgrading repo with pre-v3.52 members: hand-add the missing 00.5 anchor sections first)"
     fi
   else
     wave2_missing=("${wave2_docs[@]}")
@@ -126,7 +126,7 @@ if [[ "$use_batch" == 1 ]]; then
       if [[ "${scaffolded_wave1:-0}" == 1 ]]; then
         echo "new-change: wave2 withheld — record the user overall confirmation in $batch/00.5-communication.md (确认状态：已整体确认 or L0 single-line declaration, §2.17.2d), then re-run scripts/new-change $id --risk $risk" >&2
       else
-        die "NC-E09: user-overall-confirmation not recorded in $batch/00.5-communication.md (## $id) — communication-first gate (standards §2.17.2d): present the round-1 communication, get overall confirmation, record it (确认状态：已整体确认 or L0 single-line declaration), then re-run scripts/new-change $id --risk $risk; --allow-unconfirmed is the explicit automation bypass"
+        die "NC-E09: user-overall-confirmation not recorded in $batch/00.5-communication.md (## $id) — communication-first gate (standards §2.17.2d): present the round-1 communication, get overall confirmation, record it (确认状态：已整体确认 or L0 single-line declaration), then re-run scripts/new-change $id --risk $risk; --allow-unconfirmed is the explicit automation bypass; upgrading repo with pre-v3.52 batch members: hand-add the 00.5 anchor section to the shared file"
       fi
     else
       die "NC-E10: check-confirm failed (rc=$confirm_gate_rc) — see scripts/agent-gate output above"
@@ -175,7 +175,7 @@ else
       if [[ "${scaffolded_wave1:-0}" == 1 ]]; then
         echo "new-change: wave2 withheld — record the user overall confirmation in $d/00.5-communication.md (确认状态：已整体确认 or L0 single-line declaration, §2.17.2d), then re-run scripts/new-change $id --risk $risk" >&2
       else
-        die "NC-E09: user-overall-confirmation not recorded in $d/00.5-communication.md — communication-first gate (standards §2.17.2d): present the round-1 communication, get overall confirmation, record it (确认状态：已整体确认 or L0 single-line declaration), then re-run scripts/new-change $id --risk $risk; --allow-unconfirmed is the explicit automation bypass"
+        die "NC-E09: user-overall-confirmation not recorded in $d/00.5-communication.md — communication-first gate (standards §2.17.2d): present the round-1 communication, get overall confirmation, record it (确认状态：已整体确认 or L0 single-line declaration), then re-run scripts/new-change $id --risk $risk; --allow-unconfirmed is the explicit automation bypass; upgrading repo with pre-v3.52 batch members: hand-add the 00.5 anchor section to the shared file"
       fi
     else
       die "NC-E10: check-confirm failed (rc=$confirm_gate_rc) — see scripts/agent-gate output above"

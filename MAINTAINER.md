@@ -194,6 +194,7 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.56.0** | **07 评审署名/溯源机校（CHG-069，REQ-1005）**：GATE-E85（07 必含 §2.1.7 签名+task- 可追溯子任务 id；07 缺席不外溢）——自评冒充评审的机制化闭环（本轮执行违规实证）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个交付变更 07 补签名+task id。golden 534→537（T46×3 断言），源层 401（baseline 400）；A11 166,111B（余量 1,825B，09 勘误节为准） |
 | **v3.55.0** | **治理脚本单源化批（CHG-068，FU-904 全做）**：require_section_or_decl（E80/81/84 形状单源）+check-confirm 子命令（E83 语义单源 exit 0/1/2，NC-E10）+append_diag_lines（夹具收敛）+adapter gitignore 提示行。**`--upgrade` 带走 agent-gate/new-change/install-hook-adapter**。**回填义务：无**。golden 530→534，源层 400；FU-904 全闭合 |
 | **v3.54.0** | **历史相似检索机校+防回归补测+减法收尾+FU-903 关闭（CHG-067，用户裁定）**：GATE-E84（02/01-diagnosis 历史相似检索 A 层机校）+TC-1050/1051（F5 豁免执法面+自锚点空记录防回归）+DS 减法 −~900B；FU-903 关闭（SLOG 追加式冻结政策）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个新变更 02/01-diagnosis 补节或声明行。golden 521→528（T44×8），源层 400（baseline 399）；A11 165,727B（余量 2,209B）；收口再审计：P2×2（confirm_ok 外溢 bug+解析顺序指针落空）修复+P3 对齐×5+FU-904 登记（helper 合并等候选待裁定） |
 | **v3.53.0** | **分阶段评审留痕 + 减法批（CHG-065/066，用户裁定"全部执行"）**：阶段 1-5 B 层评审必须独立子代理+07「分阶段评审」节留痕（L0/L1 单行声明合并评）；FU-902 方案 b（缺陷轨机校点=绑定 CHG begin）；SKILL −5.6KB/gate −1.9KB/DS 批次行 −2.3KB/AGENTS −1.3KB（pin 全存活）；A36×4+T43×5+baseline 398。**`--upgrade` 带走规范/AGENTS/SKILL/agent-gate**。**回填义务（一次性）**：升级后首个新变更 07 补分阶段节或声明。golden 516→521，源层 399（baseline 398）；A11 166,099B（余量 1,837B）；FU-903 登记（SLOG 政策门延后） |
