@@ -141,6 +141,12 @@ fi
 # BATCH-YYYYMMDD/, addressed by `## <change-id>` anchors. Resolve the directory
 # the same way the gate does, so the remedy the gate prints
 # (`scripts/stamp-provenance.sh <CHG-id>`) keeps working for batch members.
+# ANCHOR PIN (v3.58.0, REQ-1008): the `## <id>` anchor regex below is a
+# deliberate single-line copy of the gate's anchor_re() shape
+# (`^##[[:space:]]+<id>([[:space:]]|$)`; agent-gate.sh keeps the canonical
+# def). Keep them byte-identical — changing one without the other desyncs
+# gate validation from stamping (single-file zero-dep policy blocks an
+# import; review B-F6 accepted the copy with this pin).
 resolve_dir() { # <change-id> -> directory
   # NOTE (bash 3.2): `local` expands every word BEFORE assigning any of them, so
   # a second assignment may not reference the first. Keep declarations split.

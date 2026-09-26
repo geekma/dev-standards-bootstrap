@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.57.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.58.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -338,7 +338,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.57.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.58.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── methodologies/
@@ -358,7 +358,6 @@ dev-standards-bootstrap/
         ├── check-standards-compliance.sh   # CI 合规检查脚本
         ├── agent-gate.sh                   # pre-write / commit-msg / Git / CI 共享校验器（+ metrics、+ 变更批次解析）
         ├── uninstall-standards.sh          # 一键卸载：三层分类 + 标记核验删除 + 共享资产备份移动（v3.43.0）
-        ├── intent.md                       # 每次变更 00-intent.md 的管线入口模板（不下发——由 Agent 按变更生成）
         ├── coding-record.md                # docs/changes/<CHG>/04.5-coding-record.md 的编码记录模板（不下发——由 Agent 按变更生成）
         ├── stamp-provenance.sh             # 溯源盖章脚本：从运行环境读作者/主机/时间（v3.17.0；批感知 v3.18.0；--all v3.22.0）
         ├── bugfix-log.md                   # 仓库级缺陷修复索引模板（复制到 docs/bugfix-log.md）
@@ -405,7 +404,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.57.0 | **最后更新：** 2026-09-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.58.0 | **最后更新：** 2026-09-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

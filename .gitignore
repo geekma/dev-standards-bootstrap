@@ -52,3 +52,7 @@ cover-image/
 # v3.39.0（CHG-043）：两份公开对比文档发布在仓库根目录（CAPABILITY-COMPARISON.md / 能力对比分析.md），
 #   不受本行影响；docs/ 治理产物忽略语义与此前的 `docs` 行为逐字节一致。
 docs/*
+# v3.58.0（CHG-072）：源仓本地 hook 适配器工作区（install-hook-adapter 自适应生成；目标仓才入库）
+.claude/
+.opencode/
+.agent-state/

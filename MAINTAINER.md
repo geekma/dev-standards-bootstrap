@@ -153,6 +153,10 @@ v3.17.0 的重校准记录：v3.16.0 的改动已把 120 KiB 上界的余量吃�
 
 **顺序坑**：抬高上界后必须重跑审计，确认 A11 通过且没有掩盖别的失败。
 
+**软预警档（v3.58.0，REQ-1008）**：audit 新增 `A11s`——DS ≥163,840B（硬上界 −4KiB）即 soft warn（`report_soft` 桶，A3/A6/A10 同构）。进预警区的动作=**先减法再新增**（巨行指针化/枚举收敛/死文件清理），禁止无对应重校准的硬挤。**持续减法条款（v3.58.0）**：每个 minor 版本交付前跑一次三线审计（语义/去重/机械，只读子代理），候选即发现即登记不积压（R3→CHG-071 清账、CHG-072 收口为先例）。
+
+**大文件体量台账（v3.58.0 实测口径）**：DS（A11 有界）；STANDARDS_CHANGELOG（FU-903 政策冻结，追加式）；run-tests（明示无界——测试可读性优先，helper 收敛尾量由 FU-906 跟踪）；audit-standards-src（明示无界——A10 基线+PART A/B 结构承载）；agent-gate / bootstrap / install-hook-adapter（明示无界——单文件零依赖部署契约）；MAINTAINER / README×2（明示无界——维护者文档）。上界类文件仅 DS 一件；新增 >40KB 文件须在本台账登记治理状态。
+
 ### 5.2 加一删一预算（减法机制，v3.40.0 CHG-048 / FU-106⑥）
 
 规范只加不减 = 无限膨胀。A11 上界是**体量**准绳（防无序回弹），本节是**条款数**准绳（防只进不出）：
@@ -190,14 +194,15 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 ## 7. 逐版本升级推送清单
 
-已经接入过的项目**不会自动更新**——需要用户再次调用本 Skill，走"检测已有文件 → 展示版本差异 → 询问是否升级"流程，或直接 `bash scripts/bootstrap.sh --upgrade <目标仓库>`。各版本新增/变更的补复制动作如下（**新条目置顶**）：
+已经接入过的项目**不会自动更新**——需要用户再次调用本 Skill，走"检测已有文件 → 展示版本差异 → 询问是否升级"流程，或直接 `bash scripts/bootstrap.sh --upgrade <目标仓库>`。各版本新增/变更的补复制动作如下（**新条目置顶**；**口径（v3.58.0 统一）：每行必含 CHG 号 + REQ 号（REQ 引用多个逗号列出）**；**TC 注册口径（v3.58.0）**：T 块号即注册单位，TC-xxxx 为用例名——v3.56.0 的 TC-1061/1062=T46（E85 三断言），此后新 TC 在 SLOG 行内点名）：
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.58.0** | **全项目 review 收口 + handoff 工具级硬拦 + 持续减法制度化（CHG-072，REQ-1008）**：bug×3（AGENTS L44 限定词/根 AGENTS.md 自述改真 FU-905 关闭/§7 口径）+ DS 九巨行指针化 + A11s 软预警档（≥163,840B soft warn）+ session-gate `check` 模式 + install-hook-adapter claude/opencode 工具级硬拦接线 + 持续减法条款/体量台账 + intent.md 删除 + A35 墓碑 + stamp ANCHOR PIN + FU-906~909。**`--upgrade` 带走规范/AGENTS/session-gate/install-hook-adapter/stamp-provenance**。**回填义务（一次性）**：重跑 install-hook-adapter。golden 537；源层 401（baseline 400）+1 soft（A11s 预警区） |
 | **v3.57.0** | **R3 TOP13 减法余项（CHG-071，REQ-1007，纯减法零语义变化）**：tests 双 helper（entry 模板七参数化/T44 批次循环）+ gate help 段指针化 + E85/E82 `sig_head` 共享 + AGENTS/DS/模板叙事指针化；延伸发现并入 R26-R28 注册表路径纠偏（CHG-070 根 AGENTS.md 指针壳遮蔽 T39 解析）。`--upgrade` 零行为变化。**回填义务：无**。golden 537/源层 401 不变 |
-| **v3.56.1** | **A6 族 CI soft 化（CHG-070，用户裁定方案 b）**：CI 恒红根因=docs/* 忽略裁定 vs A6 断言结构性冲突；A6a/b/c 并入 soft 桶（本地恒硬），docs/ 忽略保持。**`--upgrade` 零分发变化**。**回填义务：无**。golden 537/源层 401（baseline 400）不变 |
+| **v3.56.1** | **A6 族 CI soft 化（CHG-070，REQ-1006，用户裁定方案 b）**：CI 恒红根因=docs/* 忽略裁定 vs A6 断言结构性冲突；A6a/b/c 并入 soft 桶（本地恒硬），docs/ 忽略保持。**`--upgrade` 零分发变化**。**回填义务：无**。golden 537/源层 401（baseline 400）不变 |
 | **v3.56.0** | **07 评审署名/溯源机校（CHG-069，REQ-1005）**：GATE-E85（07 必含 §2.1.7 签名+task- 可追溯子任务 id；07 缺席不外溢）——自评冒充评审的机制化闭环（本轮执行违规实证）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个交付变更 07 补签名+task id。golden 534→537（T46×3 断言），源层 401（baseline 400）；A11 166,111B（余量 1,825B，09 勘误节为准） |
-| **v3.55.0** | **治理脚本单源化批（CHG-068，FU-904 全做）**：require_section_or_decl（E80/81/84 形状单源）+check-confirm 子命令（E83 语义单源 exit 0/1/2，NC-E10）+append_diag_lines（夹具收敛）+adapter gitignore 提示行。**`--upgrade` 带走 agent-gate/new-change/install-hook-adapter**。**回填义务：无**。golden 530→534，源层 400；FU-904 全闭合 |
+| **v3.55.0** | **治理脚本单源化批（CHG-068，REQ-1001~1004，FU-904 全做）**：require_section_or_decl（E80/81/84 形状单源）+check-confirm 子命令（E83 语义单源 exit 0/1/2，NC-E10）+append_diag_lines（夹具收敛）+adapter gitignore 提示行。**`--upgrade` 带走 agent-gate/new-change/install-hook-adapter**。**回填义务：无**。golden 530→534，源层 400；FU-904 全闭合 |
 | **v3.54.0** | **历史相似检索机校+防回归补测+减法收尾+FU-903 关闭（CHG-067，用户裁定）**：GATE-E84（02/01-diagnosis 历史相似检索 A 层机校）+TC-1050/1051（F5 豁免执法面+自锚点空记录防回归）+DS 减法 −~900B；FU-903 关闭（SLOG 追加式冻结政策）。**`--upgrade` 带走 agent-gate**。**回填义务（一次性）**：升级后首个新变更 02/01-diagnosis 补节或声明行。golden 521→528（T44×8），源层 400（baseline 399）；A11 165,727B（余量 2,209B）；收口再审计：P2×2（confirm_ok 外溢 bug+解析顺序指针落空）修复+P3 对齐×5+FU-904 登记（helper 合并等候选待裁定） |
 | **v3.53.0** | **分阶段评审留痕 + 减法批（CHG-065/066，用户裁定"全部执行"）**：阶段 1-5 B 层评审必须独立子代理+07「分阶段评审」节留痕（L0/L1 单行声明合并评）；FU-902 方案 b（缺陷轨机校点=绑定 CHG begin）；SKILL −5.6KB/gate −1.9KB/DS 批次行 −2.3KB/AGENTS −1.3KB（pin 全存活）；A36×4+T43×5+baseline 398。**`--upgrade` 带走规范/AGENTS/SKILL/agent-gate**。**回填义务（一次性）**：升级后首个新变更 07 补分阶段节或声明。golden 516→521，源层 399（baseline 398）；A11 166,099B（余量 1,837B）；FU-903 登记（SLOG 政策门延后） |
 | **v3.52.0** | **沟通先行门（CHG-064，用户指令 2026-09-25，三轮沟通裁定方案 B 独立产物）**：第 15 件契约产物 `00.5-communication.md`（Round-1 沟通稿+用户整体确认记录，§2.17.2d）——顺序铁律=深挖→沟通→**用户确认**→批量文档→编码→测试；begin required_docs 7→8+GATE-E83（批次按本变更锚点小节校验跑到下一兄弟锚点；L0 单行声明豁免；`AGENT_GUARD_ALLOW_UNCONFIRMED=1` 显式越）；new-change 两段式（wave1 三件→确认后补齐五件，NC-E09/`--allow-unconfirmed`）；CLAUSE_REGISTRY +R43；契约枚举 14→15 全链。**`--upgrade` 带走规范/AGENTS/两模板+entry 8 件/gate/new-change/bootstrap/注册表**。**回填义务（一次性）**：升级后首个新变更 begin 前补 00.5（L0 可单行声明）。golden 492→514（T42 新增+T25 适配+F2 负例），源层断言 395（pin 名更新：A25 八件/A26 15 件/主线串）；A11 167,089B（余量 847B——收尾 review 减法后；下版继续加一删一） |

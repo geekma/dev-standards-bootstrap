@@ -634,6 +634,9 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #      不是按当前体量贴合。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
 report "A11 standards body size <= 164KB (FU-017, recalibrated v3.43.0)" 1 "$([[ "$std_bytes" -le 167936 ]] && echo 1 || echo 0)"
+# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥163,840B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
+# 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
+report_soft "A11s standards body approaching hard cap (soft warn >= 163,840B)" 0 "$([[ "$std_bytes" -ge 163840 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
 report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '164 KB / 167,936 字节' "$ROOT/MAINTAINER.md")"
@@ -664,6 +667,10 @@ at_least "A33 bootstrap ships merge_managed" 1 "$ROOT/scripts/bootstrap.sh" 'mer
 # A34 安装清单用户改动检测（CHG-063 / REQ-987，全文件保留机制）
 at_least "A34 bootstrap ships manifest user-modified detection" 1 "$ROOT/scripts/bootstrap.sh" 'manifest_user_modified'
 at_least "A34 bootstrap manifest path pinned" 1 "$ROOT/scripts/bootstrap.sh" '.dev-standards-manifest'
+# A35 reserved tombstone (v3.58.0, REQ-1008): no assertion ever used this id —
+# the gap predates the v3.46 registry and had no tombstone (BATCH-20260926
+# review finding). Reserved so the gap stays visible; A36 resumes the
+# sequence below. Do not silently renumber A36+.
 
 # A12 Bug 诊断增强锚点（CHG-011 / REQ-057~058，依据 arXiv:2602.02475）
 at_least "A12 root-cause classification present (REQ-057)" 1 "$STD" '根因分类'

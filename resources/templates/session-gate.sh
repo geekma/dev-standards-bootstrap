@@ -20,9 +20,9 @@
 set -uo pipefail
 
 mode="${1:-}"
-case "$mode" in
-  start|idle|status|count) ;;
-  *) echo "usage: scripts/session-gate.sh start|idle|status|count turn|count tool <name|->" >&2; exit 2 ;;
+  case "$mode" in
+  start|idle|status|check|count) ;;
+  *) echo "usage: scripts/session-gate.sh start|idle|status|check|count turn|count tool <name|->" >&2; exit 2 ;;
 esac
 
 ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)
@@ -115,6 +115,22 @@ if [[ "$mode" == "count" ]]; then
       ;;
     *) echo "usage: scripts/session-gate.sh count turn|count tool <name|->" >&2; exit 2 ;;
   esac
+  exit 0
+fi
+
+if [[ "$mode" == "check" ]]; then
+  # v3.58.0 (REQ-1008): tool-level handoff hard stop, called by PreToolUse /
+  # tool.execute.before adapters (install-hook-adapter). Fail-closed only when
+  # a water file exists AND turns >= limit — uninstalled repos and fresh
+  # sessions are never blocked (exit 0). Override: AGENT_GUARD_SESSION_TURN_LIMIT.
+  if [[ -s "$WATER_FILE" ]]; then
+    t=$(sed -nE 's/.*"turns"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$WATER_FILE" | head -1)
+    limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
+    if [[ "${t:-0}" -ge "$limit" ]]; then
+      echo "session-gate: HARD STOP — ${t} turns >= ${limit} (§2.9.6): run /handoff, write the handoff doc, continue in a new session; AGENT_GUARD_SESSION_TURN_LIMIT=<n> re-arms (justification goes in 09 重要上下文)." >&2
+      exit 2
+    fi
+  fi
   exit 0
 fi
 

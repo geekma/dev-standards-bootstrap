@@ -97,6 +97,8 @@ ensure("Stop", {"hooks": [{"type": "command", "command": "scripts/agent-gate --s
 # v3.39.0（CHG-042）会话遥测：计数逻辑在 session-gate.sh 通用层，Claude 只做事件转发
 ensure("UserPromptSubmit", {"matcher": "", "hooks": [{"type": "command", "command": "scripts/session-gate.sh count turn"}]})
 ensure("PostToolUse", {"matcher": "Bash|Grep|Glob|Read|Task", "hooks": [{"type": "command", "command": "scripts/session-gate.sh count tool -"}]})
+# v3.58.0（REQ-1008）handoff 硬拦：PreToolUse exit 2 = Claude 原生块工具（stderr 回给 Agent）
+ensure("PreToolUse", {"matcher": "Bash|Edit|Write|Task|Grep|Glob|Read", "hooks": [{"type": "command", "command": "scripts/session-gate.sh check"}]})
 
 os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 with open(path, "w") as fh:
@@ -109,11 +111,11 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 h = d.get("hooks", {})
 cmds = [hk.get("command") for st in h.values() for e in st for hk in e.get("hooks", [])]
-for want in ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop", "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -"):
+for want in ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop", "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -", "scripts/session-gate.sh check"):
     if want not in cmds:
         sys.exit(f"missing hook after merge: {want}")
 PY
-  ok "claude -> $f merged + verified (SessionStart audit / pre-write / stop / telemetry count turn+tool)"
+  ok "claude -> $f merged + verified (SessionStart audit / pre-write / stop / telemetry count turn+tool / handoff hard-stop check)"
 }
 
 # ---------- opencode：生成插件 + 手动检查命令（生成物，重装即重写） ----------
@@ -130,6 +132,7 @@ adapter_opencode() {
 //   session.created      -> session-gate.sh start   (audit + telemetry reset)
 //   chat.message         -> session-gate.sh count turn      (§2.9.6 water level)
 //   message.part.updated -> session-gate.sh count tool <name>   (exploration budget)
+//   tool.execute.before  -> session-gate.sh check       (v3.58.0 handoff hard stop: throw on rc 2)
 //   session.idle         -> session-gate.sh idle    (gate --stage stop 等价检查落盘)
 export const DevStandardsGate = async ({ client, $, directory }) => {
   const run = async (mode) => {
@@ -149,6 +152,13 @@ export const DevStandardsGate = async ({ client, $, directory }) => {
       const res = await $`bash scripts/session-gate.sh count tool ${tool}`.cwd(directory).nothrow().quiet()
       await relay(String(res.stdout || ""))
     } catch {}
+  }
+  // v3.58.0 (REQ-1008): handoff hard stop — throw blocks the tool call (fail-closed)
+  const check = async () => {
+    const res = await $`bash scripts/session-gate.sh check`.cwd(directory).nothrow().quiet()
+    if ((res.exitCode ?? 0) === 2) {
+      throw new Error(String(res.stderr || "").trim() || "session-gate: HARD STOP — turn limit reached (§2.9.6): run /handoff and continue in a new session")
+    }
   }
   const relay = async (out) => {
     for (const line of out.split("\n")) {
@@ -173,6 +183,9 @@ export const DevStandardsGate = async ({ client, $, directory }) => {
       } else if (event.type === "session.idle") {
         await run("idle")
       }
+    },
+    "tool.execute.before": async () => {
+      await check()
     },
   }
 }

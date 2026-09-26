@@ -28,7 +28,7 @@
 
 ## Agent 执行资源纪律（八条，违反按 §5 反模式登记）
 
-1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化）**：单会话 `bash` 调用 ≤20 次、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。
+1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化）**：单会话 `bash` 调用 ≤20 次、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。**会话换挡硬拦（v3.58.0）**：install-hook-adapter 生成的 PreToolUse / tool.execute.before 接 `session-gate.sh check`，轮次超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即块工具调用（exit 2/throw，§2.9.6）——指令衰减免疫层；无 hook 能力的 Agent 以本纪律层 + begin 拒绝兜底。
 2. **一次拉全**：同文件检索一次 grep 合并全部 pattern（`-e` / `-E`），禁止多 pattern 分次重扫。
 3. **先定位后小窗**：read 大文件前先 `grep -n` 定位行号，再小窗读（±80 行）；同文件不重复大窗读。
 4. **勘探下放（v3.39.0 起默认强制，非建议）**：预计读 >2 文件或 >100 行日志/代码定位、或 >2 pattern 的检索，**必须**合并单次调用或委派只读子代理执行，只回结论与行号，原始输出不进主上下文；子代理超出派发输入清单的读盘动作须在结论中声明原因（§2.2 输入契约）。
@@ -41,7 +41,7 @@
 
 若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
 
-1. 在 `docs/changes/<变更号>/` 创建并完成入口八件 `00-intent.md`、`00-governance.json`、`00.5-communication.md`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**骨架可由 `scripts/new-change <变更号> --risk Lx` 两段式生成（v3.52.0）：确认记录在位后才补齐 01-spec 起五件，`--allow-unconfirmed` 供自动化入口显式越过；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）。各件必含节与机校语义——00-intent 为管线入口且 begin 硬校「预期结果/开放问题」（§2.17）、00.5 沟通先行门 GATE-E83 硬校确认记录非空 + L0 单行声明豁免、确认落盘前禁止生成后续产物正文与源码编辑（§2.17.2d）、02 先分析后方案三维 + 回滚（§2.5 阶段 2）、JSON 风险等级与四主体互异含 `spec_author`（§2.1 规则 10）、RTVM 回填门禁 4——**唯一权威见 DS 对应节，本入口不复制其细则**。**同一天多个 L0/L1 默认共落 `docs/changes/BATCH-YYYYMMDD/`（`## <变更号>` 锚点分节；L2/L3 独立目录；细则 §1.1）**。
+1. 在 `docs/changes/<变更号>/` 创建并完成入口八件 `00-intent.md`、`00-governance.json`、`00.5-communication.md`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**骨架可由 `scripts/new-change <变更号> --risk Lx` 两段式生成（v3.52.0）：确认记录在位后才补齐 01-spec 起五件，`--allow-unconfirmed` 供自动化入口显式越过；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）。各件必含节与机校语义——00-intent 为管线入口且 begin 硬校「预期结果/开放问题」（§2.17）、00.5 沟通先行门 GATE-E83 硬校确认记录非空 + L0 单行声明豁免、确认落盘前禁止生成后续产物正文与源码编辑（§2.17.2d）、02 先分析后方案三维 + 回滚（§2.5 阶段 2）、JSON 风险等级与四主体互异（L2/L3 强制互异；全等级最低线=作者≠评审）含 `spec_author`（§2.1 规则 10）、RTVM 回填门禁 4——**唯一权威见 DS 对应节，本入口不复制其细则**。**同一天多个 L0/L1 默认共落 `docs/changes/BATCH-YYYYMMDD/`（`## <变更号>` 锚点分节；L2/L3 独立目录；细则 §1.1）**。
 2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。**begin 同时机校项目总册 12 册在位（§1.3）**：`docs/project/` 缺失或不全时，先复制 `<docs>/templates/project/` 骨架、回填现状并完成逐册初评，再 begin（豁免 `AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1` 须在 09「重要上下文」登记理由）。begin 同时执法**会话红灯门（v3.41.0）**：`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付 changelog 时拒绝（带病开工拦截；豁免 `AGENT_GUARD_ALLOW_OVER_RED=1` 并登记 09「重要上下文」）。
 3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」Observation 记录，§2.16.2）与**「项目总册回填清单」节**（P00–P11 逐册勾选/未命中，§1.3）。**交付前变更目录全部 `*.md` 产物盖章（pre-commit 自动，v3.41.0）**：hook 自动执行 `scripts/stamp-provenance.sh --all <活跃变更>`（幂等、真值读 git/主机/UTC、**禁手写**；§4 追踪矩阵由 `--all` 从 01.5 矩阵派生 fail-open；`bug_ref` 六件套由 hook 逐一 `--bug`；无 pre-commit 环境手动执行同命令；gate stop 逐一校验缺一不可交付；只校验当前活跃变更，**历史产物不得回填**，§1.1/§4）。**`bug_ref` 绑定的缺陷六件套同样盖章**：`scripts/stamp-provenance.sh --bug <BUG-id>`（六件不齐 staged/stop/CI 与审计 G8 拦截；豁免须 `<docs>/bugs/.gate-allowlist` 登记理由；**v3.35.0 起六件套按天入批、v3.36.0 扁平化：`docs/bugs/BATCH-YYYYMMDD/` 同名文件 + `## BUG-xxx` 锚点分节**，嵌套子目录为历史合法形态，§1.1）。启用 Stop Hook / 会话内执法（v3.34.0）时自动检查上述产物与门禁 4 RTVM 回填（细则 §2.17.1）。
 4. 传动与事故重入（§2.17.1/§2.17.2）：`01-spec.md` 合入会自动派发 02/03/03.5/04 骨架 PR，`09-changelog.md` 合入会自动开发布检查单 issue；生产事故经 incident 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架，接手者须走完整变更流程，禁止"修完不留痕"。**缺陷发现入口（§2.17.2b v3.43.0）**：主干回归红经 `bug-autointent` 自动建完整六件套骨架（频控窗口内同指纹只追加复现行）；会话内 audit 红灯/gate 摩擦须**交互三选项**（建骨架/登记 FU/忽略须 09 理由），不得静默跳过。启用会话内执法时，会话开始自动注入规则 10 四主体自查表（§2.1 规则 10，冲突点名）。
@@ -84,5 +84,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.57.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.58.0_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->
