@@ -666,6 +666,8 @@ run_layer() {
       install_file - "$DOCS_DIR/README.md" resources/templates/docs-readme.md
       install_file standards-changelog "$DOCS_DIR/STANDARDS_CHANGELOG.md" resources/STANDARDS_CHANGELOG.md
       install_file - "$DOCS_DIR/METHODOLOGY.md" resources/METHODOLOGY.md
+      # v3.61.0（FU-911）：阶段执行手册（DS §2.5/§2.16.6 叙事细则载体，条款权威仍在 DS）。
+      install_file - "$DOCS_DIR/STAGE_PLAYBOOK.md" resources/STAGE_PLAYBOOK.md
       for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md; do
         install_file - "$DOCS_DIR/methodologies/$m" "resources/methodologies/$m"
       done

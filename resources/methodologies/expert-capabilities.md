@@ -25,7 +25,7 @@
 |---|---|---|---|
 | 需求 | 业务专家 | 通过（2 项修订已回写 01） | `docs/<feature>/01-spec.md:12`（REQ-003 边界改写）；bugfix-log 同族 BUG-011 已核对 |
 
-署名：opencode / glm-5.3-flash / task-review-01
+署名：agent-platform / llm-model / task-review-01
 ````
 
 > 形状要点：节以标题形态存在；署名行 = §2.1.7 三段 `平台 / 模型 / 任务ID`（` / ` 带空格）；依据段引项目证据（路径:行号 / 编号）。gate stop/CI 校验此形状；同节多专家多行署名各自成行。
@@ -166,4 +166,4 @@
 
 学理细节以上述原著为唯一权威；本卡只定义"何时动用"（绑定关系），不复制学理内容。
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.60.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.61.0_

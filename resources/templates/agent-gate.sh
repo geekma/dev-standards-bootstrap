@@ -440,7 +440,7 @@ validate_governance_state() {
   # (e.g. an L2 sibling forcing an L1 change independent) is indistinguishable
   # from a violated default, which read as "feature removed / rule ignored"
   # (CHG-076 incident, 2026-09-26).
-  local intent_f="$d/00-intent.md" scope_i decl86 others_i reason86=""
+  local intent_f="$d/00-intent.md" scope_i decl86 others_i reason86="" scope_resolved=0
   if [[ ! -s "$intent_f" ]]; then
     reason86="missing $intent_f (placement declaration carrier)"
   fi
@@ -453,9 +453,25 @@ validate_governance_state() {
     else
       scope_i=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" '$0 ~ cur {f=1; next} f' "$intent_f")
     fi
+    scope_resolved=1
   else
-    scope_i=$(cat "$intent_f")
+    # v3.61.0 (FU-912): fail-closed alignment with GATE-E83. A batch member
+    # without its own anchor section used to fall back to whole-file scope,
+    # letting a sibling's placement declaration satisfy this gate (fail-open
+    # asymmetry). Multi-member batch + missing anchor => die; independent dir
+    # (or single-member batch) whole-file fallback is the legitimate form and
+    # stays (the file IS this change's scope, no ambiguity).
+    others_i=$( (change_ids_in_dir "$d" | grep -vx "$id" || true) | sort -u | tr '\n' '|')
+    others_i="${others_i%|}"
+    if [[ -n "$others_i" ]]; then
+      reason86="missing anchor section '## $id' in $intent_f — batch member among {${others_i}} must declare placement in its own section (fail-closed, aligned with GATE-E83)"
+    else
+      scope_i=$(cat "$intent_f")
+      scope_resolved=1
+    fi
   fi
+  fi
+  if [[ "$scope_resolved" == 1 ]]; then
   decl86=$(printf '%s\n' "$scope_i" | awk '/^[[:space:]]*-[[:space:]]*\*\*目录落位\*\*(：|:)/{print; exit}')
   if [[ -z "$decl86" ]]; then
     reason86="missing placement declaration '- **目录落位**：BATCH-YYYYMMDD | 独立目录（<理由>）'"
@@ -1347,7 +1363,7 @@ case "$command" in
     # keeps the GATE-Exx die domain unique (T41).
     id="${2:-}"
     if [[ -z "$id" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
-      printf 'agent-gate: check-confirm requires a valid change id (FU-023 shape; probe semantics: "is the confirmation in place" — NOT "would the gate pass", which also honors AGENT_GUARD_ALLOW_UNCONFIRMED)\n' >&2
+      printf 'agent-gate: check-confirm requires a valid change id (FU-023 shape). Probe semantics: "is the confirmation in place" — NOT "would the gate pass" (which also honors AGENT_GUARD_ALLOW_UNCONFIRMED). Reported reasons cover six classes: missing 00.5-communication.md; batch member lacking its own ## <id> anchor in 00.5; L0-exclusive single-line declaration at non-L0 risk; missing 用户整体确认记录 section; missing confirmation marker under that section; missing five-element substance anchor (影响范围/风险/候选方案与取舍/测试思路)\n' >&2
       exit 2
     fi
     d=$(change_dir "$id")

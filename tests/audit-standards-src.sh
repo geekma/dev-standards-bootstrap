@@ -27,6 +27,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STD="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 AGENTS="$ROOT/resources/AGENTS.md"
 METH="$ROOT/resources/METHODOLOGY.md"
+PLAY="$ROOT/resources/STAGE_PLAYBOOK.md"
 DEV="$ROOT/resources/methodologies/development.md"
 DS="$ROOT/resources/methodologies/data-structures.md"
 STA="$ROOT/resources/methodologies/state-trigger-audit.md"
@@ -334,6 +335,12 @@ report "stage-8 defect-fix special check" 1 "$(grep_count "$STD" '缺陷修复�
 #  同族推演循环）在 METH 落点重叠；3.6/4 行留待 MAINTAINER §5.3 生命周期下一轮评审)
 report "methodology 3.6 same-family row"   1 "$(grep_count "$METH" '同族推演（同根因旁路扫描）')"
 report "methodology 4 conditional note"    1 "$(grep_count "$METH" '条件命中：涉及状态/触发/事件链路时必须')"
+
+# ---------- STAGE_PLAYBOOK 下沉载体（v3.61.0 FU-911） ----------
+# DS §2.5/§2.16.6 叙事细则迁入 playbook（DS 原位留指针）；断言防"树↔磁盘/指针↔载体"漂移
+at_least "playbook file carries mirror sections" 1 "$PLAY" '## 2.16.6·防漏红线细则'
+at_least "playbook file carries stage-2 mirror"  1 "$PLAY" '## 2.5 阶段 2·三维影响详述'
+at_least "DS pointer to playbook present"        1 "$STD"  'resources/STAGE_PLAYBOOK.md'
 
 # ---------- 审计脚本自身接线（本轮） ----------
 at_least "SKILL.md wires audit script"  1 "$SKILL" "audit-docs-consistency"

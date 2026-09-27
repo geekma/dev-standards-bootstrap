@@ -550,7 +550,7 @@ printf '\n## 专家评审记录\n| 主体 | 结论 |\n|---|---|\n| 业务专家 
 scripts/agent-gate --stage stop >/dev/null 2>&1
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
 check_output "stop rejects a signature-less 专家评审记录 section (FU-039)" "lacks an agent signature" "$out"
-printf '\n署名：opencode / glm-5.3-flash / task-review-01\n' >> docs/changes/CHG-500/01-spec.md
+printf '\n署名：agent-platform / llm-model / task-review-01\n' >> docs/changes/CHG-500/01-spec.md
 out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
 stamp_fixture_all
 report "stop accepts 专家评审记录 with a §2.1.7 signature (FU-039)" 0 "$rc"
@@ -566,7 +566,7 @@ printf '\n## 专家评审记录\n依据 docs/methodologies/expert-capabilities.m
 scripts/agent-gate --stage stop >/dev/null 2>&1
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
 check_output "stop rejects path/URL/compact strings as fake signatures" "lacks an agent signature" "$out"
-printf '\n署名：opencode / glm-5.3-flash / task-review-02\n' >> docs/changes/CHG-500/03-modification-plan.md
+printf '\n署名：agent-platform / llm-model / task-review-02\n' >> docs/changes/CHG-500/03-modification-plan.md
 out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
 stamp_fixture_all
 report "stop accepts both sections once each carries a canonical signature" 0 "$rc"
@@ -2920,7 +2920,7 @@ if [[ -s "$GATE46_SRC" ]]; then
   # TC-1061: 07 含签名行+task- id → stop 过（顺序：先 begin——09 落盘即闭合 E72）
   seed_begin CHG-980 L1 claude/s-46
   report "T46 fixture begins clean" 0 $?
-  printf '## CHG-980 评审\n\n- 评审主体：opencode / glm-5.3-flash / task-ses_f276b9bcfffeHnlaJLjs2W6isv\n- 结论：APPROVE\n' > docs/changes/CHG-980/07-review-report.md
+  printf '## CHG-980 评审\n\n- 评审主体：agent-platform / llm-model / task-ses_0000000000fixture00000000\n- 结论：APPROVE\n' > docs/changes/CHG-980/07-review-report.md
   printf '# coding\n实现记录\n' > docs/changes/CHG-980/04.5-coding-record.md
   printf '# results\nTests run: 1, Failures: 0\n' > docs/changes/CHG-980/05-test-results.md
   printf '# deploy\n未命中，不适用\n' > docs/changes/CHG-980/06.5-deployment-config.md
@@ -2931,7 +2931,7 @@ if [[ -s "$GATE46_SRC" ]]; then
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T46 stop passes with signature+task id" 0 $?
   # TC-1062: 签名缺 task- id → E85 拒
-  sed -i '' 's|task-ses_f276b9bcfffeHnlaJLjs2W6isv|self-reviewed|' docs/changes/CHG-980/07-review-report.md 2>/dev/null || sed -i 's|task-ses_f276b9bcfffeHnlaJLjs2W6isv|self-reviewed|' docs/changes/CHG-980/07-review-report.md
+  sed -i '' 's|task-ses_0000000000fixture00000000|self-reviewed|' docs/changes/CHG-980/07-review-report.md 2>/dev/null || sed -i 's|task-ses_0000000000fixture00000000|self-reviewed|' docs/changes/CHG-980/07-review-report.md
   out=$(scripts/agent-gate --stage stop 2>&1 || true)
   check_output "T46 stop refuses 07 without traceable task id (E85)" "GATE-E85" "$out"
 else
@@ -2964,6 +2964,18 @@ if [[ -s "$GATE47_SRC" ]]; then
   seed_begin CHG-993 L2 claude/s-47 tester reviewer
   scripts/agent-gate begin CHG-993 >/dev/null 2>&1
   report "T47 L2 declaring independent placement with full anchors begins" 0 $?
+  # TC-1067 (v3.61.0 FU-912): begin 拒——批成员缺自锚段回落整文件=兄弟声明可替过（fail-open），
+  # 现收紧 fail-closed；00.5 锚段在位使 E83 放行，E86 成唯一决定性失败
+  seed_batch_artifacts BATCH-20260101 CHG-994:L0 CHG-995:L0
+  sed -i '' '/^## CHG-995$/d' docs/changes/BATCH-20260101/00-intent.md 2>/dev/null || sed -i '/^## CHG-995$/d' docs/changes/BATCH-20260101/00-intent.md
+  out=$(scripts/agent-gate begin CHG-995 2>&1 || true)
+  check_output "T47 begin refuses batch member without own anchor section (E86 fail-closed)" "GATE-E86.*missing anchor section" "$out"
+  report "T47 batch member with own anchor still begins (no spillover to sibling)" 0 $?
+  scripts/agent-gate begin CHG-994 >/dev/null 2>&1
+  # TC-1068 (v3.61.0): 正例回归——独立目录单成员无自锚段 → 整文件回落保留（防过收紧）
+  seed_artifacts CHG-996 L1 claude/s-47
+  scripts/agent-gate begin CHG-996 >/dev/null 2>&1
+  report "T47 independent single-member change without anchor section falls back (v3.61.0 keeps fallback)" 0 $?
 else
   echo "SKIP T47: agent-gate absent — 跳过落位声明 golden cases"
 fi
