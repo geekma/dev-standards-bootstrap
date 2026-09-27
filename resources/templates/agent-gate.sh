@@ -262,6 +262,18 @@ confirmation_gate_reason() { # <id> <dir>
   elif ! printf '%s\n' "$scope05" | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)'; then
     CONFIRM_REASON="no user-overall-confirmation marker under 用户整体确认记录 in $comm05"
   fi
+  [[ -z "$CONFIRM_REASON" ]] || return 0
+  # v3.60.0 (REQ-1009, TC-1065): five-element substance extension — a bare
+  # confirmation marker on an otherwise hollow 00.5 must not pass (the
+  # round-1 communication carries 需求理解/影响/风险/方案/测试思路 per
+  # §2.17.2d). L0 single-line declaration stays exempt (checked above).
+  if [[ "$risk05" != "L0" ]]; then
+    local a05
+    for a05 in 影响范围 风险 候选方案与取舍 测试思路; do
+      printf '%s\n' "$scope05" | grep -qE "^(#{1,6}[[:space:]]*$a05([[:space:]]|\$)|[[:space:]]*[-*][[:space:]]+\*\*$a05\*\*)" \
+        || { CONFIRM_REASON="00.5 substance: missing '$a05' anchor (five-element round-1, §2.17.2d v3.60.0)"; return 0; }
+    done
+  fi
   return 0
 }
 
@@ -272,7 +284,12 @@ required_docs_present() {
   d=$(change_dir "$id")
   for doc in "${required_docs[@]}"; do
     if [[ "$doc" == "00.5-communication.md" && "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]]; then
-      continue # communication-first gate explicit bypass (§2.17.2d) — 09 justification duty stays
+      # explicit bypass (§2.17.2d) — v3.60.0: append to the friction ledger so
+      # bypass use is visible to metrics/review, not silent; 09 justification
+      # duty stays (standards §2.17.2d).
+      printf 'GATE-E83BYPASS\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+        >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+      continue
     fi
     [[ -s "$d/$doc" ]] || die "GATE-E03: missing required artifact: $d/$doc"
   done
@@ -415,6 +432,43 @@ validate_governance_state() {
   if is_batch_dir "$d" && [[ "$risk" != L0 && "$risk" != L1 ]]; then
     die "GATE-E28: $d is a change batch but '$id' declares risk_level $risk — batches are L0/L1 only; move '$id' to $change_root/$id/ (standards §1.1)"
   fi
+  # v3.60.0 (REQ-1009, TC-1063/1064): directory-placement declaration
+  # (GATE-E86) — the BATCH-vs-independent decision must be recorded in
+  # 00-intent (batch members: inside the change's own anchor section) and must
+  # agree with the actual directory form and the declared risk (§1.1). Without
+  # the declaration the placement choice is unauditable: a compliant choice
+  # (e.g. an L2 sibling forcing an L1 change independent) is indistinguishable
+  # from a violated default, which read as "feature removed / rule ignored"
+  # (CHG-076 incident, 2026-09-26).
+  local intent_f="$d/00-intent.md" scope_i decl86 others_i reason86=""
+  if [[ ! -s "$intent_f" ]]; then
+    reason86="missing $intent_f (placement declaration carrier)"
+  fi
+  if [[ -z "$reason86" ]]; then
+  if grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$intent_f"; then
+    others_i=$( (change_ids_in_dir "$d" | grep -vx "$id" || true) | sort -u | tr '\n' '|')
+    others_i="${others_i%|}"
+    if [[ -n "$others_i" ]]; then
+      scope_i=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" -v stop="^##[[:space:]]+(${others_i})([[:space:]]|\$)" '$0 ~ cur {f=1; next} f && $0 ~ stop {f=0} f' "$intent_f")
+    else
+      scope_i=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" '$0 ~ cur {f=1; next} f' "$intent_f")
+    fi
+  else
+    scope_i=$(cat "$intent_f")
+  fi
+  decl86=$(printf '%s\n' "$scope_i" | awk '/^[[:space:]]*-[[:space:]]*\*\*目录落位\*\*(：|:)/{print; exit}')
+  if [[ -z "$decl86" ]]; then
+    reason86="missing placement declaration '- **目录落位**：BATCH-YYYYMMDD | 独立目录（<理由>）'"
+  elif printf '%s\n' "$decl86" | grep -q 'BATCH-'; then
+    is_batch_dir "$d" || reason86="'$id' declares BATCH-YYYYMMDD placement but lives in independent dir $d — declaration and directory disagree"
+    [[ -n "$reason86" ]] || [[ "$risk" =~ ^L[01]$ ]] || reason86="'$id' risk $risk cannot declare BATCH placement — batches are L0/L1 only"
+  elif printf '%s\n' "$decl86" | grep -q '独立目录'; then
+    is_batch_dir "$d" && reason86="'$id' declares 独立目录 placement but lives in batch dir $d — declaration and directory disagree"
+  else
+    reason86="'$id' placement declaration must state BATCH-YYYYMMDD or 独立目录（<理由>）"
+  fi
+  fi
+  [[ -z "$reason86" ]] || die "GATE-E86: $reason86 (standards §1.1, v3.60.0)"
   implementation=$(json_field "$rec" implementation_owner)
   [[ -n "$implementation" ]] || die "GATE-E29: $file must declare implementation_owner"
   reject_placeholder_owner "$file" implementation_owner "$implementation"

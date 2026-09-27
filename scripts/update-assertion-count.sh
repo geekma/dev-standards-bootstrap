@@ -6,6 +6,9 @@
 #   update-assertion-count.sh          # rewrite READMEs to the real count
 #   update-assertion-count.sh --check  # exit 1 if any README would change (CI/audit mode)
 #
+# NOTE: both modes execute the FULL run-tests.sh (FU-907) — never run this
+# script concurrently with a manual run-tests.sh in the same workspace.
+#
 # Source-layer only (NOT shipped with the Skill): READMEs live in this repo.
 # Closes FU-005 (hand-maintained numbers drifted 107/118 vs real) and
 # compensates the FU-009 A3 regex residual (`assertions: N` form) by making

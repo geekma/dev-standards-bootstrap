@@ -81,6 +81,8 @@ seed_artifacts() { # id risk implementation [test] [review]
 problem: x
 ## 预期结果
 expected: y
+## 目录落位
+- **目录落位**：独立目录（single low-risk fixture）
 ## 开放问题
 open: none
 EOF
@@ -97,6 +99,12 @@ EOF
 findings: f
 ## 影响范围
 scope: s
+## 风险
+risk: r
+## 候选方案与取舍
+options: A vs B
+## 测试思路
+test: t
 ## 用户整体确认记录
 ### 第 1 轮
 - 结论：确认（按 §2.17.2d 呈现 Round-1 沟通稿后整体确认）
@@ -171,9 +179,11 @@ seed_entry_templates() {
   { printf '# <__CHANGE_ID__> %s\n## 预期结果\n' "$1"
     [[ -n "$2" ]] && printf '%s\n' "$2"
     printf '## 开放问题\n'
-    [[ -n "$3" ]] && printf '%s\n' "$3"; } > docs/templates/entry/00-intent.md
+    [[ -n "$3" ]] && printf '%s\n' "$3"
+    printf '## 目录落位\n- **目录落位**：独立目录（t）\n'; } > docs/templates/entry/00-intent.md
   printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
-  { printf '# <__CHANGE_ID__> %s\n## 用户整体确认记录\n' "$4"; [[ -n "$5" ]] && printf '%s\n' "$5"; } > docs/templates/entry/00.5-communication.md
+  { printf '# <__CHANGE_ID__> %s\n## 用户整体确认记录\n' "$4"; [[ -n "$5" ]] && printf '%s\n' "$5"
+    printf '## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n'; } > docs/templates/entry/00.5-communication.md
   printf '# <__CHANGE_ID__> spec%s\n- REQ-001: tbd\n' "$6" > docs/templates/entry/01-spec.md
   printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/templates/entry/02-code-impact-analysis.md
   printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
@@ -186,13 +196,18 @@ seed_entry_templates() {
 seed_batch_member() { # <batch_dir> <change_id>
   local d="$1" id="$2"
   printf '{"change_id":"%s","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' "$id" >> "$d/00-governance.json"
-  printf '## %s\n## 问题\np\n## 预期结果\ne\n## 开放问题\no\n' "$id" >> "$d/00-intent.md"
-  printf '## %s\n## 用户整体确认记录\n' "$id" >> "$d/00.5-communication.md"
+  printf '## %s\n## 问题\np\n## 预期结果\ne\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（同日 L1 批次成员）\n## 开放问题\no\n' "$id" >> "$d/00-intent.md"
+  printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n' "$id" >> "$d/00.5-communication.md"
   printf '## %s\nREQ-910: r\n' "$id" >> "$d/01-spec.md"
   printf '## %s\n### 业务影响\n### 技术影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
   printf '## %s\nDES-910 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
   printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
   printf '## %s\nTC-910 SC-910 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
+}
+
+seed_begin() { # <change_id> [seed_artifacts args...]（FU-906：seed+begin 相邻对收敛）
+  seed_artifacts "$@"
+  scripts/agent-gate begin "$1" >/dev/null 2>&1
 }
 
 # v3.35.0（§1.3）：交付侧 09 追加「项目总册回填清单」节（幂等；已存在则跳过）。
@@ -215,7 +230,7 @@ rm docs/changes/CHG-100/00-intent.md   # 缺 intent：begin 必须拒绝
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
 report "begin rejects missing 00-intent.md" 2 $?
 
-printf '## 问题\nx\n## 预期结果\ny\n## 开放问题\nz\n' > docs/changes/CHG-100/00-intent.md
+printf '## 问题\nx\n## 预期结果\ny\n## 目录落位\n- **目录落位**：独立目录（t1 fixture）\n## 开放问题\nz\n' > docs/changes/CHG-100/00-intent.md
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
 report "begin accepts eight complete artifacts (L1)" 0 $?
 
@@ -289,8 +304,7 @@ rm docs/changes/CHG-110/03.5-tasks.md   # 缺任务拆解：必须拒绝
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects missing tasks doc" 2 $?
 
-seed_artifacts CHG-110 L1 claude/s-1
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+seed_begin CHG-110 L1 claude/s-1
 report "begin accepts compliant A-layer content markers" 0 $?
 
 # CHG-007 / FU-008：编号必须带数字——散文提及 "REQ-"（无编号）不再放行
@@ -333,12 +347,10 @@ report "begin accepts the same dir once the symlink marker is removed" 0 $?
 
 # ---------------------------------------------------------------- T2 治理状态校验
 new_repo
-seed_artifacts CHG-200 L2 gemini/m-1 gemini/m-1 gemini/m-2   # test 与 impl 相同
-scripts/agent-gate begin CHG-200 >/dev/null 2>&1
+seed_begin CHG-200 L2 gemini/m-1 gemini/m-1 gemini/m-2   # test 与 impl 相同
 report "begin rejects identical implementation/test owners at L2" 2 $?
 
-seed_artifacts CHG-201 L2 gemini/m-1 claude/c-9 codex/x-7
-scripts/agent-gate begin CHG-201 >/dev/null 2>&1
+seed_begin CHG-201 L2 gemini/m-1 claude/c-9 codex/x-7
 report "begin accepts distinct owners at L2" 0 $?
 
 new_repo
@@ -349,18 +361,15 @@ scripts/agent-gate begin CHG-202 >/dev/null 2>&1
 report "begin rejects mismatched change_id" 2 $?
 
 new_repo
-seed_artifacts CHG-203 L9 claude/s-1
-scripts/agent-gate begin CHG-203 >/dev/null 2>&1
+seed_begin CHG-203 L9 claude/s-1
 report "begin rejects invalid risk_level" 2 $?
 
 # v3.5.0：占位 owner 与 L3 授权三字段
 new_repo
-seed_artifacts CHG-204 L1 PENDING
-scripts/agent-gate begin CHG-204 >/dev/null 2>&1
+seed_begin CHG-204 L1 PENDING
 report "begin rejects PENDING implementation owner" 2 $?
 
-seed_artifacts CHG-205 L2 gemini/m-1 TODO codex/x-7
-scripts/agent-gate begin CHG-205 >/dev/null 2>&1
+seed_begin CHG-205 L2 gemini/m-1 TODO codex/x-7
 report "begin rejects TODO test owner at L2" 2 $?
 
 seed_artifacts CHG-206 L3 gemini/m-1 claude/c-9 codex/x-7
@@ -388,8 +397,7 @@ report "pre-write allows doc edit without active change" 0 $?
 printf '%s' '{"tool_name":"Edit"}' | scripts/agent-gate --stage pre-write >/dev/null 2>&1
 report "pre-write fails closed on unparseable hook input" 2 $?
 
-seed_artifacts CHG-300 L1 claude/s-1
-scripts/agent-gate begin CHG-300 >/dev/null 2>&1
+seed_begin CHG-300 L1 claude/s-1
 printf '%s' '{"tool_name":"Write","tool_input":{"path":"src/new.py"}}' \
   | scripts/agent-gate --stage pre-write >/dev/null 2>&1
 report "pre-write allows code edit with active change" 0 $?
@@ -938,6 +946,8 @@ cat > changes/CUSTOM-1/00-intent.md <<'EOF'
 i
 ## 预期结果
 e
+## 目录落位
+- **目录落位**：独立目录（t8 fixture）
 ## 开放问题
 o
 EOF
@@ -1301,6 +1311,8 @@ printf 'paths:\n  docs: doc\nchange_root: doc/changes\n' > .agent-governance.yml
 cat > doc/changes/CFG-1/00-intent.md <<'EOF'
 ## 预期结果
 e
+## 目录落位
+- **目录落位**：独立目录（t14 fixture）
 ## 开放问题
 o
 EOF
@@ -1323,6 +1335,8 @@ printf 'paths:\n  docs: doc\n' > .agent-governance.yml
 cat > doc/changes/CFG-2/00-intent.md <<'EOF'
 ## 预期结果
 e
+## 目录落位
+- **目录落位**：独立目录（t14 fixture）
 ## 开放问题
 o
 EOF
@@ -1640,8 +1654,8 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
   for pair in "$@"; do
     id="${pair%%:*}"; risk="${pair##*:}"
     printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1"}\n' "$id" "$risk" >> "$d/00-governance.json"
-    printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
-    printf '## %s\n## 用户整体确认记录\n- 确认状态：已整体确认\n' "$id" >> "$d/00.5-communication.md"
+    printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
+    printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' "$id" >> "$d/00.5-communication.md"
     printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
     printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
     printf '## %s\nDES-901 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
@@ -1717,7 +1731,7 @@ rm -f "$t18m2"
 #    L2/L3 必须独立目录——门禁按**记录**拒绝，不能靠目录布局绕过
 printf '{"change_id":"CHG-802","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"a","test_owner":"b","review_owner":"c"}\n' >> "$t18gov"
 printf '## CHG-802\n## 问题\nx\n## 预期结果\ny\n## 开放问题\nn\n' >> docs/changes/BATCH-20260101/00-intent.md
-printf '## CHG-802\n## 用户整体确认记录\n- 确认状态：已整体确认\n' >> docs/changes/BATCH-20260101/00.5-communication.md
+printf '## CHG-802\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' >> docs/changes/BATCH-20260101/00.5-communication.md
 out=$(scripts/agent-gate begin CHG-802 2>&1); rc=$?
 report "T18 L2 inside a batch is refused" 2 "$rc"
 check_output "T18 the refusal states the L0/L1 ceiling" "batches are L0/L1 only" "$out"
@@ -1733,11 +1747,9 @@ scripts/agent-gate begin CHG-801 >/dev/null 2>&1
 report "T18 a sibling absent from the shared changelog still begins" 0 $?
 
 # ⑦ 零回归：独立 <变更号>/ 目录永远优先，L2 在独立目录照常合法
-seed_artifacts CHG-810 L1 claude/s-1
-scripts/agent-gate begin CHG-810 >/dev/null 2>&1
+seed_begin CHG-810 L1 claude/s-1
 report "T18 dedicated directory still resolves to itself (no regression)" 0 $?
-seed_artifacts CHG-811 L2 claude/s-1 tester reviewer
-scripts/agent-gate begin CHG-811 >/dev/null 2>&1
+seed_begin CHG-811 L2 claude/s-1 tester reviewer
 report "T18 L2 in a dedicated directory is still accepted" 0 $?
 
 # ⑧ 盖章器认批次：默认目标落在批次目录的共享编码记录上，块证明**批次**并列出成员
@@ -1771,8 +1783,7 @@ fi
 new_repo
 seed_batch_artifacts "BATCH-$(date +%Y%m%d)" CHG-820:L0
 commit_all "docs: today's batch exists"
-seed_artifacts CHG-821 L1 claude/s-1
-scripts/agent-gate begin CHG-821 >/dev/null 2>&1
+seed_begin CHG-821 L1 claude/s-1
 report "T18b begin rejects an independent L0/L1 when a same-day batch exists" 2 $?
 out=$(scripts/agent-gate begin CHG-821 2>&1 || true)
 check_output "T18b refusal names the batch and the escape hatch" "same-day batch exists.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
@@ -1781,8 +1792,7 @@ report "T18b explicit override allows an independent L0/L1" 0 $?
 seed_batch_artifacts "BATCH-$(date +%Y%m%d)" CHG-822:L1
 scripts/agent-gate begin CHG-822 >/dev/null 2>&1
 report "T18b joining the same-day batch begins" 0 $?
-seed_artifacts CHG-823 L2 claude/s-1 tester reviewer
-scripts/agent-gate begin CHG-823 >/dev/null 2>&1
+seed_begin CHG-823 L2 claude/s-1 tester reviewer
 report "T18b L2 keeps its independent-directory right (no batch compulsion)" 0 $?
 
 # ------------------------------------------------ T19 治理记录的格式无关性（v3.20.0）
@@ -1857,8 +1867,7 @@ report "T19 a member of a multi-line batch begins" 0 $?
 
 # ⑤ 零回归：单行记录（历史与批次推荐写法）继续可用
 new_repo
-seed_artifacts CHG-842 L1 claude/s-1
-scripts/agent-gate begin CHG-842 >/dev/null 2>&1
+seed_begin CHG-842 L1 claude/s-1
 report "T19 one-line records still begin (no regression)" 0 $?
 
 # ------------------------------------------------ T20 审计单元识别与"空转显式声明"（v3.21.0）
@@ -2044,8 +2053,7 @@ report "begin rejects spec_author duplicating an owner at L2" 2 $?
 # §1.1 v3.35.0 废止 v3.22.0"缺陷组不入批"：当日缺陷批次已存在时，同日新建的独立
 # 缺陷组必须入批（provenance generated_at 判日）；豁免显式；批次嵌套组照常扫描。
 new_repo
-seed_artifacts CHG-900 L1 claude/s-1
-scripts/agent-gate begin CHG-900 >/dev/null 2>&1
+seed_begin CHG-900 L1 claude/s-1
 today=$(date -u +%Y%m%d)
 mkdir -p "docs/bugs/BATCH-$today/BUG-901"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
@@ -2084,8 +2092,7 @@ report "T18c pre-v3.35.0 standalone groups (old provenance date) stay legal" 0 $
 # 锚点分节，当天追加落在同一套文件里（与变更批次同构）；嵌套形态历史合法；
 # bug_group_dir 三形态统一解析（独立 → 嵌套 → 扁平锚点，多处命中 fail-closed）。
 new_repo
-seed_artifacts CHG-930 L1 claude/s-1
-scripts/agent-gate begin CHG-930 >/dev/null 2>&1
+seed_begin CHG-930 L1 claude/s-1
 today=$(date -u +%Y%m%d)
 mkdir -p "docs/bugs/BATCH-$today"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
@@ -2279,8 +2286,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   cp "$STAMP_SRC" scripts/stamp-provenance.sh
   mkdir -p .githooks && cp "$HOOK_SRC" .githooks/pre-commit
   chmod +x .githooks/pre-commit scripts/stamp-provenance.sh scripts/agent-gate
-  seed_artifacts CHG-940 L1 claude/s-27
-  scripts/agent-gate begin CHG-940 >/dev/null 2>&1
+  seed_begin CHG-940 L1 claude/s-27
   report "T27 fixture begins clean" 0 $?
   bash .githooks/pre-commit >/dev/null 2>&1
   report "T27 pre-commit exits 0 (stamp + staged)" 0 $?
@@ -2308,8 +2314,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; append_diag_lines "docs/bugs/BUG-$b/01-diagnosis.md"; done
   mkdir -p docs/changes/BATCH-990922
   printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
-  seed_artifacts CHG-944 L0 claude/s-27
-  scripts/agent-gate begin CHG-944 >/dev/null 2>&1
+  seed_begin CHG-944 L0 claude/s-27
   bash .githooks/pre-commit >/dev/null 2>&1
   report "T27 hook exits 0 on comma-joined batch member" 0 $?
   check_output "T27 member bug_ref stamped in isolation" "generated_by: stamp-provenance.sh" "$(cat docs/bugs/BUG-944/01-diagnosis.md)"
@@ -2595,8 +2600,7 @@ if [[ -x scripts/agent-gate ]]; then
   }
   # ① L0 + 04.5/05 单行声明 → stop PASS
   new_repo
-  seed_artifacts CHG-991 L0 claude/s-1
-  scripts/agent-gate begin CHG-991 >/dev/null 2>&1
+  seed_begin CHG-991 L0 claude/s-1
   t37_fill CHG-991
   echo y > src/t37.js   # stop 只在存在代码路径改动时执法（对齐 T5/T23 夹具）
   scripts/agent-gate --stage stop >/dev/null 2>&1
@@ -2614,8 +2618,7 @@ if [[ -x scripts/agent-gate ]]; then
   report "T37 L0 minimal-set: missing 04.5/05 still refused" 2 $?
   # ③ L1 + 仅声明行空壳 → GATE-E52（轻量通道越道拦截；盖章注释不计内容行）
   new_repo
-  seed_artifacts CHG-992 L1 claude/s-1
-  scripts/agent-gate begin CHG-992 >/dev/null 2>&1
+  seed_begin CHG-992 L1 claude/s-1
   t37_fill CHG-992
   echo y > src/t37.js
   scripts/agent-gate --stage stop >/dev/null 2>&1
@@ -2756,7 +2759,7 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   out=$(scripts/agent-gate begin CHG-950 2>&1 || true)
   check_output "T42 begin refuses empty confirmation record" "GATE-E83" "$out"
   # TC-1037: begin 过——确认标记在位
-  printf -- '- 确认状态：已整体确认\n' >> docs/changes/CHG-950/00.5-communication.md
+  printf '# 00.5\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > docs/changes/CHG-950/00.5-communication.md
   scripts/agent-gate begin CHG-950 >/dev/null 2>&1
   report "T42 begin passes with confirmation marker" 0 $?
   # TC-1039: AGENT_GUARD_ALLOW_UNCONFIRMED 显式越过
@@ -2776,15 +2779,15 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   check_output "T42 L0-only declaration refused for L1 (F2)" "L0-exclusive" "$out"
   # TC-1038: 批次成员按本变更锚点小节校验——兄弟成员的确认不外溢
   # P7（CHG-071）：本块成员差异（951 缺 00.5 锚 / 952 缺历史相似检索行）是测试点，不收拢 helper，保留原形独立演进。
-  mkdir -p docs/changes/BATCH-990925
-  { printf '# intent\n'; printf '\n## CHG-951\n\n## 预期结果\n## 开放问题\n'; printf '\n## CHG-952\n\n## 预期结果\n## 开放问题\n'; } > docs/changes/BATCH-990925/00-intent.md
-  printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' > docs/changes/BATCH-990925/00-governance.json
-  { printf '# spec\n\n## CHG-951\n\n- REQ-901: x\n'; printf '\n## CHG-952\n\n- REQ-902: x\n'; } > docs/changes/BATCH-990925/01-spec.md
-  { printf '# impact\n\n## CHG-951\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n'; printf '\n## CHG-952\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n'; } > docs/changes/BATCH-990925/02-code-impact-analysis.md
-  { printf '# plan\n\n## CHG-951\n\n- DES-901: x\n## 技术选型\n备选: A vs B\n'; printf '\n## CHG-952\n\n- DES-902: x\n## 技术选型\n备选: A vs B\n'; } > docs/changes/BATCH-990925/03-modification-plan.md
-  { printf '# tasks\n\n## CHG-951\n\n- T-901: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; printf '\n## CHG-952\n\n- T-902: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; } > docs/changes/BATCH-990925/03.5-tasks.md
-  { printf '# tests\n\n## CHG-951\n\n- TC-901: x\n覆盖维度: 正常流\n- SC-901: x\n'; printf '\n## CHG-952\n\n- TC-902: x\n覆盖维度: 正常流\n- SC-902: x\n'; } > docs/changes/BATCH-990925/04-test-scripts.md
-  printf '# comm\n\n## CHG-952\n\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > docs/changes/BATCH-990925/00.5-communication.md
+  mkdir -p docs/changes/BATCH-99092501
+  { printf '# intent\n'; printf '\n## CHG-951\n\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n\n## 预期结果\n## 开放问题\n'; printf '\n## CHG-952\n\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n\n## 预期结果\n## 开放问题\n'; } > docs/changes/BATCH-99092501/00-intent.md
+  printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' > docs/changes/BATCH-99092501/00-governance.json
+  { printf '# spec\n\n## CHG-951\n\n- REQ-901: x\n'; printf '\n## CHG-952\n\n- REQ-902: x\n'; } > docs/changes/BATCH-99092501/01-spec.md
+  { printf '# impact\n\n## CHG-951\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n'; printf '\n## CHG-952\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n'; } > docs/changes/BATCH-99092501/02-code-impact-analysis.md
+  { printf '# plan\n\n## CHG-951\n\n- DES-901: x\n## 技术选型\n备选: A vs B\n'; printf '\n## CHG-952\n\n- DES-902: x\n## 技术选型\n备选: A vs B\n'; } > docs/changes/BATCH-99092501/03-modification-plan.md
+  { printf '# tasks\n\n## CHG-951\n\n- T-901: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; printf '\n## CHG-952\n\n- T-902: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; } > docs/changes/BATCH-99092501/03.5-tasks.md
+  { printf '# tests\n\n## CHG-951\n\n- TC-901: x\n覆盖维度: 正常流\n- SC-901: x\n'; printf '\n## CHG-952\n\n- TC-902: x\n覆盖维度: 正常流\n- SC-902: x\n'; } > docs/changes/BATCH-99092501/04-test-scripts.md
+  { printf '# comm\n\n## CHG-952\n\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n'; } > docs/changes/BATCH-99092501/00.5-communication.md
   out=$(scripts/agent-gate begin CHG-951 2>&1 || true)
   check_output "T42 batch member without own 00.5 anchor refused" "GATE-E83" "$out"
   scripts/agent-gate begin CHG-952 >/dev/null 2>&1
@@ -2915,8 +2918,7 @@ if [[ -s "$GATE46_SRC" ]]; then
   chmod +x scripts/agent-gate
   seed_project_masters
   # TC-1061: 07 含签名行+task- id → stop 过（顺序：先 begin——09 落盘即闭合 E72）
-  seed_artifacts CHG-980 L1 claude/s-46
-  scripts/agent-gate begin CHG-980 >/dev/null 2>&1
+  seed_begin CHG-980 L1 claude/s-46
   report "T46 fixture begins clean" 0 $?
   printf '## CHG-980 评审\n\n- 评审主体：opencode / glm-5.3-flash / task-ses_f276b9bcfffeHnlaJLjs2W6isv\n- 结论：APPROVE\n' > docs/changes/CHG-980/07-review-report.md
   printf '# coding\n实现记录\n' > docs/changes/CHG-980/04.5-coding-record.md
@@ -2934,6 +2936,36 @@ if [[ -s "$GATE46_SRC" ]]; then
   check_output "T46 stop refuses 07 without traceable task id (E85)" "GATE-E85" "$out"
 else
   echo "SKIP T46: agent-gate absent — 跳过 07 署名机校 golden cases"
+fi
+
+# ------------------------------------------------ T47 目录落位声明+E83 五要素（v3.60.0，REQ-1009）
+GATE47_SRC="$ROOT/resources/templates/agent-gate.sh"
+if [[ -s "$GATE47_SRC" ]]; then
+  new_repo
+  cp "$GATE47_SRC" scripts/agent-gate
+  chmod +x scripts/agent-gate
+  seed_project_masters
+  # TC-1063: begin 拒——00-intent 缺落位声明（E86）
+  seed_artifacts CHG-990 L1 claude/s-47
+  sed -i '' '/目录落位/d' docs/changes/CHG-990/00-intent.md 2>/dev/null || sed -i '/目录落位/d' docs/changes/CHG-990/00-intent.md
+  out=$(scripts/agent-gate begin CHG-990 2>&1 || true)
+  check_output "T47 begin refuses missing placement declaration (E86)" "GATE-E86" "$out"
+  # TC-1064: begin 拒——L2 声明 BATCH（风险级一致性）
+  seed_begin CHG-991 L2 claude/s-47 tester reviewer
+  sed -i '' 's/独立目录（single low-risk fixture）/BATCH-YYYYMMDD（wrong for L2）/' docs/changes/CHG-991/00-intent.md 2>/dev/null || sed -i 's/独立目录（single low-risk fixture）/BATCH-YYYYMMDD（wrong for L2）/' docs/changes/CHG-991/00-intent.md
+  out=$(scripts/agent-gate begin CHG-991 2>&1 || true)
+  check_output "T47 begin refuses L2 declaring BATCH placement (E86)" "GATE-E86" "$out"
+  # TC-1065: begin 拒——非 L0 00.5 缺「风险」锚点（E83 五要素扩展）
+  seed_artifacts CHG-992 L1 claude/s-47
+  sed -i '' '/^## 风险$/,/^risk: r$/d' docs/changes/CHG-992/00.5-communication.md 2>/dev/null || sed -i '/^## 风险$/,/^risk: r$/d' docs/changes/CHG-992/00.5-communication.md
+  out=$(scripts/agent-gate begin CHG-992 2>&1 || true)
+  check_output "T47 begin refuses 00.5 missing risk anchor (E83 five-element)" "GATE-E83.*风险" "$out"
+  # TC-1066: 正例回归——L2 声明独立 + 五锚点齐 → begin 绿
+  seed_begin CHG-993 L2 claude/s-47 tester reviewer
+  scripts/agent-gate begin CHG-993 >/dev/null 2>&1
+  report "T47 L2 declaring independent placement with full anchors begins" 0 $?
+else
+  echo "SKIP T47: agent-gate absent — 跳过落位声明 golden cases"
 fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

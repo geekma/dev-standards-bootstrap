@@ -28,7 +28,7 @@
 
 ## Agent 执行资源纪律（八条，违反按 §5 反模式登记）
 
-1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化）**：单会话 `bash` 调用 ≤20 次、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。**会话换挡硬拦（v3.58.0）**：install-hook-adapter 生成的 PreToolUse / tool.execute.before 接 `session-gate.sh check`，轮次超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即块工具调用（exit 2/throw，§2.9.6）——指令衰减免疫层；无 hook 能力的 Agent 以本纪律层 + begin 拒绝兜底。
+1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化；v3.60.0 分级，FU-909）**：单会话 `bash` 调用 ≤20 次（硬约束限于**编码/落点类**；baseline 校准、全量 suite、长复测类验证调用单列台账不占额）、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。**会话换挡硬拦（v3.58.0）**：install-hook-adapter 生成的 PreToolUse / tool.execute.before 接 `session-gate.sh check`，轮次超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即块工具调用（exit 2/throw，§2.9.6）——指令衰减免疫层；无 hook 能力的 Agent 以本纪律层 + begin 拒绝兜底。
 2. **一次拉全**：同文件检索一次 grep 合并全部 pattern（`-e` / `-E`），禁止多 pattern 分次重扫。
 3. **先定位后小窗**：read 大文件前先 `grep -n` 定位行号，再小窗读（±80 行）；同文件不重复大窗读。
 4. **勘探下放（v3.39.0 起默认强制，非建议）**：预计读 >2 文件或 >100 行日志/代码定位、或 >2 pattern 的检索，**必须**合并单次调用或委派只读子代理执行，只回结论与行号，原始输出不进主上下文；子代理超出派发输入清单的读盘动作须在结论中声明原因（§2.2 输入契约）。
@@ -41,7 +41,7 @@
 
 若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
 
-1. 在 `docs/changes/<变更号>/` 创建并完成入口八件 `00-intent.md`、`00-governance.json`、`00.5-communication.md`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**骨架可由 `scripts/new-change <变更号> --risk Lx` 两段式生成（v3.52.0）：确认记录在位后才补齐 01-spec 起五件，`--allow-unconfirmed` 供自动化入口显式越过；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）。各件必含节与机校语义——00-intent 为管线入口且 begin 硬校「预期结果/开放问题」（§2.17）、00.5 沟通先行门 GATE-E83 硬校确认记录非空 + L0 单行声明豁免、确认落盘前禁止生成后续产物正文与源码编辑（§2.17.2d）、02 先分析后方案三维 + 回滚（§2.5 阶段 2）、JSON 风险等级与四主体互异（L2/L3 强制互异；全等级最低线=作者≠评审）含 `spec_author`（§2.1 规则 10）、RTVM 回填门禁 4——**唯一权威见 DS 对应节，本入口不复制其细则**。**同一天多个 L0/L1 默认共落 `docs/changes/BATCH-YYYYMMDD/`（`## <变更号>` 锚点分节；L2/L3 独立目录；细则 §1.1）**。
+1. 在 `docs/changes/<变更号>/` 创建并完成入口八件 `00-intent.md`、`00-governance.json`、`00.5-communication.md`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**骨架可由 `scripts/new-change <变更号> --risk Lx` 两段式生成（v3.52.0）：确认记录在位后才补齐 01-spec 起五件，`--allow-unconfirmed` 供自动化入口显式越过；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）。各件必含节与机校语义——00-intent 为管线入口且 begin 硬校「预期结果/开放问题」（§2.17）、00.5 沟通先行门 GATE-E83 硬校确认记录非空 + L0 单行声明豁免、确认落盘前禁止生成后续产物正文与源码编辑（§2.17.2d）、02 先分析后方案三维 + 回滚（§2.5 阶段 2）、JSON 风险等级与四主体互异（L2/L3 强制互异；全等级最低线=作者≠评审）含 `spec_author`（§2.1 规则 10）、RTVM 回填门禁 4——**唯一权威见 DS 对应节，本入口不复制其细则**。**同一天多个 L0/L1 默认共落 `docs/changes/BATCH-YYYYMMDD/`（`## <变更号>` 锚点分节；L2/L3 独立目录；细则 §1.1）**；00-intent 必填**目录落位声明**（`- **目录落位**：BATCH-YYYYMMDD | 独立目录（<理由>）`，GATE-E86 硬校，v3.60.0），非 L0 的 00.5 沟通稿须含五要素锚点（§2.17.2d 第 4 条）。
 2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。**begin 同时机校项目总册 12 册在位（§1.3）**：`docs/project/` 缺失或不全时，先复制 `<docs>/templates/project/` 骨架、回填现状并完成逐册初评，再 begin（豁免 `AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1` 须在 09「重要上下文」登记理由）。begin 同时执法**会话红灯门（v3.41.0）**：`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付 changelog 时拒绝（带病开工拦截；豁免 `AGENT_GUARD_ALLOW_OVER_RED=1` 并登记 09「重要上下文」）。
 3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」Observation 记录，§2.16.2）与**「项目总册回填清单」节**（P00–P11 逐册勾选/未命中，§1.3）。**交付前变更目录全部 `*.md` 产物盖章（pre-commit 自动，v3.41.0）**：hook 自动执行 `scripts/stamp-provenance.sh --all <活跃变更>`（幂等、真值读 git/主机/UTC、**禁手写**；§4 追踪矩阵由 `--all` 从 01.5 矩阵派生 fail-open；`bug_ref` 六件套由 hook 逐一 `--bug`；无 pre-commit 环境手动执行同命令；gate stop 逐一校验缺一不可交付；只校验当前活跃变更，**历史产物不得回填**，§1.1/§4）。**`bug_ref` 绑定的缺陷六件套同样盖章**：`scripts/stamp-provenance.sh --bug <BUG-id>`（六件不齐 staged/stop/CI 与审计 G8 拦截；豁免须 `<docs>/bugs/.gate-allowlist` 登记理由；**v3.35.0 起六件套按天入批、v3.36.0 扁平化：`docs/bugs/BATCH-YYYYMMDD/` 同名文件 + `## BUG-xxx` 锚点分节**，嵌套子目录为历史合法形态，§1.1）。启用 Stop Hook / 会话内执法（v3.34.0）时自动检查上述产物与门禁 4 RTVM 回填（细则 §2.17.1）。
 4. 传动与事故重入（§2.17.1/§2.17.2）：`01-spec.md` 合入会自动派发 02/03/03.5/04 骨架 PR，`09-changelog.md` 合入会自动开发布检查单 issue；生产事故经 incident 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架，接手者须走完整变更流程，禁止"修完不留痕"。**缺陷发现入口（§2.17.2b v3.43.0）**：主干回归红经 `bug-autointent` 自动建完整六件套骨架（频控窗口内同指纹只追加复现行）；会话内 audit 红灯/gate 摩擦须**交互三选项**（建骨架/登记 FU/忽略须 09 理由），不得静默跳过。启用会话内执法时，会话开始自动注入规则 10 四主体自查表（§2.1 规则 10，冲突点名）。
@@ -54,26 +54,26 @@
 | 我要做什么 | 读哪一节 |
 |---|---|
 | 判断这次改动风险等级、要不要跨平台交叉验证 | §0.5 |
-| 分阶段专家评审、九专家职责映射与上下文贴近契约（防泛泛而谈）；评审/测试子代理派发必须附**输入契约**（变更文件清单+diff 摘要+待核对产物路径+行号锚点，§2.2 v3.39.0）；专家能力卡见 `docs/methodologies/expert-capabilities.md` | §2.2 |
+| 分阶段专家评审、九专家职责映射与上下文贴近契约（防泛泛而谈）；评审/测试子代理派发必须附**输入契约**（变更文件清单+diff 摘要+待核对产物路径+行号锚点，§2.2 v3.39.0）；专家能力卡见 `resources/methodologies/expert-capabilities.md` | §2.2 |
 | 确认本次变更作者/实现/测试/评审四主体互异（能否兼任） | §2.1 规则 10 |
 | 执行中遇到歧义怎么裁定（何时必须问用户、何时可自裁） | §2.1 规则 8「歧义分级裁定」 |
 | 只加载本次任务需要的规范层（宪法/流程/操作/历史） | §头部「分层阅读路由」 |
 | 新建功能，第一次接触本仓库 | §2.5 阶段 1-10 全部 |
-| 做影响分析 / 出方案 / 拆任务 | §2.5 阶段 2-3（三维影响 + ≥2 候选选型 + PM 拆分；命中状态/触发链路时隐式链路三向遍历见 `docs/methodologies/state-trigger-audit.md`） |
-| 做技术/方法论选型（允许用哪些、禁止用哪些） | `docs/METHODOLOGY.md`（M0–M3 分级唯一权威表）+ §2.5 阶段 3 |
-| 写代码前的工程决策（SOLID/DRY/KISS、复杂度、错误处理、日志、并发） | `docs/methodologies/development.md` |
-| 定义数据结构 / 接口字段 / LLM 输入输出契约 | `docs/methodologies/data-structures.md`（六类模型 + 弱类型禁令） |
+| 做影响分析 / 出方案 / 拆任务 | §2.5 阶段 2-3（三维影响 + ≥2 候选选型 + PM 拆分；命中状态/触发链路时隐式链路三向遍历见 `resources/methodologies/state-trigger-audit.md`） |
+| 做技术/方法论选型（允许用哪些、禁止用哪些） | `resources/METHODOLOGY.md`（M0–M3 分级唯一权威表）+ §2.5 阶段 3 |
+| 写代码前的工程决策（SOLID/DRY/KISS、复杂度、错误处理、日志、并发） | `resources/methodologies/development.md` |
+| 定义数据结构 / 接口字段 / LLM 输入输出契约 | `resources/methodologies/data-structures.md`（六类模型 + 弱类型禁令） |
 | 写测试用例 | §2.5 阶段 4 + §0 门禁 2（十一类覆盖维度 + SC-xxx 业务场景清单，场景覆盖率 ≥80%（L3 ≥90%）） |
 | 执行中如何留痕（Thought/Observation） | §2.16.2 ReAct 执行铁律 |
 | L0/L1 变更怎么按轻量通道执行（省表达成本，不省证据边界） | §0.5 指引 + §1.1「L0/L1 轻量通道」 |
 | 怎么压会话/输出 token 成本 | 本文件「Agent 执行资源纪律」节 + §2.9.6 会话与上下文纪律 + §2.5 表达成本条款 |
-| 只是改 bug | §2.5 阶段 6（`docs/bugfix-log.md` 双登记 + 根因表「同族推演」行 + 「Bug 修复回填清单」；三条款——诊断前必读总册 / TC 覆盖强制新增防回归 / 六件套按天入批 `docs/bugs/BATCH-YYYYMMDD/` 扁平化——与 **P3 缺陷轻量通道**（文案类：`01-diagnosis.md` 行首 `severity: P3` 免 02/05/06 三件，未声明=全六件）细则唯一权威见 §2.5 阶段 6 与 §1.1）+ `docs/methodologies/state-trigger-audit.md`（同族推演与反模式细则）+ §0 门禁 |
+| 只是改 bug | §2.5 阶段 6（`docs/bugfix-log.md` 双登记 + 根因表「同族推演」行 + 「Bug 修复回填清单」；三条款——诊断前必读总册 / TC 覆盖强制新增防回归 / 六件套按天入批 `docs/bugs/BATCH-YYYYMMDD/` 扁平化——与 **P3 缺陷轻量通道**（文案类：`01-diagnosis.md` 行首 `severity: P3` 免 02/05/06 三件，未声明=全六件）细则唯一权威见 §2.5 阶段 6 与 §1.1）+ `resources/methodologies/state-trigger-audit.md`（同族推演与反模式细则）+ §0 门禁 |
 | 按变更类型取阅读包（阅读税路由，v3.46.0） | `bash scripts/generate-reading-pack.sh <type>`（type∈`L0-bugfix|L1-standards|L2-architecture|L3-critical|universal`）——从 `CLAUSE_REGISTRY.md`（机器索引层）按需生成内容切片，锚点 fail-closed 防漂移；本表为路由入口、阅读包为切片、DS 为正文唯一权威（§2.17.2c） |
 | 交付前文档互证（CI/本地均可跑） | `bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档清单↔§3 同源 / G4 bugfix 双登记互证 / G5 RTVM 回填一致 / G6 §4 必填节 / G7 变更批次自洽 / G8 六件套存在性 / **G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截（§1.3 第 6 条，v3.37.1）** / **G10 废弃条款 sweep——废止标记须带 v3.x 被替代指向（减法机制，v3.41.0）** / A20 变更目录盖章互证 / A21 六件套盖章，v3.35.0；失败项即 §2.14 回填清单，§2.13.4） |
-| 项目级总册（总体需求/架构/接口/数据/任务/测试/部署/风险/决策） | §1.3 + `docs/methodologies/project-masters.md`（十二册清单与必含章节唯一权威；首次变更初始化，每次变更逐册回填+变更注记） |
+| 项目级总册（总体需求/架构/接口/数据/任务/测试/部署/风险/决策） | §1.3 + `resources/methodologies/project-masters.md`（十二册清单与必含章节唯一权威；首次变更初始化，每次变更逐册回填+变更注记） |
 | 涉及配置文件/数据库变更 | §2.6 |
 | 要发布上线 | §2.7、§2.8 |
-| 涉及模型/Prompt/AI 链路 | §2.9 + `docs/methodologies/data-structures.md` §4（LLM 结构专项） |
+| 涉及模型/Prompt/AI 链路 | §2.9 + `resources/methodologies/data-structures.md` §4（LLM 结构专项） |
 | 生产环境紧急热修复 | §2.11 |
 | 完成前最后自检 | §2.16.2、§2.16.3、§2.16.4、§2.16.6 |
 | 填写 Changelog | §4 |
@@ -84,5 +84,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.58.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.60.0_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

@@ -1,6 +1,6 @@
 # 数据结构设计规范（Data Structures Methodology）
 
-> **定位**：本文件是数据建模决策（规范 §2.5 阶段 1 输入输出契约、阶段 3 数据设计、阶段 5 实现）的工程依据，M0 强制基线（见 `docs/METHODOLOGY.md` §3.3）。核心主张：**结构化类型是系统内一切信任的前提**——弱类型穿层（`Map<String,Object>` / `any` / 无 schema 的 dict）意味着编译器与 Reviewer 同时失明。
+> **定位**：本文件是数据建模决策（规范 §2.5 阶段 1 输入输出契约、阶段 3 数据设计、阶段 5 实现）的工程依据，M0 强制基线（见 `resources/METHODOLOGY.md` §3.3）。核心主张：**结构化类型是系统内一切信任的前提**——弱类型穿层（`Map<String,Object>` / `any` / 无 schema 的 dict）意味着编译器与 Reviewer 同时失明。
 > **读取时机**：定义任何接口字段、LLM 输入输出、缓存载荷、消息体之前。
 
 ---
@@ -110,8 +110,8 @@ public Either<AnalysisFallback, AnalysisDTO> analyze(String sessionId) {
 }
 ```
 
-**Review 操作**：挑本次变更的 1–2 个真实结构（对外契约、LLM 输入输出优先）逐字段过 §1–§3；发现弱类型穿层按 `docs/METHODOLOGY.md` §2 统一分级记入 07-review-report.md（M0 违反=严重）。
+**Review 操作**：挑本次变更的 1–2 个真实结构（对外契约、LLM 输入输出优先）逐字段过 §1–§3；发现弱类型穿层按 `resources/METHODOLOGY.md` §2 统一分级记入 07-review-report.md（M0 违反=严重）。
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.58.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.60.0_

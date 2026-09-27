@@ -77,6 +77,7 @@ bash tests/audit-standards-src.sh  # 源层：版本链 / 关键词落点 / §3�
 
 - **改脚本 → 必须先跑通 `run-tests.sh`**（§2.17.4 硬性要求）。
 - **改规范正文 / 模板 / README → 必须先跑通 `audit-standards-src.sh`**。
+- **两 suite 本地必须串行跑**（FU-907）：audit 经 `update-assertion-count.sh --check` 内嵌整跑 `run-tests.sh`，并发会共写工作区 `.agent-state` 互踩；CI 双 job 为独立 VM 不受影响。
 - `run-tests.sh` 是**双布局自适应**的：在 Skill 仓库内跑全量；被 `--guard` 复制到目标仓库后，源路径自动回退、Skill 仓库专属用例（T11 安装器、T14b 安装器路径用例、依赖未装层的 T10/T12）自动 SKIP。
 
 ### 3.1 第三道：把门禁指向**本仓自己的真实产物**（dogfooding，改门禁后必做）
@@ -198,6 +199,8 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.60.0** | **目录落位声明机校 + 沟通稿五要素锚点（CHG-076，REQ-1009）**：GATE-E86（00-intent 落位声明↔实际目录/风险级一致性，批次锚点感知）+ GATE-E83 五要素锚点扩展（非 L0）+ 旁路 friction 台账；DS §1.1/§2.17.2d/§2.17.3 条款（含四主体互异口径修正对齐 E32/E33）+ 配对减法净 -14B（162,730B）；entry 模板「目录落位」节占位 fail-closed（独立目录；批次角 FU-912）。TC-1063..1066（T47）。golden 541；源层 402 + 0 soft。**回填义务：无** |
+| **v3.59.0** | **A11s 减法 + FU 裁定批 + A10/A11s 交互缺陷修复（CHG-074/075）**：DS 165,377→162,744B（A11s 熄灯，FU-911 登记 §2.5/§2.16 结构性下沉）；FU-906/907/909 关闭落地、FU-910（report_soft pass 排除 A10 分母）修复；死指针 21 处改 resources/ 前缀。golden 537；源层 401（baseline 400）+ 0 soft。**回填义务：无** |
 | **v3.58.0** | **全项目 review 收口 + handoff 工具级硬拦 + 持续减法制度化（CHG-072，REQ-1008）**：bug×3（AGENTS L44 限定词/根 AGENTS.md 自述改真 FU-905 关闭/§7 口径）+ DS 九巨行指针化 + A11s 软预警档（≥163,840B soft warn）+ session-gate `check` 模式 + install-hook-adapter claude/opencode 工具级硬拦接线 + 持续减法条款/体量台账 + intent.md 删除 + A35 墓碑 + stamp ANCHOR PIN + FU-906~909。**`--upgrade` 带走规范/AGENTS/session-gate/install-hook-adapter/stamp-provenance**。**回填义务（一次性）**：重跑 install-hook-adapter。golden 537；源层 401（baseline 400）+1 soft（A11s 预警区） |
 | **v3.57.0** | **R3 TOP13 减法余项（CHG-071，REQ-1007，纯减法零语义变化）**：tests 双 helper（entry 模板七参数化/T44 批次循环）+ gate help 段指针化 + E85/E82 `sig_head` 共享 + AGENTS/DS/模板叙事指针化；延伸发现并入 R26-R28 注册表路径纠偏（CHG-070 根 AGENTS.md 指针壳遮蔽 T39 解析）。`--upgrade` 零行为变化。**回填义务：无**。golden 537/源层 401 不变 |
 | **v3.56.1** | **A6 族 CI soft 化（CHG-070，REQ-1006，用户裁定方案 b）**：CI 恒红根因=docs/* 忽略裁定 vs A6 断言结构性冲突；A6a/b/c 并入 soft 桶（本地恒硬），docs/ 忽略保持。**`--upgrade` 零分发变化**。**回填义务：无**。golden 537/源层 401（baseline 400）不变 |

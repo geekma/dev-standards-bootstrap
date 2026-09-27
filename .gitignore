@@ -56,3 +56,4 @@ docs/*
 .claude/
 .opencode/
 .agent-state/
+scripts/session-gate.sh

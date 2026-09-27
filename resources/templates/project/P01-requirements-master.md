@@ -1,6 +1,6 @@
 # P01 · 总需求册（Requirements Master）
 
-> **总册编号：P01** ｜ 落点：`docs/project/P01-requirements-master.md` ｜ 细节唯一权威：`docs/methodologies/project-masters.md`
+> **总册编号：P01** ｜ 落点：`docs/project/P01-requirements-master.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。
 > **更新语义**：活文档（回填 + 变更注记）——REQ **集合**变化（新增/裁剪/状态迁移）必须同步本册统计行；REQ 正文/DoD/验收的修改只动功能 `01-spec.md`，不触本册（§2.5 阶段 1 总册联动）；被更新章节末尾追加 `> 变更注记 CHG-xxx（日期）：<摘要>`，注记行只增不删。
 

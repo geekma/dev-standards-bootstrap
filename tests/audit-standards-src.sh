@@ -37,6 +37,7 @@ RM_EN="$ROOT/README.md"
 RM_ZH="$ROOT/README.zh-CN.md"
 
 pass=0
+soft_pass=0
 fail=0
 warn=0
 failed_names=()
@@ -60,11 +61,15 @@ report() { # name expected actual
   fi
 }
 
-# REQ-965: soft bucket reporter — a pass shares the hard counter; a miss only warns.
+# REQ-965: soft bucket reporter — a pass shares the hard counter but is tracked
+# separately so it stays OUT of the A10 denominator (FU-910: A11s pass-path
+# used to inflate pass+fail and flip A10 red exactly when DS went BELOW the
+# soft threshold — the warn path masked this at v3.58.0 delivery).
 report_soft() { # name expected actual
   local name="$1" expected="$2" actual="$3"
   if [[ "$expected" == "$actual" ]]; then
     pass=$(( pass + 1 ))
+    soft_pass=$(( soft_pass + 1 ))
     printf 'ok   %s\n' "$name"
   else
     warn=$(( warn + 1 ))
@@ -1082,15 +1087,15 @@ at_least "A27 golden T40 anchors generator capability (REQ-969)" 1 "$ROOT/tests/
 # 基线文件随本变更入库；/tmp 计数文件为本轮运行现场（供生成器 --check 比对）。
 AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
 AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
-printf '%s\n' "$(( pass + fail ))" > "$AUDIT_LAST"
+printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
 if [[ -f "$AUDIT_BASELINE" ]]; then
   expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')
   # soft (CI) mode: numeric drift warns instead of blocking; warn stays out of
-  # this denominator (pass+fail), so the baseline comparison itself goes soft.
+  # this denominator (pass+fail-soft_pass), so the baseline comparison goes soft.
   if [[ -n "$SOFT" ]]; then
-    report_soft "A10 audit executed-count matches baseline (FU-022; CI soft)" "$expected_total" "$(( pass + fail ))"
+    report_soft "A10 audit executed-count matches baseline (FU-022; CI soft)" "$expected_total" "$(( pass + fail - soft_pass ))"
   else
-    report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail ))"
+    report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail - soft_pass ))"
   fi
 else
   report "A10 audit baseline exists (FU-022; run scripts/update-assertion-count.sh)" 1 0
