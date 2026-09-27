@@ -75,7 +75,7 @@ batch_put() { # <doc>
   fi
 }
 
-today=$(date +%Y%m%d)
+today=$(date -u +%Y%m%d)
 batch="$change_root/BATCH-$today"
 use_batch=0
 if [[ -d "$batch" ]]; then

@@ -90,7 +90,10 @@ EOF
     printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"%s","test_owner":"%s","review_owner":"%s"}\n' \
       "$id" "$risk" "$impl" "$test" "$review" > "$d/00-governance.json"
   else
-    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"%s"}\n' \
+    # v3.61.1: L0/L1 review_owner/test_owner now mandatory (GATE-E31 closure,
+    # REQ-1016) — default fixtures satisfy the lowest bar (distinct from
+    # author/a-1 and the impl argument).
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"%s","test_owner":"claude/s-t","review_owner":"claude/s-r"}\n' \
       "$id" "$risk" "$impl" > "$d/00-governance.json"
   fi
   cat > "$d/00.5-communication.md" <<'EOF'
@@ -181,7 +184,7 @@ seed_entry_templates() {
     printf '## 开放问题\n'
     [[ -n "$3" ]] && printf '%s\n' "$3"
     printf '## 目录落位\n- **目录落位**：独立目录（t）\n'; } > docs/templates/entry/00-intent.md
-  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
+  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING", "test_owner": "PENDING", "review_owner": "PENDING"}\n' > docs/templates/entry/00-governance.json
   { printf '# <__CHANGE_ID__> %s\n## 用户整体确认记录\n' "$4"; [[ -n "$5" ]] && printf '%s\n' "$5"
     printf '## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n'; } > docs/templates/entry/00.5-communication.md
   printf '# <__CHANGE_ID__> spec%s\n- REQ-001: tbd\n' "$6" > docs/templates/entry/01-spec.md
@@ -195,7 +198,7 @@ seed_entry_templates() {
 # T42 批次块不收拢（成员差异是测试点，P7 留原形）。
 seed_batch_member() { # <batch_dir> <change_id>
   local d="$1" id="$2"
-  printf '{"change_id":"%s","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' "$id" >> "$d/00-governance.json"
+  printf '{"change_id":"%s","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x"}\n' "$id" >> "$d/00-governance.json"
   printf '## %s\n## 问题\np\n## 预期结果\ne\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（同日 L1 批次成员）\n## 开放问题\no\n' "$id" >> "$d/00-intent.md"
   printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n' "$id" >> "$d/00.5-communication.md"
   printf '## %s\nREQ-910: r\n' "$id" >> "$d/01-spec.md"
@@ -355,7 +358,7 @@ report "begin accepts distinct owners at L2" 0 $?
 
 new_repo
 seed_artifacts CHG-202 L1 claude/s-1
-printf '{"change_id":"OTHER","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"a"}\n' \
+printf '{"change_id":"OTHER","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"a","test_owner":"t/x","review_owner":"r/x"}\n' \
   > docs/changes/CHG-202/00-governance.json
 scripts/agent-gate begin CHG-202 >/dev/null 2>&1
 report "begin rejects mismatched change_id" 2 $?
@@ -899,7 +902,7 @@ printf '# test plan\n' > docs/bugs/BUG-042/03-test-plan.md
 printf '# matrix\n' > docs/bugs/BUG-042/04-matrix.md
 printf '# config\n' > docs/bugs/BUG-042/05-config.md
 printf '# tasks\n' > docs/bugs/BUG-042/06-tasks.md
-printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-042"}\n' > docs/changes/CHG-800/00-governance.json
+printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-042"}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin accepts bug_ref with complete defect doc set" 0 $?
 
@@ -929,11 +932,11 @@ check_output "begin names a v3.7.0 defect doc when missing" "missing defect docu
 printf '# matrix recreated\n' > docs/bugs/BUG-042/04-matrix.md
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin accepts bug_ref after all six defect docs land" 0 $?
-printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":""}\n' > docs/changes/CHG-800/00-governance.json
+printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":""}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin skips bug_ref validation when empty" 0 $?
 
-printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"../evil"}\n' > docs/changes/CHG-800/00-governance.json
+printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"../evil"}\n' > docs/changes/CHG-800/00-governance.json
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin rejects bug_ref with path-unsafe defect id" 2 $?
 
@@ -951,7 +954,7 @@ e
 ## 开放问题
 o
 EOF
-printf '{"change_id":"CUSTOM-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > changes/CUSTOM-1/00-governance.json
+printf '{"change_id":"CUSTOM-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a","test_owner":"t/x","review_owner":"r/x"}\n' > changes/CUSTOM-1/00-governance.json
 printf '# CUSTOM-1 沟通稿\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > changes/CUSTOM-1/00.5-communication.md
 echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > changes/CUSTOM-1/02-code-impact-analysis.md
@@ -1316,7 +1319,7 @@ e
 ## 开放问题
 o
 EOF
-printf '{"change_id":"CFG-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > doc/changes/CFG-1/00-governance.json
+printf '{"change_id":"CFG-1","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a","test_owner":"t/x","review_owner":"r/x"}\n' > doc/changes/CFG-1/00-governance.json
 printf '# CFG-1 沟通稿\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > doc/changes/CFG-1/00.5-communication.md
 echo "REQ-001 s" > doc/changes/CFG-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > doc/changes/CFG-1/02-code-impact-analysis.md
@@ -1340,7 +1343,7 @@ e
 ## 开放问题
 o
 EOF
-printf '{"change_id":"CFG-2","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a"}\n' > doc/changes/CFG-2/00-governance.json
+printf '{"change_id":"CFG-2","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"a","test_owner":"t/x","review_owner":"r/x"}\n' > doc/changes/CFG-2/00-governance.json
 printf '# CFG-2 沟通稿\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > doc/changes/CFG-2/00.5-communication.md
 echo "REQ-001 s" > doc/changes/CFG-2/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > doc/changes/CFG-2/02-code-impact-analysis.md
@@ -1653,7 +1656,7 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
   : > "$d/04-test-scripts.md"
   for pair in "$@"; do
     id="${pair%%:*}"; risk="${pair##*:}"
-    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1"}\n' "$id" "$risk" >> "$d/00-governance.json"
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-t","review_owner":"claude/s-r"}\n' "$id" "$risk" >> "$d/00-governance.json"
     printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
     printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' "$id" >> "$d/00.5-communication.md"
     printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
@@ -1781,7 +1784,7 @@ fi
 # （下游实测：同日 5 组 L0/L1 全部各开独立目录）。本组验证：当日批次已存在时，
 # 独立 L0/L1 begin 必须被拦；豁免必须显式；入批与 L2 独立照常。
 new_repo
-seed_batch_artifacts "BATCH-$(date +%Y%m%d)" CHG-820:L0
+seed_batch_artifacts "BATCH-$(date -u +%Y%m%d)" CHG-820:L0
 commit_all "docs: today's batch exists"
 seed_begin CHG-821 L1 claude/s-1
 report "T18b begin rejects an independent L0/L1 when a same-day batch exists" 2 $?
@@ -1789,7 +1792,7 @@ out=$(scripts/agent-gate begin CHG-821 2>&1 || true)
 check_output "T18b refusal names the batch and the escape hatch" "same-day batch exists.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
 AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-821 >/dev/null 2>&1
 report "T18b explicit override allows an independent L0/L1" 0 $?
-seed_batch_artifacts "BATCH-$(date +%Y%m%d)" CHG-822:L1
+seed_batch_artifacts "BATCH-$(date -u +%Y%m%d)" CHG-822:L1
 scripts/agent-gate begin CHG-822 >/dev/null 2>&1
 report "T18b joining the same-day batch begins" 0 $?
 seed_begin CHG-823 L2 claude/s-1 tester reviewer
@@ -1818,7 +1821,7 @@ cat > docs/changes/CHG-840/00-governance.json <<'EOF'
 {
   "change_id": "CHG-840",
   "risk_level": "L1",
-  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1","test_owner":"t/x","review_owner":"r/x"
 }
 EOF
 out=$(scripts/agent-gate begin CHG-840 2>&1); rc=$?
@@ -1851,12 +1854,12 @@ cat > docs/changes/BATCH-20260103/00-governance.json <<'EOF'
 {
   "change_id": "CHG-830",
   "risk_level": "L0",
-  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1","test_owner":"t/x","review_owner":"r/x"
 },
 {
   "change_id": "CHG-831",
   "risk_level": "L1",
-  "spec_author":"author/a-1","implementation_owner": "claude/s-1"
+  "spec_author":"author/a-1","implementation_owner": "claude/s-1","test_owner":"t/x","review_owner":"r/x"
 }
 EOF
 t19b=$(scripts/agent-gate metrics 2>&1)
@@ -2061,7 +2064,7 @@ for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
 done
 append_diag_lines "docs/bugs/BATCH-$today/BUG-901/01-diagnosis.md"
 seed_artifacts CHG-902 L0 claude/s-1
-printf '{"change_id":"CHG-902","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
+printf '{"change_id":"CHG-902","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
 scripts/agent-gate begin CHG-902 >/dev/null 2>&1
 report "T18c begin resolves a bug_ref bound to a batched defect group" 0 $?
 mkdir -p docs/bugs/BUG-902
@@ -2102,7 +2105,7 @@ append_diag_lines "docs/bugs/BATCH-$today/01-diagnosis.md"
 # 负例铺垫：BUG-904 只在诊断件锚定（其余五件缺同 id 小节 → 六件锚点不齐）
 printf '\n## BUG-904 member\n' >> "docs/bugs/BATCH-$today/01-diagnosis.md"
 seed_artifacts CHG-931 L0 claude/s-1
-printf '{"change_id":"CHG-931","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-903"}\n' > docs/changes/CHG-931/00-governance.json
+printf '{"change_id":"CHG-931","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-903"}\n' > docs/changes/CHG-931/00-governance.json
 scripts/agent-gate begin CHG-931 >/dev/null 2>&1
 report "T18d flat bug batch begin resolves a bug_ref via the batch anchor" 0 $?
 echo y > src/z.js   # staged/stop 只在存在代码路径改动时执法（对齐 T4/T5 夹具）
@@ -2116,6 +2119,14 @@ for d6 in 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
 done
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T18d flat batch passes once every anchored id spans the six pieces" 0 $?
+# TC-1069 (v3.61.1 REQ-1015): E87 roster diff — an id anchored only in sibling
+# docs (missing from 01-diagnosis) escaped E57's per-gid loop entirely.
+printf '\n## BUG-906 member\n' >> "docs/bugs/BATCH-$today/02-impact.md"
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T18d E87 rejects an id anchored outside 01-diagnosis (roster diff)" "GATE-E87" "$out"
+sed -i '' '/^## BUG-906 member$/d' "docs/bugs/BATCH-$today/02-impact.md" 2>/dev/null || sed -i '/^## BUG-906 member$/d' "docs/bugs/BATCH-$today/02-impact.md"
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18d E87 clears once the stray anchor is removed" 0 $?
 cp "$ROOT/resources/templates/stamp-provenance.sh" scripts/stamp-provenance.sh
 scripts/stamp-provenance.sh --bug BUG-903 >/dev/null 2>&1
 report "T18d --bug resolves and stamps a flat batch member" 0 $?
@@ -2127,7 +2138,7 @@ for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
 done
 append_diag_lines "docs/bugs/BATCH-$today/BUG-905/01-diagnosis.md"
 seed_artifacts CHG-932 L0 claude/s-1
-printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","bug_ref":"BUG-905"}\n' > docs/changes/CHG-932/00-governance.json
+printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-905"}\n' > docs/changes/CHG-932/00-governance.json
 scripts/agent-gate begin CHG-932 >/dev/null 2>&1
 report "T18d nested legacy group still resolves under the three-form resolver" 0 $?
 
@@ -2213,27 +2224,27 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   check_output "T25 risk substituted in spec" "L1" "$(cat docs/changes/CHG-930/01-spec.md)"
   out=$(scripts/agent-gate begin CHG-930 2>&1 || true)
   check_output "T25 PENDING owners rejected by begin" "must name a concrete owner" "$out"
-  sed -i '' 's/PENDING/op\/s-930/g' docs/changes/CHG-930/00-governance.json 2>/dev/null \
-    || sed -i 's/PENDING/op\/s-930/g' docs/changes/CHG-930/00-governance.json
+  sed -i '' 's/PENDING/op\/s-930/g; s/"review_owner": "op\/s-930"/"review_owner": "op\/s-r"/' docs/changes/CHG-930/00-governance.json 2>/dev/null \
+    || sed -i 's/PENDING/op\/s-930/g; s/"review_owner": "op\/s-930"/"review_owner": "op\/s-r"/' docs/changes/CHG-930/00-governance.json
   scripts/agent-gate begin CHG-930 >/dev/null 2>&1
   report "T25 filled scaffold passes begin (A-layer satisfied by skeleton)" 0 $?
 
-  mkdir -p "docs/changes/BATCH-$(date +%Y%m%d)"
-  printf '# intent\n## CHG-931\n## 预期结果\n## 开放问题\n' > "docs/changes/BATCH-$(date +%Y%m%d)/00-intent.md"
-  printf '{"change_id": "CHG-931", "risk_level": "L0", "spec_author": "op/s-x", "implementation_owner": "op/s-x"}\n' > "docs/changes/BATCH-$(date +%Y%m%d)/00-governance.json"
+  mkdir -p "docs/changes/BATCH-$(date -u +%Y%m%d)"
+  printf '# intent\n## CHG-931\n## 预期结果\n## 开放问题\n' > "docs/changes/BATCH-$(date -u +%Y%m%d)/00-intent.md"
+  printf '{"change_id": "CHG-931", "risk_level": "L0", "spec_author": "op/s-x", "implementation_owner": "op/s-x", "test_owner": "t/x", "review_owner": "r/x"}\n' > "docs/changes/BATCH-$(date -u +%Y%m%d)/00-governance.json"
   scripts/new-change CHG-932 --risk L0 >/dev/null 2>&1
   report "T25 batch-join exits 0" 0 $?
   report "T25 no dedicated dir for batch member" 0 "$(test ! -e docs/changes/CHG-932; echo $?)"
-  grep -q '^## CHG-932' "docs/changes/BATCH-$(date +%Y%m%d)/00.5-communication.md"
+  grep -q '^## CHG-932' "docs/changes/BATCH-$(date -u +%Y%m%d)/00.5-communication.md"
   report "T25 batch wave1 carries ## CHG-932 anchor in 00.5" 0 $?
   out=$(scripts/new-change CHG-932 --risk L0 2>&1 || true)
   check_output "T25 wave2 withheld in batch before confirmation" "NC-E09" "$out"
-  printf '\n- 确认状态：已整体确认\n' >> "docs/changes/BATCH-$(date +%Y%m%d)/00.5-communication.md"
+  printf '\n- 确认状态：已整体确认\n' >> "docs/changes/BATCH-$(date -u +%Y%m%d)/00.5-communication.md"
   scripts/new-change CHG-932 --risk L0 >/dev/null 2>&1
   report "T25 batch wave2 after confirmation" 0 $?
-  grep -q '^## CHG-932' "docs/changes/BATCH-$(date +%Y%m%d)/01-spec.md"
+  grep -q '^## CHG-932' "docs/changes/BATCH-$(date -u +%Y%m%d)/01-spec.md"
   report "T25 batch shared file carries ## CHG-932 anchor" 0 $?
-  report "T25 governance.json gains one line per member" 2 "$(wc -l < "docs/changes/BATCH-$(date +%Y%m%d)/00-governance.json" | tr -d ' ')"
+  report "T25 governance.json gains one line per member" 2 "$(wc -l < "docs/changes/BATCH-$(date -u +%Y%m%d)/00-governance.json" | tr -d ' ')"
   out=$(scripts/new-change CHG-932 --risk L0 2>&1 || true)
   check_output "T25 duplicate id in batch refused" "fully scaffolded" "$out"
   out=$(scripts/new-change CHG-933 --risk L2 2>&1 || true)
@@ -2313,7 +2324,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   mkdir -p docs/bugs/BUG-943 docs/bugs/BUG-944
   for b in 943 944; do for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do printf '# %s\n' "$doc" > "docs/bugs/BUG-$b/$doc"; done; append_diag_lines "docs/bugs/BUG-$b/01-diagnosis.md"; done
   mkdir -p docs/changes/BATCH-990922
-  printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
+  printf '{"change_id":"CHG-943","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-943"}{"change_id":"CHG-944","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-944"}\n' > docs/changes/BATCH-990922/00-governance.json
   seed_begin CHG-944 L0 claude/s-27
   bash .githooks/pre-commit >/dev/null 2>&1
   report "T27 hook exits 0 on comma-joined batch member" 0 $?
@@ -2781,7 +2792,7 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   # P7（CHG-071）：本块成员差异（951 缺 00.5 锚 / 952 缺历史相似检索行）是测试点，不收拢 helper，保留原形独立演进。
   mkdir -p docs/changes/BATCH-99092501
   { printf '# intent\n'; printf '\n## CHG-951\n\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n\n## 预期结果\n## 开放问题\n'; printf '\n## CHG-952\n\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n\n## 预期结果\n## 开放问题\n'; } > docs/changes/BATCH-99092501/00-intent.md
-  printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x"}\n' > docs/changes/BATCH-99092501/00-governance.json
+  printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x"}\n' > docs/changes/BATCH-99092501/00-governance.json
   { printf '# spec\n\n## CHG-951\n\n- REQ-901: x\n'; printf '\n## CHG-952\n\n- REQ-902: x\n'; } > docs/changes/BATCH-99092501/01-spec.md
   { printf '# impact\n\n## CHG-951\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n'; printf '\n## CHG-952\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n'; } > docs/changes/BATCH-99092501/02-code-impact-analysis.md
   { printf '# plan\n\n## CHG-951\n\n- DES-901: x\n## 技术选型\n备选: A vs B\n'; printf '\n## CHG-952\n\n- DES-902: x\n## 技术选型\n备选: A vs B\n'; } > docs/changes/BATCH-99092501/03-modification-plan.md
@@ -2868,7 +2879,7 @@ if [[ -s "$GATE44_SRC" ]]; then
   for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do printf '# %s\n' "$d6" > "docs/bugs/BUG-970/$d6.md"; done
   printf '延伸发现：未发现\n' >> docs/bugs/BUG-970/01-diagnosis.md
   seed_artifacts CHG-971 L0 claude/s-44
-  printf '{"change_id":"CHG-971","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","bug_ref":"BUG-970"}\n' > docs/changes/CHG-971/00-governance.json
+  printf '{"change_id":"CHG-971","risk_level":"L0","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-970"}\n' > docs/changes/CHG-971/00-governance.json
   out=$(scripts/agent-gate begin CHG-971 2>&1 || true)
   check_output "T44 BUG track refuses 01-diagnosis missing 历史相似检索 (E81)" "GATE-E81.*延伸发现" "$out"
   printf '历史相似检索：未命中（根因关键词检索）\n' >> docs/bugs/BUG-970/01-diagnosis.md

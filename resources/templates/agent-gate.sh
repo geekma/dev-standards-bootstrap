@@ -246,7 +246,23 @@ confirmation_gate_reason() { # <id> <dir>
       return 0
     fi
   else
-    scope05=$(cat "$comm05")
+    # v3.61.1 (CHG-078, FU-913 closure): member detection now follows the
+    # authoritative roster (same source as GATE-E86) instead of the 00-intent
+    # anchor scan — a multi-member batch member without its own 00.5 anchor
+    # used to fall back to whole-file scope here (a sibling's confirmation
+    # could satisfy this gate). Independent dirs / single-member batches keep
+    # the whole-file fallback: the file IS this change's scope.
+    local others05b
+    others05b=$( (change_ids_in_dir "$d" | grep -vx "$id" || true) | sort -u | tr '\n' '|')
+    others05b="${others05b%|}"
+    if [[ -n "$others05b" ]] && grep -qE "^##[[:space:]]+${id}([[:space:]]|\$)" "$comm05"; then
+      scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" -v stop="^##[[:space:]]+(${others05b})([[:space:]]|\$)" '$0 ~ cur {f=1; next} f && $0 ~ stop {f=0} f' "$comm05")
+    elif [[ -n "$others05b" ]]; then
+      CONFIRM_REASON="batch member $id lacks its own ## $id anchor section in $comm05 (roster: {${others05b}}; fail-closed, aligned with GATE-E86, v3.61.1)"
+      return 0
+    else
+      scope05=$(cat "$comm05")
+    fi
   fi
   local rec05 risk05=""
   rec05=$(gov_record "$d/00-governance.json" "$id")
@@ -504,11 +520,15 @@ validate_governance_state() {
     [[ "$implementation" != "$test_owner" && "$implementation" != "$review_owner" && "$test_owner" != "$review_owner" ]] || die "GATE-E32: $file requires distinct implementation, test, and review owners for $risk"
     [[ "$spec_author" != "$implementation" && "$spec_author" != "$test_owner" && "$spec_author" != "$review_owner" ]] || die "GATE-E33: $file requires spec_author distinct from implementation, test, and review owners for $risk (standards §2.1 rule 10)"
   else
+    # v3.61.1 (CHG-078, REQ-1016): lowest-bar closure — DS §0.5.2 requires an
+    # independent review subject even at L0/L1 ("评审不可与作者/开发合并"),
+    # so an undeclared review_owner used to skip E34/E35 entirely. Declare it
+    # mandatory here; the distinctness checks below now always run.
     review_owner=$(json_field "$rec" review_owner)
-    if [[ -n "$review_owner" ]]; then
-      [[ "$spec_author" != "$review_owner" ]] || die "GATE-E34: $file: spec_author must differ from review_owner (lowest bar, standards §2.1 rule 10)"
-      [[ "$implementation" != "$review_owner" ]] || die "GATE-E35: $file: review_owner must differ from implementation_owner (reviewer independence at the lowest bar, standards §2.1 rule 10)"
-    fi
+    [[ -n "$review_owner" ]] || die "GATE-E88: $file must declare review_owner for $risk (lowest bar: the review subject itself is mandatory — review may not merge with author/implementer, standards §0.5.2, v3.61.1)"
+    reject_placeholder_owner "$file" review_owner "$review_owner"
+    [[ "$spec_author" != "$review_owner" ]] || die "GATE-E34: $file: spec_author must differ from review_owner (lowest bar, standards §2.1 rule 10)"
+    [[ "$implementation" != "$review_owner" ]] || die "GATE-E35: $file: review_owner must differ from implementation_owner (reviewer independence at the lowest bar, standards §2.1 rule 10)"
   fi
   # v3.5.0 L3 release authorization: flat string fields, not a nested object —
   # the record is extracted with a single-line sed, so nested JSON cannot parse.
@@ -889,6 +909,18 @@ validate_bug_groups() {
   # that is the backfill list (§2.14), with the allowlist as the escape hatch.
   for batch in "$bugs_root"/BATCH-*/; do
     [[ -s "${batch}01-diagnosis.md" ]] || continue
+    # v3.61.1 (CHG-078, REQ-1015): roster-diff guard. The per-gid loop below
+    # only iterates ids anchored in 01-diagnosis.md — a BUG id anchored in a
+    # sibling doc but missing from 01-diagnosis escaped both bug_group_dir and
+    # E57 entirely. Union across the six docs and die on the diff (T41: this
+    # is E87's single die site).
+    local diag_ids all_ids stray
+    diag_ids=$(sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+)([[:space:]].*)?$/\1/p' "${batch}01-diagnosis.md" | sort -u)
+    all_ids=$( (cat "${batch}01-diagnosis.md" "${batch}02-impact.md" "${batch}03-test-plan.md" "${batch}04-matrix.md" "${batch}05-config.md" "${batch}06-tasks.md" 2>/dev/null || true) | sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+)([[:space:]].*)?$/\1/p' | sort -u)
+    stray=$(comm -13 <(printf '%s\n' "$diag_ids") <(printf '%s\n' "$all_ids"))
+    if [[ -n "$stray" ]]; then
+      die "GATE-E87: defect group anchor(s)$stray present in sibling docs but missing from ${batch}01-diagnosis.md — the 01-diagnosis anchor set is the authoritative roster (standards §2.5 stage 6, v3.61.1)"
+    fi
     for gid in $(sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+)([[:space:]].*)?$/\1/p' "${batch}01-diagnosis.md" | sort -u); do
       missing=""
       # v3.40.0 (CHG-045): severity must be declared inside the member's own
@@ -1312,9 +1344,9 @@ case "$command" in
     # same family as "the standard shipped a speed bump nobody stepped on").
     b_risk=$(json_field "$(gov_record "$d/00-governance.json" "$id")" risk_level)
     if [[ "$b_risk" == L0 || "$b_risk" == L1 ]] && ! is_batch_dir "$d" \
-       && [[ -d "$change_root/BATCH-$(date +%Y%m%d)" ]] \
+       && [[ -d "$change_root/BATCH-$(date -u +%Y%m%d)" ]] \
        && [[ "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
-      die "GATE-E73: same-day batch exists ($change_root/BATCH-$(date +%Y%m%d)) — L0/L1 changes must join it (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      die "GATE-E73: same-day batch exists ($change_root/BATCH-$(date -u +%Y%m%d)) — L0/L1 changes must join it (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
     fi
     # v3.35.0 (standards §1.3): project masters must be initialized before any
     # change starts — first change initializes them (docs edits precede begin).
