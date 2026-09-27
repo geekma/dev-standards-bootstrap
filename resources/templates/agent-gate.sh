@@ -242,7 +242,11 @@ confirmation_gate_reason() { # <id> <dir>
         scope05=$(awk -v cur="^##[[:space:]]+${id}([[:space:]]|\$)" '$0 ~ cur {f=1; next} f' "$comm05")
       fi
     else
-      CONFIRM_REASON="batch member $id lacks its own ## $id anchor section in $comm05"
+      # v3.61.1 (FU-916): message no longer presumes batch membership — this
+      # branch fires whenever 00-intent carries the anchor, even for a
+      # single-member/独立 directory; the roster-accurate wording lives in the
+      # roster branch below.
+      CONFIRM_REASON="$id declares a ## $id anchor in 00-intent (batch-shaped) but its own ## $id anchor is missing in $comm05 — fail-closed: sibling/absent confirmations never count (§2.17.2d)"
       return 0
     fi
   else

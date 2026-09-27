@@ -76,7 +76,7 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 会话内执法
 
-执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（CHG-071/BUG-040~055 实证）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start`：跑 `tests/audit-docs-consistency.sh --only-fail` 亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle`：跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter.sh` 按客户端自适应生成（探测三路证据→按 schema 生成→**生成后强制验证**），`--detect` 打印矩阵。硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
+执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start`：跑 `tests/audit-docs-consistency.sh --only-fail` 亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle`：跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter.sh` 按客户端自适应生成（探测三路证据→按 schema 生成→**生成后强制验证**），`--detect` 打印矩阵。硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
 
 ## 变更批次（同日合并）
 
