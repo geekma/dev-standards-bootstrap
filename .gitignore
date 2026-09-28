@@ -58,3 +58,5 @@ docs/*
 .agent-state/
 scripts/session-gate.sh
 scripts/agent-gate
+scripts/stamp-provenance.sh
+.githooks/

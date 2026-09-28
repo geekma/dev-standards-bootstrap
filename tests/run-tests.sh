@@ -2297,6 +2297,13 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   cp "$STAMP_SRC" scripts/stamp-provenance.sh
   mkdir -p .githooks && cp "$HOOK_SRC" .githooks/pre-commit
   chmod +x .githooks/pre-commit scripts/stamp-provenance.sh scripts/agent-gate
+  # TC-1070 (v3.61.2 REQ-1017): template carries the stamp-backfill logic
+  bash -n "$HOOK_SRC"
+  report "T27 TC-1070 template syntax" 0 $?
+  report "T27 TC-1070 captures stamp file list" 2 "$(grep -cF 'stamped"||$1=="trace-derive' "$HOOK_SRC")"
+  report "T27 TC-1070 strips blocks before compare" 1 "$(grep -cF 'trace-derive begin' "$HOOK_SRC")"
+  report "T27 TC-1070 backfills via git add" 1 "$(grep -cF 'git add -- "$f"' "$HOOK_SRC")"
+  report "T27 TC-1070 warns on beyond-stamp skip" 1 "$(grep -cF 'skip index backfill' "$HOOK_SRC")"
   seed_begin CHG-940 L1 claude/s-27
   report "T27 fixture begins clean" 0 $?
   bash .githooks/pre-commit >/dev/null 2>&1
@@ -2330,6 +2337,18 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   report "T27 hook exits 0 on comma-joined batch member" 0 $?
   check_output "T27 member bug_ref stamped in isolation" "generated_by: stamp-provenance.sh" "$(cat docs/bugs/BUG-944/01-diagnosis.md)"
   if grep -q '^<!-- provenance$' docs/bugs/BUG-943/01-diagnosis.md; then report "T27 no cross-member bleed" 1 0; else report "T27 no cross-member bleed" 0 0; fi
+  # TC-1071 (v3.61.2 REQ-1017): index backfill — tracked file's stamp is re-staged
+  # so the commit itself carries the stamp (kills the post-commit residue loop).
+  # Active change is CHG-944 (seed_begin switched it); --all stamps its own dir.
+  git add docs/changes/CHG-944/00-intent.md
+  bash .githooks/pre-commit >/dev/null 2>&1
+  report "T27 TC-1071 backfill: no unstaged delta after hook (stamp re-staged)" 0 "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
+  # TC-1072 (v3.61.2 REQ-1017): partial staging preserved — a delta beyond the
+  # stamp (e.g. git add -p leftovers) blocks the backfill and warns (fail-open)
+  printf '\nunstaged-extra-line\n' >> docs/changes/CHG-944/00-intent.md
+  out=$(bash .githooks/pre-commit 2>&1 || true)
+  report "T27 TC-1072 skip warning emitted for beyond-stamp delta" 1 "$(printf '%s' "$out" | grep -cF 'skip index backfill')"
+  report "T27 TC-1072 unstaged hunk stays unstaged (not swept into index)" 1 "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
 else
   echo "SKIP T27: stamp-provenance.sh/pre-commit absent (bootstrap --guard 未安装) — 跳过自动章 golden cases"
 fi
@@ -2990,6 +3009,24 @@ if [[ -s "$GATE47_SRC" ]]; then
 else
   echo "SKIP T47: agent-gate absent — 跳过落位声明 golden cases"
 fi
+
+# ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.61.2，REQ-1018/1020）
+# TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
+# "first-of-day creates the batch" present, old "same-day-many" trigger gone
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.61.2' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.61.2 in prose" 3 "$(grep -cF 'v3.61.2' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.61.2" 1 "$(grep -cF '规范版本：v3.61.2' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.61.2" 1 "$(grep -cF '当前对应规范版本：v3.61.2' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.61.2 top row" 1 "$(grep -c '^| v3.61.2 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 README (en) wording updated" 1 "$(grep -cF 'first L0/L1** change (or defect) of the day creates' "$ROOT/README.md")"
+report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L0/L1** 变更/缺陷**即建**' "$ROOT/README.zh-CN.md")"
+report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
+report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 README version strings bumped" 8 "$(grep -c 'v3\.61\.2' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

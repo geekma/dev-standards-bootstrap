@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pre-commit — 溯源自动章 + staged 门禁（v3.40.0，CHG-044 / FU-106①）
+# pre-commit — 溯源自动章 + staged 门禁（v3.40.0，CHG-044 / FU-106①）；盖章后 index 回填（v3.61.2，CHG-079 REQ-1017）
 # 盖章幂等（stamp-provenance.sh 写前删旧块，重跑=覆盖替换）。fail 边界：
 #   · 无活跃变更 / stamp 脚本缺失 → 显式提示并跳过（fail-open，gate staged 对
 #     代码路径仍拦；溯源缺口由 gate stop 与审计 A20/A21 兜底拦截）；
@@ -24,10 +24,23 @@ if [[ -n "${active:-}" && -s "$active" && -f scripts/stamp-provenance.sh ]]; the
       refs="$refs $(printf '%s' "$rec" | sed -nE 's/.*"bug_ref"[[:space:]]*:[[:space:]]*\[([^]]*)\].*/\1/p' | tr -d '"' | tr ',' ' ' || true)"
     done
     echo "pre-commit: stamping provenance for $id (idempotent)"
-    scripts/stamp-provenance.sh --all "$id"
+    stamp_files="$(scripts/stamp-provenance.sh --all "$id" | awk '$1=="stamped"||$1=="trace-derive"{print $2}')"
     for b in $refs; do
       [[ "$b" =~ ^[A-Za-z0-9._-]+$ ]] || continue
-      scripts/stamp-provenance.sh --bug "$b"
+      stamp_files="$stamp_files $(scripts/stamp-provenance.sh --bug "$b" | awk '$1=="stamped"||$1=="trace-derive"{print $2}')"
+    done
+    # 盖章回填（v3.61.2，REQ-1017）：index 剔章后与工作区剔章后相等才 git add——
+    # 文件级精确 + hunk 级安全（git add -p 部分暂存不被盖写）；比较不等→跳过+警告
+    # （fail-open，最坏=不回填=旧行为）；stamp 失败经 pipefail 仍阻断（fail-closed）。
+    strip_awk='BEGIN{p="\x01"} /^<!-- trace-derive begin/||/^<!-- provenance$/{if(p!="\x01"&&p!="")print p;p="\x01";s=1;next} /^<!-- trace-derive end/||/^-->$/{s=0;ng=(getline nxt);if(ng>0&&nxt!~/^[[:space:]]*$/){if(p!="\x01")print p;p=nxt};next} s{next} {if(p!="\x01")print p;p=$0} END{if(p!="\x01")print p}'
+    stamp_files=$(printf '%s\n' $stamp_files | sort -u)
+    for f in $stamp_files; do
+      [[ -f "$f" && -n "$(git ls-files -- "$f")" ]] || continue
+      if [[ "$(git show ":$f" 2>/dev/null | awk "$strip_awk")" == "$(awk "$strip_awk" "$f")" ]]; then
+        git add -- "$f"
+      else
+        echo "pre-commit: skip index backfill for $f (unstaged changes beyond stamp)" >&2
+      fi
     done
   fi
 fi
