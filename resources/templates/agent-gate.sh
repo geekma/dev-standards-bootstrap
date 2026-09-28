@@ -408,7 +408,20 @@ reject_placeholder_owner() { # file field value
 # naming itself something else fails here. Truthfulness of `author` itself is not
 # machine-verifiable; the producer requirement is what narrows the gap.
 provenance_block() { # file -> block lines, or empty
-  sed -n '/^<!-- provenance$/,/^-->$/p' "$1" 2>/dev/null || true
+  # v3.62.2 (CHG-082, REQ-1029): fence-aware extraction. The old sed range
+  # grabbed EVERY `<!-- provenance`..`-->` span — a fenced EXAMPLE block in
+  # the document body (docs showing what a block looks like) was extracted
+  # instead of (or in addition to) the real block. ``` state tracking keeps
+  # the real block (never inside a fence: it is written right after the H1)
+  # and ignores fenced sample markers; \r is tolerated on read (CRLF files)
+  # without rewriting the file.
+  awk '
+    { sub(/\r$/, "") }
+    !inblk && /^[[:space:]]*```/ { infence = !infence; next }
+    !inblk && !infence && /^<!-- provenance$/ { inblk = 1; print; next }
+    inblk && !infence && /^-->$/ { print; inblk = 0; next }
+    inblk { print }
+  ' "$1" 2>/dev/null || true
 }
 validate_provenance() { # file
   local f="$1" blk k norm
@@ -500,6 +513,21 @@ validate_governance_state() {
     [[ -n "$reason86" ]] || [[ "$risk" =~ ^L[01]$ ]] || reason86="'$id' risk $risk cannot declare BATCH placement — batches are L0/L1 only"
   elif printf '%s\n' "$decl86" | grep -q '独立目录'; then
     is_batch_dir "$d" && reason86="'$id' declares 独立目录 placement but lives in batch dir $d — declaration and directory disagree"
+    # v3.62.2 (CHG-082, REQ-1028): L0/L1 must never declare independent
+    # placement — standards §1.1 first-of-day rule (v3.61.2) makes the day
+    # batch the ONLY legal form for L0/L1, both forward (a same-day batch
+    # exists and must be joined) and reverse (no batch yet: the FIRST L0/L1
+    # of the day creates it). E73 enforces this on directory reality at
+    # begin only; this declaration-level check closes the reverse direction
+    # and the stop/CI paths (validate_governance_state callers). The CHG-081
+    # 立项 interception was the live proof of the gap.
+    if [[ -z "$reason86" && "$risk" =~ ^L[01]$ && "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
+      if [[ -d "$change_root/BATCH-$(date -u +%Y%m%d)" ]]; then
+        reason86="'$id' risk $risk declares 独立目录 placement while $change_root/BATCH-$(date -u +%Y%m%d) exists — same-day L0/L1 changes must join the batch (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      else
+        reason86="'$id' risk $risk must declare BATCH-YYYYMMDD placement — the first L0/L1 change of the day creates the day batch (standards §1.1 first-of-day rule); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      fi
+    fi
   else
     reason86="'$id' placement declaration must state BATCH-YYYYMMDD or 独立目录（<理由>）"
   fi
@@ -950,16 +978,22 @@ validate_bug_groups() {
     done
   done
   # v3.35.0 (BUG-005): the day-batch default is ENFORCED, mirroring the change
-  # track (v3.27.0) — once <bugs_root>/BATCH-<today>/ exists, a defect group
-  # created TODAY outside it must join the batch. Detection uses the group's
-  # provenance block (script-written UTC date; un-stamped groups are skipped
-  # here and caught by the delivery-time stamping checks instead).
+  # track (v3.27.0) — a defect group created TODAY outside the day batch must
+  # join it. Detection uses the group's provenance block (script-written UTC
+  # date; un-stamped groups are skipped here and caught by the delivery-time
+  # stamping checks instead).
+  # v3.62.2 (CHG-082, REQ-1028): the check now runs BOTH directions,
+  # mirroring GATE-E86 on the change track — forward (batch exists: today's
+  # standalone groups must join) and reverse (no batch yet: the FIRST L0/L1
+  # defect of the day creates the day batch, standards §1.1 first-of-day
+  # rule, v3.61.2). The old `|| return 0` silently passed the reverse shape.
   if [[ "${AGENT_GUARD_ALLOW_INDEPENDENT:-}" != "1" ]]; then
-    local today pb pdate
+    local today pb pdate batch_exists e58_why
     today=$(date -u +%Y-%m-%d)
+    batch_exists=0
+    [[ -d "$bugs_root/BATCH-$(date -u +%Y%m%d)" ]] && batch_exists=1
     for group in "$bugs_root"/BUG-*/; do
       [[ -d "$group" ]] || continue
-      [[ -d "$bugs_root/BATCH-$(date -u +%Y%m%d)" ]] || return 0
       pb="$group/01-diagnosis.md"
       [[ -s "$pb" ]] || continue
       pdate=$(sed -n 's/^generated_at:[[:space:]]*\([0-9-]\{4\}-[0-9-]\{2\}-[0-9-]\{2\}\).*/\1/p' "$pb" | head -1)
@@ -967,7 +1001,15 @@ validate_bug_groups() {
       gid=$(basename "$group")
       listed=""
       [[ -f "$allow" ]] && listed=$(grep -vE '^[[:space:]]*(#|$)' "$allow" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
-      [[ -n "$listed" ]] || die "GATE-E58: standalone defect group $gid was created today ($pdate) while $bugs_root/BATCH-$(date -u +%Y%m%d) exists — move it into the day batch (standards §1.1); set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      if [[ -z "$listed" ]]; then
+        # single die point (T41 code uniqueness): message branches on direction
+        if [[ "$batch_exists" == 1 ]]; then
+          e58_why="was created today ($pdate) while $bugs_root/BATCH-$(date -u +%Y%m%d) exists — move it into the day batch (standards §1.1)"
+        else
+          e58_why="was created today ($pdate) with no $bugs_root/BATCH-$(date -u +%Y%m%d) yet — the first L0/L1 defect of the day creates the day batch (standards §1.1 first-of-day rule)"
+        fi
+        die "GATE-E58: standalone defect group $gid $e58_why; set AGENT_GUARD_ALLOW_INDEPENDENT=1 only with a recorded justification"
+      fi
     done
   fi
 }

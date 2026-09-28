@@ -131,7 +131,7 @@
 | GATE-E55 | 缺陷组命中多个合法布局（standalone/嵌套/扁平批） | agent-gate.sh::bug_group_dir() |
 | GATE-E56 | 独立/嵌套缺陷组六件缺件 | agent-gate.sh::validate_bug_groups() |
 | GATE-E57 | 批次缺陷组六件锚段缺件 | agent-gate.sh::validate_bug_groups() |
-| GATE-E58 | 当日批次已存在仍新建独立缺陷组 | agent-gate.sh::validate_bug_groups() |
+| GATE-E58 | 独立缺陷组当日执法：批已存在须并入 / 无批当日首个须建批（provenance 判日，未章跳过） | agent-gate.sh::validate_bug_groups() |
 | GATE-E59 | 09-changelog 缺「项目总册回填清单」节 | agent-gate.sh::validate_master_backfill() |
 | GATE-E60 | 回填清单缺 Pxx 总册行 | agent-gate.sh::validate_master_backfill() |
 | GATE-E61 | 回填清单行非 [x] 也非「未命中（理由）」 | agent-gate.sh::validate_master_backfill() |
@@ -159,6 +159,6 @@
 | GATE-E83 | 沟通先行门：用户整体确认未记录即生成后续产物 | agent-gate.sh::validate_artifact_content() |
 | GATE-E84 | 02-code-impact-analysis 缺「历史相似检索」节（或未命中声明） | agent-gate.sh::validate_artifact_content() |
 | GATE-E85 | 07-review-report 缺可溯源独立评审签名（task-/ses- id） | agent-gate.sh::validate_delivery() |
-| GATE-E86 | 批次成员 00-intent 缺自身锚点小节（目录落位声明 fail-closed） | agent-gate.sh::validate_governance_state() |
+| GATE-E86 | 目录落位声明↔目录/风险一致性 + L0/L1 声明独立目录一律拒（正向并入/反向首个即建）+ 批成员缺自身锚点 fail-closed | agent-gate.sh::validate_governance_state() |
 | GATE-E87 | 缺陷组锚点散落兄弟文档但 01-diagnosis 缺失 | agent-gate.sh::validate_bug_groups() |
 | GATE-E88 | 缺 review_owner（评审主体强制，最低线 L0/L1 亦必填） | agent-gate.sh::validate_governance_state() |

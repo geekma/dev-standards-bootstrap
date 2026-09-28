@@ -199,6 +199,7 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.62.2** | **并批执法双向化 + stamp 栅栏感知/CRLF 归一（CHG-082，REQ-1028~1031）**：E86 双向化（L0/L1 声明独立目录一律拒，escape 通用）+ E58 缺陷轨反向 + 栅栏感知四处（stamp 写入/--check/门禁抽取/trace-derive，评审 D1/D2 加固：兜底 rc 信号 + inskip toggle 守卫）+ CRLF 归一 + T17/T27 比对口径审视（10 档）。**`--upgrade` 带走 agent-gate/stamp-provenance 模板与规范文档**。golden 588→614。**回填义务：无** |
 | **v3.62.1** | **溯源盖章写入幂等 + 剔章回填复活（CHG-081，REQ-1025~1027）**：stamp 写入单趟 awk（块邻空行吞净，块尾累积根除）、pre-commit 剔章比对空行归一（回填复活）、docs 历史空行清理+源层 A41 canary。**`--upgrade` 带走 stamp-provenance/pre-commit 模板与规范文档**。golden 583→588；源层 406（baseline 405→406）。**回填义务：无** |
 | **v3.62.0** | **E 码索引互锁 + NC-E11 拆分 + 溯源 commit 真值（CHG-080，REQ-1021~1024）**：CLAUSE_REGISTRY 增「GATE-E 码映射索引」节（88 码，源层 A39 计数互锁）+ new-change NC-E10/NC-E11 拆分（文案单源）+ stamp-provenance 点号 id 拒盖 + commit 字段改逐文件 last-touch（--check 增一致性比对）。**`--upgrade` 带走 stamp-provenance/new-change/audit-docs-consistency/CLAUSE_REGISTRY**。golden 568→583；源层 407（baseline 405→同步）。**回填义务：无** |
 | **v3.61.1** | **时区统一 + 批次/最低线收口（CHG-078，REQ-1013~1016）**：批次日期统一 UTC（E73/new-change 改 `date -u`；DS §1.1 口径句）；E83 批成员判定改 roster（FU-913 关闭）；GATE-E87 扁平批锚段 roster 差集校验；L0/L1 `review_owner` 必填（GATE-E88）+ E34/E35 恒查（DS §0.5.2 补执法句）；entry/00-governance 模板补双 owner 占位。TC-1069（T18d）。golden 546；源层 405（baseline 403→同步）。**回填义务：升级后首个 L0/L1 变更的 governance 填 test_owner/review_owner（E88 拦截提醒）** |

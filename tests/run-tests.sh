@@ -61,6 +61,13 @@ new_repo() {
   git init -q
   git config user.email test@example.invalid
   git config user.name test
+  # v3.62.2 (CHG-082, DES-1818): E86/E58 now enforce the first-of-day batch
+  # rule in BOTH directions; legacy fixtures below predate the batch default
+  # and use independent L0/L1 dirs on purpose (placement is not their subject).
+  # The escape is exported HERE once — recorded justification = this comment +
+  # BATCH-20260928 CHG-082 — and placement-themed sections (T47, T18d E58
+  # trio) explicitly unset it to keep the enforcement visible.
+  export AGENT_GUARD_ALLOW_INDEPENDENT=1
   mkdir -p scripts docs/changes src
   seed_project_masters
   cp "$GATE_SRC" scripts/agent-gate
@@ -1614,6 +1621,53 @@ if [[ -f "$STAMP_SRC" ]]; then
   report "T17 TC-1081 dirty shape (4 trailing blanks) converges in one stamp" 0 "$(diff <(sed 's/^generated_at: .*/generated_at: X/' .t1081-expect) <(sed 's/^generated_at: .*/generated_at: X/' .t1081-dirty) >/dev/null 2>&1; echo $?)"
   rm -f .t1081-clean .t1081-expect .t1081-dirty
 
+  # ③f 栅栏感知（v3.62.2，CHG-082/REQ-1029/TC-1088）：正文代码栅栏内的成对
+  #     provenance 示例标记与栅栏内 `# ` 示例标题不再被删块/插块逻辑消费
+  #     （CHG-081 评审 B 项实证）。断言：示例原样保留、正文零丢失、恰一真块、
+  #     幂等、--check 取真块（TC-1089）。
+  printf '# 栅栏夹具\n\n```markdown\n<!-- provenance\nauthor: sample\n-->\n```\n\n```bash\n# 栅栏内假 H1 示例\n```\n\n正文行A\n正文行B\n' > .t1088-fence
+  scripts/stamp-provenance.sh CHG-700 .t1088-fence >/dev/null 2>&1
+  report "T17 TC-1088 fenced example markers survive stamping (sample kept)" 4 "$(grep -cE '^<!-- provenance$|^-->$' .t1088-fence)"
+  report "T17 TC-1088 fenced sample field lines survive" 1 "$(grep -c '^author: sample$' .t1088-fence)"
+  report "T17 TC-1088 in-fence fake H1 does not trigger a second block" 0 "$(test "$(grep -c '^<!-- provenance$' .t1088-fence)" = 2; echo $?)"
+  report "T17 TC-1088 first-stamp body content survives (TC-1079 教训：幂等不覆盖首盖丢失)" 2 "$(grep -cE '^正文行[AB]$' .t1088-fence)"
+  cp .t1088-fence .t1088-a
+  scripts/stamp-provenance.sh CHG-700 .t1088-fence >/dev/null 2>&1
+  report "T17 TC-1088 fence case is byte-idempotent (mod generated_at)" 0 "$(diff <(sed 's/^generated_at: .*/X/' .t1088-a) <(sed 's/^generated_at: .*/X/' .t1088-fence) >/dev/null 2>&1; echo $?)"
+  scripts/stamp-provenance.sh --check .t1088-fence >/dev/null 2>&1
+  report "T17 TC-1089 --check extracts the real block when a fenced example exists" 0 $?
+  # ③f2 (评审 D1 回归): 无 H1 + 栅栏示例 → 兜底判据不可被示例 begin 标记骗过
+  # （旧 grep 判据 → 假成功零块落盘）；现块落头部且示例/正文原样。
+  printf '```markdown\n<!-- provenance\nauthor: sample\n-->\n```\n正文X\n' > .tf-noh1
+  scripts/stamp-provenance.sh CHG-700 .tf-noh1 >/dev/null 2>&1
+  report "T17 TC-1088b no-H1 file with fenced sample still gets the block at head" 1 "$(head -1 .tf-noh1 | grep -c '^<!-- provenance$')"
+  report "T17 TC-1088b exactly one real block (not fooled by the sample)" 1 "$(grep -c '^generated_by: ' .tf-noh1)"
+  report "T17 TC-1088b sample and body survive the head-block stamp" 2 "$(grep -cE '^(author: sample|正文X)$' .tf-noh1)"
+  scripts/stamp-provenance.sh --check .tf-noh1 >/dev/null 2>&1
+  report "T17 TC-1088b --check passes on the head-block with fenced sample" 0 $?
+  # ③f3 (评审 D2 回归): 真块体内杂散 ``` 行不得翻转栅栏态（否则 --> 终止永不
+  # 命中、吞块后正文至 EOF）；重盖后正文零丢失、块仍单。
+  printf '# 极端块夹具\n\n正文行1\n正文行2\n' > .tf-stray
+  scripts/stamp-provenance.sh CHG-700 .tf-stray >/dev/null 2>&1
+  awk '{print} /^generated_by:/{print "```"}' .tf-stray > .tf-stray2 && mv .tf-stray2 .tf-stray
+  scripts/stamp-provenance.sh CHG-700 .tf-stray >/dev/null 2>&1
+  report "T17 TC-1088c stray fence inside block body does not eat the tail" 2 "$(grep -cE '^正文行[12]$' .tf-stray)"
+  report "T17 TC-1088c block stays single after the stray-fence restamp" 1 "$(grep -c '^generated_by: ' .tf-stray)"
+  rm -f .t1088-fence .t1088-a .tf-noh1 .tf-stray
+
+  # ③g CRLF 归一（v3.62.2，CHG-082/REQ-1030/TC-1091）：\r 尾行致旧块不识别重复盖
+  #     ——写入路径一次归一 LF；--check 读取侧容忍（不回写未盖文件）。
+  printf '# CRLF 夹具\r\n\r\n内容行\r\n' > .t1091-crlf
+  scripts/stamp-provenance.sh CHG-700 .t1091-crlf >/dev/null 2>&1
+  report "T17 TC-1091 CRLF file normalized to LF on stamp" 0 "$(grep -c $'\r' .t1091-crlf)"
+  report "T17 TC-1091 CRLF file gets exactly one block" 1 "$(grep -c '^<!-- provenance$' .t1091-crlf)"
+  scripts/stamp-provenance.sh --check .t1091-crlf >/dev/null 2>&1
+  report "T17 TC-1091 --check accepts the normalized CRLF file" 0 $?
+  cp .t1091-crlf .t1091-a
+  scripts/stamp-provenance.sh CHG-700 .t1091-crlf >/dev/null 2>&1
+  report "T17 TC-1091 CRLF re-stamp is byte-idempotent" 0 "$(diff <(sed 's/^generated_at: .*/X/' .t1091-a) <(sed 's/^generated_at: .*/X/' .t1091-crlf) >/dev/null 2>&1; echo $?)"
+  rm -f .t1091-a .t1091-crlf
+
   # ⑤ 隐私开关：yml 关掉邮箱，作者与主机保留
   printf 'provenance:\n  include_email: false\n' > .agent-governance.yml
   scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
@@ -1636,9 +1690,21 @@ if [[ -f "$STAMP_SRC" ]]; then
 append_masters docs/changes/CHG-700/09-changelog.md
   printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：无配置项。\n' > docs/changes/CHG-700/06.5-deployment-config.md
   printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | x | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-700/06-delivery-summary.md
+  # TC-1089b (v3.62.2, CHG-082 REQ-1029)：门禁侧 provenance_block 栅栏感知——
+  # stop 对"含栅栏示例标记的产物"取真块校验（旧 sed 区间会抽到示例段假红）。
+  cat >> docs/changes/CHG-700/04-test-scripts.md <<'EOT17F'
+
+```markdown
+<!-- provenance
+author: sample
+-->
+```
+EOT17F
   scripts/stamp-provenance.sh --all CHG-700 >/dev/null 2>&1
   scripts/agent-gate --stage stop >/dev/null 2>&1
   report "T17 gate accepts a real script-stamped record (end-to-end)" 0 $?
+  scripts/stamp-provenance.sh --check docs/changes/CHG-700/04-test-scripts.md >/dev/null 2>&1
+  report "T17 TC-1089b --check passes on a stamped doc carrying a fenced example block" 0 $?
 else
   echo "SKIP T17: stamp-provenance.sh 为 --guard 层文件（未装 guard 层时不存在）"
 fi
@@ -1843,9 +1909,11 @@ new_repo
 seed_batch_artifacts "BATCH-$(date -u +%Y%m%d)" CHG-820:L0
 commit_all "docs: today's batch exists"
 seed_begin CHG-821 L1 claude/s-1
-report "T18b begin rejects an independent L0/L1 when a same-day batch exists" 2 $?
-out=$(scripts/agent-gate begin CHG-821 2>&1 || true)
-check_output "T18b refusal names the batch and the escape hatch" "same-day batch exists.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
+# v3.62.2 (CHG-082): E86 声明级分支先于 E73 落 die——落位主题用例撤掉夹具豁免，
+# 断言口径同步改为 E86 正向措辞（E73 保留为纵深，不再是最早执法点）。
+report "T18b begin rejects an independent L0/L1 when a same-day batch exists" 2 "$(env -u AGENT_GUARD_ALLOW_INDEPENDENT scripts/agent-gate begin CHG-821 >/dev/null 2>&1; echo $?)"
+out=$(env -u AGENT_GUARD_ALLOW_INDEPENDENT scripts/agent-gate begin CHG-821 2>&1 || true)
+check_output "T18b refusal names the batch and the escape hatch" "GATE-E86.*same-day L0/L1 changes must join the batch.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
 AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-821 >/dev/null 2>&1
 report "T18b explicit override allows an independent L0/L1" 0 $?
 seed_batch_artifacts "BATCH-$(date -u +%Y%m%d)" CHG-822:L1
@@ -2112,7 +2180,9 @@ report "begin rejects spec_author duplicating an owner at L2" 2 $?
 # §1.1 v3.35.0 废止 v3.22.0"缺陷组不入批"：当日缺陷批次已存在时，同日新建的独立
 # 缺陷组必须入批（provenance generated_at 判日）；豁免显式；批次嵌套组照常扫描。
 new_repo
-seed_begin CHG-900 L1 claude/s-1
+# v3.62.2 (CHG-082)：基座 CHG-900 由 L1 改 L2——staged 校验暂存树内全部变更，
+# env -u 下 L1 独立目录会在 E58 之前先落 E86；E58 主题要求树内无 L0/L1 独立形态。
+seed_begin CHG-900 L2 claude/s-1 tester reviewer
 today=$(date -u +%Y%m%d)
 mkdir -p "docs/bugs/BATCH-$today/BUG-901"
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
@@ -2120,7 +2190,9 @@ for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
 done
 append_diag_lines "docs/bugs/BATCH-$today/BUG-901/01-diagnosis.md"
 seed_artifacts CHG-902 L0 claude/s-1
-printf '{"change_id":"CHG-902","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
+# v3.62.2 (CHG-082)：CHG-902 由 L0 改 L2——E86 双向化后 L0/L1 专属目录活动变更会在
+# E58 之前先落 E86 die；E58 主题的载体必须是合法独立形态（L2）。bug_ref 绑定语义不变。
+printf '{"change_id":"CHG-902","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
 scripts/agent-gate begin CHG-902 >/dev/null 2>&1
 report "T18c begin resolves a bug_ref bound to a batched defect group" 0 $?
 mkdir -p docs/bugs/BUG-902
@@ -2131,9 +2203,10 @@ append_diag_lines docs/bugs/BUG-902/01-diagnosis.md
 { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: %sT00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n' "$(date -u +%Y-%m-%d)"; cat docs/bugs/BUG-902/01-diagnosis.md; } > docs/bugs/BUG-902/01-diagnosis.md.tmp && mv docs/bugs/BUG-902/01-diagnosis.md.tmp docs/bugs/BUG-902/01-diagnosis.md
 echo y > src/z.js   # staged/stop 只在存在代码路径改动时执法（对齐 T4/T5 夹具）
 git add -A          # staged 以暂存区为准，空暂存即空转放行
+# v3.62.2 (CHG-082)：E58 正反向主题用例——撤夹具豁免保持执法可见
 scripts/agent-gate --stage staged >/dev/null 2>&1
-report "T18c defect groups join the same-day batch (standalone today is rejected)" 2 $?
-out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T18c defect groups join the same-day batch (standalone today is rejected)" 2 "$(env -u AGENT_GUARD_ALLOW_INDEPENDENT scripts/agent-gate --stage staged >/dev/null 2>&1; echo $?)"
+out=$(env -u AGENT_GUARD_ALLOW_INDEPENDENT scripts/agent-gate --stage staged 2>&1 || true)
 check_output "T18c refusal names the batch and the escape hatch" "move it into the day batch.*AGENT_GUARD_ALLOW_INDEPENDENT" "$out"
 AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T18c explicit override allows a standalone same-day group" 0 $?
@@ -2197,6 +2270,31 @@ seed_artifacts CHG-932 L0 claude/s-1
 printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-905"}\n' > docs/changes/CHG-932/00-governance.json
 scripts/agent-gate begin CHG-932 >/dev/null 2>&1
 report "T18d nested legacy group still resolves under the three-form resolver" 0 $?
+
+# ---- T18d-E58R E58 反向（v3.62.2，CHG-082 REQ-1028/TC-1087）：无批 + 当日首个独立缺陷组 ----
+# 活动变更用 L2（L0/L1 独立已被 E86 拒，不能作载体）；缺陷组 E57 六件锚点齐备，
+# provenance 今日章（正向同键控）；未章/非今日 fail-open 跳过与正向一致。
+new_repo
+seed_begin CHG-933 L2 claude/s-47 tester reviewer
+unset AGENT_GUARD_ALLOW_INDEPENDENT
+mkdir -p docs/bugs/BUG-907
+for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
+  printf '# t\n\n## BUG-907 member\n' > "docs/bugs/BUG-907/$d6.md"
+done
+append_diag_lines docs/bugs/BUG-907/01-diagnosis.md
+cp "$ROOT/resources/templates/stamp-provenance.sh" scripts/stamp-provenance.sh 2>/dev/null || cp "$ROOT/scripts/stamp-provenance.sh" scripts/stamp-provenance.sh
+chmod +x scripts/stamp-provenance.sh
+scripts/stamp-provenance.sh --bug BUG-907 >/dev/null 2>&1
+echo y > src/z.js
+git add -A
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T18d E58 reverse: first-of-day standalone defect group with no batch is rejected" "GATE-E58.*first L0/L1 defect of the day creates the day batch" "$out"
+AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18d E58 reverse admits with explicit escape" 0 $?
+sed -i '' 's/generated_at: [0-9-]*/generated_at: 2020-01-01/' docs/bugs/BUG-907/01-diagnosis.md 2>/dev/null || sed -i 's/generated_at: [0-9-]*/generated_at: 2020-01-01/' docs/bugs/BUG-907/01-diagnosis.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T18d E58 reverse skips non-today groups (fail-open, same keying as forward)" 0 $?
+export AGENT_GUARD_ALLOW_INDEPENDENT=1
 
 # ------------------------------------------------ T23 项目总册机校（v3.35.0，§1.3/CHG-035）
 new_repo
@@ -2264,6 +2362,9 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   cp "$NEWCHANGE_SRC" scripts/new-change
   cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate   # v3.55.0: wave-2 确认门下沉 gate（check-confirm）
   chmod +x scripts/new-change
+  # v3.62.2 (CHG-082)：本节后半主题=批次入批默认——撤夹具豁免（new-change 的
+  # 批/独立分流同样读该开关）；CHG-930 专属目录 begin 属脚手架流主题，临时前缀豁免。
+  unset AGENT_GUARD_ALLOW_INDEPENDENT
   # 夹具内联最小入口模板（内容契约由 audit-standards-src pin 覆盖；此处测脚手架逻辑）
   seed_entry_templates 意图 '__RISK__' 'open' '沟通稿（§2.17.2d 骨架）' '<!-- 机校标记：确认达成后追加 确认状态 行 -->' ' (__RISK__)' '（§2.2 输入契约）'
 
@@ -2278,11 +2379,13 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   report "T25 wave2 scaffolded after confirmation" 0 $?
   report "T25 full eight entry files" 8 "$(ls docs/changes/CHG-930/*.md docs/changes/CHG-930/*.json 2>/dev/null | wc -l | tr -d ' ')"
   check_output "T25 risk substituted in spec" "L1" "$(cat docs/changes/CHG-930/01-spec.md)"
-  out=$(scripts/agent-gate begin CHG-930 2>&1 || true)
+  # v3.62.2: owner 校验主题（非落位）——临时前缀豁免使 owner 检查成为决定性失败
+  out=$(AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-930 2>&1 || true)
   check_output "T25 PENDING owners rejected by begin" "must name a concrete owner" "$out"
   sed -i '' 's/PENDING/op\/s-930/g; s/"review_owner": "op\/s-930"/"review_owner": "op\/s-r"/' docs/changes/CHG-930/00-governance.json 2>/dev/null \
     || sed -i 's/PENDING/op\/s-930/g; s/"review_owner": "op\/s-930"/"review_owner": "op\/s-r"/' docs/changes/CHG-930/00-governance.json
-  scripts/agent-gate begin CHG-930 >/dev/null 2>&1
+  # v3.62.2: 脚手架流主题（非落位）——CHG-930 为专属目录 L1，临时前缀豁免过 E86
+  AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-930 >/dev/null 2>&1
   report "T25 filled scaffold passes begin (A-layer satisfied by skeleton)" 0 $?
 
   mkdir -p "docs/changes/BATCH-$(date -u +%Y%m%d)"
@@ -2616,6 +2719,16 @@ EOF
   bash scripts/stamp-provenance.sh --all CHG-980 >/dev/null 2>&1
   report "T33 --all keeps the derived block" 1 "$(grep -c 'trace-derive begin' docs/changes/CHG-980/09-changelog.md)"
   report "T33 --all stamped provenance too" 1 "$(grep -c '^<!-- provenance$' docs/changes/CHG-980/09-changelog.md)"
+  # TC-1090 (v3.62.2, CHG-082/REQ-1029, 评审 D3 自动化补齐): trace-derive 删块
+  # 栅栏感知——09 节内栅栏示例块不被消费；自块幂等不受示例干扰。
+  printf '```markdown\n<!-- trace-derive begin（示例，勿仿写）\n对应需求（派生）：`REQ-XXX`\n<!-- trace-derive end -->\n```\n' >> docs/changes/CHG-980/09-changelog.md
+  bash scripts/stamp-provenance.sh --trace CHG-980 >/dev/null 2>&1
+  report "T33 TC-1090 fenced sample trace block survives re-derive" 1 "$(grep -c 'trace-derive begin（示例' docs/changes/CHG-980/09-changelog.md)"
+  report "T33 TC-1090 real derived block kept beside the sample" 2 "$(grep -c 'trace-derive begin' docs/changes/CHG-980/09-changelog.md)"
+  cp docs/changes/CHG-980/09-changelog.md .t33-c1090
+  bash scripts/stamp-provenance.sh --trace CHG-980 >/dev/null 2>&1
+  report "T33 TC-1090 re-derive idempotent with fenced sample present" 0 "$(diff -q .t33-c1090 docs/changes/CHG-980/09-changelog.md >/dev/null; echo $?)"
+  rm -f .t33-c1090 .t33-first
   # F3 (review): fail-open ladder — matrix WITH REQ rows but WITHOUT DES/TC
   # tokens (legal upstream shape) must derive a REQ-only block, not die
   # (exercises the `|| true` guards; would have caught F1).
@@ -3065,6 +3178,9 @@ if [[ -s "$GATE47_SRC" ]]; then
   cp "$GATE47_SRC" scripts/agent-gate
   chmod +x scripts/agent-gate
   seed_project_masters
+  # v3.62.2 (CHG-082): 本节主题=目录落位执法——显式撤掉 new_repo 的夹具豁免，
+  # 让 E86 正反向新分支可见；个别非落位用例按需临时前缀豁免。
+  unset AGENT_GUARD_ALLOW_INDEPENDENT
   # TC-1063: begin 拒——00-intent 缺落位声明（E86）
   seed_artifacts CHG-990 L1 claude/s-47
   sed -i '' '/目录落位/d' docs/changes/CHG-990/00-intent.md 2>/dev/null || sed -i '/目录落位/d' docs/changes/CHG-990/00-intent.md
@@ -3076,9 +3192,11 @@ if [[ -s "$GATE47_SRC" ]]; then
   out=$(scripts/agent-gate begin CHG-991 2>&1 || true)
   check_output "T47 begin refuses L2 declaring BATCH placement (E86)" "GATE-E86" "$out"
   # TC-1065: begin 拒——非 L0 00.5 缺「风险」锚点（E83 五要素扩展）
+  # v3.62.2: E86 先于 E83 落 die（声明级反向分支），为保 E83 为决定性失败，
+  # 该用例临时前缀豁免（主题=E83，非落位）。
   seed_artifacts CHG-992 L1 claude/s-47
   sed -i '' '/^## 风险$/,/^risk: r$/d' docs/changes/CHG-992/00.5-communication.md 2>/dev/null || sed -i '/^## 风险$/,/^risk: r$/d' docs/changes/CHG-992/00.5-communication.md
-  out=$(scripts/agent-gate begin CHG-992 2>&1 || true)
+  out=$(AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-992 2>&1 || true)
   check_output "T47 begin refuses 00.5 missing risk anchor (E83 five-element)" "GATE-E83.*风险" "$out"
   # TC-1066: 正例回归——L2 声明独立 + 五锚点齐 → begin 绿
   seed_begin CHG-993 L2 claude/s-47 tester reviewer
@@ -3093,9 +3211,24 @@ if [[ -s "$GATE47_SRC" ]]; then
   report "T47 batch member with own anchor still begins (no spillover to sibling)" 0 $?
   scripts/agent-gate begin CHG-994 >/dev/null 2>&1
   # TC-1068 (v3.61.0): 正例回归——独立目录单成员无自锚段 → 整文件回落保留（防过收紧）
-  seed_artifacts CHG-996 L1 claude/s-47
+  # v3.62.2 (CHG-082): L0/L1 独立目录已非法（首个即建），回落语义的载体改用
+  # L2 独立目录——E86 不涉 L2，回落正例语义原样保留。
+  seed_begin CHG-996 L2 claude/s-47 tester reviewer
   scripts/agent-gate begin CHG-996 >/dev/null 2>&1
   report "T47 independent single-member change without anchor section falls back (v3.61.0 keeps fallback)" 0 $?
+  # TC-1084 (v3.62.2, CHG-082 REQ-1028): E86 反向——无批 + 当日首个 L0/L1 声明独立 → begin 拒
+  seed_artifacts CHG-997 L1 claude/s-47
+  out=$(scripts/agent-gate begin CHG-997 2>&1 || true)
+  check_output "T47 begin refuses first-of-day L0/L1 declaring independent placement (E86 reverse)" "GATE-E86.*first L0/L1 change of the day creates the day batch" "$out"
+  # TC-1086 (v3.62.2): escape 两向通用——反向显式豁免后 begin 绿
+  AGENT_GUARD_ALLOW_INDEPENDENT=1 scripts/agent-gate begin CHG-997 >/dev/null 2>&1
+  report "T47 escape admits a first-of-day L0/L1 independent change (explicit bypass)" 0 $?
+  # TC-1085 (v3.62.2): E86 正向声明级——同日批目录已存在 + L1 声明独立 → begin 拒
+  # （E86 措辞而非 E73：声明级校验在 validate_governance_state，先于 E73 的目录实况拦截）
+  mkdir -p "docs/changes/BATCH-$(date -u +%Y%m%d)"
+  seed_artifacts CHG-998 L1 claude/s-47
+  out=$(scripts/agent-gate begin CHG-998 2>&1 || true)
+  check_output "T47 begin refuses L0/L1 declaring independent while same-day batch exists (E86 forward)" "GATE-E86.*same-day L0/L1 changes must join the batch" "$out"
 else
   echo "SKIP T47: agent-gate absent — 跳过落位声明 golden cases"
 fi
@@ -3103,11 +3236,11 @@ fi
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.62.1' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.62.1 in prose" 3 "$(grep -cF 'v3.62.1' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.62.1" 1 "$(grep -cF '规范版本：v3.62.1' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.62.1" 1 "$(grep -cF '当前对应规范版本：v3.62.1' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.62.1 top row" 1 "$(grep -c '^| v3.62.1 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.62.2' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.62.2 in prose" 3 "$(grep -cF 'v3.62.2' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.62.2" 1 "$(grep -cF '规范版本：v3.62.2' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.62.2" 1 "$(grep -cF '当前对应规范版本：v3.62.2' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.62.2 top row" 1 "$(grep -c '^| v3.62.2 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3116,7 +3249,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.62\.1' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.62\.2' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

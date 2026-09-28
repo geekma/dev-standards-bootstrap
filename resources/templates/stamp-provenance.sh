@@ -98,7 +98,17 @@ if [[ "$mode" == check ]]; then
   f="${1:-}"
   [[ -n "$f" ]] || { usage >&2; exit 2; }
   [[ -f "$f" ]] || { echo "stamp-provenance: no such file: $f" >&2; exit 2; }
-  blk=$(sed -n '/^<!-- provenance$/,/^-->$/p' "$f" 2>/dev/null || true)
+  # v3.62.2 (CHG-082, REQ-1029): fence-aware extraction (mirrors the gate's
+  # provenance_block) — fenced example blocks in the document body are no
+  # longer extracted instead of / in addition to the real block; \r tolerated
+  # on read without rewriting the file.
+  blk=$(awk '
+    { sub(/\r$/, "") }
+    !inblk && /^[[:space:]]*```/ { infence = !infence; next }
+    !inblk && !infence && /^<!-- provenance$/ { inblk = 1; print; next }
+    inblk && !infence && /^-->$/ { print; inblk = 0; next }
+    inblk { print }
+  ' "$f" 2>/dev/null || true)
   if [[ -z "$blk" ]]; then
     echo "stamp-provenance: $f has no provenance block" >&2
     exit 1
@@ -248,13 +258,16 @@ derive_trace_block() { # <chg-id> <chg-dir>
   # §4 heading of this section only.
   local tmp; tmp=$(mktemp)
   awk -v bf="$tb" -v id="$id" '
+    { if ($0 ~ /^[[:space:]]*```/) infence = !infence }
     $0 ~ ("^##[[:space:]]+" id "([[:space:]]|$)") { on=1; print; next }
     on && /^##[[:space:]]/ { on=0 }
-    on && /^<!-- trace-derive begin/ { del=1; next }
-    on && /^<!-- trace-derive end/ { del=0; next }
+    # v3.62.2 (CHG-082, REQ-1029): fenced example trace blocks in the section
+    # body are no longer consumed by the deletion scan (!infence guards).
+    on && !infence && /^<!-- trace-derive begin/ { del=1; next }
+    on && !infence && /^<!-- trace-derive end/ { del=0; next }
     del { next }
     { print }
-    on && !done && /^#### 追踪矩阵映射/ {
+    on && !done && !infence && /^#### 追踪矩阵映射/ {
       while ((getline l < bf) > 0) print l
       close(bf); done=1
     }
@@ -483,29 +496,43 @@ for f in "${targets[@]}"; do
   # 单趟 awk 状态机：p=一行前瞻缓冲；inskip=块内删除；owe=块后欠 1 空行——删旧块
   # 时同步吞块前 1 空行（上跑插入的间隔）与块后全部空行，首个 H1 后补规范空行。
   # 任意历史脏形一次盖章收敛至「H1+空行+块+空行」，整文件字节幂等（generated_at 外）。
+  # v3.62.2（CHG-082/REQ-1029/1030）：首位规则先做 CRLF 归一（sub 全文件 LF，
+  # 一次收敛）再跟踪 ``` 栅栏状态——begin/end/H1 三处规则加 !infence 守卫：
+  # 正文代码栅栏内的成对示例标记与 `# ` 示例标题不再被删块/插块逻辑消费
+  # （CHG-081 评审 B 项实证；真块恒在 H1 后不在栅栏内，形状不变式保持）。
+  # 评审 D1：兜底判据 = 「真块已产出」（emitted——唯一决定文件里是否留有真块的
+  # 状态：旧块被删而无 H1 时 emitted=0 仍须头部补块）；awk 退出 4 表示须走无 H1
+  # 兜底——旧 `grep -q '^<!-- provenance$' "$out"` 会被正文栅栏内的示例 begin
+  # 标记骗过 → 兜底被跳过 → 假成功零块落盘。
+  awkrc=0
   awk -v bf="$blk_f" '
     BEGIN { p = "\x01"; owe = 0 }
-    /^<!-- provenance$/ {
+    { sub(/\r$/, ""); if (!inskip && $0 ~ /^[[:space:]]*```/) infence = !infence }
+    /^<!-- provenance$/ && !infence {
       if (p != "\x01" && p ~ /^[[:space:]]*$/) p = "\x01"
       else if (p != "\x01") print p
       p = "\x01"; inskip = 1; next
     }
-    inskip && /^-->$/ { inskip = 0; owe = 1; next }
+    inskip && /^-->$/ && !infence { inskip = 0; owe = 1; next }
     inskip { next }
     owe && /^[[:space:]]*$/ { next }
-    /^# / && !done {
+    /^# / && !done && !infence {
       if (p != "\x01") { print p; p = "\x01" }
       print; print ""
       while ((getline l < bf) > 0) print l
-      close(bf); done = 1; next
+      close(bf); done = 1; emitted = 1; next
     }
     { if (p != "\x01") print p; if (owe) { print ""; owe = 0 }; p = $0 }
-    END { if (p != "\x01") print p }
-  ' "$f" > "$out"
-  if ! grep -q '^<!-- provenance$' "$out"; then
-    # 无 H1 兜底：块置文件头。out 若以空行开头（旧块曾置头时 owe 欠账空行落头部
-    # 成孤儿），先剥掉——否则与 echo 间隔叠加成双空行，幂等破口（CHG-081 沙箱③）。
+    END { if (p != "\x01") print p; exit emitted ? 0 : 4 }
+  ' "$f" > "$out" || awkrc=$?
+  if [[ "${awkrc:-0}" == 4 ]]; then
+    # 无 H1 兜底（评审 D1：rc=4=awk 未产出真块 → 须头部补块）。
+    # out 若以空行开头（旧块曾置头时 owe 欠账空行落头部成孤儿），先剥掉——否则与 echo 间隔叠加成双空行，幂等破口（CHG-081
+    # 沙箱③）。
     { cat "$blk_f"; echo; sed '/./,$!d' "$out"; } > "$out_f" && mv "$out_f" "$out"
+  elif [[ "${awkrc:-0}" != 0 ]]; then
+    echo "stamp-provenance: transform failed (rc=$awkrc) for $f" >&2
+    exit 2
   fi
   cat "$out" > "$f"
   rm -f "$out" "$out_f" "$blk_f"
