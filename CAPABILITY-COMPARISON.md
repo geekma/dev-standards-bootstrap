@@ -1,10 +1,15 @@
 # Capability Contribution Analysis: Model / Agent Harness / dev-standards-bootstrap
 
+> **Canonical**: this (EN) file is authoritative; 能力对比分析.md is its zh-CN translation mirror — update EN first, then mirror.
+
 > **What this is**: a three-way contribution analysis based on measured data from 11 real working sessions — across the full SDLC, how much each party contributes in "LLM model × Agent Harness (tool loop / session persistence / hook integration) × dev-standards-bootstrap (governance layer)", how much is lost when the governance layer is removed, and the resulting benefits case.
 >
 > **Method**: one downstream integration project, 2026-09-18 to 09-22, 11 working sessions (session-DB measurements) cross-checked against git history and governance artifacts; share = party's slice of effective output per stage (evidence-triangulated estimate, not exact measurement); Harness = the execution framework wrapping the model (tool loop, session persistence, hook/gate integration points).
 >
 > Generated: 2026-09-22 ｜ Privacy: project and personal identifiers removed
+> **Snapshot scope**: machine-enforcement counts reflect the v3.39-era snapshot; 2026-09-28 recheck — 88 GATE-E codes (v3.62.1), audit groups G1–G10 + source-layer A-group. Current values per DS footer / CLAUSE_REGISTRY.
+>
+> **快照范围**：机校数为 v3.39 时代快照；2026-09-28 复核——88 个 GATE-E 码（v3.62.1）、审计组 G1–G10+源层 A 组。当前值以 DS 页脚/CLAUSE_REGISTRY 为准。
 
 ## Summary
 
@@ -34,7 +39,7 @@ Highest value per row in bold.
 | 13 | Bug resolution | **60%** | 10% | 30% | Single-source / allowlist / no-hardcoding constraints shaping solutions |
 | 14 | Regression prevention | 20% | 25% | **55%** | Three-clause mandatory regression TCs; double registration cross-check |
 | 15 | Release / deploy | 20% | **40%** | **40%** | Tie: Harness executes deployments; standards define deployment records / hotfix / monitoring |
-| 16 | Compliance docs / audit | 30% | 15% | **55%** | Nine audit groups + provenance stamping; 77 `die` enforcement points |
+| 16 | Compliance docs / audit | 30% | 15% | **55%** | G1–G10 audit groups + provenance stamping; 88 GATE-E `die` enforcement points |
 | 17 | Independent review | **45%** | 10% | **45%** | Tie: model supplies review intelligence; standards supply four-role separation + signature checks |
 | 18 | Knowledge retention | 25% | 5% | **70%** | Mandatory stage 10 + experience ledger + anti-pattern registry |
 | 19 | Cross-session handoff | 20% | 20% | **60%** | 12-volume project master set for cold start; disk as sole authority; ReAct logging |

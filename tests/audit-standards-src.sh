@@ -778,7 +778,7 @@ report "A19 gate requires the four mandatory fields" 1 "$(a17_at_least_1 "$(grep
 report "A19 stamper honours the privacy switch" 1 "$(a17_at_least_1 "$(grep -c 'include_email' "$STAMP_TPL" || true)")"
 report "A19 stamper redacts the email when asked" 1 "$(a17_at_least_1 "$(grep -c '<redacted>' "$STAMP_TPL" || true)")"
 report "A19 privacy switch is env-overridable (CLI > env > yml)" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_PROVENANCE_EMAIL' "$STAMP_TPL" || true)")"
-report "A19 stamper replaces the block wholesale (idempotent)" 1 "$(a17_at_least_1 "$(grep -c '去掉已有块' "$STAMP_TPL" || true)")"
+report "A19 stamper replaces the block wholesale (idempotent)" 1 "$(a17_at_least_1 "$(grep -c '单趟删块+插块' "$STAMP_TPL" || true)")"
 report "A19 stamper never fabricates: unknown fallbacks" 1 "$(a17_at_least_1 "$(grep -c 'unknown' "$STAMP_TPL" || true)")"
 # 门禁的报错文案是"run scripts/stamp-provenance.sh <CHG-id>"——那么该命令在
 # 编码记录尚未落盘时**必须**给出可执行的下一步，而不是 cryptic 的 "nothing stamped"；
@@ -1107,6 +1107,23 @@ report "A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)" "
 # 基线文件随本变更入库；/tmp 计数文件为本轮运行现场（供生成器 --check 比对）。
 AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
 AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
+# A41（v3.62.1，CHG-081/REQ-1027）：溯源块后空行残留 canary——旧写入路径每跑净增
+# 1 空行（BATCH-20260925 12 文件×73 连续空行实证，跨 73 次盖章累积）。规范形块后
+# 连续空行必须 ≤1；残留=写入幂等被破坏的前哨（红向实证见 05 §CHG-081）。
+canary_viol=0
+while IFS= read -r f; do
+  [[ -f "$f" ]] || continue
+  awk '
+    /^<!-- provenance$/ { inblk=1; next }
+    inblk && /^-->$/ { inblk=0; drain=1; n=0; next }
+    inblk { next }
+    drain && /^[[:space:]]*$/ { n++; next }
+    drain { if (n > 1) exit 1; drain=0; next }
+    END { if (drain && n > 1) exit 1 }
+  ' "$f" || canary_viol=$(( canary_viol + 1 ))
+done < <(find "$REPO_CHANGES" "$REPO_BUGS" -name '*.md' 2>/dev/null)
+report "A41 provenance block-tail blank-run canary (REQ-1027)" 0 "$canary_viol"
+
 printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
 if [[ -f "$AUDIT_BASELINE" ]]; then
   expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')

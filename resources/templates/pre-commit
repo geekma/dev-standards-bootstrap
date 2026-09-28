@@ -32,7 +32,9 @@ if [[ -n "${active:-}" && -s "$active" && -f scripts/stamp-provenance.sh ]]; the
     # 盖章回填（v3.61.2，REQ-1017）：index 剔章后与工作区剔章后相等才 git add——
     # 文件级精确 + hunk 级安全（git add -p 部分暂存不被盖写）；比较不等→跳过+警告
     # （fail-open，最坏=不回填=旧行为）；stamp 失败经 pipefail 仍阻断（fail-closed）。
-    strip_awk='BEGIN{p="\x01"} /^<!-- trace-derive begin/||/^<!-- provenance$/{if(p!="\x01"&&p!="")print p;p="\x01";s=1;next} /^<!-- trace-derive end/||/^-->$/{s=0;ng=(getline nxt);if(ng>0&&nxt!~/^[[:space:]]*$/){if(p!="\x01")print p;p=nxt};next} s{next} {if(p!="\x01")print p;p=$0} END{if(p!="\x01")print p}'
+    # v3.62.1（CHG-081/REQ-1026）：end 标记后空行全吞（旧版只吞 1 行）——章累积
+    # 空行使迭代边界（index 已章 v1 vs 重盖 v2）恒失配、回填从未生效；归一后恢复。
+    strip_awk='BEGIN{p="\x01"} /^<!-- trace-derive begin/||/^<!-- provenance$/{if(p!="\x01"&&p!="")print p;p="\x01";s=1;next} /^<!-- trace-derive end/||/^-->$/ {s=0;while((ng=(getline nxt))>0&&nxt~/^[[:space:]]*$/){};if(ng>0){if(p!="\x01")print p;p=nxt};next} s{next} {if(p!="\x01")print p;p=$0} END{if(p!="\x01")print p}'
     stamp_files=$(printf '%s\n' $stamp_files | sort -u)
     for f in $stamp_files; do
       [[ -f "$f" && -n "$(git ls-files -- "$f")" ]] || continue

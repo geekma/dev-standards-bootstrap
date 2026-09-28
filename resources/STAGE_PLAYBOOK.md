@@ -1,4 +1,4 @@
-# 阶段执行手册（Stage Playbook，v3.61.0）
+# 阶段执行手册（Stage Playbook，创建于 v3.61.0）
 
 > 本册承接 `DEVELOPMENT_STANDARDS.md`（下称 DS）§2.5/§2.16 的**操作性细则（叙事层）**：条款权威与验收标准唯一权威定义仍在 DS，本册是细则载体（FU-911 结构性下沉，shipped 文件，随 skill 安装落 `docs/STAGE_PLAYBOOK.md`）。章节按 DS 源节镜像（标题携带源节号），禁主题重排；DS 原位留一行指针回链本册。维护规则：DS 条款升级时同步本册对应节（§2.14），本册只承载细则，不得另立与 DS 冲突的权威定义。
 

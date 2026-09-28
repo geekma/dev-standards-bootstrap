@@ -464,8 +464,8 @@ for f in "${targets[@]}"; do
     echo "stamp-provenance: skip (no such file) $f" >&2
     continue
   fi
-  stripped=$(mktemp) || exit 2
   out=$(mktemp) || exit 2
+  out_f="$out.f"
   # v3.62.0（CHG-080/REQ-1024 方案 A）：per-file commit = 该文件最后触碰的 commit
   # （内容来源真值）；从未入库回退 HEAD 回退值。块模板其余字段共用，仅 commit 行
   # 逐文件替换——同 HEAD 二次盖章除 generated_at 墙钟外零漂移。
@@ -477,19 +477,38 @@ for f in "${targets[@]}"; do
   [[ -n "$fcommit" ]] || fcommit="unknown"
   blk_f=$(mktemp) || exit 2
   sed "s|^commit: .*|commit: $fcommit|" "$BLK" > "$blk_f"
-  # 1) 去掉已有块（含其后的一个空行），保证重复运行不叠加
-  sed '/^<!-- provenance$/,/^-->$/d' "$f" > "$stripped"
-  # 2) 插到首个 H1 之后；没有 H1 就置于文件头
+  # 1+2) 单趟删块+插块（v3.62.1，CHG-081/REQ-1025）：旧两步只删块行（注释虽称
+  # "含其后的一个空行"，sed 范围实际止于 ^-->$），邻接空行一个不删而插入侧每跑
+  # 补 1 空行 → 块尾空行每跑净增 1、无限累积（BATCH-20260925 12 文件×73 空行实证）。
+  # 单趟 awk 状态机：p=一行前瞻缓冲；inskip=块内删除；owe=块后欠 1 空行——删旧块
+  # 时同步吞块前 1 空行（上跑插入的间隔）与块后全部空行，首个 H1 后补规范空行。
+  # 任意历史脏形一次盖章收敛至「H1+空行+块+空行」，整文件字节幂等（generated_at 外）。
   awk -v bf="$blk_f" '
-    { print }
-    !done && /^# / { print ""; while ((getline l < bf) > 0) print l; close(bf); done=1 }
-    END { if (!done) { } }
-  ' "$stripped" > "$out"
+    BEGIN { p = "\x01"; owe = 0 }
+    /^<!-- provenance$/ {
+      if (p != "\x01" && p ~ /^[[:space:]]*$/) p = "\x01"
+      else if (p != "\x01") print p
+      p = "\x01"; inskip = 1; next
+    }
+    inskip && /^-->$/ { inskip = 0; owe = 1; next }
+    inskip { next }
+    owe && /^[[:space:]]*$/ { next }
+    /^# / && !done {
+      if (p != "\x01") { print p; p = "\x01" }
+      print; print ""
+      while ((getline l < bf) > 0) print l
+      close(bf); done = 1; next
+    }
+    { if (p != "\x01") print p; if (owe) { print ""; owe = 0 }; p = $0 }
+    END { if (p != "\x01") print p }
+  ' "$f" > "$out"
   if ! grep -q '^<!-- provenance$' "$out"; then
-    { cat "$blk_f"; echo; cat "$stripped"; } > "$out"
+    # 无 H1 兜底：块置文件头。out 若以空行开头（旧块曾置头时 owe 欠账空行落头部
+    # 成孤儿），先剥掉——否则与 echo 间隔叠加成双空行，幂等破口（CHG-081 沙箱③）。
+    { cat "$blk_f"; echo; sed '/./,$!d' "$out"; } > "$out_f" && mv "$out_f" "$out"
   fi
   cat "$out" > "$f"
-  rm -f "$stripped" "$out" "$blk_f"
+  rm -f "$out" "$out_f" "$blk_f"
   echo "stamped      $f"
   stamped=$(( stamped + 1 ))
 done

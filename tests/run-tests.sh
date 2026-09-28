@@ -1593,6 +1593,27 @@ if [[ -f "$STAMP_SRC" ]]; then
   scripts/stamp-provenance.sh --check docs/changes/CHG-700/04.5-coding-record.md >/dev/null 2>&1
   report "T17 --check commit consistency accepts a fresh stamp" 0 $?
 
+  # ③d 整文件字节幂等（v3.62.1，CHG-081/REQ-1025/TC-1080）：旧 TC-1079 只比块内
+  #     抽取——空行累积恰在块外，测试自遮蔽恒绿（CHG-080 教训）。整文件 diff +
+  #     块尾空行恒 1 双断言。
+  cp docs/changes/CHG-700/04.5-coding-record.md .t1080-a
+  scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
+  cp docs/changes/CHG-700/04.5-coding-record.md .t1080-b
+  scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
+  report "T17 TC-1080 whole-file byte-idempotent across re-stamps (mod generated_at)" 0 "$(diff <(sed 's/^generated_at: .*/generated_at: X/' .t1080-a) <(sed 's/^generated_at: .*/generated_at: X/' .t1080-b) >/dev/null 2>&1; echo $?)"
+  report "T17 TC-1080 exactly one blank after block end" 0 "$(awk '/^<!-- provenance$/{b=1;next} b&&/^-->$/ {b=0;d=1;n=0;next} b{next} d&&/^[[:space:]]*$/{n++;next} d{exit} END{print (n==1)?0:1}' docs/changes/CHG-700/04.5-coding-record.md)"
+  rm -f .t1080-a .t1080-b
+
+  # ③e 历史脏形一次收敛（v3.62.1，REQ-1025/TC-1081）：块后 4 空行（目标仓实测
+  #     index 4→worktree 8 形态）盖 1 次即达规范形，且与净文件盖章输出字节相等。
+  printf '# 脏形夹具\n\n正文一行\n' > .t1081-clean
+  scripts/stamp-provenance.sh CHG-700 .t1081-clean >/dev/null 2>&1
+  cp .t1081-clean .t1081-expect
+  awk '{print} /^-->$/ && !inj {for(i=0;i<4;i++) print ""; inj=1}' .t1081-expect > .t1081-dirty
+  scripts/stamp-provenance.sh CHG-700 .t1081-dirty >/dev/null 2>&1
+  report "T17 TC-1081 dirty shape (4 trailing blanks) converges in one stamp" 0 "$(diff <(sed 's/^generated_at: .*/generated_at: X/' .t1081-expect) <(sed 's/^generated_at: .*/generated_at: X/' .t1081-dirty) >/dev/null 2>&1; echo $?)"
+  rm -f .t1081-clean .t1081-expect .t1081-dirty
+
   # ⑤ 隐私开关：yml 关掉邮箱，作者与主机保留
   printf 'provenance:\n  include_email: false\n' > .agent-governance.yml
   scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
@@ -2409,6 +2430,15 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   out=$(bash .githooks/pre-commit 2>&1 || true)
   report "T27 TC-1072 skip warning emitted for beyond-stamp delta" 1 "$(printf '%s' "$out" | grep -cF 'skip index backfill')"
   report "T27 TC-1072 unstaged hunk stays unstaged (not swept into index)" 1 "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
+  # TC-1082 (v3.62.1 CHG-081 REQ-1026): iteration-boundary backfill — index holds
+  # stamped v1, hook re-stamps v2. Old strip compare swallowed exactly one
+  # trailing blank, so any accumulated blank made strips differ and the backfill
+  # never ran after the first attempt (the residue loop CHG-079 meant to kill).
+  # Normalized compare must restage with no skip warning and no unstaged delta.
+  git add docs/changes/CHG-944/00-intent.md
+  out=$(bash .githooks/pre-commit 2>&1 || true)
+  report "T27 TC-1082 no skip warning at iteration boundary" 0 "$(printf '%s' "$out" | grep -cF 'skip index backfill')"
+  report "T27 TC-1082 restamp swept back into index (no unstaged delta)" 0 "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
 else
   echo "SKIP T27: stamp-provenance.sh/pre-commit absent (bootstrap --guard 未安装) — 跳过自动章 golden cases"
 fi
@@ -3073,11 +3103,11 @@ fi
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.62.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.62.0 in prose" 3 "$(grep -cF 'v3.62.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.62.0" 1 "$(grep -cF '规范版本：v3.62.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.62.0" 1 "$(grep -cF '当前对应规范版本：v3.62.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.62.0 top row" 1 "$(grep -c '^| v3.62.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.62.1' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.62.1 in prose" 3 "$(grep -cF 'v3.62.1' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.62.1" 1 "$(grep -cF '规范版本：v3.62.1' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.62.1" 1 "$(grep -cF '当前对应规范版本：v3.62.1' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.62.1 top row" 1 "$(grep -c '^| v3.62.1 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3086,7 +3116,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.62\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.62\.1' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
