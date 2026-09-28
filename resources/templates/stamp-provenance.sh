@@ -12,7 +12,7 @@
 #   scripts/stamp-provenance.sh --trace <CHG-id>      # 从 01.5 矩阵派生 09 §4 追踪矩阵块（v3.42.0）
 #   scripts/stamp-provenance.sh --bug <BUG-id>        # 缺陷六件套盖章：docs/bugs/<id>/*.md（v3.28.0）
 #   scripts/stamp-provenance.sh --print <CHG-id>      # 只打印块，不写文件
-#   scripts/stamp-provenance.sh --check <file>        # 校验已有块（CI 用，形状 + 非占位）
+#   scripts/stamp-provenance.sh --check <file>        # 校验已有块（CI 用，形状 + 非占位 + commit↔last-touch 一致）
 #
 # --all 把溯源块盖到解析后变更目录的**每一个 *.md**（15 件产物批量可溯；幂等整块
 # 替换，重复运行不叠加）。`00-governance.json` **刻意不盖**——JSON 里注入 HTML 注释
@@ -21,6 +21,12 @@
 # gate stop/CI 逐一校验；00-governance.json 刻意豁免（HTML 注释破坏扁平 JSON 读取）。
 #
 # 写入位置：文件首个 H1（`# ` 开头）之后；已有块则**整块替换**（幂等，可重复跑）。
+#
+# commit 字段（v3.62.0，CHG-080/REQ-1024 方案 A）：对**每个盖章文件**取
+# `git log -1 --format=%h -- <file>`（该文件最后触碰的 commit＝内容来源真值）；
+# 文件从未入库时回退 rev-parse HEAD。同 HEAD 二次盖章除 generated_at 墙钟外零漂移。
+# id 形状（v3.62.0，REQ-1023，FU-023 no-dot 形状）：`^[A-Za-z0-9][A-Za-z0-9_-]*$`——
+# 点号 id 拒盖（与 agent-gate E02 / new-change id 契约同形）。
 #
 # 隐私开关：.agent-governance.yml 的 `provenance.include_email: false` →
 #   email 写为 <redacted>（作者、提交者、主机信息保留）。默认 true。
@@ -98,7 +104,7 @@ if [[ "$mode" == check ]]; then
     exit 1
   fi
   bad=0
-  for k in author email generated_at generated_by; do
+  for k in author email commit generated_at generated_by; do
     printf '%s\n' "$blk" | grep -qE "^${k}:[[:space:]]*[^[:space:]]" || {
       echo "stamp-provenance: $f provenance block is missing '$k'" >&2; bad=1; }
   done
@@ -106,6 +112,19 @@ if [[ "$mode" == check ]]; then
     echo "stamp-provenance: $f provenance 'generated_at' is not an ISO-8601 date" >&2; bad=1; }
   printf '%s\n' "$blk" | grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' || {
     echo "stamp-provenance: $f provenance block was not produced by this script" >&2; bad=1; }
+  # v3.62.0（CHG-080/REQ-1024）：commit 字段 ↔ 文件 last-touch commit 一致性。
+  # 块声称的内容来源必须仍是该文件的真实来源；文件已随后续提交演进而块未重盖 → 红
+  # （pre-commit 每次重盖即自愈）。从未入库文件回退 HEAD，与写入侧口径一致。
+  if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+    lt=$(git log -1 --format=%h -- "$f" 2>/dev/null || true)
+    [[ -n "$lt" ]] || lt=$(git rev-parse --short HEAD 2>/dev/null || true)
+    [[ -n "$lt" ]] || lt="unknown"
+    bcommit=$(printf '%s\n' "$blk" | sed -nE 's/^commit:[[:space:]]*//p' | head -n 1)
+    if [[ "$bcommit" != "$lt" ]]; then
+      echo "stamp-provenance: $f provenance 'commit' (${bcommit:-<missing>}) does not match the file's last-touch commit ($lt) — re-run scripts/stamp-provenance.sh" >&2
+      bad=1
+    fi
+  fi
   norm=$(printf '%s' "$blk" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
   case "$norm" in
     *PENDING*|*TODO*|*TBD*|*待定*) echo "stamp-provenance: $f provenance block still holds a placeholder" >&2; bad=1 ;;
@@ -119,11 +138,13 @@ if [[ "$stamp_bug" == true ]]; then
   # v3.28.0 --bug：缺陷六件套组。目录就是 <bugs_root>/<id>，无批次、无 governance。
   chg="$bug_id"
   [[ -n "$chg" ]] || { usage >&2; exit 2; }
-  [[ "$chg" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "stamp-provenance: invalid defect id '$chg'" >&2; exit 2; }
+  # v3.62.0（REQ-1023，FU-023 no-dot 形状）：点号 id 拒盖（exit 2 + 明确报文）。
+  [[ "$chg" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || { echo "stamp-provenance: invalid defect id '$chg' (dots not allowed — start with [A-Za-z0-9], then alnum/_/-)" >&2; exit 2; }
 else
   chg="${1:-}"
   [[ -n "$chg" ]] || { usage >&2; exit 2; }
-  [[ "$chg" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "stamp-provenance: invalid change id '$chg'" >&2; exit 2; }
+  # v3.62.0（REQ-1023）：同上 no-dot 形状；此值同时决定溯源块 change: 行的合法性。
+  [[ "$chg" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || { echo "stamp-provenance: invalid change id '$chg' (dots not allowed — start with [A-Za-z0-9], then alnum/_/-)" >&2; exit 2; }
   shift
   # --all 与显式文件清单互斥：组合会把优先级问题留给读者（显式清单生效、--all 静默
   # 丢失）——拒绝组合，让语义只有一种。
@@ -341,6 +362,8 @@ if g git && git rev-parse --git-dir >/dev/null 2>&1; then
   email=$(git config user.email 2>/dev/null || true)
   [[ -n "$email" ]] || email=$(git log -1 --format=%ae 2>/dev/null || true)
   committer=$(git log -1 --format='%an <%ae>' 2>/dev/null || true)
+  # v3.62.0（REQ-1024）：此处 commit 仅作**从未入库文件的回退值**；每个盖章文件的
+  # 真值（最后触碰 commit）在写入循环内逐文件解析（见 fcommit）。
   commit=$(git rev-parse --short HEAD 2>/dev/null || true)
 else
   author=""; email=""; committer=""; commit=""
@@ -443,19 +466,30 @@ for f in "${targets[@]}"; do
   fi
   stripped=$(mktemp) || exit 2
   out=$(mktemp) || exit 2
+  # v3.62.0（CHG-080/REQ-1024 方案 A）：per-file commit = 该文件最后触碰的 commit
+  # （内容来源真值）；从未入库回退 HEAD 回退值。块模板其余字段共用，仅 commit 行
+  # 逐文件替换——同 HEAD 二次盖章除 generated_at 墙钟外零漂移。
+  fcommit=""
+  if g git && git rev-parse --git-dir >/dev/null 2>&1; then
+    fcommit=$(git log -1 --format=%h -- "$f" 2>/dev/null || true)
+    [[ -n "$fcommit" ]] || fcommit="$commit"
+  fi
+  [[ -n "$fcommit" ]] || fcommit="unknown"
+  blk_f=$(mktemp) || exit 2
+  sed "s|^commit: .*|commit: $fcommit|" "$BLK" > "$blk_f"
   # 1) 去掉已有块（含其后的一个空行），保证重复运行不叠加
   sed '/^<!-- provenance$/,/^-->$/d' "$f" > "$stripped"
   # 2) 插到首个 H1 之后；没有 H1 就置于文件头
-  awk -v bf="$BLK" '
+  awk -v bf="$blk_f" '
     { print }
     !done && /^# / { print ""; while ((getline l < bf) > 0) print l; close(bf); done=1 }
     END { if (!done) { } }
   ' "$stripped" > "$out"
   if ! grep -q '^<!-- provenance$' "$out"; then
-    { cat "$BLK"; echo; cat "$stripped"; } > "$out"
+    { cat "$blk_f"; echo; cat "$stripped"; } > "$out"
   fi
   cat "$out" > "$f"
-  rm -f "$stripped" "$out"
+  rm -f "$stripped" "$out" "$blk_f"
   echo "stamped      $f"
   stamped=$(( stamped + 1 ))
 done

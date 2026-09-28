@@ -1087,6 +1087,19 @@ at_least "A27 AGENTS routes reading pack (REQ-971)" 1 "$ROOT/resources/AGENTS.md
 at_least "A27 golden T39 anchors registry capability (REQ-970)" 1 "$ROOT/tests/run-tests.sh" 'T39 registry schema header'
 at_least "A27 golden T40 anchors generator capability (REQ-969)" 1 "$ROOT/tests/run-tests.sh" 'T40 normal generation exits 0'
 
+# ── A39 CLAUSE_REGISTRY E 码索引 ↔ 模板 die 计数互锁（v3.62.0，CHG-080/REQ-1021）──
+# registry「GATE-E 码映射索引」是 E 码的机器索引层：模板新增/废止 E 码而索引行未同步
+# → 红（与阅读包锚点失配同款 fail-closed）。只数 die 字符串里的码（die "GATE-Exx:），
+# 注释提及不计数；registry 行锚 = `^| GATE-E`。
+reg_e=$(grep -c '^| GATE-E' "$ROOT/resources/CLAUSE_REGISTRY.md" || true)
+tpl_e=$(grep -oE 'die "GATE-E[0-9]+' "$ROOT/resources/templates/agent-gate.sh" | grep -oE 'GATE-E[0-9]+' | LC_ALL=C sort -u | wc -l | tr -d ' ')
+report "A39 registry GATE-E rows == template die codes (CHG-080/REQ-1021)" "$tpl_e" "$reg_e"
+# A40 NC-E10/NC-E11 文案单源（v3.62.0，CHG-080/REQ-1022）：批/独立两分支共用
+# confirm_gate_run/die_check_confirm_failed——每条报文全模板只允许一个 die 落点。
+nc10=$(grep -cF 'NC-E10: scripts/agent-gate not found' "$ROOT/resources/templates/new-change.sh" || true)
+nc11=$(grep -cF 'NC-E11: check-confirm failed' "$ROOT/resources/templates/new-change.sh" || true)
+report "A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)" "1/1" "${nc10}/${nc11}"
+
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达
 # 死调用）而未同步基线 → 红；红即提示跑 scripts/update-assertion-count.sh 同步。

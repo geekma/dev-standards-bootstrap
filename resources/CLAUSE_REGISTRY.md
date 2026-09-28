@@ -65,3 +65,100 @@
 | R41 | 风险等级判定表（§0.5.1） | DEVELOPMENT_STANDARDS.md::### 0.5.1 风险等级判定表 | L3-critical | 硬 | 结构 |
 | R42 | 版本载体全链清单（§2.14） | DEVELOPMENT_STANDARDS.md::版本载体全链清单 | universal | 硬 | 结构 |
 | R43 | 沟通先行门（§2.17.2d） | DEVELOPMENT_STANDARDS.md::#### 2.17.2d 沟通先行门 | universal | 硬 | 结构 |
+
+## GATE-E 码映射索引（v3.62.0，REQ-1021）
+
+- 来源唯一权威：`resources/templates/agent-gate.sh` 的 `die "GATE-Exx:` 字符串（dev 份 `scripts/agent-gate` 与模板份单源同文）；语义逐码从 die 字符串提炼，不臆造。
+- 每码一行：码 / 一句话语义 / 落点（模板份函数或节名——**不写行号**，行号漂移，计数断言才稳）。
+- 计数互锁：本节 GATE-E 行数 == 模板 `die "GATE-E[0-9]+` 去重计数，由源层审计断言执法（`tests/audit-standards-src.sh`「CLAUSE_REGISTRY GATE-E rows == template die codes」）；agent-gate 新增 E 码必须同步加行，废止 E 码必须同步删行。本节只做索引，不复述门禁正文。
+
+| 码 | 语义 | 落点 |
+| --- | --- | --- |
+| GATE-E01 | 未在 Git 仓库内运行 | agent-gate.sh::顶层（repo_root 解析） |
+| GATE-E02 | 变更 id 形状非法（[A-Za-z0-9] 开头，仅字母数字/_/-，禁点号） | agent-gate.sh::required_docs_present() |
+| GATE-E03 | begin 必备入口产物缺失 | agent-gate.sh::required_docs_present() |
+| GATE-E04 | 00-intent 缺「预期结果」节 | agent-gate.sh::validate_artifact_content() |
+| GATE-E05 | 00-intent 缺「开放问题」节 | agent-gate.sh::validate_artifact_content() |
+| GATE-E06 | 01-spec 无 REQ- 编号 | agent-gate.sh::validate_artifact_content() |
+| GATE-E07 | 03-modification-plan 无 DES- 编号 | agent-gate.sh::validate_artifact_content() |
+| GATE-E08 | 04-test-scripts 无 TC- 编号 | agent-gate.sh::validate_artifact_content() |
+| GATE-E09 | 04-test-scripts 无 SC- 场景编号 | agent-gate.sh::validate_artifact_content() |
+| GATE-E10 | 03-modification-plan 缺备选/选型对比内容 | agent-gate.sh::validate_artifact_content() |
+| GATE-E11 | 04-test-scripts 缺覆盖维度列 | agent-gate.sh::validate_artifact_content() |
+| GATE-E12 | 02-code-impact-analysis 缺业务影响节 | agent-gate.sh::validate_artifact_content() |
+| GATE-E13 | 02-code-impact-analysis 缺风险内容 | agent-gate.sh::validate_artifact_content() |
+| GATE-E14 | 02-code-impact-analysis 缺回滚策略 | agent-gate.sh::validate_artifact_content() |
+| GATE-E15 | 03.5-tasks 缺依赖信息 | agent-gate.sh::validate_artifact_content() |
+| GATE-E16 | 03.5-tasks 缺里程碑信息 | agent-gate.sh::validate_artifact_content() |
+| GATE-E17 | 03.5-tasks 缺评审输入字段（§2.2 输入契约） | agent-gate.sh::validate_artifact_content() |
+| GATE-E18 | 治理记录字段 owner 是占位符（PENDING 类被拒） | agent-gate.sh::reject_placeholder_owner() |
+| GATE-E19 | 交付产物无溯源块 | agent-gate.sh::validate_provenance() |
+| GATE-E20 | 溯源块仍含占位符 | agent-gate.sh::validate_provenance() |
+| GATE-E21 | 溯源块缺必填字段 | agent-gate.sh::validate_provenance() |
+| GATE-E22 | 溯源块 generated_at 非 ISO-8601 日期 | agent-gate.sh::validate_provenance() |
+| GATE-E23 | 溯源块非 stamp-provenance.sh 产出（手写块拒） | agent-gate.sh::validate_provenance() |
+| GATE-E24 | 00-governance.json 缺失 | agent-gate.sh::validate_governance_state() |
+| GATE-E25 | 治理记录无该变更的 JSON 行 | agent-gate.sh::validate_governance_state() |
+| GATE-E26 | 治理记录 change_id 与变更号不符 | agent-gate.sh::validate_governance_state() |
+| GATE-E27 | 治理记录 risk_level 非 L0~L3 | agent-gate.sh::validate_governance_state() |
+| GATE-E28 | 批次成员风险超 L1（批次仅收 L0/L1） | agent-gate.sh::validate_governance_state() |
+| GATE-E29 | 治理记录缺 implementation_owner | agent-gate.sh::validate_governance_state() |
+| GATE-E30 | 治理记录缺 spec_author（四主体互异） | agent-gate.sh::validate_governance_state() |
+| GATE-E31 | L2/L3 缺 test_owner 或 review_owner | agent-gate.sh::validate_governance_state() |
+| GATE-E32 | 实现/测试/评审 owner 须互异（L2/L3） | agent-gate.sh::validate_governance_state() |
+| GATE-E33 | spec_author 须异于实现/测试/评审 owner（L2/L3） | agent-gate.sh::validate_governance_state() |
+| GATE-E34 | spec_author 不得等于 review_owner（最低线） | agent-gate.sh::validate_governance_state() |
+| GATE-E35 | review_owner 不得等于 implementation_owner（最低线） | agent-gate.sh::validate_governance_state() |
+| GATE-E36 | L3 缺 release_authorized_by | agent-gate.sh::validate_governance_state() |
+| GATE-E37 | L3 缺 release_authorized_at | agent-gate.sh::validate_governance_state() |
+| GATE-E38 | L3 缺 release_authorization_evidence | agent-gate.sh::validate_governance_state() |
+| GATE-E39 | bug_ref 字段不可解析（须扁平串或扁平字符串数组） | agent-gate.sh::validate_governance_state() |
+| GATE-E40 | bug_ref 缺陷 id 形状非法 | agent-gate.sh::validate_governance_state() |
+| GATE-E41 | bug_ref 缺陷组在 bugs_root 下不存在 | agent-gate.sh::validate_governance_state() |
+| GATE-E42 | bug_ref 缺陷组缺缺陷文档 | agent-gate.sh::validate_governance_state() |
+| GATE-E43 | 无活跃变更（先建产物再 begin） | agent-gate.sh::active_change() |
+| GATE-E44 | 交付缺必备类别文档（八类最低集） | agent-gate.sh::check_delivery_doc() |
+| GATE-E45 | 产物仍是未填模板（TEMPLATE-MARKER 未删） | agent-gate.sh::check_delivery_doc() |
+| GATE-E46 | 清单行既非 [x] 也无「未命中，不适用」证据 | agent-gate.sh::check_delivery_doc() |
+| GATE-E47 | 缺 04.5-coding-record | agent-gate.sh::validate_delivery() |
+| GATE-E48 | 缺 05-test-results | agent-gate.sh::validate_delivery() |
+| GATE-E49 | 缺 09-changelog | agent-gate.sh::validate_delivery() |
+| GATE-E50 | changelog 缺 ReAct Observation 记录 | agent-gate.sh::validate_delivery() |
+| GATE-E51 | changelog 引用的 REQ 未回填 01.5-rtvm-matrix | agent-gate.sh::validate_delivery() |
+| GATE-E52 | L0 声明式空壳不适用最小集豁免（通道越级） | agent-gate.sh::stub_guard() |
+| GATE-E53 | 缺陷组存在于多个日批次（保留一个） | agent-gate.sh::bug_group_dir() |
+| GATE-E54 | 缺陷组锚定在多个日批次（保留一个） | agent-gate.sh::bug_group_dir() |
+| GATE-E55 | 缺陷组命中多个合法布局（standalone/嵌套/扁平批） | agent-gate.sh::bug_group_dir() |
+| GATE-E56 | 独立/嵌套缺陷组六件缺件 | agent-gate.sh::validate_bug_groups() |
+| GATE-E57 | 批次缺陷组六件锚段缺件 | agent-gate.sh::validate_bug_groups() |
+| GATE-E58 | 当日批次已存在仍新建独立缺陷组 | agent-gate.sh::validate_bug_groups() |
+| GATE-E59 | 09-changelog 缺「项目总册回填清单」节 | agent-gate.sh::validate_master_backfill() |
+| GATE-E60 | 回填清单缺 Pxx 总册行 | agent-gate.sh::validate_master_backfill() |
+| GATE-E61 | 回填清单行非 [x] 也非「未命中（理由）」 | agent-gate.sh::validate_master_backfill() |
+| GATE-E62 | docs/project/ 未初始化（先复制总册骨架） | agent-gate.sh::validate_project_masters() |
+| GATE-E63 | 十二总册不齐 | agent-gate.sh::validate_project_masters() |
+| GATE-E64 | stop 阶段验证命令执行失败 | agent-gate.sh::validate_stop() |
+| GATE-E65 | diff 模式未知（staged/branch 之外） | agent-gate.sh::changed_files() |
+| GATE-E66 | 源码改动无对应变更产物（spec/plan/test/evidence） | agent-gate.sh::validate_diff() |
+| GATE-E67 | commit message 文件为空 | agent-gate.sh::validate_commit_msg() |
+| GATE-E68 | 代码提交未引用变更号 | agent-gate.sh::validate_commit_msg() |
+| GATE-E69 | begin 缺变更 id 参数 | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E70 | 变更 id 为 ./..（非法） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E71 | 批次成员已闭合（own ## 小节已在 changelog）仍 begin | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E72 | 独立变更 09-changelog 已存在（已闭合）仍 begin | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E73 | 同日批次已存在仍开独立目录（L0/L1 须入批） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E74 | 会话水位超限（默认 50 轮须 handoff） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E78 | 未知 stage | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E79 | 未知命令 | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E80 | 02-code-impact-analysis 缺「延伸发现」节 | agent-gate.sh::validate_artifact_content() |
+| GATE-E81 | 01-diagnosis 缺「延伸发现/历史相似检索」节 | agent-gate.sh::validate_governance_state() |
+| GATE-E82 | 专家评审记录缺 agent 签名（platform / model / task） | agent-gate.sh::validate_delivery() |
+| GATE-E83 | 沟通先行门：用户整体确认未记录即生成后续产物 | agent-gate.sh::validate_artifact_content() |
+| GATE-E84 | 02-code-impact-analysis 缺「历史相似检索」节（或未命中声明） | agent-gate.sh::validate_artifact_content() |
+| GATE-E85 | 07-review-report 缺可溯源独立评审签名（task-/ses- id） | agent-gate.sh::validate_delivery() |
+| GATE-E86 | 批次成员 00-intent 缺自身锚点小节（目录落位声明 fail-closed） | agent-gate.sh::validate_governance_state() |
+| GATE-E87 | 缺陷组锚点散落兄弟文档但 01-diagnosis 缺失 | agent-gate.sh::validate_bug_groups() |
+| GATE-E88 | 缺 review_owner（评审主体强制，最低线 L0/L1 亦必填） | agent-gate.sh::validate_governance_state() |

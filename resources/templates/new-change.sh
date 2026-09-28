@@ -22,6 +22,17 @@ set -uo pipefail
 
 die() { printf 'new-change: %s\n' "$1" >&2; exit 2; }
 
+# v3.62.0（CHG-080/REQ-1022）：NC-E10 拆分——NC-E10 只表「gate 二进制缺失」，
+# NC-E11 表「check-confirm 执行失败（rc 非 0/1）」。批/独立两分支共用本函数，
+# 两份文案收敛为单一来源，杜绝逐字漂移。
+confirm_gate_run() { # $1 = change id; 输出 check-confirm 的 rc
+  [[ -x "scripts/agent-gate" ]] || die "NC-E10: scripts/agent-gate not found — wave-2 confirmation gate moved into the gate (check-confirm, v3.55.0); run bootstrap --guard first"
+  scripts/agent-gate check-confirm "$1"
+}
+die_check_confirm_failed() { # $1 = confirm_gate_rc
+  die "NC-E11: check-confirm failed (rc=$1) — see scripts/agent-gate output above"
+}
+
 id="${1:-}"
 [[ -n "$id" ]] || die "NC-E01: usage: scripts/new-change <change-id> --risk L0|L1|L2|L3 [--allow-unconfirmed]"
 shift || true
@@ -114,8 +125,7 @@ if [[ "$use_batch" == 1 ]]; then
     if [[ "$allow_unconfirmed" == 1 ]]; then
       echo "new-change: --allow-unconfirmed — register the justification in 09「重要上下文」(standards §2.17.2d)"
     else
-      [[ -x "scripts/agent-gate" ]] || die "NC-E10: scripts/agent-gate not found — wave-2 confirmation gate moved into the gate (check-confirm, v3.55.0); run bootstrap --guard first"
-      scripts/agent-gate check-confirm "$id" || confirm_gate_rc=$?
+      confirm_gate_run "$id" || confirm_gate_rc=$?
     fi
     if [[ "$allow_unconfirmed" == 1 || "$confirm_gate_rc" == 0 ]]; then
       for doc in "${wave2_missing[@]}"; do
@@ -129,7 +139,7 @@ if [[ "$use_batch" == 1 ]]; then
         die "NC-E09: user-overall-confirmation not recorded in $batch/00.5-communication.md (## $id) — communication-first gate (standards §2.17.2d): present the round-1 communication, get overall confirmation, record it (确认状态：已整体确认 or L0 single-line declaration), then re-run scripts/new-change $id --risk $risk; --allow-unconfirmed is the explicit automation bypass; upgrading repo with pre-v3.52 batch members: hand-add the 00.5 anchor section to the shared file"
       fi
     else
-      die "NC-E10: check-confirm failed (rc=$confirm_gate_rc) — see scripts/agent-gate output above"
+      die_check_confirm_failed "$confirm_gate_rc"
     fi
   fi
   d="$batch"
@@ -163,8 +173,7 @@ else
     if [[ "$allow_unconfirmed" == 1 ]]; then
       echo "new-change: --allow-unconfirmed — register the justification in 09「重要上下文」(standards §2.17.2d)"
     else
-      [[ -x "scripts/agent-gate" ]] || die "NC-E10: scripts/agent-gate not found — wave-2 confirmation gate moved into the gate (check-confirm, v3.55.0); run bootstrap --guard first"
-      scripts/agent-gate check-confirm "$id" || confirm_gate_rc=$?
+      confirm_gate_run "$id" || confirm_gate_rc=$?
     fi
     if [[ "$allow_unconfirmed" == 1 || "$confirm_gate_rc" == 0 ]]; then
       for doc in "${wave2_missing[@]}"; do
@@ -178,7 +187,7 @@ else
         die "NC-E09: user-overall-confirmation not recorded in $d/00.5-communication.md — communication-first gate (standards §2.17.2d): present the round-1 communication, get overall confirmation, record it (确认状态：已整体确认 or L0 single-line declaration), then re-run scripts/new-change $id --risk $risk; --allow-unconfirmed is the explicit automation bypass; upgrading repo with pre-v3.52 batch members: hand-add the 00.5 anchor section to the shared file"
       fi
     else
-      die "NC-E10: check-confirm failed (rc=$confirm_gate_rc) — see scripts/agent-gate output above"
+      die_check_confirm_failed "$confirm_gate_rc"
     fi
   fi
   echo "new-change: scaffolded $d"

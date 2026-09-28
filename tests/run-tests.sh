@@ -1539,6 +1539,15 @@ if [[ -f "$STAMP_SRC" ]]; then
   report "T17 stamper rejects a missing coding record" 2 "$rc"
   check_output "T17 stamper states the actionable next step" "write the coding record first" "$out"
 
+  # ①b 点号 id 拒盖（v3.62.0，REQ-1023/FU-023 no-dot 形状）：exit 非零 + 明确报文，不写产物
+  out=$(scripts/stamp-provenance.sh CHG.700 2>&1); rc=$?
+  report "T17 stamper rejects a dotted change id" 2 "$rc"
+  check_output "T17 dotted-change-id refusal states the no-dot rule" "dots not allowed" "$out"
+  out=$(scripts/stamp-provenance.sh --bug BUG.040 2>&1); rc=$?
+  report "T17 stamper rejects a dotted defect id" 2 "$rc"
+  check_output "T17 dotted-defect-id refusal states the no-dot rule" "dots not allowed" "$out"
+  report "T17 dotted-id rejection writes no default target" 0 "$(test ! -e docs/changes/CHG-700/04.5-coding-record.md; echo $?)"
+
   # ② 正常写入：块插在首个 H1 之后，真值全部取自运行环境
   printf '# CHG-700 编码记录\n\n## 改动文件清单\n' > docs/changes/CHG-700/04.5-coding-record.md
   scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
@@ -1557,6 +1566,32 @@ if [[ -f "$STAMP_SRC" ]]; then
   # ④ --check 接受自己的产出
   scripts/stamp-provenance.sh --check docs/changes/CHG-700/04.5-coding-record.md >/dev/null 2>&1
   report "T17 --check accepts the stamper's own output" 0 $?
+
+  # ③b 同 HEAD 连续两次盖章：除 generated_at 墙钟外零 diff（v3.62.0，REQ-1024/TC-1079，
+  #     last-touch commit 语义下天然成立；墙钟行归一后整块比对）
+  cp docs/changes/CHG-700/04.5-coding-record.md .stamp-snapshot
+  scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
+  sed -n '/^<!-- provenance$/,/^-->$/p' .stamp-snapshot | grep -v '^generated_at: ' > .stamp-a
+  sed -n '/^<!-- provenance$/,/^-->$/p' docs/changes/CHG-700/04.5-coding-record.md | grep -v '^generated_at: ' > .stamp-b
+  report "T17 re-stamp at the same HEAD is zero-diff (modulo generated_at)" 0 "$(diff .stamp-a .stamp-b >/dev/null 2>&1; echo $?)"
+  rm -f .stamp-snapshot .stamp-a .stamp-b
+
+  # ③c last-touch commit 随文件演进更新（REQ-1024 方案 A）：入库重盖 → commit=该提交；
+  #     再改再提交再重盖 → commit=新提交（--check 的 hash 比对同口径）。
+  git add docs/changes/CHG-700/04.5-coding-record.md >/dev/null 2>&1
+  git commit -qm "docs: CHG-700 coding record" >/dev/null 2>&1
+  scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
+  blk_commit=$(sed -n '/^<!-- provenance$/,/^-->$/p' docs/changes/CHG-700/04.5-coding-record.md | sed -nE 's/^commit:[[:space:]]*//p')
+  report "T17 commit field == the file's last-touch commit" 1 "$(git log -1 --format=%h -- docs/changes/CHG-700/04.5-coding-record.md | grep -cF "$blk_commit")"
+  printf '\n## WHY 决策\n\n追加内容驱动 last-touch 更新。\n' >> docs/changes/CHG-700/04.5-coding-record.md
+  git add docs/changes/CHG-700/04.5-coding-record.md >/dev/null 2>&1
+  git commit -qm "docs: CHG-700 coding record update" >/dev/null 2>&1
+  scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
+  blk_commit2=$(sed -n '/^<!-- provenance$/,/^-->$/p' docs/changes/CHG-700/04.5-coding-record.md | sed -nE 's/^commit:[[:space:]]*//p')
+  report "T17 commit field == the evolved last-touch commit" 1 "$(git log -1 --format=%h -- docs/changes/CHG-700/04.5-coding-record.md | grep -cF "$blk_commit2")"
+  report "T17 commit field actually advanced between evolutions" 0 "$(test "$blk_commit" != "$blk_commit2"; echo $?)"
+  scripts/stamp-provenance.sh --check docs/changes/CHG-700/04.5-coding-record.md >/dev/null 2>&1
+  report "T17 --check commit consistency accepts a fresh stamp" 0 $?
 
   # ⑤ 隐私开关：yml 关掉邮箱，作者与主机保留
   printf 'provenance:\n  include_email: false\n' > .agent-governance.yml
@@ -2256,6 +2291,31 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   check_output "T25 missing --risk refused" "--risk L0|L1|L2|L3 required" "$out"
   out=$(scripts/new-change CHG-936 --risk L9 2>&1 || true)
   check_output "T25 invalid risk refused" "--risk L0|L1|L2|L3 required" "$out"
+
+  # v3.62.0（CHG-080/REQ-1022）：NC-E10 拆分——gate 缺失=NC-E10，check-confirm 执行失败（rc 非 0/1）=NC-E11；
+  # 批/独立两分支共用 confirm_gate_run/die_check_confirm_failed（文案单源，逐字一致）。
+  # 独立分支取 L2（批次日 L2 恒走 dedicated，T25 早前已断言）；批分支取 L0 入同日批。
+  mv scripts/agent-gate scripts/agent-gate.away
+  scripts/new-change CHG-937 --risk L2 >/dev/null 2>&1   # wave1 落盘，wave2 在确认门处停
+  out=$(scripts/new-change CHG-937 --risk L2 2>&1 || true)
+  check_output "T25 dedicated branch: missing gate dies NC-E10" "NC-E10: scripts/agent-gate not found" "$out"
+  printf '#!/usr/bin/env bash\necho "stub check-confirm failure"\nexit 2\n' > scripts/agent-gate
+  chmod +x scripts/agent-gate
+  out=$(scripts/new-change CHG-937 --risk L2 2>&1 || true)
+  check_output "T25 dedicated branch: check-confirm rc=2 dies NC-E11" "NC-E11: check-confirm failed .rc=2." "$out"
+  mv scripts/agent-gate.away scripts/agent-gate
+  mv scripts/agent-gate scripts/agent-gate.away
+  scripts/new-change CHG-938 --risk L0 >/dev/null 2>&1   # 批分支 wave1 锚段落盘
+  out=$(scripts/new-change CHG-938 --risk L0 2>&1 || true)
+  check_output "T25 batch branch: missing gate dies NC-E10" "NC-E10: scripts/agent-gate not found" "$out"
+  printf '#!/usr/bin/env bash\nexit 2\n' > scripts/agent-gate
+  chmod +x scripts/agent-gate
+  out=$(scripts/new-change CHG-938 --risk L0 2>&1 || true)
+  check_output "T25 batch branch: check-confirm rc=2 dies NC-E11" "NC-E11: check-confirm failed .rc=2." "$out"
+  mv scripts/agent-gate.away scripts/agent-gate
+  printf -- '- 确认状态：已整体确认\n' >> docs/changes/CHG-937/00.5-communication.md
+  scripts/new-change CHG-937 --risk L2 >/dev/null 2>&1
+  report "T25 dedicated wave2 completes once the gate is restored" 0 $?
 else
   echo "SKIP T25: new-change.sh absent (bootstrap --guard 未安装) — 跳过脚手架 golden cases"
 fi
@@ -3010,14 +3070,14 @@ else
   echo "SKIP T47: agent-gate absent — 跳过落位声明 golden cases"
 fi
 
-# ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.61.2，REQ-1018/1020）
+# ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.61.2' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.61.2 in prose" 3 "$(grep -cF 'v3.61.2' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.61.2" 1 "$(grep -cF '规范版本：v3.61.2' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.61.2" 1 "$(grep -cF '当前对应规范版本：v3.61.2' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.61.2 top row" 1 "$(grep -c '^| v3.61.2 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.62.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.62.0 in prose" 3 "$(grep -cF 'v3.62.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.62.0" 1 "$(grep -cF '规范版本：v3.62.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.62.0" 1 "$(grep -cF '当前对应规范版本：v3.62.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.62.0 top row" 1 "$(grep -c '^| v3.62.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3026,7 +3086,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 8 "$(grep -c 'v3\.61\.2' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.62\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

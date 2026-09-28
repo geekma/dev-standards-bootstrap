@@ -109,4 +109,4 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.61.2_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.62.0_
