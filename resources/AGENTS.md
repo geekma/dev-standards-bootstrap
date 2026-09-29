@@ -28,7 +28,7 @@
 
 ## Agent 执行资源纪律（八条，违反按 §5 反模式登记）
 
-1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化；v3.60.0 分级，FU-909）**：单会话 `bash` 调用 ≤20 次（硬约束限于**编码/落点类**；baseline 校准、全量 suite、长复测类验证调用单列台账不占额）、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。**会话换挡硬拦（v3.58.0）**：install-hook-adapter 生成的 PreToolUse / tool.execute.before 接 `session-gate.sh check`，轮次超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即块工具调用（exit 2/throw，§2.9.6）——指令衰减免疫层；无 hook 能力的 Agent 以本纪律层 + begin 拒绝兜底。
+1. **管道过滤**：长输出命令一律接过滤管道（通用形态：`<验证命令> 2>&1 | grep -E "<FAIL/ERROR 汇总词>" | tail -N`，按仓库替换命令与汇总词），终端只留关键输出（≤10 行级），全文归档由产物承载（`09-changelog.md` / `04.5-coding-record.md`）。**勘探预算（v3.39.0 量化；v3.60.0 分级，FU-909）**：单会话 `bash` 调用 ≤20 次（硬约束限于**编码/落点类**；baseline 校准、全量 suite、长复测类验证调用单列台账不占额）、单次检索必须合并全部 pattern（纪律 2）——idle/status 执法从 `.agent-state/session-tool-stats.json` 读数超限亮黄灯，超标原因须在 09「重要上下文」登记。**会话换挡硬拦（v3.58.0）**：install-hook-adapter 生成的 PreToolUse / tool.execute.before 接 `session-gate.sh check`，轮次超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即块工具调用（exit 2/throw，§2.9.6）——指令衰减免疫层；无 hook 能力的 Agent 以本纪律层 + begin 拒绝兜底。**事件型换挡触发（v3.63.0，治"轮次不可观测"）**：任一变更 commit/交付宣言后收尾必须写 handoff 文档（`docs/changes/<变更号>/handoff.md` 或活跃 BATCH 目录）+ 显式换挡声明；不换挡在同会话开新变更会被 `begin` 的 GATE-E89 硬拦（交付落在本会话存活期内且无 handoff 证据即拒；豁免 `AGENT_GUARD_ALLOW_NO_SHIFT=1` 须 09 登记；同批次连续变更/用户明示继续方可豁免，细则 §2.9.6）。**遥测活性自检（v3.63.0）**：`session-gate status/idle` 亮 YELLOW 失联 = adapter 未被客户端加载（插件 API 漂移实证过），须核查客户端日志，不得忽略。
 2. **一次拉全**：同文件检索一次 grep 合并全部 pattern（`-e` / `-E`），禁止多 pattern 分次重扫。
 3. **先定位后小窗**：read 大文件前先 `grep -n` 定位行号，再小窗读（±80 行）；同文件不重复大窗读。
 4. **勘探下放（v3.39.0 起默认强制，非建议）**：预计读 >2 文件或 >100 行日志/代码定位、或 >2 pattern 的检索，**必须**合并单次调用或委派只读子代理执行，只回结论与行号，原始输出不进主上下文；子代理超出派发输入清单的读盘动作须在结论中声明原因（§2.2 输入契约）。
@@ -84,5 +84,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.62.2_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.63.0_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

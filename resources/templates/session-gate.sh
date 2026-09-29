@@ -41,7 +41,8 @@ mkdir -p "$STATE_DIR"
 # ---- 会话遥测（v3.39.0，CHG-042）：轮次/工具计数的通用层 --------------------
 # 设计裁定：计数逻辑只活在这里（bash，任意 harness 可接线），客户端适配器只做
 # 事件转发——Claude 走 UserPromptSubmit/PostToolUse hook，OpenCode 插件走
-# chat.message / message.part.updated；无适配器的 harness 天然零开销跳过。
+# message.updated（user role）/ message.part.updated，Cursor 走 beforeSubmitPrompt /
+# postToolUse；无适配器的 harness 天然零开销跳过。
 # gate begin 只读磁盘水位文件（§2.9.6），永不依赖客户端运行时。
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S; }
@@ -49,6 +50,9 @@ now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%
 reset_state() {
   printf '{"turns":0,"bash":0,"grep":0,"other":0,"total":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
   printf '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)" > "$WATER_FILE"
+  # v3.63.0（REQ-1033，DES-1822）：会话起点标记——agent-gate begin 的 GATE-E89
+  # 以「交付时刻晚于本会话起点」判定同会话交付后未换挡；新会话 start 重置起点后放行。
+  printf '{"started_at":"%s"}\n' "$(now_iso)" > "${STATE_DIR}/session-started.json"
 }
 
 stat_get() { sed -n "s/.*\"$1\":[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$STATS_FILE" 2>/dev/null | head -1; }
@@ -65,6 +69,36 @@ water_write() { # <turns>
 stats_line() {
   printf 'session-gate: session stats — turns %s, bash %s, grep %s, other %s (resource discipline baseline: bash <= 20)' \
     "$(stat_get turns)" "$(stat_get bash)" "$(stat_get grep)" "$(stat_get other)"
+}
+
+iso_to_epoch() { # <iso8601Z> — GNU date -d first, BSD date -j -f fallback, 0 on failure
+  local s="$1"
+  if date -u -d "$s" +%s >/dev/null 2>&1; then
+    date -u -d "$s" +%s
+  else
+    date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$s" +%s 2>/dev/null || echo 0
+  fi
+}
+
+telemetry_liveness() { # v3.63.0（REQ-1037，DES-1825）：事件源活性自检（软执法 YELLOW）
+  # 背景（REQ-1036 实证）：adapter 生成物与客户端插件 API 漂移时，插件在客户端启动
+  # 时加载失败（仅服务器日志 WARN），事件源归零、三层防线静默降级。本检查把"死了"
+  # 从不可见日志提升为 agent 可见信号。窗口 AGENT_GUARD_SESSION_TELEMETRY_STALE_MIN
+  # （分钟，默认 30）可调；只提示不阻断（fail-open）。
+  local now ts age stale stale_min
+  stale_min="${AGENT_GUARD_SESSION_TELEMETRY_STALE_MIN:-30}"
+  [[ "$stale_min" =~ ^[0-9]+$ ]] || stale_min=30
+  stale=$(( stale_min * 60 ))
+  now=$(date -u +%s)
+  if [[ -s "$STATS_FILE" ]]; then
+    ts=$(sed -n 's/.*"updated_at":"\([^"]*\)".*/\1/p' "$STATS_FILE" | head -1)
+    age=$(( now - $(iso_to_epoch "${ts:-}") ))
+    if [[ $age -gt $stale ]]; then
+      emit "session-gate: YELLOW — telemetry stale ($(( age / 60 ))min > ${stale_min}min): event source likely NOT loaded (client plugin schema drift?) — check client logs for 'failed to load plugin'; enforcement degraded to Git hooks + CI"
+    fi
+  elif [[ -d .opencode/plugins || -f .claude/settings.json || -f .cursor/hooks.json ]]; then
+    emit "session-gate: YELLOW — adapter wiring present but zero telemetry: plugin/hook not firing (client did not load it?) — check client logs for 'failed to load plugin' / hook errors"
+  fi
 }
 
 stats_warnings() { # 软执法黄灯：idle/status 时提示，不阻断（硬执法在 gate begin/stop）
@@ -123,6 +157,8 @@ if [[ "$mode" == "check" ]]; then
   # tool.execute.before adapters (install-hook-adapter). Fail-closed only when
   # a water file exists AND turns >= limit — uninstalled repos and fresh
   # sessions are never blocked (exit 0). Override: AGENT_GUARD_SESSION_TURN_LIMIT.
+  # v3.63.0 (REQ-1035, D): `-ge` 口径为两处统一基线——check（此处）与 gate begin
+  # E74 均在 turn == limit 时拦截（旧 begin 侧 `-gt` 放行第 50 轮整，已修）。
   if [[ -s "$WATER_FILE" ]]; then
     t=$(sed -nE 's/.*"turns"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$WATER_FILE" | head -1)
     limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
@@ -162,6 +198,8 @@ case "$mode" in
       echo
       stats_warnings
     fi
+    # v3.63.0（REQ-1037）：遥测活性自检——插件静默失联可见化（软执法）
+    telemetry_liveness
     exit 0
     ;;
 esac
@@ -277,5 +315,7 @@ fi
 
 # v3.39.0（CHG-042）：勘探预算 + 换挡黄灯（软执法，idle 收尾可见；硬执法在 gate begin）
 stats_warnings
+# v3.63.0（REQ-1037）：遥测活性自检（软执法，idle 收尾可见）
+telemetry_liveness
 
 exit 0

@@ -68,10 +68,24 @@ new_repo() {
   # BATCH-20260928 CHG-082 — and placement-themed sections (T47, T18d E58
   # trio) explicitly unset it to keep the enforcement visible.
   export AGENT_GUARD_ALLOW_INDEPENDENT=1
+  # v3.63.0 (CHG-083, REQ-1033): same one-shot escape pattern for GATE-E89 —
+  # legacy sections begin after fixture deliveries (directory-resolution
+  # subjects, not shift subjects); the shift-themed T49 overrides with =0.
+  export AGENT_GUARD_ALLOW_NO_SHIFT=1
   mkdir -p scripts docs/changes src
   seed_project_masters
   cp "$GATE_SRC" scripts/agent-gate
   chmod +x scripts/agent-gate
+  # v3.63.0 (CHG-083, REQ-1033): GATE-E89 needs session-started.json to judge
+  # "delivery happened during THIS session's lifetime". Each new_repo models a
+  # FRESH session: started_at is written 1H IN THE PAST so any fixture delivery
+  # (written "now" by staged/stop cases) is newer and WOULD arm E89 — the gate
+  # stays visible here. Directory/placement-themed sections never do
+  # begin-after-delivery in this fixture, so they stay unaffected; if a future
+  # lifecycle test needs E89 off, rewrite session-started.json with a future
+  # timestamp or export AGENT_GUARD_ALLOW_NO_SHIFT=1 (T49 covers both sides).
+  mkdir -p .agent-state
+  printf '{"started_at":"%s"}\n' "$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/session-started.json
   echo init > README.md
   git add README.md scripts
   git commit -qm init
@@ -1849,7 +1863,7 @@ report "T18 the structural heading is not read as a change id" 0 "$(printf '%s' 
 t18m2=$(mktemp)
 scripts/agent-gate metrics > "$t18m2" 2>&1
 report "T18 metrics invents no phantom change for a structural heading" 0 "$(grep -c '"change_id":"Observation"' "$t18m2")"
-report "T18 metrics still emits one row per declared change" 2 "$(wc -l < "$t18m2" | tr -d ' ')"
+report "T18 metrics still emits one row per declared change" 2 "$(grep -c '"change_id":' "$t18m2" | tr -d ' ')"
 rm -f "$t18m2"
 
 # ⑤ 风险上限不放宽：批次共享产物会削弱逐变更证据边界与角色独立性，
@@ -2342,7 +2356,7 @@ seed_artifacts CHG-920 L1 claude/s-1
 mkdir -p .agent-state
 printf '{"turns":80,"session":"s-1","updated_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-water.json
 out=$(scripts/agent-gate begin CHG-920 2>&1); rc=$?
-check_output "T24 begin names the water level and both escapes" "session water level 80 turns exceeds the 50-turn limit" "$out"
+check_output "T24 begin names the water level and both escapes" "session water level 80 turns reaches the 50-turn limit" "$out"
 check_output "T24 refusal names handoff path" "handoff to a fresh session" "$out"
 check_output "T24 refusal names escape env" "AGENT_GUARD_ALLOW_OVER_WATER=1" "$out"
 report "T24 begin exit 2 over water" 2 "$rc"
@@ -3236,11 +3250,11 @@ fi
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.62.2' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.62.2 in prose" 3 "$(grep -cF 'v3.62.2' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.62.2" 1 "$(grep -cF '规范版本：v3.62.2' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.62.2" 1 "$(grep -cF '当前对应规范版本：v3.62.2' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.62.2 top row" 1 "$(grep -c '^| v3.62.2 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.63.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.63.0 in prose" 3 "$(grep -cF 'v3.63.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.63.0" 1 "$(grep -cF '规范版本：v3.63.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.63.0" 1 "$(grep -cF '当前对应规范版本：v3.63.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.63.0 top row" 1 "$(grep -c '^| v3.63.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3249,7 +3263,82 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.62\.2' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.63\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+
+# ---- T49 (v3.63.0, CHG-083/REQ-1033~1037): 换挡执法 + 活性自检 + adapter 结构 ----
+# ① GATE-E89 四态 + 时间窗 + R07-1 静默死亡回归。复用 T24 的种子手法：
+#    new_repo（=新会话，started_at=-1H）+ seed_artifacts 一个 L1 变更。
+new_repo
+seed_artifacts CHG-950 L1 claude/s-1
+mkdir -p .agent-state
+# 态①：无 last-delivery → 放行
+out=$(AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate begin CHG-950 2>&1); rc=$?
+report "T49 E89 state1: no delivery passes" 0 "$rc"
+rm -rf .git/agent-governance
+# 态②：同会话交付（delivered 晚于 started）无 handoff → E89 die（rc=2，有码，不静默）
+printf '{"delivered_at":"%s","change":"CHG-950","stage":"stop","session":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/last-delivery.json
+out=$(AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate begin CHG-950 2>&1); rc=$?
+report "T49 E89 state2: in-session delivery without handoff dies" 2 "$rc"
+report "T49 E89 state2 die names the code (not silent)" 1 "$(printf '%s' "$out" | grep -c 'GATE-E89')"
+rm -rf .git/agent-governance
+# 态③：handoff 落在【变更自有目录】（R07-2 回归：尾斜杠路径）→ 放行
+mkdir -p docs/changes/CHG-950
+printf '# handoff\n' > docs/changes/CHG-950/handoff.md
+out=$(AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate begin CHG-950 2>&1); rc=$?
+report "T49 E89 state3: handoff in own change dir passes" 0 "$rc"
+rm -rf .git/agent-governance docs/changes/CHG-950/handoff.md
+# 态④：豁免 env → 放行
+AGENT_GUARD_ALLOW_NO_SHIFT=1 scripts/agent-gate begin CHG-950 >/dev/null 2>&1
+report "T49 E89 state4: escape env passes" 0 $?
+rm -rf .git/agent-governance
+# 态⑤（TC-1095）：陈旧交付（早于 started_at）→ 放行
+printf '{"delivered_at":"2020-01-01T00:00:00Z","change":"CHG-950","stage":"stop","session":""}\n' > .agent-state/last-delivery.json
+AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate begin CHG-950 >/dev/null 2>&1
+report "T49 E89 state5: stale delivery passes (fail-open)" 0 $?
+rm -rf .git/agent-governance
+# 态⑥（R07-1 回归）：last-delivery 在但 session-started.json 缺失 → 不得静默死亡
+#    （死亡必须带 GATE 码；此处 CHG-950 已 active，begin 同号会走「已闭合/活跃」类
+#    码——只断言"不无声退出"，语义由态②守门）
+rm -f .agent-state/session-started.json
+printf '{"delivered_at":"%s","change":"CHG-950","stage":"stop","session":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/last-delivery.json
+AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate begin CHG-950 >/dev/null 2>&1; rc=$?
+report "T49 E89 R07-1: missing started marker is not a silent kill" 0 "$(( rc == 1 ? 1 : 0 ))"
+
+# ② 活性自检三态（TC-1100；R07-5：坏 env 回落）
+new_repo
+mkdir -p .agent-state scripts
+cp "$ROOT/resources/templates/session-gate.sh" scripts/session-gate.sh
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+printf '{"turns":3,"bash":1,"grep":0,"other":2,"total":3,"updated_at":"2020-01-01T00:00:00Z"}\n' > .agent-state/session-tool-stats.json
+report "T49 liveness stale emits YELLOW" 1 "$(bash scripts/session-gate.sh status 2>&1 | grep -c 'telemetry stale')"
+report "T49 liveness bad env falls back (no crash, still stale report)" 1 "$(AGENT_GUARD_SESSION_TELEMETRY_STALE_MIN=abc bash scripts/session-gate.sh status 2>&1 | grep -c 'telemetry stale')"
+printf '{"turns":3,"bash":1,"grep":0,"other":2,"total":3,"updated_at":"%s"}\n' "$NOW" > .agent-state/session-tool-stats.json
+report "T49 liveness fresh is quiet" 0 "$(bash scripts/session-gate.sh status 2>&1 | grep -c 'telemetry stale')"
+rm -f .agent-state/session-tool-stats.json
+mkdir -p .claude && printf '{}\n' > .claude/settings.json
+report "T49 liveness wiring-but-no-telemetry emits YELLOW" 1 "$(AGENT_GUARD_ALLOW_NO_SHIFT=0 bash scripts/session-gate.sh status 2>&1 | grep -c 'zero telemetry')"
+
+# ③ adapter 结构断言（TC-1098；R07-7：无 setup 键 + ADAPTER-E09 负例）
+new_repo
+mkdir -p scripts
+cp "$ROOT/resources/templates/install-hook-adapter.sh" scripts/install-hook-adapter
+cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate
+cp "$ROOT/resources/templates/session-gate.sh" scripts/session-gate.sh
+chmod +x scripts/install-hook-adapter scripts/agent-gate
+bash scripts/install-hook-adapter --client opencode >/dev/null 2>&1
+report "T49 adapter writes default export" 1 "$(grep -c 'export default { id: "dev-standards-gate", server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js)"
+report "T49 adapter template carries no unverified setup key" 0 "$(grep -c 'setup: async' .opencode/plugins/dev-standards-gate.js)"
+sed 's/^export default.*//' scripts/install-hook-adapter > scripts/install-hook-adapter.bak \
+  && cp scripts/install-hook-adapter.bak scripts/install-hook-adapter
+out=$(bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49 adapter E09 negative: missing default export dies" 2 "$rc"
+report "T49 adapter E09 negative names the code" 1 "$(printf '%s' "$out" | grep -c 'ADAPTER-E09')"
+
+# ④ bootstrap 目录证据接线（TC-1096）
+new_repo
+mkdir -p .opencode
+bash "$ROOT/scripts/bootstrap.sh" --guard "$REPO" >/dev/null 2>&1
+report "T49 bootstrap dir-evidence wires opencode adapter" 1 "$(grep -c 'export default { id: "dev-standards-gate", server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then

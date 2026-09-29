@@ -840,21 +840,36 @@ auto_wire_guard() {
       echo "NOTE         core.hooksPath is '$cur' (custom) — left untouched; wire $GITHOOKS_DIR manually if intended" >&2
     fi
   fi
-  # 2) client hook adapter: only run when a supported client is detected in
-  #    THIS shell's env (the adapter itself exits 0 even without a client, so
-  #    its exit code alone would false-positive — check the env here first).
+  # 2) client hook adapter: v3.63.0 (REQ-1034, DES-1823) — probe the TARGET
+  #    repo's own directory evidence instead of this shell's env. Bootstrap is
+  #    routinely run outside any client (CI, plain terminal), where env probes
+  #    see nothing and wiring was silently skipped (NOTE). Each detected client
+  #    marker maps to an explicit --client install; repos showing no marker at
+  #    all keep the old NOTE (Git hooks + CI still enforce).
   if [[ -f "$target/$SCRIPTS_DIR/install-hook-adapter" ]]; then
-    ok=0
-    if (cd "$target" && bash "$SCRIPTS_DIR/install-hook-adapter" >/dev/null 2>&1); then
-      for f in .claude/settings.json .cursor/hooks.json .gemini/settings.json \
-               .opencode/plugins/dev-standards-gate.js; do
-        [[ -f "$target/$f" ]] && ok=1
-      done
-    fi
-    if [[ "$ok" == 1 ]]; then
-      echo "auto-wired   client session-enforcement wired (install-hook-adapter detected the local clients)"
+    wired_any=0
+    declare -a evidence=(opencode:.opencode claude:.claude cursor:.cursor gemini:.gemini codex:.codex)
+    for ev in "${evidence[@]}"; do
+      c="${ev%%:*}"; dir="${ev#*:}"
+      [[ -d "$target/$dir" ]] || continue
+      # v3.63.0 (R07 closeout): gemini/codex have no repo-scoped hook surface —
+      # the adapter honestly declares it; do NOT print "auto-wired" for them.
+      case "$c" in
+        gemini|codex)
+          echo "NOTE         $c detected ($dir/) — no repo-scoped hook surface; Git hooks + CI + AGENTS.md enforce (see install-hook-adapter)" >&2
+          continue ;;
+      esac
+      if (cd "$target" && bash "$SCRIPTS_DIR/install-hook-adapter" --client "$c" >/dev/null 2>&1); then
+        echo "auto-wired   client adapter for $c (evidence: $dir/)"
+        wired_any=1
+      else
+        echo "NOTE         client adapter for $c ($dir/ detected) failed to wire — run $SCRIPTS_DIR/install-hook-adapter --client $c inside the repo for details" >&2
+      fi
+    done
+    if [[ "$wired_any" == 1 ]]; then
+      echo "auto-wired   client session-enforcement installed — commit the generated adapter files (.opencode/plugins/, .claude/settings.json, .cursor/hooks.json) so teammates inherit the wiring"
     else
-      echo "NOTE         no supported coding client detected — Git hooks + CI still enforce; run $SCRIPTS_DIR/install-hook-adapter inside your client later" >&2
+      echo "NOTE         no supported coding client markers in the repo (.opencode/.claude/.cursor/.gemini/.codex) — Git hooks + CI still enforce; run $SCRIPTS_DIR/install-hook-adapter inside your client later" >&2
     fi
   fi
   # 3) verification command autodetect: replace the placeholder only; user

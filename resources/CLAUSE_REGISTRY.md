@@ -40,7 +40,7 @@
 | R16 | 歧义分级裁定（§2.1 规则 8） | DEVELOPMENT_STANDARDS.md::歧义分级裁定 | universal | 硬 | 行为 |
 | R17 | 四主体自查表（§2.1 规则 10） | DEVELOPMENT_STANDARDS.md::四主体自查表 | universal | 硬 | 行为 |
 | R18 | 评审/测试子代理输入契约（§2.2） | DEVELOPMENT_STANDARDS.md::输入契约 | universal | 硬 | 行为 |
-| R19 | 会话与上下文纪律（§2.9.6 水位/换挡） | DEVELOPMENT_STANDARDS.md::### 2.9.6 会话与上下文纪律 | universal | 软 | 行为 |
+| R19 | 会话与上下文纪律（§2.9.6 水位/换挡/事件型触发） | DEVELOPMENT_STANDARDS.md::### 2.9.6 会话与上下文纪律 | universal | 半硬（check/水位/GATE-E89 begin 硬校+豁免；活性自检软） | 行为 |
 | R20 | 遗留项闭环管理（FU，§2.12） | DEVELOPMENT_STANDARDS.md::## 2.12 遗留项闭环管理 | universal | 硬 | 结构 |
 | R21 | 项目总册回填清单（§1.3） | DEVELOPMENT_STANDARDS.md::#### 项目总册回填清单 | L1-standards | 硬 | 结构 |
 | R22 | 执行前置（§2.16.1） | DEVELOPMENT_STANDARDS.md::### 2.16.1 执行前置 | L1-standards | 硬 | 结构 |
@@ -147,7 +147,8 @@
 | GATE-E71 | 批次成员已闭合（own ## 小节已在 changelog）仍 begin | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E72 | 独立变更 09-changelog 已存在（已闭合）仍 begin | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E73 | 同日批次已存在仍开独立目录（L0/L1 须入批） | agent-gate.sh::命令分发（case "$command"） |
-| GATE-E74 | 会话水位超限（默认 50 轮须 handoff） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E74 | 会话水位超限（默认 50 轮须 handoff；v3.63.0 起 `-ge` 口径） | agent-gate.sh::命令分发（case "$command"） |
+| GATE-E89 | 同会话交付后未换挡（last-delivery 在本会话存活期内且无 handoff 证据；豁免 AGENT_GUARD_ALLOW_NO_SHIFT=1+09 登记） | agent-gate.sh::begin（v3.63.0，REQ-1033） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

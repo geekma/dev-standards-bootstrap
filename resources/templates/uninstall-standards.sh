@@ -159,7 +159,7 @@ echo
 echo "uninstall-standards: removed=$REMOVED backup_moved=$MOVED kept=$KEPT"
 if [[ "$MOVED" -gt 0 ]]; then echo "  backup location: $BACKUP_DIR (move files back to restore)"; fi
 echo "  manual follow-ups (merged/derived, not file-level):"
-echo "    - .claude/.cursor/.gemini settings keep our hook entries — strip the dev-standards blocks or rerun install-hook-adapter after reinstall"
+echo "    - .claude/.cursor settings keep our hook entries — strip the dev-standards blocks or rerun install-hook-adapter after reinstall (v3.63.0: gemini has no repo-scoped hook surface; .gemini/settings.json was never written by us and is only kept because it may hold your own content)"
 echo "    - README badges/sections mentioning dev-standards were not edited"
 echo "  reinstall anytime: re-run bootstrap --core/--guard"
 echo "  note: this uninstaller self-removes on a real (non-dry) run — rerun needs a reinstall first"

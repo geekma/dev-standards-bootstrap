@@ -17,6 +17,25 @@ die() {
 }
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "GATE-E01: run inside a Git repository"
+
+gate_epoch() { # <iso8601Z> — GNU then BSD, 0 on failure (v3.63.0 GATE-E89 helper)
+  date -u -d "$1" +%s 2>/dev/null || date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || echo 0
+}
+gate_mtime() { # <file> — BSD then GNU stat, 0 on failure
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+record_delivery() { # <stage> — v3.63.0 (REQ-1033, DES-1822): delivery marker for begin GATE-E89
+  local ac cid
+  ac=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -s "$ac" ]] || return 0
+  cid=$(tr -d '[:space:]' < "$ac" 2>/dev/null)
+  [[ -n "$cid" ]] || return 0
+  mkdir -p "$repo_root/.agent-state" 2>/dev/null || return 0
+  printf '{"delivered_at":"%s","change":"%s","stage":"%s","session":""}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cid" "$1" > "$repo_root/.agent-state/last-delivery.json" 2>/dev/null \
+    || echo "agent-gate: note — could not write .agent-state/last-delivery.json (shift gate degrades fail-open)" >&2
+  return 0
+}
 cd "$repo_root"
 
 # --- path roots (v3.15.0) ---------------------------------------------------
@@ -1403,12 +1422,63 @@ case "$command" in
     # hook have no water file and degrade fail-open (§2.17.3.2: semantics
     # unchanged, defense line moves back). Threshold is env-tunable until the
     # metrics cost data (v3.38.0) justifies hardening it.
+    # v3.63.0 (REQ-1035, D): threshold comparison unified to `-ge` to match
+    # session-gate.sh check (turn == limit blocks on BOTH sides; the old
+    # begin-side `-gt` let turn==limit open new changes — 口径不一致修复).
     water_file="$repo_root/.agent-state/session-water.json"
     if [[ -s "$water_file" && "${AGENT_GUARD_ALLOW_OVER_WATER:-}" != "1" ]]; then
       w_turns=$(sed -n 's/.*"turns":[[:space:]]*\([0-9][0-9]*\).*/\1/p' "$water_file" | head -1)
       w_limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
-      if [[ "$w_turns" =~ ^[0-9]+$ ]] && [[ "$w_turns" -gt "$w_limit" ]]; then
-        die "GATE-E74: session water level ${w_turns} turns exceeds the ${w_limit}-turn limit (standards §2.9.6) — handoff to a fresh session (state rebuilds from disk, §2.16.1) and re-begin there, or set AGENT_GUARD_ALLOW_OVER_WATER=1 with the justification recorded in 09「重要上下文」"
+      if [[ "$w_turns" =~ ^[0-9]+$ ]] && [[ "$w_turns" -ge "$w_limit" ]]; then
+        die "GATE-E74: session water level ${w_turns} turns reaches the ${w_limit}-turn limit (standards §2.9.6) — handoff to a fresh session (state rebuilds from disk, §2.16.1) and re-begin there, or set AGENT_GUARD_ALLOW_OVER_WATER=1 with the justification recorded in 09「重要上下文」"
+      fi
+    fi
+    # v3.63.0 (REQ-1033, DES-1822): GATE-E89 — post-delivery shift gate (hook-
+    # independent; begin is the discipline session's mandatory waypoint). A
+    # delivery recorded DURING this session's lifetime (started_at < delivered_at)
+    # requires handoff evidence (a handoff*.md newer than the delivery) before
+    # opening the next change in the SAME session; sessions started after the
+    # delivery pass (fresh-session semantics). Missing/stale markers degrade
+    # fail-open. Escape: AGENT_GUARD_ALLOW_NO_SHIFT=1 with justification in 09
+    # (GATE-E75 同型豁免先例).
+    last_delivery="$repo_root/.agent-state/last-delivery.json"
+    if [[ -s "$last_delivery" && "${AGENT_GUARD_ALLOW_NO_SHIFT:-}" != "1" ]]; then
+      l_delivered=$(sed -n 's/.*"delivered_at":"\([^"]*\)".*/\1/p' "$last_delivery" | head -1)
+      # R07-1 (07-review, BLOCKER): `x=$(sed missing-file 2>/dev/null | head -1)`
+      # under `set -euo pipefail` aborts begin SILENTLY (rc 1, no die code) —
+      # exactly the hook-only/mid-upgrade repos REQ-1033 targets. Guard the
+      # read; a missing marker degrades fail-open per §2.17.3.2.
+      l_started=""
+      if [[ -s "$repo_root/.agent-state/session-started.json" ]]; then
+        l_started=$(sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1)
+      fi
+      if [[ -n "$l_delivered" && -n "$l_started" ]]; then
+        ep_del=$(gate_epoch "$l_delivered"); ep_start=$(gate_epoch "$l_started")
+        # R07 closeout: ep_start==0 means the started marker exists but is
+        # unparseable (corrupt) — treat like missing (fail-open), not like
+        # "session started at epoch 0" (which would arm the gate on garbage).
+        if [[ "$ep_del" =~ ^[0-9]+$ && "$ep_start" =~ ^[0-9]+$ && "$ep_start" -gt 0 && "$ep_del" -gt "$ep_start" ]]; then
+          l_change=$(sed -n 's/.*"change":"\([^"]*\)".*/\1/p' "$last_delivery" | head -1)
+          handoff_ok=0
+          # R07-2/R07-10 (07-review, MAJOR/NIT): the glob concatenates onto the
+          # dir element — the own-change path needs its trailing slash (it is
+          # the PRIMARY remediation path the die message names), and an empty
+          # change id must not degrade to scanning docs/changes/ itself.
+          e89_dirs=()
+          [[ -n "$l_change" ]] && e89_dirs+=("$repo_root/docs/changes/$l_change/")
+          e89_dirs+=("$repo_root"/docs/changes/BATCH-*/)
+          for hd in "${e89_dirs[@]}"; do
+            [[ -d "$hd" ]] || continue
+            for hf in "$hd"handoff*.md; do
+              [[ -f "$hf" ]] || continue
+              hm=$(gate_mtime "$hf")
+              if [[ "$hm" =~ ^[0-9]+$ && "$hm" -ge "$ep_del" ]]; then handoff_ok=1; break 2; fi
+            done
+          done
+          if [[ "$handoff_ok" != 1 ]]; then
+            die "GATE-E89: last delivery (${l_change:-<change>} @ ${l_delivered}) happened in THIS session without a handoff doc — write the handoff record under docs/changes/${l_change:-<change>}/ (or the active BATCH dir), run /handoff and continue in a fresh session, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification recorded in 09「重要上下文」 (standards §2.9.6)"
+          fi
+        fi
       fi
     fi
     # v3.40.0 (CHG-046, FU-106⑤): unresolved session RED blocks new changes.
@@ -1467,8 +1537,8 @@ case "$command" in
           validate_active_change
         fi
         ;;
-      staged) validate_diff staged ;;
-      stop) validate_stop ;;
+      staged) validate_diff staged; record_delivery staged ;;
+      stop) validate_stop; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
