@@ -1058,7 +1058,10 @@ validate_master_backfill() { # change-dir
   grep -q "项目总册回填清单" "$d/09-changelog.md" \
     || die "GATE-E59: cannot finish: 09-changelog.md missing 「项目总册回填清单」 section (standards §1.3)"
   for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11; do
-    row=$(grep -E "^- \[[ x]\] ${p}([^0-9]|$)" "$d/09-changelog.md" | head -1)
+    # v3.66.0 (CHG-089): guard grep no-match — under set -euo pipefail a bare
+    # `grep | head` assignment exits 1 and set -e kills the script before the
+    # GATE-E60 die() below fires (silent death, friction ledger bypassed).
+    row=$(grep -m1 -E "^- \[[ x]\] ${p}([^0-9]|$)" "$d/09-changelog.md" || true)
     [[ -n "$row" ]] || die "GATE-E60: cannot finish: 项目总册回填清单 missing row for $p (standards §1.3)"
     echo "$row" | grep -qE "^- \[x\]|未命中" \
       || die "GATE-E61: cannot finish: 项目总册回填清单 row $p is neither '[x]' nor '未命中（理由）' (standards §1.3)"

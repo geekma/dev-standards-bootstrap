@@ -2435,6 +2435,12 @@ sed -i '' 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' do
   || sed -i 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' docs/changes/CHG-910/09-changelog.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T23 an explicit 未命中 row with a reason passes" 0 $?
+  # v3.66.0 (CHG-089): a WHOLE missing P row (grep no-match) must surface as
+  # GATE-E60 — pre-fix, pipefail killed the script before die() (silent exit 1).
+  grep -v '^- \[x\] P05' docs/changes/CHG-910/09-changelog.md > docs/changes/CHG-910/09-changelog.md.tmp \
+    && mv docs/changes/CHG-910/09-changelog.md.tmp docs/changes/CHG-910/09-changelog.md
+  out=$(scripts/agent-gate --stage stop 2>&1 || true)
+  check_output "T23 a wholly missing P row dies with GATE-E60 (not silent)" "GATE-E60" "$out"
 
 }
 section_T24() {
