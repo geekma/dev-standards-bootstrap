@@ -48,7 +48,7 @@
 | `scripts/bootstrap.sh` 复制清单 | `SKILL.md` 步骤 3–4 + `--help` 文本 |
 | `scripts/install.sh` 的行为/参数 | 双 README「安装与升级/Installation & Upgrades」+ `SKILL.md` 步骤 3 的一句话路径 + golden T21；**改安装语义先改 bootstrap，install.sh 保持薄委托** |
 | `CHANGELOG.md` | 每次发布（版本链变更）追加一个版本段；规范条款细节只链接 `STANDARDS_CHANGELOG.md`，不复制 |
-| 断言增删 | `scripts/update-assertion-count.sh` → 再跑审计（A3 声称数 / A10 执行数基线）。**`tests/.audit-baseline` 只由生成器写，禁手工改**；顺序坑见 §4 |
+| 断言增删 | `scripts/update-assertion-count.sh` → 再跑审计（A3 声称数 / A10 执行数基线）。**`tests/.audit-baseline` 只由生成器写，禁手工改**；顺序坑见 §4。**收口取证顺序（v3.65.0/CHG-087）**：update-assertion-count 内嵌整跑 suite（FU-907 红拒校验）→ 编码后直接跑它即同时拿绿 + 计数回填，免独立整跑一轮 |
 | 新增 / 删除测试套件 | `.github/workflows/ci.yml` 的 job 清单（仓库自己的 CI 必须覆盖全部套件）+ `MAINTAINER.md` §3 的命令清单 + 双 README 树（套件若属源层工具须标明不下发） |
 | 双 README 目录树 | 磁盘实际文件（审计有树↔磁盘断言） |
 | 新增 `resources/templates/**` 文件 | 双 README 树（树↔磁盘断言）+ `scripts/bootstrap.sh` 复制清单 + 若脚本被模板引用则补 `transform_src` 路径替换规则 |

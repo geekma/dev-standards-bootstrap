@@ -20,9 +20,12 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # (`grep … && report … || report …`) anchor nowhere at line start (0 sites for
 # 1+ runtime calls) and loop-driven sites run k>1 times (CHG-019 review: static
 # 288 vs runtime 291 — the same 3-gap already existed at 281/284).
-run_out=$(bash "$ROOT/tests/run-tests.sh" 2>&1 | tail -n 1) || true
-N=$(printf '%s\n' "$run_out" | sed -nE 's/^([0-9]+) passed, [0-9]+ failed$/\1/p')
-F=$(printf '%s\n' "$run_out" | sed -nE 's/^[0-9]+ passed, ([0-9]+) failed$/\1/p')
+run_out=$(bash "$ROOT/tests/run-tests.sh" 2>&1) || true
+# v3.65.0 (CHG-087, REQ-1048): run-tests now appends a constant `wall-time: Ns`
+# line AFTER the summary — take the LAST matching line instead of the last raw
+# line. Both sed anchors stay byte-identical (audit A3 shares them).
+N=$(printf '%s\n' "$run_out" | sed -nE 's/^([0-9]+) passed, [0-9]+ failed$/\1/p' | tail -n 1)
+F=$(printf '%s\n' "$run_out" | sed -nE 's/^[0-9]+ passed, ([0-9]+) failed$/\1/p' | tail -n 1)
 [[ -n "$N" && -n "$F" ]] || { echo "cannot determine assertion count from run-tests output: ${run_out:-<empty>}" >&2; exit 2; }
 [[ "$F" == 0 ]] || { echo "run-tests reported ${F} failed — refusing to sync claims off a red suite" >&2; exit 2; }
 check=0

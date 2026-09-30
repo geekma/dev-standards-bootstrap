@@ -10,7 +10,7 @@
 # Skill 仓库专属用例（T11 安装器、T14b 安装器路径用例、T15 版本自查/自进化、
 # 依赖未装层的 T10/T12）自动 SKIP，已装层全部回归。
 #
-# Usage: tests/run-tests.sh
+# Usage: tests/run-tests.sh [-T sec[,sec]] [-l|--list]
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -247,6 +247,25 @@ append_masters() { # <09-file>
   } >> "$f"
 }
 
+# v3.65.0 (CHG-087, REQ-1046~1048): CLI section-filter surface. Sections are
+# wrapped into functions below and dispatched in source order at the bottom.
+# -T <sec[,sec]>  run only the named sections (original relative order kept)
+# -l|--list       print all section keys, one per line
+LIST_ONLY=0
+WANTED=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -T) IFS=',' read -r -a WANTED <<< "${2:-}"; shift 2 ;;
+    -l|--list) LIST_ONLY=1; shift ;;
+    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-l|--list])\n' "$1" >&2; exit 2 ;;
+  esac
+done
+# `-T ""` normalizes to no filter (equivalent to all sections); bash 3.2 + set -u
+# forbids expanding an empty array unguarded, so WANTED is only expanded behind
+# a ${#WANTED[@]} length check (dispatcher below).
+if [[ ${#WANTED[@]} -eq 1 && -z "${WANTED[0]:-}" ]]; then WANTED=(); fi
+
+section_T1() {
 # ---------------------------------------------------------------- T1 begin 门禁
 new_repo
 seed_artifacts CHG-100 L1 claude/s-1
@@ -258,6 +277,8 @@ printf '## 问题\nx\n## 预期结果\ny\n## 目录落位\n- **目录落位**：
 scripts/agent-gate begin CHG-100 >/dev/null 2>&1
 report "begin accepts eight complete artifacts (L1)" 0 $?
 
+}
+section_T1b() {
 # ------------------------------------------------- T1b A 层内容校验（§2.5）
 new_repo
 seed_artifacts CHG-110 L1 claude/s-1
@@ -369,6 +390,8 @@ append_masters docs/changes/CHG-521/09-changelog.md
 scripts/agent-gate begin CHG-521 >/dev/null 2>&1
 report "begin accepts the same dir once the symlink marker is removed" 0 $?
 
+}
+section_T2() {
 # ---------------------------------------------------------------- T2 治理状态校验
 new_repo
 seed_begin CHG-200 L2 gemini/m-1 gemini/m-1 gemini/m-2   # test 与 impl 相同
@@ -408,6 +431,8 @@ printf '{"change_id":"CHG-207","risk_level":"L3","spec_author":"author/a-1","imp
 scripts/agent-gate begin CHG-207 >/dev/null 2>&1
 report "begin accepts L3 with complete release authorization" 0 $?
 
+}
+section_T3() {
 # ---------------------------------------------------------------- T3 pre-write
 new_repo
 printf '%s' '{"tool_name":"Edit","tool_input":{"file_path":"src/app.py"}}' \
@@ -433,6 +458,8 @@ scripts/agent-gate end >/dev/null 2>&1
 scripts/agent-gate --stage pre-write --file src/other.ts >/dev/null 2>&1
 report "pre-write blocks after end" 2 $?
 
+}
+section_T4() {
 # ---------------------------------------------------------------- T4 staged
 new_repo
 echo x > src/a.go
@@ -469,6 +496,8 @@ git add src/a.go
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "staged validates governance state of diff artifacts" 2 $?
 
+}
+section_T5() {
 # ---------------------------------------------------------------- T5 stop
 new_repo
 seed_artifacts CHG-500 L1 claude/s-1
@@ -567,6 +596,8 @@ scripts/agent-gate --stage stop >/dev/null 2>&1
 stamp_fixture_all
 report "stop passes with evidence and changelog" 0 $?
 
+}
+section_T22a() {
 # ------------------------------------------------ T22 规则 10 A 层执法（v3.33.0）
 # 生产-评审分离（§2.2 两批制）与 spec_author 的机器执法：记录级（begin）+
 # 交付级（stop 署名节）。标题形态才触发；正文行内提及不触发（FU-014 同族教训）。
@@ -598,6 +629,8 @@ report "stop accepts both sections once each carries a canonical signature" 0 "$
 # T22 的记录级用例（CHG-610/611）在套件尾部独立仓执行——不能内插在 CHG-500
 # 流中部：new_repo 会重置夹具仓库，后续 CHG-500 用例将整体失联（本轮实测）。
 
+}
+section_T16() {
 # ------------------------------------------------ T16 文件溯源（v3.17.0）
 # 溯源块必须由 scripts/stamp-provenance.sh 生成——真值（作者 / 提交者 / 主机 /
 # 平台 / UTC 时间）取自运行环境。门禁能验的是形状与非占位：块存在、四个必填字段齐、
@@ -735,6 +768,8 @@ AGENT_GUARD_VERIFY_COMMAND='false' scripts/agent-gate --stage stop >/dev/null 2>
 report "env verification command overrides committed yml (CHG-015)" 2 $?
 rm -f .agent-governance.yml
 
+}
+section_T6() {
 # ---------------------------------------------------------------- T6 ci
 new_repo
 seed_artifacts CHG-600 L1 claude/s-1
@@ -817,6 +852,8 @@ ci_stamp_all docs/changes/CHG-620
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts docs-only diff after delivery evidence lands" 0 $?
 
+}
+section_T6b() {
 # ---------------------------------------------------------------- T6b commit-msg 归因（v3.5.0）
 new_repo
 seed_artifacts CHG-900 L1 claude/s-1
@@ -849,6 +886,8 @@ scripts/agent-gate --stage commit-msg commitmsg.txt >/dev/null 2>&1
 report "commit-msg exempts artifact-only commits" 0 $?
 rm -f commitmsg.txt
 
+}
+section_T7() {
 # ---------------------------------------------------------------- T7 metrics
 new_repo
 seed_artifacts CHG-700 L1 claude/s-1
@@ -913,6 +952,8 @@ check_output "metrics word-bounds id (CHG-71 keeps ts)" \
 check_output "metrics word-bounds id (CHG-7 stays null)" \
   '"change_id":"CHG-7","risk_level":"L1".*"first_code_commit_ts":null' "$out"
 
+}
+section_T7b() {
 # ------------------------------------------------ T7b bug_ref 缺陷文档组（v3.6.0）
 new_repo
 seed_artifacts CHG-800 L1 claude/s-1
@@ -961,6 +1002,8 @@ printf '{"change_id":"CHG-800","risk_level":"L1","spec_author":"author/a-1","imp
 scripts/agent-gate begin CHG-800 >/dev/null 2>&1
 report "begin rejects bug_ref with path-unsafe defect id" 2 $?
 
+}
+section_T8() {
 # ---------------------------------------------------------------- T8 change_root 覆盖
 new_repo
 mkdir -p changes/CUSTOM-1
@@ -986,6 +1029,8 @@ scripts/agent-gate begin CUSTOM-1 >/dev/null 2>&1
 report "begin honors AGENT_GUARD_CHANGE_ROOT" 0 $?
 unset AGENT_GUARD_CHANGE_ROOT
 
+}
+section_T9() {
 # ---------------------------------------------------------------- T9 help
 new_repo
 scripts/agent-gate help >/dev/null 2>&1
@@ -993,6 +1038,8 @@ report "help exits 0" 0 $?
 scripts/agent-gate bogus >/dev/null 2>&1
 report "unknown command exits 2" 2 $?
 
+}
+section_T10() {
 # ------------------------------------------------ T10 audit-docs-consistency golden cases
 # §2.17.4：治理配置模板自身必须可回归。对通用层 audit-docs-consistency.sh 构造
 # 目标仓库 fixture：合规态全绿 / 跳号 / 归档清单漂移 / BUG 未登记 三类负例 / 未接入仓库 SKIP。
@@ -1093,6 +1140,8 @@ else
   echo "SKIP T10: audit-docs-consistency.sh absent (bootstrap --core 未安装) — 跳过通用审计 golden cases"
 fi
 
+}
+section_T11() {
 # ------------------------------------------------ T11 bootstrap.sh golden cases
 # §2.17.4 同精神：安装器自身必须可回归——清单驱动替代 SKILL.md 手工 17 步复制，
 # 防接入遗漏。覆盖：空仓库全落 / 幂等 / 冲突拒绝 / --force 覆盖 / guard 打包 /
@@ -1199,6 +1248,8 @@ else
   echo "SKIP T11: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——目标仓库跳过安装器 golden cases"
 fi
 
+}
+section_T12() {
 # ------------------------------------------------ T12 双校验器扩展名清单一致
 # compliance.sh 与 agent-gate is_code_path 共享"代码后缀"策略（工程兜底层须可独立
 # 安装，故不合并为单校验器）；漂移由源层 audit A2 + 本 T12 运行时双守护。
@@ -1213,6 +1264,8 @@ else
   echo "SKIP T12: check-standards-compliance.sh 未安装（bootstrap --ci 未运行）——跳过双校验器一致用例"
 fi
 
+}
+section_T13() {
 # ------------------------------------------------ T13 compliance 基线解析（CHG-002）
 # 旧版把 diff 基线写死为 origin/main：主线为 master 的仓库直接 fatal 128（不可自愈）；
 # 若被 `|| true` 绕过则 CHANGED_FILES 变空、脚本打印"✅ 基础合规检查通过"——检查没跑
@@ -1323,6 +1376,8 @@ else
   echo "SKIP T13: check-standards-compliance.sh 未安装（bootstrap --ci 未运行）——跳过基线解析 golden cases"
 fi
 
+}
+section_T14() {
 # ------------------------------------------------ T14 路径根可配置（v3.15.0）
 # 目录根走 .agent-governance.yml 的 paths.*，默认值即历史写死值。本段锁两条不变式：
 #   ① 配了非默认根 → 门禁按配置找（落点与校验错位是静默假绿，比报错危险）；
@@ -1435,6 +1490,8 @@ else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
 
+}
+section_T15() {
 # ------------------------------------------------ T15 版本自查 / 自更新 / 自进化契约（v3.16.0）
 # Skill 仓库专属（bootstrap.sh 不随 --guard 分发）。
 # 覆盖三件事：D3 三处版本比对（--check，只读、漂移即 exit 1）、D4 升级保留显式
@@ -1541,6 +1598,8 @@ else
   echo "SKIP T15: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过版本自查/自进化用例"
 fi
 
+}
+section_T17() {
 # ------------------------------------------------ T17 溯源脚本本体（v3.17.0）
 # T16 验的是**门禁的校验逻辑**（内联块，与布局无关）；T17 验的是**脚本本体的产出**——
 # 真值取自环境、写入幂等、隐私开关、--check、以及"真脚本产出能过真门禁"的端到端闭环。
@@ -1723,6 +1782,8 @@ else
   echo "SKIP T17: stamp-provenance.sh 为 --guard 层文件（未装 guard 层时不存在）"
 fi
 
+}
+section_T17b() {
 # ------------------------------------------------ T17b 溯源全量盖章 --all（v3.22.0）
 # --all 把溯源块盖到解析后变更目录的每一个 *.md（批感知复用 resolve_dir）。
 # 硬边界：00-governance.json 刻意不盖——JSON 注入 HTML 注释会破坏门禁/审计的
@@ -1767,6 +1828,8 @@ else
   echo "SKIP T17b: stamp-provenance.sh 为 --guard 层文件（未装 guard 层时不存在）"
 fi
 
+}
+section_T18() {
 # ------------------------------------------------ T18 变更批次 / 同日合并（v3.18.0）
 # 批次把"一个变更一套产物"放宽为"一套产物承载多个变更"。本组端到端验证放宽的**边界**：
 # 目录放宽但文件名不变、治理记录必须逐变更成行（否则读到兄弟的风险）、风险上限不放宽、
@@ -1915,6 +1978,8 @@ else
   echo "SKIP T18 stamper cases: stamp-provenance.sh 为 --guard 层文件（未装 guard 层时不存在）"
 fi
 
+}
+section_T18b() {
 # ------------------------------------------------ T18b 同日批次默认强制（v3.27.0，CHG-027）
 # §1.1 v3.24.0 把"同日多个 L0/L1 默认共用批次"写成默认，但 begin 不拦就是纯建议
 # （下游实测：同日 5 组 L0/L1 全部各开独立目录）。本组验证：当日批次已存在时，
@@ -1936,6 +2001,8 @@ report "T18b joining the same-day batch begins" 0 $?
 seed_begin CHG-823 L2 claude/s-1 tester reviewer
 report "T18b L2 keeps its independent-directory right (no batch compulsion)" 0 $?
 
+}
+section_T19() {
 # ------------------------------------------------ T19 治理记录的格式无关性（v3.20.0）
 # 回归背景：v3.18.0 为支持批次把"读治理记录"从**整文件**（v3.14.0 的
 # `json_string <file> <key>`，用 `sed -nE ... "$file"` 逐行扫全文件）改成**行式**
@@ -2011,6 +2078,8 @@ new_repo
 seed_begin CHG-842 L1 claude/s-1
 report "T19 one-line records still begin (no regression)" 0 $?
 
+}
+section_T20() {
 # ------------------------------------------------ T20 审计单元识别与"空转显式声明"（v3.21.0）
 # 本仓自查实测到的假绿：审计脚本用"<docs>/ 下一层子目录"取审计单元，而 `docs/changes`、
 # `docs/bugs`、`docs/review` 都算"子目录"——它们一存在，"没有产物目录"的空转分支就不触发，
@@ -2083,6 +2152,8 @@ else
   echo "SKIP T20: audit-docs-consistency.sh absent (bootstrap --core 未安装) — 跳过审计单元识别 golden cases"
 fi
 
+}
+section_T21() {
 # ------------------------------------------------ T21 一键安装器 install.sh（v3.22.0）
 # install.sh 与 bootstrap.sh 同属源层工具（不随 --guard 分发）——目标仓布局自动 SKIP。
 # 夹具用**最小 fake 源仓**（scripts/bootstrap.sh + tests/run-tests.sh + resources/，
@@ -2170,6 +2241,8 @@ else
 fi
 
 # ---------------------------------------------------------------- 摘要
+}
+section_T22b() {
 # ------------------------------------------------ T22 记录级执法（独立仓，放套件尾部）
 new_repo
 seed_artifacts CHG-610 L0 claude/s-1
@@ -2190,6 +2263,8 @@ printf '{"change_id":"CHG-611","risk_level":"L2","spec_author":"gemini/m-1","imp
 scripts/agent-gate begin CHG-611 >/dev/null 2>&1
 report "begin rejects spec_author duplicating an owner at L2" 2 $?
 
+}
+section_T18c() {
 # ------------------------------------------------ T18c 缺陷六件套按天入批（v3.35.0，BUG-005）
 # §1.1 v3.35.0 废止 v3.22.0"缺陷组不入批"：当日缺陷批次已存在时，同日新建的独立
 # 缺陷组必须入批（provenance generated_at 判日）；豁免显式；批次嵌套组照常扫描。
@@ -2233,6 +2308,8 @@ sed -i '' 's/generated_at: [0-9-]*/generated_at: 2020-01-01/' docs/bugs/BUG-902/
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T18c pre-v3.35.0 standalone groups (old provenance date) stay legal" 0 $?
 
+}
+section_T18d() {
 # ------------------------------------------------ T18d 缺陷批次扁平化（v3.36.0，BUG-006）
 # §1.1 v3.36.0：同日多缺陷共落 BATCH-YYYYMMDD/ 扁平目录——六件套同名文件 + `## <BUG-id>`
 # 锚点分节，当天追加落在同一套文件里（与变更批次同构）；嵌套形态历史合法；
@@ -2285,6 +2362,8 @@ printf '{"change_id":"CHG-932","risk_level":"L0","spec_author":"author/a-1","imp
 scripts/agent-gate begin CHG-932 >/dev/null 2>&1
 report "T18d nested legacy group still resolves under the three-form resolver" 0 $?
 
+}
+section_T18d_E58R() {
 # ---- T18d-E58R E58 反向（v3.62.2，CHG-082 REQ-1028/TC-1087）：无批 + 当日首个独立缺陷组 ----
 # 活动变更用 L2（L0/L1 独立已被 E86 拒，不能作载体）；缺陷组 E57 六件锚点齐备，
 # provenance 今日章（正向同键控）；未章/非今日 fail-open 跳过与正向一致。
@@ -2310,6 +2389,8 @@ scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T18d E58 reverse skips non-today groups (fail-open, same keying as forward)" 0 $?
 export AGENT_GUARD_ALLOW_INDEPENDENT=1
 
+}
+section_T23() {
 # ------------------------------------------------ T23 项目总册机校（v3.35.0，§1.3/CHG-035）
 new_repo
 seed_artifacts CHG-910 L1 claude/s-1
@@ -2350,6 +2431,8 @@ sed -i '' 's/^- \[ \] P03/- [ ] P03 未命中（理由：无接口变化）/' do
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T23 an explicit 未命中 row with a reason passes" 0 $?
 
+}
+section_T24() {
 # ------------------------------------------------ T24 session water level (v3.38.0)
 new_repo
 seed_artifacts CHG-920 L1 claude/s-1
@@ -2369,6 +2452,8 @@ rm -f .agent-state/session-water.json
 AGENT_GUARD_SESSION_TURN_LIMIT=5 scripts/agent-gate begin CHG-920 >/dev/null 2>&1
 report "T24 no water file degrades fail-open" 0 $?
 
+}
+section_T25() {
 # ------------------------------------------------ T25 new-change scaffolder (v3.38.0)
 new_repo
 NEWCHANGE_SRC="$ROOT/resources/templates/new-change.sh"
@@ -2480,6 +2565,8 @@ else
   echo "SKIP T25: new-change.sh absent (bootstrap --guard 未安装) — 跳过脚手架 golden cases"
 fi
 
+}
+section_T26() {
 # ------------------------------------------------ T26 session telemetry (v3.39.0)
 new_repo
 SESSION_GATE_SRC="$ROOT/resources/templates/session-gate.sh"
@@ -2509,6 +2596,8 @@ else
   echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
 fi
 
+}
+section_T27() {
 # ------------------------------------------------ T27 pre-commit auto-stamp (v3.40.0)
 new_repo
 STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
@@ -2582,6 +2671,8 @@ else
   echo "SKIP T27: stamp-provenance.sh/pre-commit absent (bootstrap --guard 未安装) — 跳过自动章 golden cases"
 fi
 
+}
+section_T28() {
 # ------------------------------------------------ T28 P3 defect lightweight channel (v3.40.0)
 new_repo
 seed_artifacts CHG-950 L1 claude/s-28
@@ -2619,6 +2710,8 @@ sed -i '' 's/}$/,"bug_ref":"BUG-952"}/' docs/changes/CHG-952/00-governance.json 
 scripts/agent-gate begin CHG-952 >/dev/null 2>&1
 report "T28 flat member without severity keeps six-piece" 2 $?
 
+}
+section_T29() {
 # ------------------------------------------------ T29 session RED blocks new changes (v3.40.0)
 new_repo
 seed_artifacts CHG-960 L1 claude/s-29
@@ -2642,6 +2735,8 @@ touch -t 203501010000 .agent-state/session-gate-last.md
 AGENT_GUARD_ALLOW_OVER_RED=1 scripts/agent-gate begin CHG-960 >/dev/null 2>&1
 report "T29 explicit escape passes over red" 0 $?
 
+}
+section_T30() {
 # ------------------------------------------------ T30 die error codes (v3.40.0)
 total_die=$(grep -c 'die "' "$GATE_SRC" || true)
 coded_die=$(grep -cE 'die "(GATE|NC|ADAPTER)-E[0-9]+: ' "$GATE_SRC" || true)
@@ -2659,6 +2754,8 @@ if [[ -f "$ADAPTER_SRC" ]]; then
   report "TC-1060 adapter prints .agent-state gitignore hint" 0 $?
 fi
 
+}
+section_T31() {
 # ------------------------------------------------ T31 G10 deprecated-clause sweep (v3.40.0)
 AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
 if [[ -f "$AUDIT_SRC" ]]; then
@@ -2678,6 +2775,8 @@ else
   echo "SKIP T31: audit-docs-consistency.sh absent — 跳过 G10 golden cases"
 fi
 
+}
+section_T32() {
 # ------------------------------------------------ T32 one-step uninstall (v3.41.0)
 new_repo
 UNINST_SRC="$ROOT/resources/templates/uninstall-standards.sh"
@@ -2716,6 +2815,8 @@ else
   echo "SKIP T32: uninstall-standards.sh absent (bootstrap --guard 未安装) — 跳过卸载 golden cases"
 fi
 
+}
+section_T33() {
 # ------------------------------------------------ T33 trace derivation (v3.42.0)
 new_repo
 STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
@@ -2809,6 +2910,8 @@ else
   echo "SKIP T33: stamp-provenance.sh absent (bootstrap --guard 未安装) — 跳过派生 golden cases"
 fi
 
+}
+section_T34() {
 # ------------------------------------------------ T34 bug-autointent (v3.43.0)
 new_repo
 AUTO_SRC="$ROOT/resources/templates/bug-autointent.sh"
@@ -2835,6 +2938,8 @@ else
   echo "SKIP T34: bug-autointent.sh absent (bootstrap --guard 未安装) — 跳过自动登记 golden cases"
 fi
 
+}
+section_T36() {
 # ------------------------------------------------ T36 gate friction metrics (v3.43.0)
 new_repo
 GATE_T36="$ROOT/resources/templates/agent-gate.sh"
@@ -2854,6 +2959,8 @@ else
   echo "SKIP T36: agent-gate absent — 跳过摩擦 metrics golden cases"
 fi
 
+}
+section_T37() {
 # ------------------------------------------------ T37 L0 最小集三态（v3.44.0，REQ-962）
 if [[ -x scripts/agent-gate ]]; then
   t37_stamp() { for pf in docs/changes/$1/*.md; do
@@ -2903,6 +3010,8 @@ else
   echo "SKIP T37: agent-gate absent — 跳过 L0 最小集 golden cases"
 fi
 
+}
+section_T38() {
 # ------------------------------------------------ T38 断言预算制静态 pin（v3.45.0，REQ-965/967）
 # audit 源层脚本 ROOT 绑定真仓——soft 行为面由交付实跑承载（对齐 T35/REQ-964 偏离先例）；
 # 此处 pin 机制存在性与接线，防静默移除。
@@ -2912,6 +3021,8 @@ report "T38 CI wires soft mode" 1 "$(grep -c 'AGENT_GUARD_AUDIT_SOFT' "$ROOT/.gi
 report "T38 assertion lifecycle section" 1 "$(grep -c '^### 5.3 断言生命周期' "$ROOT/MAINTAINER.md")"
 report "T38 graded ambiguity rule" 1 "$(grep -c '歧义分级裁定' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 
+}
+section_T39() {
 # ------------------------------------------------ T39 条款注册表形态（v3.46.0，REQ-968）
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
@@ -2940,6 +3051,8 @@ else
   echo "SKIP T39: CLAUSE_REGISTRY.md absent — 跳过注册表 golden cases"
 fi
 
+}
+section_T40() {
 # ------------------------------------------------ T40 阅读包生成器多态（v3.46.0，REQ-969/970/971）
 GEN_T40="$ROOT/resources/templates/generate-reading-pack.sh"
 if [[ -x "$GEN_T40" ]]; then
@@ -3000,6 +3113,8 @@ else
   echo "SKIP T40: generator absent — 跳过阅读包生成器 golden cases"
 fi
 
+}
+section_T41() {
 # ------------------------------------------------ T41 gate 码唯一性（v3.48.1，CHG-060；E15/E16 重号复发防线）
 GATE_T41="$ROOT/resources/templates/agent-gate.sh"
 [[ -s "$GATE_T41" ]] || GATE_T41="$ROOT/scripts/agent-gate"
@@ -3009,6 +3124,8 @@ else
   echo "SKIP T41: agent-gate absent — 跳过码唯一性 golden case"
 fi
 
+}
+section_T42() {
 # ------------------------------------------------ T42 沟通先行门（v3.52.0，REQ-988/990/991）
 new_repo
 GATE42_SRC="$ROOT/resources/templates/agent-gate.sh"
@@ -3096,6 +3213,8 @@ else
   echo "SKIP T42: agent-gate/new-change absent (bootstrap --guard 未安装) — 跳过沟通先行门 golden cases"
 fi
 
+}
+section_T43() {
 # ------------------------------------------------ T43 分阶段评审留痕（v3.53.0，REQ-993/994）
 STD_T43="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 AG_T43="$ROOT/resources/AGENTS.md"
@@ -3114,6 +3233,8 @@ else
   echo "SKIP T43: DEVELOPMENT_STANDARDS.md absent — 跳过分阶段评审留痕 golden cases"
 fi
 
+}
+section_T44() {
 # ------------------------------------------------ T44 历史相似检索机校（v3.54.0，REQ-998）+ 补测（REQ-999）
 GATE44_SRC="$ROOT/resources/templates/agent-gate.sh"
 NC44_SRC="$ROOT/resources/templates/new-change.sh"
@@ -3179,6 +3300,8 @@ else
   echo "SKIP T44: agent-gate absent — 跳过历史相似检索机校 golden cases"
 fi
 
+}
+section_T46() {
 # ------------------------------------------------ T46 07 署名/溯源机校（v3.56.0，REQ-1005）
 GATE46_SRC="$ROOT/resources/templates/agent-gate.sh"
 if [[ -s "$GATE46_SRC" ]]; then
@@ -3207,6 +3330,8 @@ else
   echo "SKIP T46: agent-gate absent — 跳过 07 署名机校 golden cases"
 fi
 
+}
+section_T47() {
 # ------------------------------------------------ T47 目录落位声明+E83 五要素（v3.60.0，REQ-1009）
 GATE47_SRC="$ROOT/resources/templates/agent-gate.sh"
 if [[ -s "$GATE47_SRC" ]]; then
@@ -3269,14 +3394,16 @@ else
   echo "SKIP T47: agent-gate absent — 跳过落位声明 golden cases"
 fi
 
+}
+section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.64.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.64.0 in prose" 5 "$(grep -cF 'v3.64.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.64.0" 1 "$(grep -cF '规范版本：v3.64.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.64.0" 1 "$(grep -cF '当前对应规范版本：v3.64.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.64.0 top row" 1 "$(grep -c '^| v3.64.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.65.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.65.0 in prose" 3 "$(grep -cF 'v3.65.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.65.0" 1 "$(grep -cF '规范版本：v3.65.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.65.0" 1 "$(grep -cF '当前对应规范版本：v3.65.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.65.0 top row" 1 "$(grep -c '^| v3.65.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3285,8 +3412,10 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.64\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.65\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
+}
+section_T49() {
 # ---- T49 (v3.63.0, CHG-083/REQ-1033~1037): 换挡执法 + 活性自检 + adapter 结构 ----
 # ① GATE-E89 四态 + 时间窗 + R07-1 静默死亡回归。复用 T24 的种子手法：
 #    new_repo（=新会话，started_at=-1H）+ seed_artifacts 一个 L1 变更。
@@ -3464,7 +3593,55 @@ AGENT_GUARD_PROBE_WINDOW=1 SG_STUB_MARKER=1 SG_STUB_VERSION="1.19.0-stub" \
   bash "$ROOT/scripts/bootstrap.sh" --guard "$REPO" >/dev/null 2>&1
 report "T49 bootstrap dir-evidence wires dual-active adapter" 1 "$(grep -c 'export default { id: "dev-standards-gate", setup: DevStandardsGateV2, server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js 2>/dev/null)"
 
+}
+
+# ------------------------------------------------ T50 run-tests 节过滤自测（v3.65.0，CHG-087/REQ-1046~1048）
+# 嵌套跑只取轻量 grep 节（T38/T39）与元操作（-l / 未知节），绝不嵌套全跑（FU-907 纪律）。
+# TC-1118 默认无参全节等价由 scripts/update-assertion-count.sh 全量实跑绿承载（不在此嵌套）。
+section_T50() {
+  local t50_out t50_rc t50_list t50_expect
+  local t50_n39 t50_n38 t50_green t50_n t50_dup t50_first t50_last
+  t50_out=$(bash "$ROOT/tests/run-tests.sh" -T T39 2>&1); t50_rc=$?
+  # bash [[ ]] parses no bare pipelines; precompute all intermediates (learned:
+  # nested $() inside [[ ]] inside "$()" mis-parses on bash 3.2 — TC-1115 first
+  # run died with "conditional binary operator expected").
+  t50_n39=$(printf '%s\n' "$t50_out" | grep -c '^ok   T39')
+  t50_n38=$(printf '%s\n' "$t50_out" | grep -c '^ok   T38')
+  t50_green=$(printf '%s\n' "$t50_out" | grep -q ', 0 failed$' && echo 1 || echo 0)
+  report "T50 -T isolates single section (TC-1115)" 0 "$([[ $t50_rc -eq 0 && $t50_n39 -ge 3 && $t50_n38 -eq 0 && "$t50_green" == 1 ]] && echo 0 || echo 1)"
+  report "T50 unknown section dies rc2 (TC-1116)" 2 "$(bash "$ROOT/tests/run-tests.sh" -T NOPE >/dev/null 2>&1; echo $?)"
+  report "T50 wall-time is last line (TC-1117)" 1 "$(printf '%s\n' "$t50_out" | tail -1 | grep -cE '^wall-time: [0-9]+s$')"
+  report "T50 summary anchor intact before wall-time (TC-1117)" 1 "$(printf '%s\n' "$t50_out" | tail -2 | head -1 | grep -cE '^[0-9]+ passed, [0-9]+ failed$')"
+  t50_out=$(bash "$ROOT/tests/run-tests.sh" -T T39,T38 2>&1)
+  report "T50 -T multi keeps source order (TC-1119)" "T38" "$(printf '%s\n' "$t50_out" | grep -m1 '^ok' | awk '{print $2}')"
+  t50_list=$(bash "$ROOT/tests/run-tests.sh" -l 2>&1); t50_rc=$?
+  t50_expect=$(grep -c '^section_' "$ROOT/tests/run-tests.sh")
+  t50_n=$(printf '%s\n' "$t50_list" | grep -c '^T')
+  t50_dup=$(printf '%s\n' "$t50_list" | sort | uniq -d)
+  t50_first=$(printf '%s\n' "$t50_list" | head -1)
+  t50_last=$(printf '%s\n' "$t50_list" | tail -1)
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T50 ]] && echo 0 || echo 1)"
+}
+
+# v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
+# disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
+# misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
+# (unknown key dies rc2), then filtered invocation in original order.
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50)
+if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
+if [[ ${#WANTED[@]} -gt 0 ]]; then
+  for _w in "${WANTED[@]}"; do
+    case " ${SECTIONS[*]} " in *" $_w "*) ;; *) printf 'unknown section: %s (available: bash tests/run-tests.sh -l)\n' "$_w" >&2; exit 2 ;; esac
+  done
+fi
+for _s in "${SECTIONS[@]}"; do
+  if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
+    "section_${_s//-/_}"
+  fi
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
+printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant tail wall-time; summary line format unchanged (update-assertion-count / audit A3 sed anchors)
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2
   exit 1
