@@ -18,7 +18,9 @@
 #   - 铁律：本脚本只生成骨架与登记，不生成产物正文（§2.17.1.2）；占位符
 #     PENDING 会被 agent-gate begin 拒绝——执行主体必须显式填写后才能 begin。
 #
-# 零依赖：bash 3.2+；路径根遵循 AGENT_GUARD_DOCS_DIR / AGENT_GUARD_CHANGE_ROOT。
+# 零依赖：bash 3.2+；docs 根解析链对齐五兄弟（v3.64.0⑦/CHG-086）：
+# AGENT_GUARD_DOCS_DIR > .agent-governance.yml paths.docs > 默认 docs；
+# AGENT_GUARD_CHANGE_ROOT / AGENT_GUARD_TEMPLATES_DIR 仍各自最高优先。
 set -uo pipefail
 
 die() { printf 'new-change: %s\n' "$1" >&2; exit 2; }
@@ -52,10 +54,23 @@ done
 [[ "$risk" =~ ^L[0-3]$ ]] || die "NC-E04: --risk L0|L1|L2|L3 required"
 [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "NC-E05: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
 
-docs_dir="${AGENT_GUARD_DOCS_DIR:-docs}"
+# v3.15.0 path roots — CHG-086（v3.64.0⑦）把本入口接入与 agent-gate 等五兄弟
+# 相同的解析链（env > yml > 内置默认==历史硬编码值：无 paths: 的仓零回归）。
+# cfg_path 与 agent-gate.sh 逐字同源（两读者一契约，不许漂移）；模板自包含，
+# 不 source 兄弟文件——目标仓没有本 skill 源树。
+cfg_path() { # key default
+  local k="$1" d="$2" v=""
+  if [[ -f ".agent-governance.yml" ]]; then
+    v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+        | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$v" ]] || v="$d"
+  printf '%s' "$v"
+}
+docs_dir="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
 change_root="${AGENT_GUARD_CHANGE_ROOT:-$docs_dir/changes}"
 tmpl_dir="${AGENT_GUARD_TEMPLATES_DIR:-$docs_dir/templates/entry}"
-[[ -d "$tmpl_dir" ]] || die "NC-E06: entry templates not found at $tmpl_dir (run bootstrap --core/--guard first)"
+[[ -d "$tmpl_dir" ]] || die "NC-E06: entry templates not found at $tmpl_dir (run bootstrap --core/--guard first; non-default docs root: set AGENT_GUARD_DOCS_DIR=<dir> or pin paths.docs in .agent-governance.yml and reinstall/upgrade)"
 [[ -d "$change_root" ]] || mkdir -p "$change_root"
 
 fill() { # <src> -> stdout with placeholders replaced
