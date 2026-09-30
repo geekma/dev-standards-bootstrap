@@ -901,7 +901,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 #### 2.17.4 治理配置自测试（Golden Cases）
 
-1. 门禁脚本（`agent-gate.sh`）与 hooks/CI 模板属"治理配置"，必须可回归：`tests/run-tests.sh` 在临时 Git 仓库构造合规/违规状态（begin 缺产物、L2 角色不独立、占位符与 L3 授权字段缺失、bug_ref 缺陷组缺失/为空/非法 id、pre-write fail-closed、staged/stop/ci 各门禁、commit-msg 归因与豁免阶梯、度量词边界匹配），断言退出码与输出。套件支持 `tests/run-tests.sh -T <节名[,节名]>` 单/多节定向回归（节体函数化 + `SECTIONS` 源序注册表，保持节原始相对顺序）与 `-l` 节清单（v3.65.0）；收尾恒定输出 wall-time 行，`N passed, M failed` 行格式不变（计数提取链 sed 锚）。
+1. 门禁脚本（`agent-gate.sh`）与 hooks/CI 模板属"治理配置"，必须可回归：`tests/run-tests.sh` 在临时 Git 仓库构造合规/违规状态（begin 缺产物、L2 角色不独立、占位符与 L3 授权字段缺失、bug_ref 缺陷组缺失/为空/非法 id、pre-write fail-closed、staged/stop/ci 各门禁、commit-msg 归因与豁免阶梯、度量词边界匹配），断言退出码与输出。套件支持 `tests/run-tests.sh -T <节名[,节名]>` 单/多节定向回归（节体函数化 + `SECTIONS` 源序注册表，保持节原始相对顺序）与 `-l` 节清单（v3.65.0）；收尾恒定输出 wall-time 行，`N passed, M failed` 行格式不变（计数提取链 sed 锚）。绿全跑收尾落地 `.agent-state/last-suite-receipt.json` 收据（head/计数/UTC 戳；红全跑即删、过滤运行不触），同 HEAD 二次收口的计数链按 HEAD 匹配与新鲜窗采信收据免重跑，异 HEAD/过期/缺失回落内嵌重跑（v3.66.0）。
 
 2. 修改 `agent-gate.sh`、hooks 或 CI 模板的变更必须先跑通全部用例再合入；用例与实现同仓同版本。
 3. 测试套件零依赖（bash 3.2+ 与 git），macOS/Linux、任意 IDE 终端均可运行，作为 §2.13.4 自动化门禁对治理配置自身的适用。
@@ -1157,4 +1157,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.65.0 | 更新时间：2026-09-30 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.66.0 | 更新时间：2026-09-30 | 全局维护责任人：geekma (geekma@gmail.com)*

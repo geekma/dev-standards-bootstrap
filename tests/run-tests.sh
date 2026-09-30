@@ -14,6 +14,11 @@
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# v3.66.0 (CHG-088, REQ-1049): cache the suite HEAD up front — by the time the
+# closing receipt block runs, the dispatcher may have left cwd inside a temp repo
+# (CHG-087 lesson), so the hash is taken once from a fixed anchor. Empty when
+# $ROOT is not a git repo (tarball installs) → the receipt is skipped entirely.
+SUITE_HEAD=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
 # 源位置回退：Skill 仓库内为 resources/templates/（原样），bootstrap --core/--guard 落地的
 # 目标仓库为 tests/audit-docs-consistency.sh 与 scripts/agent-gate——同一份 run-tests.sh
 # 必须在两种布局都可用。
@@ -3399,11 +3404,11 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.65.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.65.0 in prose" 3 "$(grep -cF 'v3.65.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.65.0" 1 "$(grep -cF '规范版本：v3.65.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.65.0" 1 "$(grep -cF '当前对应规范版本：v3.65.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.65.0 top row" 1 "$(grep -c '^| v3.65.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.66.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.66.0 in prose" 3 "$(grep -cF 'v3.66.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.66.0" 1 "$(grep -cF '规范版本：v3.66.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.66.0" 1 "$(grep -cF '当前对应规范版本：v3.66.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.66.0 top row" 1 "$(grep -c '^| v3.66.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3412,7 +3417,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.65\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.66\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 }
 section_T49() {
@@ -3620,14 +3625,122 @@ section_T50() {
   t50_dup=$(printf '%s\n' "$t50_list" | sort | uniq -d)
   t50_first=$(printf '%s\n' "$t50_list" | head -1)
   t50_last=$(printf '%s\n' "$t50_list" | tail -1)
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T50 ]] && echo 0 || echo 1)"
+  # v3.66.0 (CHG-088): expected tail recalibrated T50→T51 after the receipt
+  # self-test section joined the registry (same dynamic-count discipline).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T51 ]] && echo 0 || echo 1)"
+}
+
+# ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
+# clone-layout 法（FU-907 零嵌套真实全跑）：tmp 仓 cp 真实 generator + fake run-tests
+# （echo 777 passed + 落哨兵）+ fake README×2（声称 888）+ git init。收据采信=999
+# （收据值），拒采内嵌=777（fake 值）——两值不同使哨兵与报文双向可判。
+section_T51() {
+  local r51 r51_head r51_out r51_rc r51_receipt r51_ts
+  local r51_sentinel r51_has999 r51_has777 r51_same r51_same2 r51_had
+  r51=$(mktemp -d "${TMPDIR:-/tmp}/receipt-test.XXXXXX")
+  mkdir -p "$r51/scripts" "$r51/tests" "$r51/.agent-state"
+  cp "$ROOT/scripts/update-assertion-count.sh" "$r51/scripts/"
+  cat > "$r51/tests/run-tests.sh" <<'R51FAKE'
+#!/usr/bin/env bash
+: > "$(dirname "$0")/.embedded-ran"
+printf '777 passed, 0 failed\n'
+printf 'wall-time: 1s\n'
+R51FAKE
+  printf 'README claims 888 golden-case assertions here.\n' > "$r51/README.md"
+  printf '这里声称 888 项 golden-case 断言。\n' > "$r51/README.zh-CN.md"
+  ( cd "$r51" && git init -q && git add -A >/dev/null 2>&1 \
+    && git -c user.email=t@t.local -c user.name=t commit -qm init >/dev/null 2>&1 )
+  r51_head=$(git -C "$r51" rev-parse HEAD 2>/dev/null || true)
+  r51_receipt="$r51/.agent-state/last-suite-receipt.json"
+  # _r51_seed <head> <passed> <failed>：播种收据并清哨兵
+  _r51_seed() {
+    printf '{"head":"%s","passed":%s,"failed":%s,"wall_time_s":1,"generated_at":"2026-01-01T00:00:00Z"}\n' \
+      "$1" "$2" "$3" > "$r51_receipt"
+    rm -f "$r51/tests/.embedded-ran"
+  }
+  _r51_run() { ( cd "$r51" && bash scripts/update-assertion-count.sh --check 2>&1 ); }
+
+  # TC-1121 采信主证：合法新鲜同 HEAD 收据 → 跳过内嵌（哨兵不在）+ N 来自收据（999）
+  _r51_seed "$r51_head" 999 0
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has999=$(printf '%s\n' "$r51_out" | grep -c 'expected 999')
+  report "T51 fresh same-HEAD receipt trusted, embedded run skipped (TC-1121)" 0 "$([[ "$r51_sentinel" == 0 && "$r51_has999" -ge 1 ]] && echo 0 || echo 1)"
+
+  # TC-1122a head 不匹配 → 拒采（哨兵在 + expected 777）
+  _r51_seed deadbeefdeadbeefdeadbeefdeadbeefdeadbeef 999 0
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 head-mismatch receipt re-embeds (TC-1122a)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+
+  # TC-1122b 陈旧 mtime（2h 前）→ 拒采
+  _r51_seed "$r51_head" 999 0
+  r51_ts=$(date -v-2H +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 hours ago' +%Y%m%d%H%M.%S)
+  touch -t "$r51_ts" "$r51_receipt"
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 stale receipt re-embeds (TC-1122b)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+
+  # TC-1122c 损坏 JSON → 拒采
+  _r51_seed "$r51_head" 999 0
+  printf 'not json at all\n' > "$r51_receipt"
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 malformed receipt re-embeds (TC-1122c)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+
+  # TC-1122d MAX_AGE_MIN=0（禁用采信）→ 拒采
+  _r51_seed "$r51_head" 999 0
+  r51_out=$( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=0 bash scripts/update-assertion-count.sh --check 2>&1 || true )
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 MAX_AGE_MIN=0 disables trusting (TC-1122d)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+
+  # TC-1124/1125 真实仓：过滤 / rc2 运行不触收据（预播已知值 → 前后 cmp 相等 → 还原）
+  r51_had=$([[ -f "$ROOT/.agent-state/last-suite-receipt.json" ]] && echo 1 || echo 0)
+  if [[ "$r51_had" == 1 ]]; then cp "$ROOT/.agent-state/last-suite-receipt.json" "$r51/.real-backup"; fi
+  mkdir -p "$ROOT/.agent-state"
+  printf '{"head":"seed","passed":12345,"failed":0,"wall_time_s":0,"generated_at":"seed"}\n' > "$ROOT/.agent-state/last-suite-receipt.json"
+  cp "$ROOT/.agent-state/last-suite-receipt.json" "$r51/.seeded"
+  r51_rc=0; bash "$ROOT/tests/run-tests.sh" -T T1 >/dev/null 2>&1 || r51_rc=$?
+  r51_same=0; cmp -s "$r51/.seeded" "$ROOT/.agent-state/last-suite-receipt.json" || r51_same=1
+  report "T51 filtered run leaves receipt untouched (TC-1124)" 0 "$([[ $r51_rc -eq 0 && "$r51_same" == 0 ]] && echo 0 || echo 1)"
+  r51_rc=2; bash "$ROOT/tests/run-tests.sh" -T NOPE >/dev/null 2>&1 || r51_rc=$?
+  r51_same2=0; cmp -s "$r51/.seeded" "$ROOT/.agent-state/last-suite-receipt.json" || r51_same2=1
+  report "T51 rc2 run leaves receipt untouched (TC-1125)" 0 "$([[ $r51_rc -eq 2 && "$r51_same2" == 0 ]] && echo 0 || echo 1)"
+  if [[ "$r51_had" == 1 ]]; then
+    cp "$r51/.real-backup" "$ROOT/.agent-state/last-suite-receipt.json"
+  else
+    rm -f "$ROOT/.agent-state/last-suite-receipt.json"
+  fi
+
+  # TC-1126 发射端结构守卫：blk = 收据块数值行窗（grep -F 定锚）。自匹配三连教训：
+  # ①grep 自身参数字面量 ②T51 注释里的同款字面量 ③起锚须带 'suite receipt' 后缀
+  # 区别于 prelude 注释前缀——所有锚在 T51 源码内一律用 '"…"' 拼接断开。
+  r51_s=$(grep -nF 'REQ-1049): '"suite receipt" "$ROOT/tests/run-tests.sh" | head -1 | cut -d: -f1)
+  r51_e=$(grep -nF 'if [[ "$fail" -gt 0 ]]; '"then" "$ROOT/tests/run-tests.sh" | cut -d: -f1 | awk -v s="$r51_s" '$1>s{print;exit}')
+  r51_blk=$(sed -n "${r51_s},${r51_e}p" "$ROOT/tests/run-tests.sh")
+  r51_g1=$(grep -c '^SUITE_HEAD=' "$ROOT/tests/run-tests.sh")
+  r51_g2=$(printf '%s\n' "$r51_blk" | grep -cF 'WANTED[@]} -eq 0 && -n "$SUITE_HEAD"')
+  r51_g3=$(printf '%s\n' "$r51_blk" | grep -cF 'rm -f "$ROOT/.agent-state/last-suite-receipt.json"')
+  r51_g4=$(printf '%s\n' "$r51_blk" | grep -cF 'date -u +%Y-%m-%dT%H:%M:%SZ')
+  r51_w=$(grep -nF 'wall-time: '"%ds" "$ROOT/tests/run-tests.sh" | head -1 | cut -d: -f1)
+  r51_r=$(grep -nF 'REQ-1049): '"suite receipt" "$ROOT/tests/run-tests.sh" | head -1 | cut -d: -f1)
+  report "T51 emitter caches HEAD in prelude (TC-1126a)" 1 "$r51_g1"
+  report "T51 receipt write guarded to full runs (TC-1126b)" 1 "$r51_g2"
+  report "T51 red run deletes receipt (TC-1126c)" 1 "$r51_g3"
+  report "T51 receipt stamped UTC (TC-1126d)" 1 "$r51_g4"
+  report "T51 receipt block sits after wall-time (TC-1126e)" 0 "$([[ -n "$r51_w" && -n "$r51_r" && "$r51_w" -lt "$r51_r" ]] && echo 0 || echo 1)"
+  rm -rf "$r51"
 }
 
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do
@@ -3642,6 +3755,27 @@ done
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant tail wall-time; summary line format unchanged (update-assertion-count / audit A3 sed anchors)
+# v3.66.0 (CHG-088, REQ-1049): suite receipt. Only a FULL, unfiltered run may
+# touch it — filtered (-T) / -l runs are not evidence about the whole suite.
+# Green: write .agent-state/last-suite-receipt.json (local, gitignored, same
+# trust level as session-started.json). Red: DELETE it — receipt semantics are
+# "the most recent full run at this HEAD was green"; without the delete a stale
+# green receipt could be trusted inside the freshness window after a red run.
+# Best-effort by design: a write failure warns and never blocks the suite (the
+# suite's own output remains the primary evidence; the receipt is an
+# optimization consumed by update-assertion-count.sh, see REQ-1050).
+if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
+  if [[ "$fail" -eq 0 ]]; then
+    _receipt="$ROOT/.agent-state/last-suite-receipt.json"
+    mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
+    if ! printf '{"head":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
+      "$SUITE_HEAD" "$pass" "$fail" "$SECONDS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_receipt" 2>/dev/null; then
+      printf 'warning: could not write suite receipt %s (non-fatal)\n' "$_receipt" >&2
+    fi
+  else
+    rm -f "$ROOT/.agent-state/last-suite-receipt.json"
+  fi
+fi
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2
   exit 1

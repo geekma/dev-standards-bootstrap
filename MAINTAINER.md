@@ -48,7 +48,7 @@
 | `scripts/bootstrap.sh` 复制清单 | `SKILL.md` 步骤 3–4 + `--help` 文本 |
 | `scripts/install.sh` 的行为/参数 | 双 README「安装与升级/Installation & Upgrades」+ `SKILL.md` 步骤 3 的一句话路径 + golden T21；**改安装语义先改 bootstrap，install.sh 保持薄委托** |
 | `CHANGELOG.md` | 每次发布（版本链变更）追加一个版本段；规范条款细节只链接 `STANDARDS_CHANGELOG.md`，不复制 |
-| 断言增删 | `scripts/update-assertion-count.sh` → 再跑审计（A3 声称数 / A10 执行数基线）。**`tests/.audit-baseline` 只由生成器写，禁手工改**；顺序坑见 §4。**收口取证顺序（v3.65.0/CHG-087）**：update-assertion-count 内嵌整跑 suite（FU-907 红拒校验）→ 编码后直接跑它即同时拿绿 + 计数回填，免独立整跑一轮 |
+| 断言增删 | `scripts/update-assertion-count.sh` → 再跑审计（A3 声称数 / A10 执行数基线）。**`tests/.audit-baseline` 只由生成器写，禁手工改**；顺序坑见 §4。**收口取证顺序（v3.65.0/CHG-087）**：update-assertion-count 内嵌整跑 suite（FU-907 红拒校验）→ 编码后直接跑它即同时拿绿 + 计数回填，免独立整跑一轮。**同 HEAD 二次收口免重跑（收据，v3.66.0/CHG-088）**：绿全跑落地 `.agent-state/last-suite-receipt.json`，生成器/audit 按 HEAD+新鲜窗采信秒级完成；红套件即删收据，回落现状内嵌跑 |
 | 新增 / 删除测试套件 | `.github/workflows/ci.yml` 的 job 清单（仓库自己的 CI 必须覆盖全部套件）+ `MAINTAINER.md` §3 的命令清单 + 双 README 树（套件若属源层工具须标明不下发） |
 | 双 README 目录树 | 磁盘实际文件（审计有树↔磁盘断言） |
 | 新增 `resources/templates/**` 文件 | 双 README 树（树↔磁盘断言）+ `scripts/bootstrap.sh` 复制清单 + 若脚本被模板引用则补 `transform_src` 路径替换规则 |
@@ -77,7 +77,7 @@ bash tests/audit-standards-src.sh  # 源层：版本链 / 关键词落点 / §3�
 
 - **改脚本 → 必须先跑通 `run-tests.sh`**（§2.17.4 硬性要求）。
 - **改规范正文 / 模板 / README → 必须先跑通 `audit-standards-src.sh`**。
-- **两 suite 本地必须串行跑**（FU-907）：audit 经 `update-assertion-count.sh --check` 内嵌整跑 `run-tests.sh`，并发会共写工作区 `.agent-state` 互踩；CI 双 job 为独立 VM 不受影响。
+- **两 suite 本地必须串行跑**（FU-907）：audit 经 `update-assertion-count.sh --check` 内嵌整跑 `run-tests.sh`，并发会共写工作区 `.agent-state` 互踩（v3.66.0 收据落地后并发面放宽为弱一致——收据可能被并发绿跑覆盖，五条件仍拦异 HEAD/过期，串行仍是唯一强保证）；CI 双 job 为独立 VM 不受影响。
 - `run-tests.sh` 是**双布局自适应**的：在 Skill 仓库内跑全量；被 `--guard` 复制到目标仓库后，源路径自动回退、Skill 仓库专属用例（T11 安装器、T14b 安装器路径用例、依赖未装层的 T10/T12）自动 SKIP。
 
 ### 3.1 第三道：把门禁指向**本仓自己的真实产物**（dogfooding，改门禁后必做）
