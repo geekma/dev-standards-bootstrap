@@ -7,9 +7,11 @@
 #   · 会话开始（start）→ 跑一次跨文档一致性审计，把存量红灯亮给本会话；
 #   · 会话空闲/收尾（idle）→ 跑 agent-gate --stage stop 等价检查，把未闭环写进报告。
 #
-# 调用方（由 install-hook-adapter 按当前客户端自适应生成，本脚本不感知客户端）：
+# 调用方（由 install-hook-adapter 按当前客户端自适应生成，本脚本不感知客户端；
+# v3.64.0 起 opencode 适配为四段式：探测 runtime→实时检索官方文档→生成形状候选→
+# 逐 runtime 沙箱真加载探测 + 本脚本功能标记仲裁，装毕对最终文件复验）：
 #   claude  : .claude/settings.json SessionStart/Stop hook（stdout 注入会话上下文）
-#   opencode: .opencode/plugins/dev-standards-gate.js（session.created / session.idle）
+#   opencode: .opencode/plugins/dev-standards-gate.js（session.created / session.idle；dual-active 形状）
 #   其他    : Git hooks + CI 兜底（校验仓库，不校验编辑器）
 #
 # 语义：start 永不阻断（exit 0），红灯 = 报告文件 + stdout 摘要；
@@ -175,6 +177,12 @@ report_init() {
     echo "# session-gate 报告 (${mode} @ $(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown))"
     echo
   } > "$REPORT"
+  # 探针关联标记（CHG-084 评审 A5）：install-hook-adapter 真加载终验注入 AGENT_GUARD_SESSION_TAG；
+  # 该变量存在=本次 start 由安装探针触发，写入报告作为确定性功能证据（mtime 判据可被同仓其他
+  # 活跃会话的 hook 写入污染）。日常会话无此变量，行为不变。
+  if [[ -n "${AGENT_GUARD_SESSION_TAG:-}" ]]; then
+    printf 'probe-tag: %s\n' "$AGENT_GUARD_SESSION_TAG" >> "$REPORT"
+  fi
 }
 
 report_add() {

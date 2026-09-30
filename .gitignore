@@ -60,3 +60,4 @@ scripts/session-gate.sh
 scripts/agent-gate
 scripts/stamp-provenance.sh
 .githooks/
+.oc-xdg/

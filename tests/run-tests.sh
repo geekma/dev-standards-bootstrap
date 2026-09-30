@@ -2458,6 +2458,24 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   printf -- '- 确认状态：已整体确认\n' >> docs/changes/CHG-937/00.5-communication.md
   scripts/new-change CHG-937 --risk L2 >/dev/null 2>&1
   report "T25 dedicated wave2 completes once the gate is restored" 0 $?
+  # v3.64.0⑦（CHG-086/REQ-1043~1045，TC-1112~1114）：docs 根解析链对齐五兄弟——
+  # yml pin 命中 / env 优先 / fail-closed 三态；夹具自清理，不污染本节后续断言。
+  printf 'paths:\n  docs: doc\n' > .agent-governance.yml
+  out=$(scripts/new-change CHG-945 --risk L1 2>&1 || true)
+  check_output "T25 TC-1114 yml pin to missing templates dies NC-E06" "NC-E06" "$out"
+  check_output "T25 TC-1114 NC-E06 self-help names AGENT_GUARD_DOCS_DIR" "AGENT_GUARD_DOCS_DIR" "$out"
+  check_output "T25 TC-1114 NC-E06 self-help names .agent-governance.yml" "agent-governance.yml" "$out"
+  mkdir -p doc/templates/entry
+  printf '# <__CHANGE_ID__> 意图\n## 预期结果\n## 开放问题\n## 目录落位\n- **目录落位**：独立目录（t）\n' > doc/templates/entry/00-intent.md
+  printf '{"change_id": "__CHANGE_ID__", "risk_level": "__RISK__", "spec_author": "PENDING", "implementation_owner": "PENDING", "test_owner": "PENDING", "review_owner": "PENDING"}\n' > doc/templates/entry/00-governance.json
+  printf '# <__CHANGE_ID__> 沟通稿\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n' > doc/templates/entry/00.5-communication.md
+  scripts/new-change CHG-946 --risk L1 >/dev/null 2>&1
+  report "T25 TC-1112 bare run honors yml pin paths.docs=doc" 0 $?
+  report "T25 TC-1112 wave1 lands under doc/changes" 3 "$(ls doc/changes/CHG-946/*.md doc/changes/CHG-946/*.json 2>/dev/null | wc -l | tr -d ' ')"
+  mkdir -p docs2/templates/entry && cp doc/templates/entry/* docs2/templates/entry/
+  AGENT_GUARD_DOCS_DIR=docs2 scripts/new-change CHG-947 --risk L1 >/dev/null 2>&1
+  report "T25 TC-1113 env AGENT_GUARD_DOCS_DIR overrides yml pin" 3 "$(ls docs2/changes/CHG-947/*.md docs2/changes/CHG-947/*.json 2>/dev/null | wc -l | tr -d ' ')"
+  rm -rf doc docs2 .agent-governance.yml
 else
   echo "SKIP T25: new-change.sh absent (bootstrap --guard 未安装) — 跳过脚手架 golden cases"
 fi
@@ -3254,11 +3272,11 @@ fi
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.63.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.63.0 in prose" 3 "$(grep -cF 'v3.63.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.63.0" 1 "$(grep -cF '规范版本：v3.63.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.63.0" 1 "$(grep -cF '当前对应规范版本：v3.63.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.63.0 top row" 1 "$(grep -c '^| v3.63.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.64.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.64.0 in prose" 5 "$(grep -cF 'v3.64.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.64.0" 1 "$(grep -cF '规范版本：v3.64.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.64.0" 1 "$(grep -cF '当前对应规范版本：v3.64.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.64.0 top row" 1 "$(grep -c '^| v3.64.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3267,7 +3285,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.63\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.64\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 # ---- T49 (v3.63.0, CHG-083/REQ-1033~1037): 换挡执法 + 活性自检 + adapter 结构 ----
 # ① GATE-E89 四态 + 时间窗 + R07-1 静默死亡回归。复用 T24 的种子手法：
@@ -3322,27 +3340,129 @@ rm -f .agent-state/session-tool-stats.json
 mkdir -p .claude && printf '{}\n' > .claude/settings.json
 report "T49 liveness wiring-but-no-telemetry emits YELLOW" 1 "$(AGENT_GUARD_ALLOW_NO_SHIFT=0 bash scripts/session-gate.sh status 2>&1 | grep -c 'zero telemetry')"
 
-# ③ adapter 结构断言（TC-1098；R07-7：无 setup 键 + ADAPTER-E09 负例）
+# ③ adapter 四段式（v3.64.0, CHG-084, TC-1103~1108）：桩 runtime 注入 + 真加载仲裁 + 功能级判据
 new_repo
 mkdir -p scripts
+cat > stub-runtime.sh <<'STUB'
+#!/usr/bin/env bash
+# 桩 opencode runtime：SG_STUB_VERSION / SG_STUB_REJECT / SG_STUB_MARKER 三旋钮
+# （T49-04 桩设计，CHG-084 04-test-scripts；模拟 拒载/载入/功能死 三态）
+case "$1" in
+  --version) echo "${SG_STUB_VERSION:-9.9.9-stub}"; exit 0 ;;
+  serve) echo "opencode server listening on http://127.0.0.1:${3:-0}" ;;
+esac
+# SG_STUB_SILENT=1：除 --version 外零输出零痕迹（E11 全 INCONCLUSIVE 路径）
+if [[ "${SG_STUB_SILENT:-0}" == "1" && "$1" != "--version" ]]; then exit 0; fi
+if [[ -n "${XDG_DATA_HOME:-}" ]]; then
+  mkdir -p "$XDG_DATA_HOME/opencode/log" 2>/dev/null
+  if [[ "${SG_STUB_REJECT:-0}" == "1" ]]; then
+    printf '%s\n' "timestamp=T level=WARN message=\"failed to load plugin\" target=$PWD/.opencode/plugins/dev-standards-gate.js cause=\"SchemaError(stub)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
+  else
+    printf '%s\n' "timestamp=T level=INFO message=\"plugin loaded: $PWD/.opencode/plugins/dev-standards-gate.js (stub)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
+  fi
+fi
+if [[ "${SG_STUB_MARKER:-0}" == "1" && "${SG_STUB_REJECT:-0}" != "1" ]]; then
+  mkdir -p out 2>/dev/null
+  printf 'sg-call start\n' >> out/sg-runs.log
+  # 真实 session-gate.sh start 会写 .agent-state/*（含 probe-tag 关联行）——终验走这条通道，桩必须同型模拟
+  mkdir -p .agent-state 2>/dev/null
+  touch .agent-state/session-started.json
+  printf 'probe-tag: %s\n' "${AGENT_GUARD_SESSION_TAG:-}" > .agent-state/session-gate-last.md
+fi
+# SG_STUB_DESKTOP_REJECT=1：desktop 形态调用（$1=workdir 路径）单独拒载——E13 主用回退路径
+if [[ "${SG_STUB_DESKTOP_REJECT:-0}" == "1" && "$1" != "serve" && "$1" != "--version" && "$1" != "run" && -n "${XDG_DATA_HOME:-}" ]]; then
+  mkdir -p "$XDG_DATA_HOME/opencode/log" 2>/dev/null
+  printf '%s\n' "timestamp=T level=WARN message=\"failed to load plugin\" target=$PWD/.opencode/plugins/dev-standards-gate.js cause=\"SchemaError(stub-desktop)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
+  exit 0
+fi
+sleep 30
+STUB
+chmod +x stub-runtime.sh
+STUB_SH="$PWD/stub-runtime.sh"
 cp "$ROOT/resources/templates/install-hook-adapter.sh" scripts/install-hook-adapter
 cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate
 cp "$ROOT/resources/templates/session-gate.sh" scripts/session-gate.sh
 chmod +x scripts/install-hook-adapter scripts/agent-gate
-bash scripts/install-hook-adapter --client opencode >/dev/null 2>&1
-report "T49 adapter writes default export" 1 "$(grep -c 'export default { id: "dev-standards-gate", server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js)"
-report "T49 adapter template carries no unverified setup key" 0 "$(grep -c 'setup: async' .opencode/plugins/dev-standards-gate.js)"
-sed 's/^export default.*//' scripts/install-hook-adapter > scripts/install-hook-adapter.bak \
-  && cp scripts/install-hook-adapter.bak scripts/install-hook-adapter
-out=$(bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
-report "T49 adapter E09 negative: missing default export dies" 2 "$rc"
-report "T49 adapter E09 negative names the code" 1 "$(printf '%s' "$out" | grep -c 'ADAPTER-E09')"
+export AGENT_GUARD_PROBE_WINDOW=1
+export DEV_STANDARDS_OPENCODE_BIN="$STUB_SH"
+export DEV_STANDARDS_OPENCODE_DESKTOP_BIN="$STUB_SH"
+export SG_STUB_VERSION="1.19.0-stub"
 
-# ④ bootstrap 目录证据接线（TC-1096）
+# T49-01 (TC-1103): runtime 全抑制（路径不可执行=未检出）→ 显式 skip（非静默），不落盘
+out=$(DEV_STANDARDS_OPENCODE_BIN=/nonexistent DEV_STANDARDS_OPENCODE_DESKTOP_BIN=/nonexistent \
+  bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49-01 no-runtime exits 2 (explicit no-op)" 2 "$rc"
+report "T49-01 skip names the reason (not silent)" 1 "$(printf '%s' "$out" | grep -c 'no opencode runtime detected')"
+report "T49-01 nothing written" 0 "$(test -f .opencode/plugins/dev-standards-gate.js && echo 1 || echo 0)"
+
+# T49-02/03 (TC-1104/1105): 桩双 runtime 全过 → dual-active 胜出 + 契约头 + 功能证据落盘
+SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode >/dev/null 2>&1; rc=$?
+report "T49-02 stub-all-pass installs (rc0)" 0 "$rc"
+report "T49-02 contract-runtime lists both runtimes" 1 "$(grep -c 'contract-runtime: cli=1.19.0-stub desktop=1.19.0-stub' .opencode/plugins/dev-standards-gate.js)"
+report "T49-02 contract-shape=dual-active" 1 "$(grep -c 'contract-shape: dual-active' .opencode/plugins/dev-standards-gate.js)"
+report "T49-02 contract-source field present" 1 "$(grep -c 'contract-source:' .opencode/plugins/dev-standards-gate.js)"
+# R8 根因（收口复跑 651/3）：契约头按设计两行含 per-runtime PASS(function)——仲裁矩阵行(adapter :384→:645 盖章)+final-file 行(:699→:729 盖章)，grep -c 计行恒 2，期望 1 为过期断言；改钉 final-file 行全文（同时锁双 runtime 终验证据在位）
+report "T49-02 verified evidence carries function marker" 1 "$(grep -cF 'final-file probes: cli=1.19.0-stub:PASS(function) desktop=1.19.0-stub:PASS(function)' .opencode/plugins/dev-standards-gate.js)"
+report "T49-03 emitted default export is dual-active" 1 "$(grep -c 'export default { id: "dev-standards-gate", setup: DevStandardsGateV2, server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js)"
+report "T49-03 named v1 export present" 1 "$(grep -c 'export const DevStandardsGate = async' .opencode/plugins/dev-standards-gate.js)"
+report "T49-03 v2 setup export present" 1 "$(grep -c 'export const DevStandardsGateV2 = async' .opencode/plugins/dev-standards-gate.js)"
+report "T49-05 arbitration attempts recorded (evidence not clobbered)" 1 "$(grep -cF 'attempt[all-runtimes] candidate[dual-active]' .opencode/plugins/dev-standards-gate.js)"
+
+# T49-04 (TC-1106, SC-997): 客户端拒载桩 → ADAPTER-E12 die，不落盘
+rm -f .opencode/plugins/dev-standards-gate.js
+out=$(SG_STUB_MARKER=1 SG_STUB_REJECT=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49-04 client-rejected dies (rc2)" 2 "$rc"
+report "T49-04 die names ADAPTER-E12" 1 "$(printf '%s' "$out" | grep -c 'ADAPTER-E12')"
+report "T49-04 no plugin left behind" 0 "$(test -f .opencode/plugins/dev-standards-gate.js && echo 1 || echo 0)"
+
+# T49-04b (SC-998): 载入但零功能标记（schema-过-功能-死）→ E12 —— 假绿防线（本缺陷同族形态）
+out=$(SG_STUB_MARKER=0 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49-04b loaded-but-no-function dies (rc2)" 2 "$rc"
+report "T49-04b names the functional-marker failure" 1 "$(printf '%s' "$out" | grep -q 'loaded-but-no-functional-marker' && echo 1 || echo 0)"
+
+# T49-04c (E12 restore-with-backup)：已装好（T49-02 产物在位）→ 拒载重装 → E12 + 还原旧生成物
+SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode >/dev/null 2>&1
+out=$(SG_STUB_MARKER=1 SG_STUB_REJECT=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49-04c reinstall-reject dies (rc2)" 2 "$rc"
+report "T49-04c previous adapter restored intact" 1 "$(grep -cF 'export default { id: "dev-standards-gate", setup: DevStandardsGateV2, server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js 2>/dev/null)"
+
+# T49-05a (E13 primary-only fallback)：desktop 形态单独拒载 → 全 runtime 无胜者 → 主用 runtime 择形 + 显式告警
+out=$(SG_STUB_MARKER=1 SG_STUB_DESKTOP_REJECT=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49-05a E13 fallback attempted but desktop-final-fail dies (rc2)" 2 "$rc"
+report "T49-05a E13 warn names primary-only arbitration" 1 "$(printf '%s' "$out" | grep -c 'ADAPTER-E13 (warn)')"
+# R8 根因：attempt[primary-only] 按设计出现两次——仲裁胜出 note(adapter :627)+final-fail die 附矩阵 note(:719，B2 追加式)，恒 2 非恒 1；期望同步为 2
+report "T49-05a primary-only round recorded in matrix" 2 "$(printf '%s' "$out" | grep -c 'attempt\[primary-only\]')"
+
+# T49-05b (E11 all-INCONCLUSIVE)：除版本应答外零痕迹 → 探测无判决 → E11 拒装
+# R8 根因：E11 die(adapter :622) 先于 backup(:631)/写入(:639)，前置 T49-04c 还原的旧生成物原样保留 →「nothing written」恒 1（前置污染）；先清场再验「E11 不落盘」（对齐 T49-04 形态）
+rm -f .opencode/plugins/dev-standards-gate.js
+out=$(SG_STUB_MARKER=1 SG_STUB_SILENT=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49-05b silent runtime dies E11 (rc2)" 2 "$rc"
+report "T49-05b die names ADAPTER-E11" 1 "$(printf '%s' "$out" | grep -c 'ADAPTER-E11')"
+report "T49-05b nothing written" 0 "$(test -f .opencode/plugins/dev-standards-gate.js && echo 1 || echo 0)"
+
+# T49-06 (TC-1107): 真实 runtime 探测——默认 SKIP 并显式报告；AGENT_GUARD_T49_REAL_PROBE=1 才跑
+unset AGENT_GUARD_PROBE_WINDOW DEV_STANDARDS_OPENCODE_BIN DEV_STANDARDS_OPENCODE_DESKTOP_BIN SG_STUB_VERSION
+if [[ "${AGENT_GUARD_T49_REAL_PROBE:-0}" == "1" ]]; then
+  out=$(bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+  report "T49-06 real-runtime install rc0" 0 "$rc"
+  report "T49-06 no failed-to-load in verdict" 1 "$(printf '%s' "$out" | grep -c 'runtime-verified')"
+else
+  report "T49-06 real-runtime probe skipped by default (explicit, not silent)" 1 "1"
+fi
+
+# T49-07 (TC-1108): 套件不再包含 v3.63.0 自指形状断言（断言对象=行为证据，非模板字面量）
+# 模式拆两段拼装：源码行永不连续包含该字面量（否则 grep 自匹配，永远=1）
+_t49_legacy_head='export default { id: "dev-standards-gate", server: '
+report "T49-07 legacy self-referential shape assertion removed" 0 "$(grep -cF "${_t49_legacy_head}DevStandardsGate }" "$ROOT/tests/run-tests.sh" || true)"
+
+# ④ bootstrap 目录证据接线（TC-1096）——桩注入，不跑真探测
 new_repo
 mkdir -p .opencode
-bash "$ROOT/scripts/bootstrap.sh" --guard "$REPO" >/dev/null 2>&1
-report "T49 bootstrap dir-evidence wires opencode adapter" 1 "$(grep -c 'export default { id: "dev-standards-gate", server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js 2>/dev/null)"
+AGENT_GUARD_PROBE_WINDOW=1 SG_STUB_MARKER=1 SG_STUB_VERSION="1.19.0-stub" \
+  DEV_STANDARDS_OPENCODE_BIN="$STUB_SH" DEV_STANDARDS_OPENCODE_DESKTOP_BIN="$STUB_SH" \
+  bash "$ROOT/scripts/bootstrap.sh" --guard "$REPO" >/dev/null 2>&1
+report "T49 bootstrap dir-evidence wires dual-active adapter" 1 "$(grep -c 'export default { id: "dev-standards-gate", setup: DevStandardsGateV2, server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js 2>/dev/null)"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 if [[ "$fail" -gt 0 ]]; then
