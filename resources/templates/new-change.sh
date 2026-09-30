@@ -9,7 +9,8 @@
 #     记录」（或 L0 单行声明）后才补齐 01-spec/02/03/03.5/04 五件——确认记录落盘前
 #     不生成后续产物骨架。--allow-unconfirmed 供自动化入口显式越过（09 登记义务）。
 #   - 专用目录形态：创建 <change_root>/<id>/ 并从 <docs>/templates/entry/ 复制
-#     骨架（__CHANGE_ID__/__RISK__ 占位符随装随替）。
+#     骨架（__CHANGE_ID__/__RISK__/__DATE__ 占位符随装随替；__DATE__ 取 UTC 日，
+#     与批次判日同口径——v3.64.0⑥/CHG-085，FU-929）。
 #   - 批次形态（§1.1）：当日 BATCH-YYYYMMDD 已存在且风险为 L0/L1 时，默认把
 #     骨架以 `## <id>` 锚点小节追加进共享文件（00-governance.json 追加一行）；
 #     L2/L3 一律专用目录（批次拒收 L2/L3）。独立目录须 AGENT_GUARD_ALLOW_INDEPENDENT=1
@@ -58,7 +59,7 @@ tmpl_dir="${AGENT_GUARD_TEMPLATES_DIR:-$docs_dir/templates/entry}"
 [[ -d "$change_root" ]] || mkdir -p "$change_root"
 
 fill() { # <src> -> stdout with placeholders replaced
-  sed -e "s/__CHANGE_ID__/$id/g" -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date +%Y-%m-%d)/g" "$1"
+  sed -e "s/__CHANGE_ID__/$id/g" -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" "$1"
 }
 
 # 沟通先行门两段式（v3.52.0 §2.17.2d）：wave1 = 入口三件；wave2 = 确认后五件

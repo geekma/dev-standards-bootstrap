@@ -2376,6 +2376,10 @@ if [[ -f "$NEWCHANGE_SRC" ]]; then
   cp "$NEWCHANGE_SRC" scripts/new-change
   cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate   # v3.55.0: wave-2 确认门下沉 gate（check-confirm）
   chmod +x scripts/new-change
+  # CHG-085/REQ-1042（TC-1109，v3.64.0⑥）：CHG-078 AC-1 一次性 grep 常驻化——
+  # 判日/日期字段全形态（%Y%m%d/%Y-%m-%d）必须带 -u，防第三处漏网（FU-929）。
+  _bare_date=$(grep -E 'date \+%Y' "$NEWCHANGE_SRC" | grep -vcE 'date -u \+%Y' || true)
+  report "T25 TC-1109 no bare date +%Y in new-change.sh (all -u)" 0 "$_bare_date"
   # v3.62.2 (CHG-082)：本节后半主题=批次入批默认——撤夹具豁免（new-change 的
   # 批/独立分流同样读该开关）；CHG-930 专属目录 begin 属脚手架流主题，临时前缀豁免。
   unset AGENT_GUARD_ALLOW_INDEPENDENT
