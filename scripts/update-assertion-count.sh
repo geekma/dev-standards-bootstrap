@@ -44,10 +44,13 @@ if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]]; then
   r_pass=$(sed -nE 's/.*"passed":([0-9]+).*/\1/p' "$RECEIPT" | tail -n 1)
   r_fail=$(sed -nE 's/.*"failed":([0-9]+).*/\1/p' "$RECEIPT" | tail -n 1)
   if [[ -n "$r_head" && -n "$r_pass" && -n "$r_fail" && "$r_head" == "$rc_head" && "$r_fail" == 0 ]]; then
-    # freshness via mtime (BSD/GNU stat dual form, session-started.json precedent);
+    # freshness via mtime (GNU/BSD stat dual form, session-started.json precedent;
+    # v3.67.0 erratum CHG-092: GNU-first — GNU stat -f %m prints '?m' rc=0, so the
+    # BSD-first form left the GNU fallback unreachable on Linux and every receipt
+    # was rejected as stale);
     # negative age (future mtime / clock skew) is treated as fresh — the emitter
     # never writes future stamps and this is a local-trust optimization.
-    r_mtime=$(stat -f %m "$RECEIPT" 2>/dev/null || stat -c %Y "$RECEIPT" 2>/dev/null || true)
+    r_mtime=$(stat -c %Y "$RECEIPT" 2>/dev/null || stat -f %m "$RECEIPT" 2>/dev/null || true)
     case "$r_mtime" in ''|*[!0-9]*) r_mtime="" ;; esac
     if [[ -n "$r_mtime" ]]; then
       r_age=$(( $(date +%s) - r_mtime ))

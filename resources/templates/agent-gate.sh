@@ -21,8 +21,12 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "GATE-E01: run ins
 gate_epoch() { # <iso8601Z> — GNU then BSD, 0 on failure (v3.63.0 GATE-E89 helper)
   date -u -d "$1" +%s 2>/dev/null || date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$1" +%s 2>/dev/null || echo 0
 }
-gate_mtime() { # <file> — BSD then GNU stat, 0 on failure
-  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+gate_mtime() { # <file> — GNU then BSD stat, 0 on failure (v3.67.0 erratum CHG-092:
+  # BSD-first ordering is unreachable on Linux: GNU stat accepts -f as
+  # filesystem-status mode where %m is an unknown directive — it prints '?m'
+  # and exits 0 (coreutils stat.c print_statfs default branch), so the GNU
+  # fallback never fires. GNU-first works on both: BSD stat has no -c.)
+  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
 }
 record_delivery() { # <stage> — v3.63.0 (REQ-1033, DES-1822): delivery marker for begin GATE-E89
   local ac cid
