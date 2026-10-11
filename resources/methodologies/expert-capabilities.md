@@ -37,6 +37,7 @@
 | 数据专家 | 变更含 CFG/DB/数据订正（§2.6） | 阶段 2 影响分析起 |
 | LLM 专家 | 变更含模型/Prompt/评估链路（§2.9） | 阶段 1 需求起 |
 | 可靠性专家 | 变更含发布/监控/回滚面（§2.7/§2.8） | 阶段 3 方案设计起 |
+| 产品可用性专家 | 变更含用户可见界面（`01-spec.md` `ui_change: true`，§2.5 阶段 8） | 阶段 8 终审（阻塞门） |
 
 ### 0.5 专家扩展协议（项目特定专家）
 项目可经 `AGENTS.md`「项目速览·专家扩展」行声明领域专家（如医疗仓"临床专家"、金融仓"风控专家"）：四维卡同构（工具箱/协同/装载/自适应），签署权仍映射规范 §0.5.2 既有角色列，增量承诺与通用契约全适用；扩展专家不改动规范 §2.2 组合表（自进化契约：派生不改源）。
@@ -48,8 +49,8 @@
 
 ## 1. 业务专家（需求 Agent/业务 Owner 承担；阶段 1）
 
-- **理论工具箱**：基线——用户故事与 INVEST 原则、验收标准可测性（DoD）；扩展——用户故事地图（Patton）、Impact Mapping（Adzic）、Kano 模型（需求分类与优先级）、JTBD（场景动机）。
-- **广度协同**：向行业专家供业务约束清单；向测试专家供 SC 场景五维枚举输入；与 PM 专家对齐验收里程碑。
+- **理论工具箱**：基线——用户故事与 INVEST 原则、验收标准可测性（DoD）；扩展——用户故事地图（Patton）、Impact Mapping（Adzic）、Kano 模型（需求分类与优先级）、JTBD（场景动机）；产品可用性协同——用户旅程地图与服务蓝图、竞品与替代方案分析（买 or 建）、成功度量（HEART·North Star）、信息架构（IA）、Nielsen 十大启发式、错误预防（Poká-yoke）、认知负荷、无障碍（WCAG）。
+- **广度协同**：向行业专家供业务约束清单；向测试专家供 SC 场景五维枚举输入；**向产品可用性专家供 UJ（用户旅程）与上下文包**（§13）；与 PM 专家对齐验收里程碑。
 - **经验装载**：既有 `01-spec.md` REQ 演进史（同域需求为何改）、SC 清单历史遗漏、`02` 业务影响史。
 - **自适应锚点**：偏好声明含 DDD 时，通用语言表并入 `01-spec` 术语节。
 
@@ -104,7 +105,7 @@
 
 ## 9. 整体验收专家（Review Agent 终审扩展 + Release Owner 人类面；阶段 8/9）
 
-- **理论工具箱**：基线——四方证据验收（规范 §2.2 内化）、RTVM 闭环核对；扩展——ATDD（验收测试导向）、Release Readiness Review 检查单、DoD 审计、尽调式抽样（按风险加权抽检而非全查）。
+- **理论工具箱**：基线——**五方证据验收**（规范 §2.2：代码/交付物/配置部署/文档/用户可用性；v3.67.0 加入用户可用性）、RTVM 闭环核对；扩展——ATDD（验收测试导向）、Release Readiness Review 检查单、DoD 审计、尽调式抽样（按风险加权抽检而非全查）。
 - **广度协同**：汇总全部专家增量承诺产出（发现/建议闭环率）；与 Release Owner 分野"验收结论 vs 授权决策"（门禁 5）。
 - **经验装载**：`06` 交付总结史、FU 台账闭环率、历史回滚记录（§2.7.3）。
 - **自适应锚点**：项目声明的合规等级提升抽样比例（L3 高风险域全查）。
@@ -130,6 +131,14 @@
 - **经验装载**：`06.5` 发布史、告警噪音记录、历史回滚根因。
 - **自适应锚点**：项目声明的环境拓扑（灰度/蓝绿/滚动）决定检查单形态。
 
+## 13. 产品可用性专家（评审侧；阶段 8；命中 `ui_change: true` 或用户要求的 L2+ 界面变更时出动；阻塞门）
+
+- **定位**：独立评审主体，**非生产方**——按 UJ（用户旅程）逐条走查，出具「用户可用性」验收结论；命中即阻塞，未过不得进入阶段 9。
+- **理论工具箱**：可用性启发式走查（Nielsen 十原则）、任务完成率 / 用时 / 错误率 / 放弃率、错误预防与恢复、WCAG 2.2、信息架构核对；**目标项目特征绑定**（对齐本仓代码入口 / 行业 / 系统 / 业务特点，不套通用模板）。
+- **广度协同**：向业务专家回供 UJ 盲区（轻载流程的入口/步数/频次遗漏）；向整体验收专家供五方证据之「用户可用性」（§9）。
+- **经验装载**：既有 `03.6-ui-spec.md`、`04` 的 E2E SC、`docs/bugfix-log.md` 可用性类教训、P12 相关域（`docs/project/P12-product-context.md`，方法层权威见 `resources/methodologies/project-masters.md` §0.1）。
+- **自适应锚点**：项目速览声明行业（医疗/金融等）时按域加严（如医疗：知情同意 / 患者安全 / 隐私）。
+
 ---
 
 ## 附：理论出处索引
@@ -141,6 +150,12 @@
 | 用户故事 / INVEST 原则 | Ron Jeffries；Bill Wake | 《User Stories Applied》(2004)；文章 "INVEST in Good Stories, and SMART Tasks"(2003) |
 | 用户故事地图 / Impact Mapping | Jeff Patton / Gojko Adzic | 《User Story Mapping》(O'Reilly, 2014) / 《Impact Mapping》(2013) |
 | Kano 模型 / JTBD | 狩野纪昭（Noriaki Kano）/ Clayton Christensen（推广者） | 论文 "Attractive Quality and Must-Be Quality"(1984) / 《Competing Against Luck》(2016) |
+| 用户旅程地图 / 服务蓝图 / 信息架构（IA） | 多源社区实践 / G. Lynn Shostack / Richard Saul Wurman | 相关实践文献 / HBR "Designing Services That Deliver"(1984) / 《Information Anxiety》(1989) |
+| 可用性启发式（Nielsen 十原则） | Jakob Nielsen | 文章 "10 Usability Heuristics for User Interface Design"(1994，2020 修订) |
+| HEART 框架 | Google（Kerry Rodden 等） | 论文 "Measuring the User Experience on a Large Scale"(CHI 2010) |
+| WCAG（Web 内容无障碍指南） | W3C / WAI | 《Web Content Accessibility Guidelines 2.2》 |
+| Poká-yoke（防错） | 新乡重夫（Shigeo Shingo） | 《Zero Quality Control: Source Inspection and the Poka-Yoke System》(1986) |
+| 认知负荷理论 | John Sweller | 论文 "Cognitive Load During Problem Solving: Effects on Learning"(1988) |
 | DoR / DoD | Ken Schwaber & Jeff Sutherland（DoD）；DoR 为 Scrum 社区延伸 | 《Scrum Guide》 |
 | DDD（通用语言） | Eric Evans | 《Domain-Driven Design》(2003) |
 | 行业合规框架（PCI-DSS / HIPAA / GDPR） | PCI SSC / 美国 HHS / 欧盟立法机构 | 各标准与法规原文 |
@@ -162,8 +177,8 @@
 | SLO / 错误预算 / 可观测三支柱 | Google SRE 团队 / Cindy Sridharan | 《Site Reliability Engineering》(O'Reilly, 2016) / 《Distributed Systems Observability》(O'Reilly, 2018) |
 | 故障注入 / 混沌工程 | Netflix（Chaos Monkey）；Casey Rosenthal & Nora Jones | Principles of Chaos（principlesofchaos.org）/ 《Chaos Engineering》(O'Reilly, 2019) |
 | 数据质量维度 / 主数据 / 血缘 | DAMA International | 《DAMA-DMBOK》 |
-| ATDD / SCA 依赖扫描 / LLM 评估集（golden set）/ Prompt 版本化与 A/B / 数据迁移双写与对账水位校验 / Release Readiness Review 检查单 | 多源社区与工业实践（无单一权威提出者） | （待核） |
+| ATDD / SCA 依赖扫描 / LLM 评估集（golden set）/ Prompt 版本化与 A/B / 数据迁移双写与对账水位校验 / Release Readiness Review 检查单 / 竞品与替代方案分析 / North Star 指标 / 任务完成率·用时·错误率·放弃率 / 可用性走查与 UAT | 多源社区与工业实践（无单一权威提出者） | （待核） |
 
 学理细节以上述原著为唯一权威；本卡只定义"何时动用"（绑定关系），不复制学理内容。
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.66.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.67.0_

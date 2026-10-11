@@ -7,8 +7,8 @@
 | 层 | 落点 | 角色 | 何时更新 |
 |---|---|---|---|
 | 功能轨 | `docs/<feature>/` | 需求/设计正文唯一权威：`01-spec.md`（REQ 全文/DoD/验收）、`01.5-rtvm-matrix.md`（REQ→DES→TASK→TC 四维链路） | 随变更回填；需求变更只改 01-spec |
-| 变更轨 | `docs/changes/<变更号>/` | 一次变更一组文档（00-intent…09-changelog），门禁机校落点 | 每次变更新开一组，已闭合禁改写 |
-| 项目总册 | `docs/project/` | **索引与聚合层**（P00–P11 十二册）：只放指针/统计/短引用，不复制正文与矩阵 | 每次变更逐册回填 + 变更注记（09 回填清单机校） |
+| 变更轨 | `docs/changes/<变更号>/` | 一次变更一组文档（入口八件 `00-intent`…`04-test-scripts`，条件件 `03.6-ui-spec.md` 仅 `ui_change:true` 时产出；续 `05`…`09-changelog`），门禁机校落点 | 每次变更新开一组，已闭合禁改写 |
+| 项目总册 | `docs/project/` | **索引与聚合层**（P00–P12 十三册）：只放指针/统计/短引用，不复制正文与矩阵 | 每次变更逐册回填 + 变更注记（09 回填清单机校） |
 | 缺陷组 | `docs/bugs/` | 缺陷六件套（诊断/影响/测试计划/矩阵/配置/任务），同日入批 `BATCH-YYYYMMDD/` | 每次缺陷处置新起锚点小节 |
 | 治理件 | `AGENTS.md`、`templates/`、`methodologies/`、`STANDARDS_CHANGELOG.md`、审计/门禁脚本 | 框架自身，门禁按路径机校 | 仅随 `--upgrade` 刷新，勿手改 |
 

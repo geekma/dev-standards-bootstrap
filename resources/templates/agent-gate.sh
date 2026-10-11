@@ -230,6 +230,21 @@ require_section_or_decl() { # <file> <keyword> [decl_regex]
   return 1
 }
 
+# v3.67.0 (CHG-090, REQ-1056): the UI-change declaration is the switch for the
+# whole UX conditional lane (03.6 artifact + E2E threshold + usability UAT).
+# Anchored to the value right after the colon so a template comment that merely
+# MENTIONS "true" (e.g. `ui_change：false <!-- 改 true -->`) cannot switch it on.
+ui_change_true() { # <spec-file> -> 0 when the spec declares ui_change: true
+  # v3.67.0 (CHG-090): the switch is the DECLARATION BULLET only —
+  # `- **ui_change**: true`. Prose mentions of `ui_change:true` inside REQ
+  # text (CHG-090's own 01-spec tripped this), template comments and the
+  # documented `true|false` literal form must not arm the lane. HTML comments
+  # are stripped first; the value is anchored right after the colon and must
+  # end at a word boundary.
+  sed 's/<!--[^>]*-->//g' "$1" 2>/dev/null \
+    | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))'
+}
+
 # v3.55.0 (CHG-068): communication-first gate semantics, single source —
 # shared by validate_artifact_content (GATE-E83 die) and the check-confirm
 # subcommand (exit-code protocol). Sets CONFIRM_REASON ("" = confirmed).
@@ -404,6 +419,85 @@ validate_artifact_content() {
     # the lightweight one-line channel stays exempt by the branch above.
     grep -q "评审输入" "$d/03.5-tasks.md" \
       || die "GATE-E17: $d/03.5-tasks.md missing review-input (评审输入) field (A-layer, standards §2.2 input contract, v3.39.0)"
+  fi
+  # v3.67.0 (CHG-090, REQ-1053): requirements carry UX when the change touches a
+  # user-visible interface — every REQ block must anchor to a UJ-xxx user task.
+  # Block = from a REQ- mention to the next REQ-/top-level section; the anchor
+  # may sit on the REQ line itself or on a later line inside the block (template
+  # form: `**挂靠 UJ**：UJ-001`). An unfilled `UJ-xxx` placeholder anchor fails.
+  # Non-UI changes stay exempt (conditional gate keyed off 01-spec ui_change).
+  if [[ -s "$d/01-spec.md" ]] && ui_change_true "$d/01-spec.md"; then
+    unanchored=$(awk '
+      /REQ-[0-9A-Za-z]+/ { if (pending && !anchored) bad++; pending=1 }
+      pending && /UJ-[0-9]+/ { anchored=1 }
+      /^## / { if (pending && !anchored) bad++; pending=0 }
+      END { if (pending && !anchored) bad++; print bad+0 }
+    ' "$d/01-spec.md")
+    [[ "$unanchored" == 0 ]] \
+      || die "GATE-E90: $d/01-spec.md declares ui_change: true but $unanchored REQ block(s) carry no UJ-xxx anchor (A-layer, standards §2.5 stage 1, v3.67.0)"
+  fi
+}
+
+# v3.67.0 (CHG-090): soft fallback for a MISSED ui_change declaration (the
+# declaration is author-written and can be forgotten). A staged diff that
+# touches UI-looking paths while the active 01-spec does not declare
+# ui_change: true prints a one-line warning (non-fatal — the hard gate stays
+# keyed off the explicit declaration; record the justification in 09).
+warn_ux_soft() {
+  local id d spec af
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$af" && -s "$af" ]] || return 0
+  id=$(tr -d '[:space:]' < "$af" 2>/dev/null || true)
+  [[ -n "$id" ]] || return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -n "$d" && -d "$d" ]] || return 0
+  spec="$d/01-spec.md"
+  [[ -s "$spec" ]] || return 0
+  ui_change_true "$spec" && return 0
+  if git diff --cached --name-only 2>/dev/null \
+     | grep -Eq '\.(vue|tsx|jsx|html|css|scss|xaml)$|(^|/)(web|frontend|ui|pages|views|components)/'; then
+    echo "agent-gate: UX soft warning: staged diff touches UI-looking paths but $spec does not declare ui_change: true — declare it or record the justification in 09「重要上下文」 (standards §2.5 stage 1, v3.67.0)" >&2
+  fi
+}
+
+# v3.67.0 (CHG-090, REQ-1056..1060): the conditional UX lane. Only fires when
+# 01-spec declares ui_change: true, so non-UI changes stay byte-for-byte
+# equivalent to pre-upgrade behavior. Runs on stop/staged (03.6/04 already
+# exist by then; 07 exists at stop), never at begin (design/test not yet made).
+validate_ux_conditions() {
+  local id d spec risk n e2e af
+  # Read the active-change marker directly: active_change() dies when absent,
+  # and this conditional lane must stay dormant on repos with no active change.
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$af" && -s "$af" ]] || return 0
+  id=$(tr -d '[:space:]' < "$af" 2>/dev/null || true)
+  [[ -n "$id" ]] || return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -n "$d" && -d "$d" ]] || return 0
+  spec="$d/01-spec.md"
+  [[ -s "$spec" ]] || return 0
+  ui_change_true "$spec" || return 0
+  risk=$(json_field "$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)" risk_level 2>/dev/null || true)
+  [[ -s "$d/03.6-ui-spec.md" ]] \
+    || die "GATE-E92: ui_change: true but $d/03.6-ui-spec.md is missing (conditional artifact, standards §2.5 stage 3, v3.67.0)"
+  grep -qE "主键映射|显示名.*主键|主键.*显示名" "$d/03.6-ui-spec.md" \
+    || die "GATE-E94: $d/03.6-ui-spec.md missing the 显示名↔主键映射 section — a bare DB key field is not a user interface (standards §2.5 stage 3, v3.67.0)"
+  if grep -qE "直接输入[^。]*[A-Za-z_]*[Ii]d([^A-Za-z]|$)" "$d/03.6-ui-spec.md" 2>/dev/null; then
+    die "GATE-E97: $d/03.6-ui-spec.md describes a bare primary-key entry as the user's main input — entities must be chosen via list/search/context (standards §2.5 stage 3, v3.67.0)"
+  fi
+  if [[ ! -s "$d/03.5-tasks.md" ]] \
+     || ! sed 's/<!--[^>]*-->//g' "$d/03.5-tasks.md" 2>/dev/null | grep -qE '^\|.*\b(UX|UI)\b'; then
+    die "GATE-E93: ui_change: true but $d/03.5-tasks.md is missing or carries no UX/UI task row — UX work was never broken out (standards §2.5 stage 3, v3.67.0)"
+  fi
+  case "$risk" in L0|L1) n=1 ;; *) n=3 ;; esac
+  e2e=$(grep -cE "E2E|用户旅程" "$d/04-test-scripts.md" 2>/dev/null || true)
+  [[ "$e2e" -ge "$n" ]] \
+    || die "GATE-E95: ui_change: true but $d/04-test-scripts.md has $e2e user-journey E2E case(s), below threshold $n (L0/L1=1, L2/L3=3 or full main flow) (standards §2.5 stage 4, v3.67.0)"
+  if [[ -s "$d/07-review-report.md" ]]; then
+    grep -q "用户可用性验收" "$d/07-review-report.md" \
+      || die "GATE-E96: $d/07-review-report.md missing 「用户可用性验收」 signature section (standards §2.5 stage 8, v3.67.0)"
+    grep -q "建议人类走查" "$d/07-review-report.md" \
+      || die "GATE-E98: $d/07-review-report.md missing 「建议人类走查（非阻塞）」 line (standards §2.5 stage 8, v3.67.0)"
   fi
 }
 
@@ -1057,7 +1151,7 @@ validate_master_backfill() { # change-dir
   local d="$1" p row
   grep -q "项目总册回填清单" "$d/09-changelog.md" \
     || die "GATE-E59: cannot finish: 09-changelog.md missing 「项目总册回填清单」 section (standards §1.3)"
-  for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11; do
+  for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12; do
     # v3.66.0 (CHG-089): guard grep no-match — under set -euo pipefail a bare
     # `grep | head` assignment exits 1 and set -e kills the script before the
     # GATE-E60 die() below fires (silent death, friction ledger bypassed).
@@ -1070,16 +1164,17 @@ validate_master_backfill() { # change-dir
 
 # v3.35.0 (standards §1.3): begin refuses to start work in a repo whose
 # project masters are not initialized. Filling the skeletons is the FIRST
-# change's job (docs edits precede begin); the gate only demands the twelve
+# change's job (docs edits precede begin); the gate only demands the thirteen
 # files exist. Escape hatch is explicit: AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1
 # with the justification recorded in 09 重要上下文 — fail-closed, never silent.
+# v3.67.0 (CHG-090, REQ-1054): P12 产品上下文册 joins the set — thirteen files.
 validate_project_masters() {
   local f missing=""
   [[ -d "$docs_dir/project" ]] || die "GATE-E62: project masters not initialized: $docs_dir/project/ missing — copy <docs>/templates/project/ (skill resources/templates/project/) first (standards §1.3); set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 only with a recorded justification"
-  for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md; do
+  for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md P12-product-context.md; do
     [[ -s "$docs_dir/project/$f" ]] || missing="$missing $f"
   done
-  [[ -z "$missing" ]] || die "GATE-E63: project masters incomplete:$missing — initialize all twelve under $docs_dir/project/ (standards §1.3)"
+  [[ -z "$missing" ]] || die "GATE-E63: project masters incomplete:$missing — initialize all thirteen under $docs_dir/project/ (standards §1.3; P12 产品上下文册 v3.67.0)"
 }
 
 validate_stop() {
@@ -1540,12 +1635,13 @@ case "$command" in
           validate_active_change
         fi
         ;;
-      staged) validate_diff staged; record_delivery staged ;;
-      stop) validate_stop; record_delivery stop ;;
+      staged) validate_diff staged; validate_ux_conditions; warn_ux_soft; record_delivery staged ;;
+      stop) validate_stop; validate_ux_conditions; warn_ux_soft; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
         validate_diff branch "$base"
+        validate_ux_conditions
         ;;
       commit-msg)
         msgfile="${1:-}"
@@ -1574,7 +1670,7 @@ begin requires eight non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,
 02-code-impact-analysis.md, 03-modification-plan.md, 03.5-tasks.md,
 04-test-scripts.md. It also enforces
-the project masters (v3.35.0, standards §1.3): all twelve docs/project/ files
+the project masters (v3.35.0, standards §1.3): all thirteen docs/project/ files
 must exist (escape hatch AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a
 recorded justification). It also enforces
 A-layer content checks (standards §2.5): 00-intent.md must contain the

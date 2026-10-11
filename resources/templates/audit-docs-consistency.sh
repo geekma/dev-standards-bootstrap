@@ -29,9 +29,12 @@
 #      声明时校验，纯 bug 轨处置 16 组只写 01-diagnosis 亦无红灯。**委托必须落在会跑的
 #      执法点上，否则就是循环踢皮球**：审计直接接管（存在性是时间不变量）。豁免 = 登记
 #      `<bugs_root>/.gate-allowlist`（一行一 id，行尾注释写理由），登记组仍逐行点名可见。
-#   G9 项目级总册存在与自证（v3.35.0，§1.3）+ 功能目录表外 reviews/ 拦截（v3.37.1，§1.3 第 6 条）：
-#      12 册在位/自证/评审成对/最新变更回填清单；功能目录（01-spec 或 01.5 信号）内出现
+#   G9 项目级总册存在与自证（v3.35.0，§1.3；v3.67.0 十三册）+ 功能目录表外 reviews/ 拦截（v3.37.1，§1.3 第 6 条）：
+#      13 册在位/自证/评审成对/最新变更回填清单；功能目录（01-spec 或 01.5 信号）内出现
 #      reviews/ 即红（FU-105：评审唯一落点=变更轨 07 + 总册 reviews/，表外默认禁止）
+#   G11 UJ↔REQ 双向覆盖 / G12 五方证据（v3.67.0，§2.5 阶段 1/8）：仅 `ui_change: true`
+#      的变更参与——缺 UJ-xxx 或 03.6-ui-spec.md 即红（G11）；07 缺「用户可用性验收」或
+#      「建议人类走查（非阻塞）」行即红（G12）。非界面变更不参与（条件门，不追溯既往）。
 #   A20 变更目录溯源盖章互证（v3.28.0）：①同目录 ≥1 件已盖而其余未盖 = 盖章半途而废
 #      （时间不变的不一致，CHG-071 实测 2/9）；②`standard_version >= v3.26.0` 的变更目录
 #      必须全 `*.md` 盖章（其规范版本自身要求）。**不触发历史回填禁令**：不要求 v3.26 前
@@ -535,14 +538,14 @@ else
   report "A21 VACUOUS SKIP — no $BUGS_DIR/ directory" ok ok
 fi
 
-# ---------- G9 项目级总册存在与自证（v3.35.0，§1.3） ----------
-# 12 册在位、逐册自证（总册编号 + 独立完整声明）、评审记录成对；最新变更 09 含
+# ---------- G9 项目级总册存在与自证（v3.35.0，§1.3；v3.67.0 十三册加 P12） ----------
+# 13 册在位、逐册自证（总册编号 + 独立完整声明）、评审记录成对；最新变更 09 含
 # 回填清单节（存量回填清单语义，§2.14——失败项即回填清单，不产生"永久红"的
 # 历史改写义务：总册是活文档，缺什么补什么即可）。
 PROJECT_DIR="$ROOT/$DOCS_DIR/project"
 if [[ -d "$PROJECT_DIR" ]]; then
   gm_missing=0; gself=0; grev=0
-  for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md; do
+  for f in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md P12-product-context.md; do
     pm="$PROJECT_DIR/$f"
     if [[ ! -s "$pm" ]]; then
       gm_missing=$((gm_missing+1)); echo "     G9 missing master: project/$f"
@@ -554,7 +557,7 @@ if [[ -d "$PROJECT_DIR" ]]; then
     rev="$PROJECT_DIR/reviews/$f.review.md"
     [[ -s "$rev" ]] || { grev=$((grev+1)); echo "     G9 missing review record: reviews/$f.review.md"; }
   done
-  report "G9 project masters complete (twelve files)" 0 "$gm_missing"
+  report "G9 project masters complete (thirteen files)" 0 "$gm_missing"
   report "G9 project masters self-attesting (id + 独立完整声明)" 0 "$gself"
   report "G9 project masters review records paired" 0 "$grev"
   # 最新变更 09 含回填清单节（仅在仓库已有变更目录时核；按 mtime 取最新）。
@@ -611,6 +614,36 @@ if [[ "$g10_hits" -gt 0 ]]; then
   report "G10 every 废止 marker carries a superseding v3.x pointer" 0 "$g10_bad"
 else
   report "G10 废止-marker sweep VACUOUS SKIP — no markers in STD/AGENTS (did NOT run; do not read this as a pass)" ok ok
+fi
+
+# ---------- G11 UJ↔REQ 双向覆盖 / G12 五方证据（v3.67.0 CHG-090，§2.5 阶段 1/8） ----------
+# 条件门：仅当变更 01-spec 声明 `ui_change: true` 时成立。非界面变更不参与，避免
+# 对存量/后端变更产生"永久红"（不追溯既往）。G11 缺 UJ-xxx 或无 03.6-ui-spec.md =
+# 需求/设计未承载；G12 07 缺「用户可用性验收」或「建议人类走查」= 五方证据不全。
+g11_bad=0; g12_bad=0; g_ui=0
+if [[ -d "$CHANGES" ]]; then
+  for cd_ in "$CHANGES"/*/; do
+    [[ -d "$cd_" ]] || continue
+    spec_="$cd_/01-spec.md"
+    [[ -s "$spec_" ]] || continue
+    sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
+    g_ui=$((g_ui+1))
+    if ! grep -qE 'UJ-[0-9A-Za-z]+' "$spec_" 2>/dev/null || [[ ! -s "$cd_/03.6-ui-spec.md" ]]; then
+      g11_bad=$((g11_bad+1)); echo "     G11 $(basename "$cd_") ui_change:true 但缺 UJ-xxx 或 03.6-ui-spec.md"
+    fi
+    if [[ -s "$cd_/07-review-report.md" ]]; then
+      if ! { grep -q "用户可用性验收" "$cd_/07-review-report.md" && grep -q "建议人类走查" "$cd_/07-review-report.md"; }; then
+        g12_bad=$((g12_bad+1)); echo "     G12 $(basename "$cd_") ui_change:true 但 07 缺用户可用性验收/人类走查行"
+      fi
+    fi
+  done
+fi
+if [[ "$g_ui" -gt 0 ]]; then
+  report "G11 UI-change requirements carry UJ + 03.6-ui-spec (v3.67.0)" 0 "$g11_bad"
+  report "G12 UI-change reviews carry five-party usability evidence (v3.67.0)" 0 "$g12_bad"
+else
+  report "G11 UI-change UJ+03.6 sweep VACUOUS SKIP — no ui_change:true changes (did NOT run; do not read this as a pass)" ok ok
+  report "G12 UI-change five-party sweep VACUOUS SKIP — no ui_change:true changes (did NOT run; do not read this as a pass)" ok ok
 fi
 
 rm -f "$S3TMP"

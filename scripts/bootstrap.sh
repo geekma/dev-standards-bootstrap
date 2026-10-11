@@ -36,8 +36,8 @@ Usage: scripts/bootstrap.sh [flags] [target_root]
 Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, CLAUSE_REGISTRY.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
                methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
-               <docs>/templates/project/ (总册 12 册 + 评审模板, v3.35.0),
-               <docs>/templates/entry/ (变更入口骨架 8 件, v3.38.0; v3.52.0 起 8 件含 00.5),
+               <docs>/templates/project/ (总册 13 册 + 评审模板, v3.67.0),
+               <docs>/templates/entry/ (变更入口骨架 8 件 + 条件件 03.6-ui-spec.md, v3.67.0; v3.52.0 起 8 件含 00.5),
                <docs>/README.md (一页文档地图, v3.37.0),
                <docs>/06.5-deployment-config.md, <docs>/06-delivery-summary.md
                (八类最低文档集里原先无模板的两类，CHG-004),
@@ -671,10 +671,11 @@ run_layer() {
       for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md; do
         install_file - "$DOCS_DIR/methodologies/$m" "resources/methodologies/$m"
       done
-      # v3.35.0（§1.3）：项目级总册 12 册 + 评审记录模板骨架 → <docs>/templates/project/，
-      # 首次变更时由用户复制到 <docs>/project/ 并回填现状（begin 机校 12 册在位）。
+      # v3.35.0（§1.3）：项目级总册 13 册 + 评审记录模板骨架 → <docs>/templates/project/，
+      # 首次变更时由用户复制到 <docs>/project/ 并回填现状（begin 机校 13 册在位；P12 产品
+      # 上下文册 v3.67.0，活文档回填）。
       mkdir -p "$DOCS_DIR/templates/project/reviews"
-      for p in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md reviews/_template.review.md; do
+      for p in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md P12-product-context.md reviews/_template.review.md; do
         install_file - "$DOCS_DIR/templates/project/$p" "resources/templates/project/$p"
       done
       install_file bugfix-log "$DOCS_DIR/bugfix-log.md" resources/templates/bugfix-log.md
@@ -683,9 +684,10 @@ run_layer() {
       done
       # v3.38.0（CHG-038）：变更管线入口骨架（begin 必检模板）+ 脚手架脚本。
       # v3.52.0（CHG-064）：八件——00.5-communication.md 为沟通先行门产物（§2.17.2d）；
-      # 正式沟通稿模板随 --core 下发（uninstall Tier2 按 __CHANGE_ID__ 标记识别）。
+      # v3.67.0（CHG-090）：另发条件件 03.6-ui-spec.md（01-spec ui_change: true 时必需，
+      # 不计入八件基数；new-change 仅在命中 UI 变更时复制）；正式沟通稿模板随 --core 下发。
       mkdir -p "$DOCS_DIR/templates/entry"
-      for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+      for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 03.6-ui-spec.md 04-test-scripts.md; do
         install_file - "$DOCS_DIR/templates/entry/$e" "resources/templates/entry/$e"
       done
       install_file - "$DOCS_DIR/templates/communication.md" resources/templates/communication.md

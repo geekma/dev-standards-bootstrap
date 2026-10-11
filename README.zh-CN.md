@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.66.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.67.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -66,7 +66,7 @@
 **这能给你带来什么：**
 
 - **方差压缩，不是更聪明。** 治理不提高模型智力，而是把"聪明但失忆、局部强但全局弱、单次准但复现差"的结构性缺陷用机校 + 记忆 + 独立性钉死。没有它，交付质量是抽签：实测样本包括同一函数六连修、测试断言示例值伪造家族。
-- **价值集中在组织记忆。** 会话一压缩/结束，无治理的 Agent 从失忆重启；这里状态活在 12 册项目总册与磁盘产物里。
+- **价值集中在组织记忆。** 会话一压缩/结束，无治理的 Agent 从失忆重启；这里状态活在 13 册项目总册与磁盘产物里。
 - **税是可测量且正在被砍的。** 治理机制成本约 25% 工具调用 + 常驻底座，而 token 账单的 97.5%+ 是不换挡会话的 cache-read prefill——v3.38/v3.39 把会话纪律升级为机器执法（水位门、勘探预算黄灯、评审输入契约）正是冲着它去的：**约 90% 达成度 + 30~50% 成本下降**——规范的质量，接近裸奔的成本。
 
 ## 核心功能
@@ -82,7 +82,7 @@
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（679 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（693 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -338,7 +338,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.66.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.67.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -346,13 +346,13 @@ dev-standards-bootstrap/
     │   ├── development.md                   # 代码规范：SOLID/DRY/KISS/YAGNI 适用与豁免 + 7 个工程维度
     │   ├── data-structures.md               # 数据结构规范：六类模型 + 弱类型禁令 + LLM 输入输出专项
     │   ├── state-trigger-audit.md           # 状态/触发链路审计：6 条教训 + 6 步清单 + 3 个反模式（v3.4.0）
-    │   ├── expert-capabilities.md           # 专家能力卡：9 核心 + 3 条件命中专家（理论工具箱/广度/经验/自适应）（v3.34.0）
-    │   └── project-masters.md               # 项目级总册细节层：12 册清单/必含章节/回填注记语义（v3.35.0）
+    │   ├── expert-capabilities.md           # 专家能力卡：9 核心 + 产品可用性专家 + 3 条件命中专家（理论工具箱/广度/经验/自适应；v3.67.0 加 UX/UAT 卡）
+    │   └── project-masters.md               # 项目级总册细节层：13 册清单/必含章节/回填注记语义（v3.35.0；v3.67.0 加 P12 产品上下文册）
     └── templates/
         ├── docs-readme.md                  # 一页文档地图（v3.37.0）：五层职责+更新时机（→ <docs>/README.md）
         ├── communication.md                 # 沟通先行门产物（v3.52.0）：Round-1 沟通稿+用户整体确认记录（→ docs/changes/<id>/00.5-communication.md）
-        ├── project                           # 项目级总册（v3.35.0）：SDLC 12 册 P00–P11 + 评审记录模板（→ docs/templates/project/）
-        ├── entry                             # 变更入口骨架（v3.43.0）：begin 必检八件模板（→ docs/templates/entry/）
+        ├── project                           # 项目级总册（v3.67.0）：SDLC 13 册 P00–P12 + 评审记录模板（→ docs/templates/project/）
+        ├── entry                             # 变更入口骨架（v3.67.0）：begin 必检八件模板 + 条件件 03.6-ui-spec.md（→ docs/templates/entry/）
         ├── new-change.sh                   # 变更入口脚手架（v3.43.0）：专用目录/当日批次自动判定（→ scripts/new-change）
         ├── CLAUDE.md                       # Claude Code 一行导入
         ├── PULL_REQUEST_TEMPLATE.md        # 带门禁自检的 GitHub PR 模板
@@ -405,7 +405,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.66.0 | **最后更新：** 2026-09-30 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.67.0 | **最后更新：** 2026-10-11 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

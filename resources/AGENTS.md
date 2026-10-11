@@ -41,9 +41,9 @@
 
 若仓库存在 `scripts/agent-gate`，在首次改动源码前必须：
 
-1. 在 `docs/changes/<变更号>/` 创建并完成入口八件 `00-intent.md`、`00-governance.json`、`00.5-communication.md`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**骨架可由 `scripts/new-change <变更号> --risk Lx` 两段式生成（v3.52.0）：确认记录在位后才补齐 01-spec 起五件，`--allow-unconfirmed` 供自动化入口显式越过；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）。各件必含节与机校语义——00-intent 为管线入口且 begin 硬校「预期结果/开放问题」（§2.17）、00.5 沟通先行门 GATE-E83 硬校确认记录非空 + L0 单行声明豁免、确认落盘前禁止生成后续产物正文与源码编辑（§2.17.2d）、02 先分析后方案三维 + 回滚（§2.5 阶段 2）、JSON 风险等级与四主体互异（L2/L3 强制互异；全等级最低线=作者≠评审）含 `spec_author`（§2.1 规则 10）、RTVM 回填门禁 4——**唯一权威见 DS 对应节，本入口不复制其细则**。**当天 L0/L1 变更/缺陷首个即建 `docs/changes/BATCH-YYYYMMDD/`（`## <变更号>` 锚点分节，后续同日变更/缺陷并入；L2/L3 独立目录；细则 §1.1）**；00-intent 必填**目录落位声明**（`- **目录落位**：BATCH-YYYYMMDD | 独立目录（<理由>）`，GATE-E86 硬校，v3.60.0），非 L0 的 00.5 沟通稿须含五要素锚点（§2.17.2d 第 4 条）。
-2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。**begin 同时机校项目总册 12 册在位（§1.3）**：`docs/project/` 缺失或不全时，先复制 `<docs>/templates/project/` 骨架、回填现状并完成逐册初评，再 begin（豁免 `AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1` 须在 09「重要上下文」登记理由）。begin 同时执法**会话红灯门（v3.41.0）**：`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付 changelog 时拒绝（带病开工拦截；豁免 `AGENT_GUARD_ALLOW_OVER_RED=1` 并登记 09「重要上下文」）。
-3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」Observation 记录，§2.16.2）与**「项目总册回填清单」节**（P00–P11 逐册勾选/未命中，§1.3）。**交付前变更目录全部 `*.md` 产物盖章（pre-commit 自动，v3.41.0）**：hook 自动执行 `scripts/stamp-provenance.sh --all <活跃变更>`（幂等、真值读 git/主机/UTC、**禁手写**；§4 追踪矩阵由 `--all` 从 01.5 矩阵派生 fail-open；`bug_ref` 六件套由 hook 逐一 `--bug`；无 pre-commit 环境手动执行同命令；gate stop 逐一校验缺一不可交付；只校验当前活跃变更，**历史产物不得回填**，§1.1/§4）。**`bug_ref` 绑定的缺陷六件套同样盖章**：`scripts/stamp-provenance.sh --bug <BUG-id>`（六件不齐 staged/stop/CI 与审计 G8 拦截；豁免须 `<docs>/bugs/.gate-allowlist` 登记理由；**v3.35.0 起六件套按天入批、v3.36.0 扁平化：`docs/bugs/BATCH-YYYYMMDD/` 同名文件 + `## BUG-xxx` 锚点分节**，嵌套子目录为历史合法形态，§1.1）。启用 Stop Hook / 会话内执法（v3.34.0）时自动检查上述产物与门禁 4 RTVM 回填（细则 §2.17.1）。
+1. 在 `docs/changes/<变更号>/` 创建并完成入口八件 `00-intent.md`、`00-governance.json`、`00.5-communication.md`、`01-spec.md`、`02-code-impact-analysis.md`、`03-modification-plan.md`、`03.5-tasks.md`、`04-test-scripts.md`（**骨架可由 `scripts/new-change <变更号> --risk Lx` 两段式生成（v3.52.0）：确认记录在位后才补齐 01-spec 起五件，`--allow-unconfirmed` 供自动化入口显式越过；骨架不豁免填写，PENDING 执行主体被 begin 拒绝**）。各件必含节与机校语义——00-intent 为管线入口且 begin 硬校「预期结果/开放问题」（§2.17）、00.5 沟通先行门 GATE-E83 硬校确认记录非空 + L0 单行声明豁免、确认落盘前禁止生成后续产物正文与源码编辑（§2.17.2d）、02 先分析后方案三维 + 回滚（§2.5 阶段 2）、JSON 风险等级与四主体互异（L2/L3 强制互异；全等级最低线=作者≠评审）含 `spec_author`（§2.1 规则 10）、RTVM 回填门禁 4——**唯一权威见 DS 对应节，本入口不复制其细则**。**当天 L0/L1 变更/缺陷首个即建 `docs/changes/BATCH-YYYYMMDD/`（`## <变更号>` 锚点分节，后续同日变更/缺陷并入；L2/L3 独立目录；细则 §1.1）**；00-intent 必填**目录落位声明**（`- **目录落位**：BATCH-YYYYMMDD | 独立目录（<理由>）`，GATE-E86 硬校，v3.60.0），非 L0 的 00.5 沟通稿须含五要素锚点（§2.17.2d 第 4 条）。**命中 `ui_change: true` 的界面/体验变更**：`03.6-ui-spec.md`（条件产物）与阶段 4 用户旅程 E2E、阶段 8 产品可用性专家 UAT 条件门生效（GATE-E92–E98，v3.67.0）。
+2. 执行 `scripts/agent-gate begin <变更号>`；未通过不得开始源码编辑。**begin 同时机校项目总册 13 册在位（§1.3）**：`docs/project/` 缺失或不全时，先复制 `<docs>/templates/project/` 骨架、回填现状并完成逐册初评，再 begin（豁免 `AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1` 须在 09「重要上下文」登记理由）。begin 同时执法**会话红灯门（v3.41.0）**：`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付 changelog 时拒绝（带病开工拦截；豁免 `AGENT_GUARD_ALLOW_OVER_RED=1` 并登记 09「重要上下文」）。
+3. 提交前执行 `scripts/agent-gate --stage staged`；交付前补全测试证据与 Changelog（含「执行记录（ReAct）」Observation 记录，§2.16.2）与**「项目总册回填清单」节**（P00–P12 逐册勾选/未命中，§1.3）。**交付前变更目录全部 `*.md` 产物盖章（pre-commit 自动，v3.41.0）**：hook 自动执行 `scripts/stamp-provenance.sh --all <活跃变更>`（幂等、真值读 git/主机/UTC、**禁手写**；§4 追踪矩阵由 `--all` 从 01.5 矩阵派生 fail-open；`bug_ref` 六件套由 hook 逐一 `--bug`；无 pre-commit 环境手动执行同命令；gate stop 逐一校验缺一不可交付；只校验当前活跃变更，**历史产物不得回填**，§1.1/§4）。**`bug_ref` 绑定的缺陷六件套同样盖章**：`scripts/stamp-provenance.sh --bug <BUG-id>`（六件不齐 staged/stop/CI 与审计 G8 拦截；豁免须 `<docs>/bugs/.gate-allowlist` 登记理由；**v3.35.0 起六件套按天入批、v3.36.0 扁平化：`docs/bugs/BATCH-YYYYMMDD/` 同名文件 + `## BUG-xxx` 锚点分节**，嵌套子目录为历史合法形态，§1.1）。启用 Stop Hook / 会话内执法（v3.34.0）时自动检查上述产物与门禁 4 RTVM 回填（细则 §2.17.1）。
 4. 传动与事故重入（§2.17.1/§2.17.2）：`01-spec.md` 合入会自动派发 02/03/03.5/04 骨架 PR，`09-changelog.md` 合入会自动开发布检查单 issue；生产事故经 incident 事件自动生成 `BUG-<时间戳>` 的 `00-intent.md` 骨架，接手者须走完整变更流程，禁止"修完不留痕"。**缺陷发现入口（§2.17.2b v3.43.0）**：主干回归红经 `bug-autointent` 自动建完整六件套骨架（频控窗口内同指纹只追加复现行）；会话内 audit 红灯/gate 摩擦须**交互三选项**（建骨架/登记 FU/忽略须 09 理由），不得静默跳过。启用会话内执法时，会话开始自动注入规则 10 四主体自查表（§2.1 规则 10，冲突点名）。
 5. `scripts/agent-gate metrics` 只读输出管线度量（§2.17.5），不得用度量数值替代 DoD 判定。
 
@@ -59,6 +59,7 @@
 | 执行中遇到歧义怎么裁定（何时必须问用户、何时可自裁） | §2.1 规则 8「歧义分级裁定」 |
 | 只加载本次任务需要的规范层（宪法/流程/操作/历史） | §头部「分层阅读路由」 |
 | 新建功能，第一次接触本仓库 | §2.5 阶段 1-10 全部 |
+| 做用户可见界面/体验变更（项目上下文包·UJ·03.6·UX 任务·E2E·UAT） | §2.5 阶段 1/3/4/8 + resources/methodologies/expert-capabilities.md §13 |
 | 做影响分析 / 出方案 / 拆任务 | §2.5 阶段 2-3（三维影响 + ≥2 候选选型 + PM 拆分；命中状态/触发链路时隐式链路三向遍历见 `resources/methodologies/state-trigger-audit.md`） |
 | 做技术/方法论选型（允许用哪些、禁止用哪些） | `resources/METHODOLOGY.md`（M0–M3 分级唯一权威表）+ §2.5 阶段 3 |
 | 写代码前的工程决策（SOLID/DRY/KISS、复杂度、错误处理、日志、并发） | `resources/methodologies/development.md` |
@@ -69,8 +70,8 @@
 | 怎么压会话/输出 token 成本 | 本文件「Agent 执行资源纪律」节 + §2.9.6 会话与上下文纪律 + §2.5 表达成本条款 |
 | 只是改 bug | §2.5 阶段 6（`docs/bugfix-log.md` 双登记 + 根因表「同族推演」行 + 「Bug 修复回填清单」；三条款——诊断前必读总册 / TC 覆盖强制新增防回归 / 六件套按天入批 `docs/bugs/BATCH-YYYYMMDD/` 扁平化——与 **P3 缺陷轻量通道**（文案类：`01-diagnosis.md` 行首 `severity: P3` 免 02/05/06 三件，未声明=全六件）细则唯一权威见 §2.5 阶段 6 与 §1.1）+ `resources/methodologies/state-trigger-audit.md`（同族推演与反模式细则）+ §0 门禁 |
 | 按变更类型取阅读包（阅读税路由，v3.46.0） | `bash scripts/generate-reading-pack.sh <type>`（type∈`L0-bugfix|L1-standards|L2-architecture|L3-critical|universal`）——从 `CLAUSE_REGISTRY.md`（机器索引层）按需生成内容切片，锚点 fail-closed 防漂移；本表为路由入口、阅读包为切片、DS 为正文唯一权威（§2.17.2c） |
-| 交付前文档互证（CI/本地均可跑） | `bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档清单↔§3 同源 / G4 bugfix 双登记互证 / G5 RTVM 回填一致 / G6 §4 必填节 / G7 变更批次自洽 / G8 六件套存在性 / **G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截（§1.3 第 6 条，v3.37.1）** / **G10 废弃条款 sweep——废止标记须带 v3.x 被替代指向（减法机制，v3.41.0）** / A20 变更目录盖章互证 / A21 六件套盖章，v3.35.0；失败项即 §2.14 回填清单，§2.13.4） |
-| 项目级总册（总体需求/架构/接口/数据/任务/测试/部署/风险/决策） | §1.3 + `resources/methodologies/project-masters.md`（十二册清单与必含章节唯一权威；首次变更初始化，每次变更逐册回填+变更注记） |
+| 交付前文档互证（CI/本地均可跑） | `bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 / G3 归档清单↔§3 同源 / G4 bugfix 双登记互证 / G5 RTVM 回填一致 / G6 §4 必填节 / G7 变更批次自洽 / G8 六件套存在性 / **G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截（§1.3 第 6 条，v3.37.1）** / **G10 废弃条款 sweep——废止标记须带 v3.x 被替代指向（减法机制，v3.41.0）** / **G11 UJ↔REQ 覆盖 + G12 五方证据——仅 `ui_change:true` 变更参与（v3.67.0）** / A20 变更目录盖章互证 / A21 六件套盖章；失败项即 §2.14 回填清单，§2.13.4） |
+| 项目级总册（总体需求/架构/接口/数据/任务/测试/部署/风险/决策） | §1.3 + `resources/methodologies/project-masters.md`（十三册清单与必含章节唯一权威；首次变更初始化，每次变更逐册回填+变更注记） |
 | 涉及配置文件/数据库变更 | §2.6 |
 | 要发布上线 | §2.7、§2.8 |
 | 涉及模型/Prompt/AI 链路 | §2.9 + `resources/methodologies/data-structures.md` §4（LLM 结构专项） |
@@ -84,5 +85,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.66.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.67.0_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

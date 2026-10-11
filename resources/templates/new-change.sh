@@ -206,6 +206,15 @@ else
       die_check_confirm_failed "$confirm_gate_rc"
     fi
   fi
+  # v3.67.0 (CHG-090, REQ-1056): conditional artifact — 03.6-ui-spec.md is
+  # required only when 01-spec declares ui_change: true (standards §2.5 stage 3).
+  # Scaffold it automatically once the declaration is present so the author
+  # never forgets the conditional lane.
+  if [[ -s "$d/01-spec.md" && -s "$tmpl_dir/03.6-ui-spec.md" && ! -s "$d/03.6-ui-spec.md" ]] \
+     && grep -qE 'ui_change\*{0,2}[：:][[:space:]]*`?true' "$d/01-spec.md" 2>/dev/null; then
+    fill "$tmpl_dir/03.6-ui-spec.md" > "$d/03.6-ui-spec.md"
+    echo "new-change: ui_change: true detected — scaffolded conditional 03.6-ui-spec.md"
+  fi
   echo "new-change: scaffolded $d"
 fi
 
@@ -218,5 +227,6 @@ next steps (gate begin refuses skeletons until they are filled):
   2. fill 00-intent.md (问题/预期结果/开放问题) and pick real owners in
      00-governance.json — PENDING placeholders are rejected by begin;
   3. fill 01-spec REQ- / 02 三维 / 03 DES-+选型 / 03.5 依赖+里程碑 / 04 TC-+SC-;
+     ui_change: true 时另填条件件 03.6-ui-spec.md（IA/逐屏/四态/禁裸主键，§2.5 阶段 3）;
   4. run: scripts/agent-gate begin <change-id>
 EOF

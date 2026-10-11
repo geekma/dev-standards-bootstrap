@@ -65,6 +65,13 @@
 | R41 | 风险等级判定表（§0.5.1） | DEVELOPMENT_STANDARDS.md::### 0.5.1 风险等级判定表 | L3-critical | 硬 | 结构 |
 | R42 | 版本载体全链清单（§2.14） | DEVELOPMENT_STANDARDS.md::版本载体全链清单 | universal | 硬 | 结构 |
 | R43 | 沟通先行门（§2.17.2d） | DEVELOPMENT_STANDARDS.md::#### 2.17.2d 沟通先行门 | universal | 硬 | 结构 |
+| R44 | 项目上下文包 10 域（§2.5 阶段 1 条 7） | DEVELOPMENT_STANDARDS.md::**项目上下文包（v3.67.0，强制先于 REQ）** | universal | 硬 | 结构 |
+| R45 | 用户任务 UJ 与 ui_change 声明（§2.5 阶段 1 条 8） | DEVELOPMENT_STANDARDS.md::**用户任务（`UJ-xxx`，v3.67.0）** | universal | 硬 | 结构 |
+| R46 | 禁裸主键作用户入口（§2.5 阶段 3 条 9） | DEVELOPMENT_STANDARDS.md::禁止 DB 主键 | L2-architecture | 硬 | 行为 |
+| R47 | 用户旅程 E2E 阈值（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**用户旅程 E2E（v3.67.0）** | L2-architecture | 硬 | 行为 |
+| R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节（v3.67.0）** | L2-architecture | 硬 | 结构 |
+| R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 |
+| R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
@@ -136,7 +143,7 @@
 | GATE-E60 | 回填清单缺 Pxx 总册行 | agent-gate.sh::validate_master_backfill() |
 | GATE-E61 | 回填清单行非 [x] 也非「未命中（理由）」 | agent-gate.sh::validate_master_backfill() |
 | GATE-E62 | docs/project/ 未初始化（先复制总册骨架） | agent-gate.sh::validate_project_masters() |
-| GATE-E63 | 十二总册不齐 | agent-gate.sh::validate_project_masters() |
+| GATE-E63 | 十三总册不齐 | agent-gate.sh::validate_project_masters() |
 | GATE-E64 | stop 阶段验证命令执行失败 | agent-gate.sh::validate_stop() |
 | GATE-E65 | diff 模式未知（staged/branch 之外） | agent-gate.sh::changed_files() |
 | GATE-E66 | 源码改动无对应变更产物（spec/plan/test/evidence） | agent-gate.sh::validate_diff() |
@@ -149,6 +156,14 @@
 | GATE-E73 | 同日批次已存在仍开独立目录（L0/L1 须入批） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E74 | 会话水位超限（默认 50 轮须 handoff；v3.63.0 起 `-ge` 口径） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E89 | 同会话交付后未换挡（last-delivery 在本会话存活期内且无 handoff 证据；豁免 AGENT_GUARD_ALLOW_NO_SHIFT=1+09 登记） | agent-gate.sh::begin（v3.63.0，REQ-1033） |
+| GATE-E90 | ui_change:true 但 01-spec 的 REQ 块未挂 UJ-xxx（空占位同拒） | agent-gate.sh::validate_artifact_content()（v3.67.0，CHG-090） |
+| GATE-E92 | ui_change:true 但缺条件产物 03.6-ui-spec.md | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E93 | ui_change:true 但 03.5 无 UX/UI 任务行（注释图例不算） | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E94 | 03.6 缺显示名↔主键映射节 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E95 | ui_change:true 但 04 用户旅程 E2E 计数低于阈值（L0/L1=1，L2/L3=3） | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E96 | 07 缺「用户可用性验收」签名节 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E97 | 03.6 把 DB 裸主键写成用户主入口 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E98 | 07 缺「建议人类走查（非阻塞）」行 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

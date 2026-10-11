@@ -188,12 +188,12 @@ append_diag_lines() { # <file> [decl]
   printf '延伸发现：未发现\n历史相似检索：未命中（%s）\n' "${2:-根因关键词检索}" >> "$1"
 }
 
-# v3.35.0（§1.3）：begin 强制项目总册在位——所有夹具仓库开箱即含 12 册最小骨架
+# v3.35.0（§1.3）：begin 强制项目总册在位——所有夹具仓库开箱即含 13 册最小骨架
 #（含「总册编号」与「独立完整声明」自证行 + 逐册评审存根）；T23 负例删除后再验拒绝路径。
 seed_project_masters() {
   mkdir -p docs/project/reviews
   local p
-  for p in P00-project-charter P01-requirements-master P02-architecture-master P03-interface-registry P04-data-dictionary P05-task-plan P06-test-master P07-test-verdicts P08-deployment-master P09-risk-register P10-change-ledger P11-decision-log; do
+  for p in P00-project-charter P01-requirements-master P02-architecture-master P03-interface-registry P04-data-dictionary P05-task-plan P06-test-master P07-test-verdicts P08-deployment-master P09-risk-register P10-change-ledger P11-decision-log P12-product-context; do
     printf '# master\n总册编号：%s\n独立完整声明：fixture\n' "${p%%-*}" > "docs/project/$p.md"
     printf '# review R-%s\n' "${p%%-*}" > "docs/project/reviews/$p.md.review.md"
   done
@@ -246,7 +246,7 @@ append_masters() { # <09-file>
   grep -q '项目总册回填清单' "$f" && return 0
   {
     printf '\n#### 项目总册回填清单\n'
-    for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11; do
+    for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12; do
       printf -- '- [x] %s 已回填（章节：fixture；变更注记 CHG-999）\n' "$p"
     done
   } >> "$f"
@@ -2406,8 +2406,8 @@ out=$(scripts/agent-gate begin CHG-910 2>&1 || true)
 check_output "T23 refusal names the masters and the escape hatch" "project masters not initialized.*AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS" "$out"
 seed_project_masters
 scripts/agent-gate begin CHG-910 >/dev/null 2>&1
-report "T23 begin passes once the twelve masters exist" 0 $?
-rm docs/project/P11-decision-log.md
+report "T23 begin passes once the thirteen masters exist" 0 $?
+rm docs/project/P12-product-context.md
 scripts/agent-gate begin CHG-910 >/dev/null 2>&1
 report "T23 begin refuses with an incomplete master set" 2 $?
 seed_project_masters
@@ -3038,7 +3038,7 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  report "T39 registry row count" 43 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 50 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
@@ -3328,7 +3328,7 @@ if [[ -s "$GATE46_SRC" ]]; then
   printf '# results\nTests run: 1, Failures: 0\n' > docs/changes/CHG-980/05-test-results.md
   printf '# deploy\n未命中，不适用\n' > docs/changes/CHG-980/06.5-deployment-config.md
   printf '# delivery\n\n### 遗留\n- FU-980：T46 夹具（无实际遗留项，占位满足 E46 形态）\n' > docs/changes/CHG-980/06-delivery-summary.md
-  printf '# changelog\n\n## CHG-980\n#### 项目总册回填清单\n- [x] P00 未命中（T46 夹具）\n- [x] P01 未命中（T46 夹具）\n- [x] P02 未命中（T46 夹具）\n- [x] P03 未命中（T46 夹具）\n- [x] P04 未命中（T46 夹具）\n- [x] P05 未命中（T46 夹具）\n- [x] P06 未命中（T46 夹具）\n- [x] P07 未命中（T46 夹具）\n- [x] P08 未命中（T46 夹具）\n- [x] P09 未命中（T46 夹具）\n- [x] P10 已回填（T46 夹具行）\n- [x] P11 已回填（T46 夹具行）\n#### 执行记录（ReAct）\nObservation\n' > docs/changes/CHG-980/09-changelog.md
+  printf '# changelog\n\n## CHG-980\n#### 项目总册回填清单\n- [x] P00 未命中（T46 夹具）\n- [x] P01 未命中（T46 夹具）\n- [x] P02 未命中（T46 夹具）\n- [x] P03 未命中（T46 夹具）\n- [x] P04 未命中（T46 夹具）\n- [x] P05 未命中（T46 夹具）\n- [x] P06 未命中（T46 夹具）\n- [x] P07 未命中（T46 夹具）\n- [x] P08 未命中（T46 夹具）\n- [x] P09 未命中（T46 夹具）\n- [x] P10 已回填（T46 夹具行）\n- [x] P11 已回填（T46 夹具行）\n- [x] P12 已回填（T46 夹具行）\n#### 执行记录（ReAct）\nObservation\n' > docs/changes/CHG-980/09-changelog.md
   printf '#!/usr/bin/env bash\n' > scripts/probe-980.sh   # stop 的 working_code_changed 前提
   bash "$ROOT/resources/templates/stamp-provenance.sh" --all CHG-980 >/dev/null 2>&1   # E19 溯源章
   scripts/agent-gate --stage stop >/dev/null 2>&1
@@ -3410,11 +3410,11 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.66.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.66.0 in prose" 3 "$(grep -cF 'v3.66.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.66.0" 1 "$(grep -cF '规范版本：v3.66.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.66.0" 1 "$(grep -cF '当前对应规范版本：v3.66.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.66.0 top row" 1 "$(grep -c '^| v3.66.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.67.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.67.0 in prose" 6 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.67.0" 1 "$(grep -cF '规范版本：v3.67.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.67.0" 1 "$(grep -cF '当前对应规范版本：v3.67.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.67.0 top row" 1 "$(grep -c '^| v3.67.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3423,7 +3423,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 6 "$(grep -c 'v3\.66\.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 14 "$(grep -c 'v3.67.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 }
 section_T49() {
@@ -3633,7 +3633,7 @@ section_T50() {
   t50_last=$(printf '%s\n' "$t50_list" | tail -1)
   # v3.66.0 (CHG-088): expected tail recalibrated T50→T51 after the receipt
   # self-test section joined the registry (same dynamic-count discipline).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T51 ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T52 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3742,11 +3742,79 @@ R51FAKE
   rm -rf "$r51"
 }
 
+# v3.67.0 (CHG-090, REQ-1053/1056~1060): UX 条件门（E90 + E92–E96）。
+# 条件门只对 ui_change: true 生效；false 时逐字节等价（T52 隔离用例把这一条钉死）。
+section_T52() {
+# ------------------------------------------------ T52 UX 条件门（v3.67.0）
+new_repo
+seed_artifacts CHG-1000 L1 claude/s-1
+# E90：声明 ui_change 但无 UJ → begin 拒
+printf '# spec\n- **ui_change**：true\n- REQ-001: r\n' > docs/changes/CHG-1000/01-spec.md
+scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
+report "T52 E90 rejects ui_change:true without a UJ" 2 $?
+# E90 负例补强：模板形态的空挂靠（`**挂靠 UJ**：<!-- 待填 -->`）同样拒
+printf '# spec\n- **ui_change**：true\n### REQ-001\n**描述**：r\n**挂靠 UJ**：<!-- 待填：UJ-xxx -->\n' > docs/changes/CHG-1000/01-spec.md
+scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
+report "T52 E90 rejects an unfilled UJ anchor placeholder" 2 $?
+# E90 正例：REQ 块内挂靠真实 UJ → begin 过
+printf '# spec\n- **ui_change**：true\n## 用户任务\n### UJ-001\n- **入口**：患者列表\n### REQ-001\n**描述**：r\n**挂靠 UJ**：UJ-001\n' > docs/changes/CHG-1000/01-spec.md
+scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
+report "T52 E90 passes once a UJ anchors the REQ" 0 $?
+echo x > src/a.go
+git add src/a.go
+# E92：ui_change 但缺 03.6
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E92 rejects ui_change:true without 03.6-ui-spec" 2 $?
+printf '# ui\n## 逐屏字段与控件\n- 列表选择\n' > docs/changes/CHG-1000/03.6-ui-spec.md
+# E94：03.6 缺显示名↔主键映射
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E94 rejects 03.6 without the key-mapping section" 2 $?
+printf '# ui\n## 显示名↔主键映射\n- 患者显示名 → patientId\n- 用户直接输入 patientId 开始诊断\n' > docs/changes/CHG-1000/03.6-ui-spec.md
+# E97：03.6 把裸主键当主入口
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E97 rejects a bare primary-key entry" 2 $?
+printf '# ui\n## 显示名↔主键映射\n- 患者显示名 → patientId\n' > docs/changes/CHG-1000/03.6-ui-spec.md
+# E93：03.5 无 UX/UI 任务行（注释里的图例不算，review P1-4）
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E93 rejects 03.5 without a UX task row" 2 $?
+printf '# tasks\n| 任务 | 类型 | 依赖 | 里程碑 | 说明 |\n|---|---|---|---|---|\n| T1 | UX | 无 | M1 | 设计 |\n- 评审输入: x\n' > docs/changes/CHG-1000/03.5-tasks.md
+# E95：L1 阈值 1，04 无用户旅程 E2E
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E95 rejects zero user-journey E2E cases" 2 $?
+printf '# tests\n- TC-001 用户旅程 E2E（真人入口）\n覆盖维度: 正常流\n- SC-001 用户旅程 E2E（覆盖: TC-001）\n' > docs/changes/CHG-1000/04-test-scripts.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E92-E95 pass once 03.6 + UX task + E2E are in place" 0 $?
+# E96/E98：07 缺用户可用性验收 → E96；有验收缺人类走查行 → E98
+printf '# review\n## 评审结论\n通过\n' > docs/changes/CHG-1000/07-review-report.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E96 rejects a review without usability sign-off" 2 $?
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n## 评审结论\n通过\n' > docs/changes/CHG-1000/07-review-report.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E98 rejects the missing human-walkthrough line" 2 $?
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 评审结论\n通过\n' > docs/changes/CHG-1000/07-review-report.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 E96+E98 pass with usability sign-off + human-walkthrough line" 0 $?
+# 隔离：ui_change 缺省/为 false 时不启用任何 UX 条件门
+new_repo
+seed_artifacts CHG-1001 L1 claude/s-1
+scripts/agent-gate begin CHG-1001 >/dev/null 2>&1
+echo x > src/a.go
+git add src/a.go
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T52 UX lane stays dormant without ui_change" 0 $?
+# 软告警：UI 路径 diff + 未声明 ui_change → 仅告警不拒（P1-5）
+mkdir -p web
+echo x > web/page.html
+git add web/page.html
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T52 soft warning fires for UI-path diffs without ui_change" "UX soft warning" "$out"
+}
+
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do

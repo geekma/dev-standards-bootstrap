@@ -514,10 +514,17 @@ fi
 # 在取值阶段用 awk '%d' 做十进制归一（非数字归一为 0，产生 gap 报错而非静默跳过）。
 # v3.43.0（REQ-961 / FU-111 闭合，用户裁定放宽）：编号集 = 独立 CHG-* 目录 ∪
 # BATCH-*/ 内 `## CHG-xxx` 锚点成员——批后独立目录不再误报跳号（§1.1 同日语义）。
+# v3.67.0（CHG-090）：∪ STANDARDS_CHANGELOG 声明的 CHG 号——同版本收尾类变更
+# （CHG-089 前例：产物并入 CHG-088 docset，仅 §7/CHANGELOG 留名）不构成跳号；
+# 号在账本声明即被占用，磁盘形态不是占用与否的判据。
 chg_nums=$( { basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/null \
   | sed 's/CHG-//';
   grep -hoE '^##[[:space:]]+CHG-[0-9]+' "$REPO_CHANGES"/BATCH-*/[0-9A-Za-z]*.md 2>/dev/null \
-  | sed -E 's/^##[[:space:]]+CHG-//'; } \
+  | sed -E 's/^##[[:space:]]+CHG-//';
+  # 号声明面只取「（CHG-xxx」括注形态（版本行的变更号引法），避免把历史行里的
+  # 假想示例（如 `## CHG-903`）当真实占用号（v3.19.0 行实测含此类示例）。
+  grep -hoE '[（(]CHG-[0-9]+' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null \
+  | grep -oE '[0-9]+'; } \
   | awk '{printf "%d\n", $1}' | sort -nu)
 a6c_ran=0
 if [[ -n "$chg_nums" ]]; then
@@ -665,7 +672,7 @@ at_least "A30 seven-element history field" 1 "$STD" '历史检索命中的 BUG/C
 # A31 枚举面 pin（CHG-058/REQ-978）：G 组清单于双语 README+SKILL 在册（G10 同步漏更复发防线，A29 同族）+ bugfix-log 模板历史相似字段
 at_least "A31 G10 enumerated in EN README" 1 "$ROOT/README.md" 'G10'
 at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
-at_least "A31 G10 enumerated in SKILL" 1 "$ROOT/SKILL.md" 'G10'
+at_least "A31 audit-group enumeration in SKILL (G1-G12)" 1 "$ROOT/SKILL.md" 'G1–G12'
 at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bugfix-log.md" '历史相似'
 
 # A32 版本载体全链清单条款（CHG-061 / REQ-984，对等减法=§2.16.5 标准升级行退役合并）
@@ -963,7 +970,7 @@ at_least "A23 MAINTAINER documents the install.sh role" 1 "$ROOT/MAINTAINER.md" 
 # 嵌套形态；⑤golden 负例被删导致机校裸奔。
 MASTERS_MD="$ROOT/resources/methodologies/project-masters.md"
 report "A25 project-masters methodology file exists" 1 "$([[ -s "$MASTERS_MD" ]] && echo 1 || echo 0)"
-at_least "A25 methodology defines the twelve masters" 1 "$MASTERS_MD" '十二册清单'
+at_least "A25 methodology defines the thirteen masters" 1 "$MASTERS_MD" '十三册清单'
 at_least "A25 methodology defines review-record shape" 1 "$MASTERS_MD" '评审记录必含章节'
 at_least "A25 standards §1.3 defines the master set" 1 "$STD" '项目级总册与评审记录（Project Master Set'
 at_least "A25 standards pins every-change backfill" 1 "$STD" '项目总册回填清单'
@@ -983,21 +990,37 @@ report "A25 gate resolves defect groups across both layouts" 1 "$(a17_at_least_1
 report "A25 gate sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$GATE_TPL" || true)")"
 report "A25 gate sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c 'anchored in more than one day batch' "$GATE_TPL" || true)")"
 report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'must join it into the day batch\|move it into the day batch' "$GATE_TPL" || true)")"
-report "A25 gate begin checks the twelve masters" 1 "$(a17_at_least_1 "$(grep -c 'validate_project_masters' "$GATE_TPL" || true)")"
+report "A25 gate begin checks the thirteen masters" 1 "$(a17_at_least_1 "$(grep -c 'validate_project_masters' "$GATE_TPL" || true)")"
 report "A25 gate stop checks the master backfill rows" 1 "$(a17_at_least_1 "$(grep -c 'validate_master_backfill' "$GATE_TPL" || true)")"
 report "A25 stamper resolves batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'defect group not found' "$STAMP_TPL" || true)")"
 report "A25 audit carries G9 masters checks" 1 "$(a17_at_least_1 "$(grep -c 'G9 project masters' "$AUDIT_TPL" || true)")"
 report "A25 audit sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$AUDIT_TPL" || true)")"
 report "A25 audit sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c '扁平批次锚点缺件' "$AUDIT_TPL" || true)")"
 masters_n=0
-for mf in P00-project-charter P01-requirements-master P02-architecture-master P03-interface-registry P04-data-dictionary P05-task-plan P06-test-master P07-test-verdicts P08-deployment-master P09-risk-register P10-change-ledger P11-decision-log; do
+for mf in P00-project-charter P01-requirements-master P02-architecture-master P03-interface-registry P04-data-dictionary P05-task-plan P06-test-master P07-test-verdicts P08-deployment-master P09-risk-register P10-change-ledger P11-decision-log P12-product-context; do
   [[ -s "$ROOT/resources/templates/project/$mf.md" ]] && masters_n=$((masters_n+1))
 done
-report "A25 twelve master templates exist" 12 "$masters_n"
+report "A25 thirteen master templates exist" 13 "$masters_n"
 report "A25 review-record template exists" 1 "$([[ -s "$ROOT/resources/templates/project/reviews/_template.review.md" ]] && echo 1 || echo 0)"
 report "A25 docs map template exists" 1 "$([[ -s "$ROOT/resources/templates/docs-readme.md" ]] && echo 1 || echo 0)"
 report "A25 docs map shipped by bootstrap core" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/docs-readme.md' "$ROOT/scripts/bootstrap.sh" || true)")"
 report "A25 audit sweeps out-of-table feature-dir reviews" 1 "$(a17_at_least_1 "$(grep -c 'G9 feature dirs carry no out-of-table reviews/' "$ROOT/resources/templates/audit-docs-consistency.sh" || true)")"
+
+# ── PART A39: UX 条件门锚点（v3.67.0，CHG-090）────────────────────────────
+# 防反向回退：条件门（E90/E92–E96）、审计 G11/G12、DS 硬规则、P12/03.6 模板、
+# CLAUSE_REGISTRY 的 R44–R50 系新条款任一被删即红。
+at_least "A39 gate defines the UX conditional lane" 1 "$GATE_TPL" 'validate_ux_conditions'
+at_least "A39 gate reads the ui_change declaration" 1 "$GATE_TPL" 'ui_change_true'
+at_least "A39 gate carries E90 (UJ required)" 1 "$GATE_TPL" 'GATE-E90'
+at_least "A39 gate carries E96 (usability UAT)" 1 "$GATE_TPL" 'GATE-E96'
+at_least "A39 gate begin requires the P12 master" 1 "$GATE_TPL" 'P12-product-context.md'
+at_least "A39 audit carries the G11 UJ coverage criterion" 1 "$AUDIT_TPL" 'UI-change requirements carry UJ'
+at_least "A39 audit carries the G12 five-party criterion" 1 "$AUDIT_TPL" 'five-party usability evidence'
+at_least "A39 standards pins the bare-key ban" 1 "$STD" '禁止 DB 主键'
+at_least "A39 standards pins the usability UAT section" 1 "$STD" '用户可用性验收'
+report "A39 03.6-ui-spec template exists" 1 "$([[ -s "$ROOT/resources/templates/entry/03.6-ui-spec.md" ]] && echo 1 || echo 0)"
+report "A39 P12 product-context template exists" 1 "$([[ -s "$ROOT/resources/templates/project/P12-product-context.md" ]] && echo 1 || echo 0)"
+report "A39 schema registers the UX clauses (R44-R50)" 1 "$(a17_at_least_1 "$(grep -c -E '^\| R4[4-9] \||^\| R50 \|' "$ROOT/resources/CLAUSE_REGISTRY.md" || true)")"
 report "A25 golden pins the out-of-table reviews sweep" 1 "$(a17_at_least_1 "$(grep -c 'audit rejects out-of-table reviews/ in feature dir' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(grep -c 'T23 project-master backfill checklist is enforced at stop' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
@@ -1011,7 +1034,7 @@ report "A25 session-gate maintains the water file" 1 "$(a17_at_least_1 "$(grep -
 report "A25 metrics emits artifact cost fields" 1 "$(a17_at_least_1 "$(grep -c 'artifact_bytes' "$GATE_TPL" || true)")"
 report "A25 scaffolder template exists" 1 "$([[ -s "$ROOT/resources/templates/new-change.sh" ]] && echo 1 || echo 0)"
 report "A25 scaffolder shipped by bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/new-change.sh' "$ROOT/scripts/bootstrap.sh" || true)")"
-report "A25 eight entry templates exist" 8 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
+report "A25 entry templates exist (8 core + conditional 03.6)" 9 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
 report "A25 entry templates shipped by bootstrap core" 1 "$(a17_at_least_1 "$(grep -c 'templates/entry' "$ROOT/scripts/bootstrap.sh" || true)")"
 report "A25 golden pins the water gate" 1 "$(a17_at_least_1 "$(grep -c 'T24 begin names the water level' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden pins the scaffolder" 1 "$(a17_at_least_1 "$(grep -c 'T25 filled scaffold passes begin' "$ROOT/tests/run-tests.sh" || true)")"
