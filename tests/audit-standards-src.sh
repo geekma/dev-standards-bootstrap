@@ -1021,6 +1021,14 @@ at_least "A39 standards pins the usability UAT section" 1 "$STD" '用户可用�
 report "A39 03.6-ui-spec template exists" 1 "$([[ -s "$ROOT/resources/templates/entry/03.6-ui-spec.md" ]] && echo 1 || echo 0)"
 report "A39 P12 product-context template exists" 1 "$([[ -s "$ROOT/resources/templates/project/P12-product-context.md" ]] && echo 1 || echo 0)"
 report "A39 schema registers the UX clauses (R44-R50)" 1 "$(a17_at_least_1 "$(grep -c -E '^\| R4[4-9] \||^\| R50 \|' "$ROOT/resources/CLAUSE_REGISTRY.md" || true)")"
+
+# ── PART A40: UX lane conditionality (v3.67.0 erratum CHG-091) ────────────────
+# 防反向回退：无 UX/UI 需求的变更不强加——上下文包/UJ 的条件措辞（触发面 + 未命中
+# 声明形态）与 P12 域 6 整域不适用许可任一被删即红。
+at_least "A40 context-pack trigger face is conditional" 1 "$STD" '项目上下文包：未命中'
+at_least "A40 context-pack trigger face names ui_change" 1 "$STD" '触发面=`ui_change: true`'
+at_least "A40 P12 domain-6 whole-domain N/A allowed" 1 "$ROOT/resources/methodologies/project-masters.md" '项目无用户界面'
+at_least "A40 entry template carries the miss declaration form" 1 "$ROOT/resources/templates/entry/01-spec.md" '未命中（理由）'
 report "A25 golden pins the out-of-table reviews sweep" 1 "$(a17_at_least_1 "$(grep -c 'audit rejects out-of-table reviews/ in feature dir' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(grep -c 'T23 project-master backfill checklist is enforced at stop' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
