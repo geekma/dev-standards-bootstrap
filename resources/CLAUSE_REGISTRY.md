@@ -72,6 +72,11 @@
 | R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节（v3.67.0）** | L2-architecture | 硬 | 结构 |
 | R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 |
 | R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 |
+| R51 | 原始锚点与机械抽取（§2.5 阶段 1） | DEVELOPMENT_STANDARDS.md::**原始锚点与机械抽取（v3.68.0，CHG-043）** | universal | 硬 | 结构 |
+| R52 | 事件流切分与数据流规格（§2.5 阶段 2） | DEVELOPMENT_STANDARDS.md::**事件流切分与数据流规格（v3.68.0，CHG-043）** | universal | 硬 | 结构 |
+| R53 | 否定测试抽查（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**否定测试抽查（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
+| R54 | 运行时证据硬门（§2.5 阶段 7） | DEVELOPMENT_STANDARDS.md::**运行时证据硬门（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
+| R55 | 评审跑旅程与上游错误计数（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**评审跑旅程与上游错误计数（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
@@ -164,6 +169,17 @@
 | GATE-E96 | 07 缺「用户可用性验收」签名节 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
 | GATE-E97 | 03.6 把 DB 裸主键写成用户主入口 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
 | GATE-E98 | 07 缺「建议人类走查（非阻塞）」行 | agent-gate.sh::validate_ux_conditions()（v3.67.0） |
+| GATE-E99 | origin_artifact 声明但 behavior-inventory.json 缺失 | agent-gate.sh::validate_dimensional_begin/stop()（v3.68.0） |
+| GATE-E100 | 原始工件 hash 失配（锚点腐烂）或无法验证 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
+| GATE-E101 | 行为清单含 遗漏(missing) 项 | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E102 | 三方对账孤儿（行为未被任何产物引用且未豁免） | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E103 | demo_script 声明但 05 缺 REPLAY: 回放证据 | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E104 | ui_change 但 05 缺逐 UJ 运行痕迹（事故硬门化） | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E105 | chain_change 但缺数据流规格表或表含空单元格 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
+| GATE-E106 | chain_change 但 04 缺否定测试抽查节 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
+| GATE-E107 | 07 缺运行时走查节或 ses-/task- 证据 id | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E108 | 行为豁免触真实链但无 00.5 追加沟通轮引用 | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E109 | origin_artifact 路径不存在 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

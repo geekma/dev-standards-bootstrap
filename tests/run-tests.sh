@@ -3038,7 +3038,7 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  report "T39 registry row count" 50 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 55 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
@@ -3410,11 +3410,11 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 SKILL carries v3.67.0 in prose" 6 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.67.0" 1 "$(grep -cF '规范版本：v3.67.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.67.0" 1 "$(grep -cF '当前对应规范版本：v3.67.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.67.0 top row" 1 "$(grep -c '^| v3.67.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.69.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 DS footer carries v3.68.0" 1 "$(grep -cF '规范版本：v3.69.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.68.0" 1 "$(grep -cF '当前对应规范版本：v3.69.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.68.0 top row" 1 "$(grep -c '^| v3.69.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3423,7 +3423,7 @@ report "T48 TC-1073 README (zh) wording updated" 1 "$(grep -cF '当天**首个 L
 report "T48 TC-1073 entry template wording updated" 1 "$(grep -cF '当天首个 L0/L1 即入批' "$ROOT/resources/templates/entry/00-intent.md")"
 report "T48 TC-1073 old same-day-many trigger gone from DS" 0 "$(grep -c '同一天\*\*多个\*\*.*默认共用' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 old same-day-many trigger gone from AGENTS" 0 "$(grep -c '同一天多个 L0/L1 默认共落' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 README version strings bumped" 14 "$(grep -c 'v3.67.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
+report "T48 TC-1073 README version strings bumped" 8 "$(grep -c 'v3.67.0' "$ROOT/README.md" "$ROOT/README.zh-CN.md" | awk -F: '{s+=$NF}END{print s}')"
 
 }
 section_T49() {
@@ -3633,7 +3633,11 @@ section_T50() {
   t50_last=$(printf '%s\n' "$t50_list" | tail -1)
   # v3.66.0 (CHG-088): expected tail recalibrated T50→T51 after the receipt
   # self-test section joined the registry (same dynamic-count discipline).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T52 ]] && echo 0 || echo 1)"
+  # v3.68.0 (CHG-043): tail recalibrated T52→T53 — T52 was taken by CHG-090 UX
+  # gates, so the G13/G14 section registered as T53 (registry growth only;
+  # count stays dynamic via t50_expect).
+  # CHG-044: tail recalibrated T53→T54 (G14e element-enumeration section joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T54 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3757,7 +3761,7 @@ printf '# spec\n- **ui_change**：true\n### REQ-001\n**描述**：r\n**挂靠 UJ
 scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
 report "T52 E90 rejects an unfilled UJ anchor placeholder" 2 $?
 # E90 正例：REQ 块内挂靠真实 UJ → begin 过
-printf '# spec\n- **ui_change**：true\n## 用户任务\n### UJ-001\n- **入口**：患者列表\n### REQ-001\n**描述**：r\n**挂靠 UJ**：UJ-001\n' > docs/changes/CHG-1000/01-spec.md
+printf '# spec\n- **ui_change**：true\n## 用户任务\n### UJ-001\n- **入口**：记录列表\n### REQ-001\n**描述**：r\n**挂靠 UJ**：UJ-001\n' > docs/changes/CHG-1000/01-spec.md
 scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
 report "T52 E90 passes once a UJ anchors the REQ" 0 $?
 echo x > src/a.go
@@ -3769,11 +3773,11 @@ printf '# ui\n## 逐屏字段与控件\n- 列表选择\n' > docs/changes/CHG-100
 # E94：03.6 缺显示名↔主键映射
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T52 E94 rejects 03.6 without the key-mapping section" 2 $?
-printf '# ui\n## 显示名↔主键映射\n- 患者显示名 → patientId\n- 用户直接输入 patientId 开始诊断\n' > docs/changes/CHG-1000/03.6-ui-spec.md
+printf '# ui\n## 显示名↔主键映射\n- 记录显示名 → record_id\n- 用户直接输入 record_id 开始查询\n' > docs/changes/CHG-1000/03.6-ui-spec.md
 # E97：03.6 把裸主键当主入口
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T52 E97 rejects a bare primary-key entry" 2 $?
-printf '# ui\n## 显示名↔主键映射\n- 患者显示名 → patientId\n' > docs/changes/CHG-1000/03.6-ui-spec.md
+printf '# ui\n## 显示名↔主键映射\n- 记录显示名 → record_id\n' > docs/changes/CHG-1000/03.6-ui-spec.md
 # E93：03.5 无 UX/UI 任务行（注释里的图例不算，review P1-4）
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T52 E93 rejects 03.5 without a UX task row" 2 $?
@@ -3810,11 +3814,392 @@ out=$(scripts/agent-gate --stage staged 2>&1 || true)
 check_output "T52 soft warning fires for UI-path diffs without ui_change" "UX soft warning" "$out"
 }
 
+# v3.68.0 (CHG-043, REQ-1076): T53 stop 级最小合交付件构造器 —— 复用 T23 夹具形态
+#（ReAct Observation + 09 项目总册回填清单 + L0 轻量通道声明 + 06/06.5 + 全件盖章），
+# 否则 stop 门进不去（validate_delivery 先于 G13/G14 执法）。仅 T53 使用；09 刻意
+# 不含 REQ- 引用（避开 E51 rtvm 回填对账，非本节主题）。
+seed_t53_delivery() { # <chg-id>
+  local d="docs/changes/$1" pf
+  printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > "$d/09-changelog.md"
+  printf -- '- **编码记录**：未命中，不适用（L0 轻量通道）\n' > "$d/04.5-coding-record.md"
+  printf -- '- **测试证据**：未命中，不适用（L0 轻量通道）\n' > "$d/05-test-results.md"
+  printf '未命中，不适用（无配置变更）\n' > "$d/06.5-deployment-config.md"
+  printf '# 交付总结\n#### 遗留\n- FU-531 演示\n' > "$d/06-delivery-summary.md"
+  for pf in "$d"/*.md; do
+    { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+  done
+  append_masters "$d/09-changelog.md"
+}
+
+section_T53() {
+# ------------------------------------------------ T53 G13/G14 行为面门禁（v3.68.0，CHG-043）
+# TC↔REQ 映射：TC-1128→REQ-1067/1069/1076，TC-1129→REQ-1068，TC-1130→REQ-1067/1070，
+# TC-1131→REQ-1071，TC-1132→REQ-1072，TC-1133→REQ-1073，TC-1134→REQ-1074，TC-1135→REQ-1075。
+# 框架约束（v3.68.0 实际接线，DES-1842 已兑现）：begin 级门 E99/E100/E105/E106 执法点=
+# validate_artifact_content 尾（begin 真执法）+ validate_dimensional_active（staged/stop 复验，
+# 捕捉中途锚点腐烂）；complete_valid_change_exists 的结构探测经 AGENT_GUARD_DIM_PROBE=1 豁免
+# 本门（探测只回答"件齐与否"，不回答"锚点新鲜否"——否则 E100 会被 E66 兜底掩盖）。
+# 注意 T52 已被 CHG-090 UX 条件门占用，本节顺延为 T53。
+EXTRACT_SRC="$ROOT/resources/templates/behavior-extract.sh"
+[[ -f "$EXTRACT_SRC" ]] || EXTRACT_SRC="$ROOT/scripts/behavior-extract.sh"
+new_repo
+seed_artifacts CHG-1020 L1 claude/s-1
+mkdir -p proto
+cat > proto/index.html <<'EOF'
+<button id="b1" onclick="save()">存</button>
+<input id="i1" oninput="f()">
+<form onsubmit="g()"><div onmouseover="pop()">x</div></form>
+<a onclick="location.href='/list'">go</a>
+<script>
+document.getElementById("b1").addEventListener("click", save);
+$("#f").on("change", h);
+fetch("/api/x"); axios.get("/y"); $.ajax("/z"); new XMLHttpRequest();
+setTimeout(tick, 100); setInterval(beat, 1000);
+window.open("/w"); history.pushState({}, "", "/p");
+</script>
+EOF
+cat > docs/changes/CHG-1020/01-spec.md <<'EOF'
+# spec
+- REQ-001: 演示页改版
+- **挂靠 UJ**：UJ-001
+- **origin_artifact**: proto/index.html
+- **chain_change**: true
+- **ui_change**: true
+
+## 数据流规格表
+| 字段 | 来源 | 转换 | 去向 | 展示 |
+|---|---|---|---|---|
+| recordId | <表>.record_id | 直传 | 会话上下文 | 列表列 |
+EOF
+cat > docs/changes/CHG-1020/03.6-ui-spec.md <<'EOF'
+# ui
+## 显示名↔主键映射
+- 记录显示名 → record_id
+EOF
+cat > docs/changes/CHG-1020/03.5-tasks.md <<'EOF'
+# tasks
+| 任务 | 类型 | 依赖 | 里程碑 | 说明 |
+|---|---|---|---|---|
+| T-001 | UX | 无 | M1 | 演示页改造 |
+- 评审输入: 变更文件清单 + 待核对产物 + 行号锚点
+EOF
+cat > docs/changes/CHG-1020/04-test-scripts.md <<'EOF'
+# tests
+- TC-001 用户旅程 E2E：点击存档 → 列表刷新
+覆盖维度: 正常流 / 边界 / 异常
+## 否定测试
+- NT-001: 断网点击存档必须失败提示，不得静默成功（回归: TC-001）
+- SC-001: 演示页主流程（覆盖: TC-001）
+EOF
+# TC-1128：用真实行为抽取器产出 inventory（hash 一致性由 E100 复算兜底）
+bash "$EXTRACT_SRC" proto/index.html > docs/changes/CHG-1020/behavior-inventory.json
+inv=docs/changes/CHG-1020/behavior-inventory.json
+inv_total=$(sed -n '1s/.*"total_behaviors":\([0-9]*\).*/\1/p' "$inv")
+report "T53 TC-1128 extractor total_behaviors=20 (16 behaviors + 4 elements, CHG-044 schema pin)" 0 "$([[ "$inv_total" == 20 ]]; echo $?)"
+report "T53 TC-1128 first data row is BHV-001 click pending" 1 "$(sed -n '2p' "$inv" | grep -c '"id":"BHV-001".*"kind":"click".*"status":"pending"')"
+hrec=$(sed -n '1s/.*"artifact_hash":"\([a-f0-9]\{64\}\)".*/\1/p' "$inv")
+hcur=$(shasum -a 256 proto/index.html 2>/dev/null | awk '{print $1}')
+[[ -n "$hcur" ]] || hcur=$(sha256sum proto/index.html 2>/dev/null | awk '{print $1}')
+report "T53 TC-1128 extractor hash equals recomputed sha256" 0 "$([[ -n "$hrec" && "$hrec" == "$hcur" ]]; echo $?)"
+commit_all "t53 fixture CHG-1020"
+scripts/agent-gate begin CHG-1020 >/dev/null 2>&1
+report "T53 TC-1128 begin green with origin/chain/ui declared + inventory anchored" 0 $?
+echo y > src/a.js
+git add src/a.js
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1128 staged green: begin-lane E99/E100/E105/E106 all pass" 0 $?
+# TC-1129（E100 锚点防腐）：篡改原型一个字符 → staged 红
+printf 'x' >> proto/index.html
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1129 tampered origin artifact keeps staged red" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T53 TC-1129 refusal names GATE-E100 hash mismatch" "GATE-E100" "$out"
+git checkout -q -- proto/index.html
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1129 staged green again after artifact restore" 0 $?
+# TC-1130（E99 begin 级）：声明 origin 但清单缺失 → staged 红；补回抽取产物
+rm docs/changes/CHG-1020/behavior-inventory.json
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1130 E99 staged red: origin declared but inventory missing" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T53 TC-1130 refusal names GATE-E99" "GATE-E99" "$out"
+bash "$EXTRACT_SRC" proto/index.html > docs/changes/CHG-1020/behavior-inventory.json
+# TC-1233（E109 begin 级，评审中3 补测）：origin_artifact 指向不存在路径 → begin 红
+sed -e 's|origin_artifact\*\*: proto/index.html|origin_artifact**: proto/missing.html|' docs/changes/CHG-1020/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1020/01-spec.md
+scripts/agent-gate begin CHG-1020 >/dev/null 2>&1
+report "T53 TC-1233 E109 begin red: origin artifact path not found" 2 $?
+out=$(scripts/agent-gate begin CHG-1020 2>&1 || true)
+check_output "T53 TC-1233 refusal names GATE-E109" "GATE-E109" "$out"
+sed -e 's|origin_artifact\*\*: proto/missing.html|origin_artifact**: proto/index.html|' docs/changes/CHG-1020/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1020/01-spec.md
+# TC-1132（E105/E106 begin 级）：chain_change 而无 数据流规格表 / 空单元格 / 无 否定测试
+sed -e '/^## 数据流规格表/,$d' docs/changes/CHG-1020/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1020/01-spec.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1132 E105 staged red: chain_change without 数据流规格表" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T53 TC-1132 refusal names GATE-E105" "GATE-E105" "$out"
+cat >> docs/changes/CHG-1020/01-spec.md <<'EOF'
+## 数据流规格表
+| 字段 | 来源 | 转换 | 去向 | 展示 |
+|---|---|---|---|---|
+|  |  |  |  |  |
+EOF
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1132 E105 staged red: blank-cell row is a design gap" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T53 TC-1132 blank-cell refusal names GATE-E105" "GATE-E105" "$out"
+sed -e '/^## 数据流规格表/,$d' docs/changes/CHG-1020/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1020/01-spec.md
+cat >> docs/changes/CHG-1020/01-spec.md <<'EOF'
+## 数据流规格表
+| 字段 | 来源 | 转换 | 去向 | 展示 |
+|---|---|---|---|---|
+| patientSn | fzzl_patient.patientSn | 直传 | 会话上下文 | 列表列 |
+EOF
+grep -v '否定测试' docs/changes/CHG-1020/04-test-scripts.md > .t53-04.tmp && mv .t53-04.tmp docs/changes/CHG-1020/04-test-scripts.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1132 E106 staged red: chain_change without 否定测试 section" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T53 TC-1132 refusal names GATE-E106" "GATE-E106" "$out"
+cat >> docs/changes/CHG-1020/04-test-scripts.md <<'EOF'
+## 否定测试
+- NT-001: 断网点击存档必须失败提示，不得静默成功（回归: TC-001）
+EOF
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-1132 staged green after table + negation section restored" 0 $?
+# ---- stop 级夹具 CHG-1030（origin 声明 + ui_change:false：E101/E102/E103/E108 轨道）----
+new_repo
+seed_artifacts CHG-1030 L0 claude/s-1
+mkdir -p proto
+printf '<button id="b2" onclick="s1()">A</button>\n<button id="b3" onclick="s2()">B</button>\n<button id="b4" onclick="s3()">C</button>\n' > proto/index.html
+cat > docs/changes/CHG-1030/01-spec.md <<'EOF'
+# spec
+- REQ-001: 演示页对齐真实链路
+- **origin_artifact**: proto/index.html
+- **chain_change**: 未命中（静态演示页，无数据链变更）
+- **ui_change**: false
+- 事件链：BHV-001 → BHV-002 走真实业务链路（record_id 直传）
+EOF
+bash "$EXTRACT_SRC" proto/index.html > docs/changes/CHG-1030/behavior-inventory.json
+scripts/agent-gate begin CHG-1030 >/dev/null 2>&1
+report "T53 TC-1130 begin green before stop progression" 0 $?
+seed_t53_delivery CHG-1030
+echo y > src/t53b.js
+inv2=docs/changes/CHG-1030/behavior-inventory.json
+# TC-1130（E101 stop 级）：清单含 missing → stop 红
+sed -e '4s/"status":"pending"/"status":"missing"/' "$inv2" > .t53-inv.tmp && mv .t53-inv.tmp "$inv2"
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1130 E101 stop red: inventory carries missing status" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1130 refusal names GATE-E101" "GATE-E101" "$out"
+sed -e '4s/"status":"missing"/"status":"pending"/' "$inv2" > .t53-inv.tmp && mv .t53-inv.tmp "$inv2"
+# TC-1130（E102 stop 级）：BHV-003 全目录无引用且未豁免 → stop 红；接线后绿
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1130 E102 stop red: BHV-003 never referenced nor waived" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1130 refusal names GATE-E102 with the orphan id" "GATE-E102.*BHV-003" "$out"
+sed -e 's/- 事件链：BHV-001 → BHV-002 走真实业务链路/- 事件链：BHV-001 → BHV-002 → BHV-003 → BHV-004 → BHV-005 → BHV-006 走真实业务链路/' docs/changes/CHG-1030/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1030/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1130 stop green once all six BHVs (behavior+element) are referenced" 0 $?
+# TC-1131（E103 stop 级）：demo_script 声明而 05 无 REPLAY: → 红；补证据行后绿
+printf -- '- **demo_script**: 3\n' >> docs/changes/CHG-1030/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1131 E103 stop red: demo_script declared but 05 lacks REPLAY" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1131 refusal names GATE-E103" "GATE-E103" "$out"
+printf 'REPLAY: 第1句 点击A按钮 → HTTP 200（快照 t53a）\n' >> docs/changes/CHG-1030/05-test-results.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1131 stop green with REPLAY evidence line" 0 $?
+# TC-1133（E108 stop 级）：链上行为豁免行缺 00.5 → 红；补 00.5 引用后绿
+cat >> docs/changes/CHG-1030/01-spec.md <<'EOF'
+
+## 拆除/豁免登记簿
+| 行为 | 处置 | 理由 |
+|---|---|---|
+| BHV-001 | 行为豁免 | 演示数据按钮，未走真实链 |
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1133 E108 stop red: chain-touching waiver without 00.5" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1133 refusal names GATE-E108" "GATE-E108" "$out"
+sed -e 's#| BHV-001 | 行为豁免 | 演示数据按钮，未走真实链 |#| BHV-001 | 行为豁免 | 00.5 追加沟通轮已确认：演示按钮不触真实链 |#' docs/changes/CHG-1030/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1030/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1133 stop green once waiver carries 00.5 reference" 0 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1133 stop lane clean receipt prints counters" "G13/G14 stop lane clean" "$out"
+# ---- stop 级夹具 CHG-1040（ui_change:true：E104/E107 轨道，复用 T52 UX 门绿基线）----
+new_repo
+seed_artifacts CHG-1040 L0 claude/s-1
+cat > docs/changes/CHG-1040/01-spec.md <<'EOF'
+# spec
+- REQ-001: 演示页可用性收口
+- **挂靠 UJ**：UJ-001
+- **origin_artifact**: 未命中（无原型页，改版基线=线上页）
+- **chain_change**: 未命中（无数据链变更）
+- **ui_change**: true
+EOF
+cat > docs/changes/CHG-1040/03.6-ui-spec.md <<'EOF'
+# ui
+## 显示名↔主键映射
+- 记录显示名 → record_id
+EOF
+cat > docs/changes/CHG-1040/03.5-tasks.md <<'EOF'
+# tasks
+| 任务 | 类型 | 依赖 | 里程碑 | 说明 |
+|---|---|---|---|---|
+| T-001 | UX | 无 | M1 | 可用性收口 |
+- 评审输入: 变更文件清单 + 待核对产物 + 行号锚点
+EOF
+cat > docs/changes/CHG-1040/04-test-scripts.md <<'EOF'
+# tests
+- TC-001 用户旅程 E2E：入口到结果全程真人可走
+覆盖维度: 正常流 / 边界 / 异常
+- SC-001: 记录列表主流程（覆盖: TC-001）
+EOF
+cat > docs/changes/CHG-1040/07-review-report.md <<'EOF'
+# review
+## 用户可用性验收
+- 结论：通过（依据 03.6 与 UJ-001）
+- **建议人类走查（非阻塞）**：建议交付前真人走查一次
+- 评审主体：platform / glm-5.3-flash / ses-t53c
+EOF
+scripts/agent-gate begin CHG-1040 >/dev/null 2>&1
+report "T53 TC-1134 begin green: ui_change anchored to UJ-001" 0 $?
+seed_t53_delivery CHG-1040
+echo y > src/t53c.js
+# TC-1134（E104 stop 级）：ui_change 而 05 无 UJ-001+证据词行 → 红
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1134 E104 stop red: UJ-001 lacks runtime evidence row in 05" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1134 refusal names GATE-E104" "GATE-E104" "$out"
+printf -- '- UJ-001 运行时证据：HTTP 响应体 200，DB 行 <表> 更新，快照 snap-t53c\n' >> docs/changes/CHG-1040/05-test-results.md
+# TC-1134（E107 stop 级）：07 有签名无 运行时走查 → 红
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1134 E107 stop red: 07 lacks 运行时走查 journey section" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-1134 refusal names GATE-E107" "GATE-E107" "$out"
+printf '\n## 运行时走查\n- 走查记录：ses-t53c（UJ-001 全程真人入口可走通）\n' >> docs/changes/CHG-1040/07-review-report.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1134 stop green with per-UJ evidence + journey walkthrough" 0 $?
+# ---- TC-1135 负例（防门禁疲劳）：三行声明全 未命中 → begin/stop 全绿且零新门输出 ----
+new_repo
+seed_artifacts CHG-1050 L0 claude/s-1
+cat > docs/changes/CHG-1050/01-spec.md <<'EOF'
+# spec
+- REQ-001: 纯文档微调
+- **origin_artifact**: 未命中（无原型页）
+- **chain_change**: 未命中（无数据链变更）
+- **ui_change**: false
+EOF
+scripts/agent-gate begin CHG-1050 >/dev/null 2>&1
+report "T53 TC-1135 begin green when all three lanes declare 未命中" 0 $?
+seed_t53_delivery CHG-1050
+echo y > src/t53d.js
+rc=0
+out=$(scripts/agent-gate --stage stop 2>&1) || rc=$?
+report "T53 TC-1135 stop green when all three lanes declare 未命中" 0 "$rc"
+report "T53 TC-1135 zero new-gate output (anti gate-fatigue guard)" 0 "$(printf '%s' "$out" | grep -cE 'GATE-E(9[9]|10[0-9])|G13/G14')"
+# TC-1231（v3.68.0 回测 record 687，locale 回归守卫）：含中文多字节文案的 HTML → exit 0 且 total>0
+#（此前 macOS awk towc multibyte 死亡被吞=静默空清单 exit 0；现 LC_ALL=C 钉死 + fail-closed）
+cat > .t53-locale.html <<'EOF'
+<div class="panel">
+  <button id="保存按钮" onclick="保存()">保存记录列表</button>
+  <input id="搜索框" oninput="过滤()">
+  <a href="#" onclick="跳转列表()">返回列表</a>
+</div>
+<script>
+document.getElementById("保存按钮").addEventListener("click", 保存);
+$("#搜索框").on("change", 过滤);
+</script>
+EOF
+rc=0
+t53c_out=$(bash "$EXTRACT_SRC" .t53-locale.html 2>/dev/null) || rc=$?
+report "T53 TC-1231 extractor exit 0 on multibyte Chinese HTML (LC_ALL=C pinned)" 0 "$rc"
+t53c_total=$(printf '%s\n' "$t53c_out" | sed -n '1s/.*"total_behaviors":\([0-9]*\).*/\1/p')
+report "T53 TC-1231 multibyte extraction yields >0 behaviors" 0 "$([[ "$t53c_total" =~ ^[1-9][0-9]*$ ]]; echo $?)"
+# TC-1232（fail-closed 空产出守卫）：零 pattern 纯静态 HTML → exit 3 + stderr 诊断词
+cat > .t53-static.html <<'EOF'
+<div class="static">
+  <p>纯静态说明文案，无任何交互行为可抽取。</p>
+  <span>keep-alive</span>
+</div>
+EOF
+rc=0
+t53d_err=$(bash "$EXTRACT_SRC" .t53-static.html 2>&1 >/dev/null) || rc=$?
+report "T53 TC-1232 zero-pattern static HTML exits 3 (fail-closed empty output)" 3 "$rc"
+check_output "T53 TC-1232 stderr names the zero-behavior diagnosis" "零行为" "$t53d_err"
+}
+
+section_T54() {
+# ------------------------------------------------ T54 G14e 交互元素枚举（CHG-044）
+# TC-1234~1238：元素行抽取（静态按钮/hidden 排除）→ 与行为行并存 → E102 元素孤儿对账 →
+# 逗号列表批量接线 → 登记簿豁免传递（00.5）。词表唯一权威 = resources/templates/
+# behavior-extract.sh 头注释（audit A43 单源执法），本节只持行为断言，禁止复制词表。
+# CHG-044 01-spec REQ 尚为占位，REQ 映射待其填实后补记。
+EXTRACT_SRC="$ROOT/resources/templates/behavior-extract.sh"
+[[ -f "$EXTRACT_SRC" ]] || EXTRACT_SRC="$ROOT/scripts/behavior-extract.sh"
+new_repo
+seed_artifacts CHG-1060 L0 claude/s-1
+mkdir -p proto
+cat > proto/page.html <<'EOF'
+<button id="btnStatic">静态按钮</button>
+<button id="mic" onclick="录音()">主操作</button>
+<input type="hidden" id="hid" value="x">
+<div role="checkbox" aria-checked="false"></div>
+<a href="/list">列表</a>
+EOF
+cat > docs/changes/CHG-1060/01-spec.md <<'EOF'
+# spec
+- REQ-001: 演示页对齐真实链路
+- **origin_artifact**: proto/page.html
+- **chain_change**: 未命中（静态演示页，无数据链变更）
+- **ui_change**: false
+- 事件链：BHV-002 主操作点击走真实业务链路（BHV-003 同元素）
+EOF
+bash "$EXTRACT_SRC" proto/page.html > docs/changes/CHG-1060/behavior-inventory.json
+inv=docs/changes/CHG-1060/behavior-inventory.json
+t54_total=$(sed -n '1s/.*"total_behaviors":\([0-9]*\).*/\1/p' "$inv")
+report "T54 TC-1234 fixture pins total=5 (2 behavior + 3 element rows)" 0 "$([[ "$t54_total" == 5 ]]; echo $?)"
+report "T54 TC-1234 handler-free static button yields an element row" 1 "$(grep -c '"kind":"element","event":"button","target":"#btnStatic"' "$inv")"
+report "T54 TC-1234 hidden input is excluded from element rows" 0 "$(grep -c '"target":"#hid"' "$inv")"
+report "T54 TC-1235 behavior row for #mic (click)" 1 "$(grep -c '"kind":"click","event":"click","target":"mic"' "$inv")"
+report "T54 TC-1235 element row coexists for #mic" 1 "$(grep -c '"kind":"element","event":"button","target":"#mic"' "$inv")"
+scripts/agent-gate begin CHG-1060 >/dev/null 2>&1
+report "T54 TC-1236 begin green before stop progression" 0 $?
+seed_t53_delivery CHG-1060
+echo y > src/t54.js
+# TC-1236（E102 stop 级）：元素 BHV-001 全目录无引用且未豁免 → stop 红
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1236 E102 stop red: element BHV-001 never referenced nor waived" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T54 TC-1236 refusal names GATE-E102 with the element orphan id" "GATE-E102.*BHV-001" "$out"
+# TC-1237：03.6/产物以逗号列表批量接线元素 BHV → 绿
+printf -- '- 元素清单：BHV-001, BHV-004, BHV-005（逗号列表批量接线）\n' >> docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1237 stop green once element BHVs wired via comma list" 0 $?
+# TC-1238：登记簿豁免元素 BHV（行为豁免+00.5 引用）→ 绿；去掉 00.5 → E108 红 → 恢复绿
+cat >> docs/changes/CHG-1060/01-spec.md <<'EOF'
+
+## 拆除/豁免登记簿
+| 行为 | 处置 | 理由 |
+|---|---|---|
+| BHV-001 | 行为豁免 | 00.5 追加沟通轮：静态占位按钮已确认豁免 |
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1238 stop green: element waiver carries 00.5 reference" 0 $?
+sed -e 's/00\.5 追加沟通轮：静态占位按钮已确认豁免/静态占位按钮已确认豁免（无沟通轮）/' docs/changes/CHG-1060/01-spec.md > .t54-spec.tmp && mv .t54-spec.tmp docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1238 E108 stop red: element waiver loses 00.5 reference" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T54 TC-1238 refusal names GATE-E108 with the element id" "GATE-E108.*BHV-001" "$out"
+sed -e 's/静态占位按钮已确认豁免（无沟通轮）/00.5 追加沟通轮：静态占位按钮已确认豁免/' docs/changes/CHG-1060/01-spec.md > .t54-spec.tmp && mv .t54-spec.tmp docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1238 stop green again after 00.5 restored" 0 $?
+}
+
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do

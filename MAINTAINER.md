@@ -133,11 +133,12 @@ bash scripts/update-assertion-count.sh --check  # 只检查，漂移即 exit 1�
 
 ### 5.1 规范体量上界（A11）与它的重校准
 
-`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **164 KB / 167,936 字节**）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
+`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **172 KB / 175,104 字节**）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
 
 **重校准是设计内的动作，不是破例**，但必须满足两个条件：
 
 v3.43.0 重校准记录（CHG-053）：156KB 上界被 §2.17.2b 缺陷发现入口（三信号双通道 + 频控 + 自主权，160,160 字节）吃到负值 → 按 KiB 步进（+8KB，跨 4KB 档取整）重设 **164KB**（余量约 7.5KB），有 CHANGELOG v3.43.0 行对应。
+v3.68.0 重校准记录（CHG-043 同版本收尾，2026-10-12 用户裁定"校准"）：164KB 上界的余量先被 v3.67.0 UX 体系压到 455B，再被 v3.68.0 三维对照门禁族（G13/G14，5 条款）吃到 **170,735 字节**（破线 2,799B）→ 按 KiB 步进（+8KB）重设 **172KB**，有 CHANGELOG v3.68.0 行勘误注对应。**配对减法纪律**：下次触软警线（171,008B）必须走结构性减法，禁止连续重校准；减法低垂果实 v3.61.0（FU-911）已摘尽，再减须动硬结构（权威锚点全量重验），另立 CHG。
 
 1. **有 CHANGELOG 条目对应**（新条款必须登记）；
 2. **先压缩再抬高**：把重复条款合并、把机制细节下沉到脚本头部注释（渐进披露），能省多少先省多少。
@@ -199,6 +200,8 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.69.0** | **G14e 元素对等清单 + 分层瘦身（CHG-044，REQ-1077~1081）**：behavior-extract.sh 增交互元素枚举（kind=element，词表唯一权威=工具头注释）；DS 条 9 +6 字；playbook 细则瘦身为指针（登记簿 schema/否定测试形状/证据行格式移入 entry 模板条件注释块与 agent-gate 头注释）；A43 分层单源 tripwire；T54（TC-1234~1238）；版本链 v3.69.0。**`--upgrade` 带走 DS/AGENTS/STAGE_PLAYBOOK/CLAUSE_REGISTRY/agent-gate/behavior-extract/audit/bootstrap/SKILL/README×2/entry 模板×2/methodologies 版本行**。**回填义务：无（枚举扩展对既有清单向后兼容）** |
+| **v3.68.0** | **三维对照门禁族 G13/G14（CHG-043，REQ-1067~1076）**：源维（origin_artifact 锚点白名单+hash 防腐+behavior-extract.sh 机械抽取+三方对账+剧本回放+豁免传递禁令）/流维（chain_change 事件流切分+数据流规格表）/运行维（否定测试+评审走旅程+逐 UJ 运行痕迹硬门+上游错误计数全零危险信号）；GATE-E99~E109 挂 begin/stop；audit G13/G14；T53 节（TC-1128~1135/1231~1233）。**`--upgrade` 带走 DS/AGENTS/STAGE_PLAYBOOK/CLAUSE_REGISTRY/agent-gate/behavior-extract/audit/bootstrap/SKILL/README×2/methodologies 版本行**。**回填义务：无（声明触发，不追溯既往）**（详 STANDARDS_CHANGELOG v3.68.0） |
 | **v3.67.0** | **用户体验体系（CHG-090，REQ-1052~1066）**：阶段 1 项目上下文包 10 域 + UJ 用户任务（业务专家子 Agent 强制先于 REQ；项目级落新册 P12，总册 12→13）；阶段 3 条件产物 `03.6-ui-spec.md`（`ui_change: true` 必需）+ 禁裸主键作用户入口 + 03.5 任务类型列强制 UX 行；阶段 4 用户旅程 E2E（阈值 L0/L1=1、L2/L3=3）；阶段 8 产品可用性专家 UAT 阻塞门（绑定项目代码背景/行业/系统/业务）+ 四方证据→五方 + 人类 UAT 可选提醒；机器化 GATE-E90/E92–E98 + 审计 G11/G12 + §2.8 埋点强制 + §5 反模式 3 条。T52（TC-1212~1222）+ A39 锚点组。**`--upgrade` 带走 DS/AGENTS/methodologies×2/STAGE_PLAYBOOK/CLAUSE_REGISTRY/entry·project·docs-readme·PR 模板/agent-gate/audit/new-change/bootstrap**。**回填义务：目标仓复制 `templates/project/P12-product-context.md` 到 `<docs>/project/` 并回填现状（缺则 begin 拒）；不追溯既往；在途变更软告警一次**（详 STANDARDS_CHANGELOG v3.67.0）。**勘误（CHG-091，2026-10-11，同版本不 bump）：上下文包 10 域与 UJ 条件化——无 UX/UI 需求的变更不强加**。**勘误（CHG-092，2026-10-11，同版本不 bump）：mtime 读取探测序 GNU-first 修复（gate_mtime/收据新鲜度；GNU `stat -f %m` 输出 `?m` rc=0，Linux 上 BSD-first 回落不可达）——Linux CI T49 E89 state3 + T51 TC-1121 转绿，macOS 行为不变** |
 | **v3.66.0** | **suite 收口收据机制（CHG-088，REQ-1049~1051）**：绿全跑收尾写 `.agent-state/last-suite-receipt.json`（红全跑即删；语义=「该 HEAD 最近一次完整跑为绿」；收据=工作树最近一次绿跑的本地代理、非 commit 内容证明；`-T`/`-l` 过滤运行不触收据）；消费端 `update-assertion-count.sh` 五条件秒级采信（head==当前 HEAD + failed==0 + mtime ≤ `AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN` 默认 30、0=禁用），否则照旧内嵌全跑（fail-open 到现状）；同 HEAD 连续收口 2×全量→1×全量+消费端秒级。T51 自测 TC-1121~1127。**⑧同版本收尾（CHG-089）**：agent-gate `validate_master_backfill` 裸 `grep\|head` 赋值在 pipefail 下静默死（GATE-E60 不可达+摩擦账盲区）→ `grep -m1 … \|\| true` 修复（payload 落点 `resources/templates/agent-gate.sh`）；T23 缺行 red case。**`--upgrade` 带走 resources/templates/agent-gate.sh 与 tests/run-tests.sh**。**回填义务：无（agent-gate 随 --upgrade 自愈）**（本行回填于 2026-09-30，CHG-088 交付时漏登 §7） |
 | **v3.65.0** | **套件节过滤 + 收尾耗时行（CHG-087，REQ-1046~1048）**：`tests/run-tests.sh` 增 `-T <节名[,节名]>` 节过滤（节体函数化纯插入 + `SECTIONS` 源序注册表；双 T22 重号节键 `T22a`/`T22b` 消歧）与 `-l` 节清单；未知节/未知 flag die rc=2；收尾恒定 wall-time 行（summary 行格式逐字节不变，计数提取改全量捕获取尾匹配行）；T50 自测 TC-1115~1120。golden 660→666。**`--upgrade` 带走 tests/run-tests.sh**。**回填义务：无**（本行回填于 2026-09-30，CHG-087 交付时漏登 §7） |

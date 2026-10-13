@@ -651,14 +651,19 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.43.0 行；
 #   ③ 上界按 KiB 步进（+8KB，跨 4KB 档取整）重设为 164KB，余量约 7.5KB——
 #      不是按当前体量贴合。
+# v3.68.0 重校准 164KB → 172KB 的依据（CHG-043 同版本收尾，2026-10-12 用户裁定）：
+#   ① v3.67.0 UX 体系 + v3.68.0 三维对照门禁族连续两版本族结构扩容吃到负值（170,735 字节，
+#      v3.67.0 时余量仅 455B 已压线）；② 有 CHANGELOG 条目对应（v3.68.0 行勘误注）；
+#   ③ KiB 步进（+8KB）重设为 172KB——**配对减法纪律**：下次触软警线（171,008B）必须走
+#      结构性减法，禁止连续重校准；门禁族稳定后的减法 CHG 另立。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 164KB (FU-017, recalibrated v3.43.0)" 1 "$([[ "$std_bytes" -le 167936 ]] && echo 1 || echo 0)"
-# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥163,840B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
+report "A11 standards body size <= 172KB (FU-017, recalibrated v3.68.0)" 1 "$([[ "$std_bytes" -le 175104 ]] && echo 1 || echo 0)"
+# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥171,008B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 163,840B)" 0 "$([[ "$std_bytes" -ge 163840 ]] && echo 1 || echo 0)"
+report_soft "A11s standards body approaching hard cap (soft warn >= 171,008B)" 0 "$([[ "$std_bytes" -ge 171008 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '164 KB / 167,936 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '172 KB / 175,104 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
@@ -1154,6 +1159,30 @@ while IFS= read -r f; do
   ' "$f" || canary_viol=$(( canary_viol + 1 ))
 done < <(find "$REPO_CHANGES" "$REPO_BUGS" -name '*.md' 2>/dev/null)
 report "A41 provenance block-tail blank-run canary (REQ-1027)" 0 "$canary_viol"
+
+# A42 payload 通用性硬门槛（2026-10-12 用户硬指令）：本仓 payload 是公共 skill 分发面，
+# 禁止任何单一项目特异性内容——项目名/仓路径/领域表字段与界面元素/外部仓 FU·CHG 编号/
+# 领域示例词。命中即红（tripwire 扫描，覆盖 review 盲区）。STANDARDS_CHANGELOG 豁免：
+# append-only 历史不改写（§2.15），新条目纪律由评审承载（v2.17.0 即通用化改版记录）。
+a42_hits=""
+for a42_f in $(git ls-files 'resources/*' 'SKILL.md' 'README.md' 'README.zh-CN.md' 'scripts/bootstrap.sh' '.claude-plugin/*' 2>/dev/null); do
+  [[ "$a42_f" == "resources/STANDARDS_CHANGELOG.md" ]] && continue
+  a42_hit=$(grep -nE '儿童内分泌|newCDSScode|CDSS|候诊|预问诊|ptSwitch|btnDemo|FU-942|FU-935|diagnosis-round|observation\(id|ingest 管线' "$a42_f" 2>/dev/null | head -1)
+  [[ -n "$a42_hit" ]] && a42_hits="$a42_hits${a42_f}: ${a42_hit}"$'\n'
+done
+report "A42 payload genericity — no single-project markers (user hard gate 2026-10-12)" 0 "$([[ -z "$a42_hits" ]] && echo 0 || { printf 'foreign markers:\n%s' "$a42_hits" >&2; echo 1; })"
+
+# A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
+# 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层
+# （DS/playbook/registry/AGENTS）禁止复制工具词表指纹——命中即越层红。指针句必须在位。
+a43_bad=0
+for a43_f in "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$ROOT/resources/STAGE_PLAYBOOK.md" "$ROOT/resources/CLAUSE_REGISTRY.md" "$ROOT/resources/AGENTS.md"; do
+  a43_n=$(grep -cE 'label\[for\]|hx-trigger|\[contenteditable\]|origin: <文件名>|data-action' "$a43_f" 2>/dev/null || true)
+  [[ "$a43_n" -eq 0 ]] || { a43_bad=1; echo "A43 layering: $a43_f carries tool-vocabulary fingerprints ($a43_n hits)" >&2; }
+done
+a43_ptr=$(grep -c 'behavior-extract.sh` 头注释\|behavior-extract.sh 头注释' "$ROOT/resources/STAGE_PLAYBOOK.md" 2>/dev/null || true)
+[[ "$a43_ptr" -ge 1 ]] || { a43_bad=1; echo "A43 layering: playbook lacks the single-source pointer" >&2; }
+report "A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)" 0 "$a43_bad"
 
 printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
 if [[ -f "$AUDIT_BASELINE" ]]; then

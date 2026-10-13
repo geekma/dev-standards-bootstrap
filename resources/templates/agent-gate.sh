@@ -123,6 +123,15 @@ anchor_re() { printf '^##[[:space:]]+%s([[:space:]]|$)' "$1"; }
 # precedent); the trailing id pattern and the die strings stay per-gate.
 sig_head='[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / '
 
+# v3.69.0 (CHG-044): 证据行格式（唯一权威）——E103/E104 机校 grep 形态的唯一叙事源；
+# STAGE_PLAYBOOK 阶段 7 只留指针（A43 单源纪律：格式细节不入叙事层）。
+#   E104 逐 UJ 运行痕迹行（落 05「运行时证据」节，ui_change: true 时强制）：
+#     - UJ-001：POST /api/xxx 响应体片段 {…关键字段…} + DB 行 <表>(id=…) + <UTC 时间戳>
+#     机校条件：同一行含 UJ-xxx 且含证据词 HTTP|DB|响应体|快照 之一。
+#   E103 剧本回放行（落 05，01-spec demo_script: <N> 时强制）：
+#     REPLAY: 句N → <结果> → <证据片段>
+#     裁判=原始工件（批准者已把正确答案写进工件）。
+
 # The one place that parses anchors out of a file (see anchor_re for the shape).
 anchors_in_file() { # <file> -> ids, one per line
   [[ -f "$1" ]] || return 0
@@ -220,7 +229,7 @@ is_code_path() {
   # 第一次 commit 即死锁——鸡生蛋）。它们由 §2.17.4 golden-case 回归背书。
   # v3.17.0：**新增治理脚本必须同步加进本清单**——stamp-provenance.sh 漏加时，
   # 全新安装后的第一次 commit 会被判为"源码变更"而拦下（T15 D5 用例实测暴露）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -247,6 +256,185 @@ ui_change_true() { # <spec-file> -> 0 when the spec declares ui_change: true
   # end at a word boundary.
   sed 's/<!--[^>]*-->//g' "$1" 2>/dev/null \
     | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))'
+}
+
+# v3.68.0 (CHG-043): declaration bullet parser for the G13/G14 lane switches —
+# same family as ui_change_true: bullet form only, HTML comments stripped,
+# 未命中/未声明 (or absent) disarms the lane. Value may be a path with spaces.
+spec_decl() { # <spec-file> <key> -> declared value or "" (lane disarmed)
+  local v
+  v=$(sed 's/<!--[^>]*-->//g' "$1" 2>/dev/null \
+    | grep -m1 -E "^[[:space:]]*[-*][[:space:]]*\*\*$2\*\*[：:]" \
+    | sed -E "s/^[[:space:]]*[-*][[:space:]]*\*\*$2\*\*[：:][[:space:]]*//" \
+    | tr -d '`' || true)
+  case "$v" in 未命中*|未声明*|"") printf '' ;; *) printf '%s' "$v" ;; esac
+}
+
+sha256_file() { # <file> -> hex digest or "" (v3.68.0 CHG-043; macOS/Linux portable)
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" 2>/dev/null | awk '{print $1}' || true
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" 2>/dev/null | awk '{print $1}' || true
+  else
+    printf ''
+  fi
+}
+
+# v3.68.0 (CHG-043): G13/G14 begin lane — source-dimension gates that must fire
+# BEFORE coding (exposure left-shift): inventory presence (E99), artifact hash
+# freshness (E100, anchor anti-rot), data-flow spec table completeness (E105),
+# negation-test spot-check section (E106). All trigger-gated by 01-spec
+# declarations; undeclared changes short-circuit (no cost, no fatigue).
+validate_dimensional_begin() { # <change-dir>
+  # AGENT_GUARD_DIM_PROBE=1 disables this lane for structural completeness
+  # probes (complete_valid_change_exists): the probe answers "artifact set
+  # present?", not "anchors fresh?" — E99/E100/E105/E106 belong to the real
+  # enforcement points (begin / staged / stop via validate_dimensional_active).
+  [[ "${AGENT_GUARD_DIM_PROBE:-}" == "1" ]] && return 0
+  local d="$1" spec="$1/01-spec.md" oa cc inv hrec hcur f
+  [[ -s "$spec" ]] || return 0
+  oa=$(spec_decl "$spec" "origin_artifact")
+  cc=$(spec_decl "$spec" "chain_change")
+  if [[ -n "$oa" ]]; then
+    [[ -f "$oa" ]] \
+      || die "GATE-E109: origin_artifact '$oa' not found relative to repo root (standards §2.5 stage 1, v3.68.0)"
+    inv="$d/behavior-inventory.json"
+    [[ -s "$inv" ]] \
+      || die "GATE-E99: origin_artifact declared but $inv missing — run behavior-extract.sh on the artifact during 勘察, before coding (standards §2.5 stage 1, v3.68.0)"
+    hrec=$(grep -m1 -o '"artifact_hash": *"[a-f0-9]\{64\}"' "$inv" 2>/dev/null | grep -o '[a-f0-9]\{64\}' || true)
+    hcur=$(sha256_file "$oa")
+    hfail=""
+    if [[ -z "$hrec" || -z "$hcur" ]]; then
+      hfail="cannot verify artifact hash — inventory header line or sha256 tool missing"
+    elif [[ "$hrec" != "$hcur" ]]; then
+      hfail="origin artifact hash mismatch — artifact changed after extraction, anchors rotted; re-run behavior-extract.sh and re-anchor"
+    fi
+    [[ -z "$hfail" ]] \
+      || die "GATE-E100: $hfail (standards §2.5 stage 1, v3.68.0)"
+  fi
+  if [[ "$cc" == "true" ]]; then
+    e105=""
+    require_section_or_decl "$spec" "数据流规格表" \
+      || require_section_or_decl "$d/03-modification-plan.md" "数据流规格表" 2>/dev/null \
+      || e105="chain_change declared but no 数据流规格表 in 01-spec/03 (字段→来源→变换→落点→展示位置 per chain)"
+    if [[ -z "$e105" ]]; then
+      for f in "$spec" "$d/03-modification-plan.md"; do
+        [[ -s "$f" ]] || continue
+        if awk '/^#{1,6} /{f=($0 ~ /数据流规格表/); next} f' "$f" | grep -qE '\|[[:space:]]{0,3}\|'; then
+          e105="$f 数据流规格表 has blank cell(s) — a blank row is a design gap, back to design"
+          break
+        fi
+      done
+    fi
+    [[ -z "$e105" ]] \
+      || die "GATE-E105: $e105 (standards §2.5 stage 2, v3.68.0)"
+    require_section_or_decl "$d/04-test-scripts.md" "否定测试" \
+      || die "GATE-E106: chain_change declared but 04 lacks 否定测试 spot-check section — REQ without a regression TC is a test blind spot (standards §2.5 stage 4, v3.68.0)"
+  fi
+  return 0
+}
+
+# v3.68.0 (CHG-043): G13/G14 stop lane — the delivery backstop for the
+# reference-corruption incident class (all downstream checks validated against
+# a lossy transcription; nobody compared back to the approved origin artifact):
+# declared-missing behaviors (E101), three-way reconciliation orphans (E102),
+# demo-script replay evidence (E103), per-UJ runtime evidence (E104), review
+# journey evidence (E107), waiver transitivity (E108). Prints upstream-error
+# counters on success (all-zero is a danger signal — playbook stage 8).
+validate_dimensional_stop() { # <change-dir>
+  local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row bhv n_bhv n_wv
+  [[ -s "$spec" ]] || return 0
+  oa=$(spec_decl "$spec" "origin_artifact")
+  cc=$(spec_decl "$spec" "chain_change")
+  res05="$d/05-test-results.md"; res07="$d/07-review-report.md"
+  if [[ -n "$oa" ]]; then
+    inv="$d/behavior-inventory.json"
+    if [[ ! -s "$inv" ]]; then
+      # E99 single die point lives in the begin lane (validate_dimensional_active,
+      # dispatched right after this at staged/stop/ci) — keep the skip visible.
+      echo "agent-gate: G13/G14 stop lane skipped — behavior-inventory.json missing (E99 reported by the begin lane)" >&2
+      return 0
+    fi
+    if grep -qE '"status": *"missing"' "$inv"; then
+      die "GATE-E101: behavior inventory contains 遗漏 (missing) entries — close them or waive explicitly via the 拆除/豁免登记簿; stopping (standards §2.5 stage 2, v3.68.0)"
+    fi
+    ids=$(grep -oE '"id": *"BHV-[0-9]+"' "$inv" 2>/dev/null | grep -oE 'BHV-[0-9]+' | sort -u || true)
+    n_bhv=""
+    if [[ -n "$ids" ]]; then
+      n_bhv=$(printf '%s\n' "$ids" | grep -c . || true)
+      cov=$(cat "$d"/*.md 2>/dev/null | grep -oE 'BHV-[0-9]+' | sort -u || true)
+      orph=$(comm -23 <(printf '%s\n' "$ids") <(printf '%s\n' "$cov") 2>/dev/null | tr '\n' ' ' || true)
+      if [[ -n "$(printf '%s' "$orph" | tr -d '[:space:]')" ]]; then
+        die "GATE-E102: orphan behavior(s) never referenced by any change artifact nor waived: $orph (three-way reconciliation 清单↔事件链↔登记簿, standards §2.5 stage 2, v3.68.0)"
+      fi
+    fi
+    case "$(spec_decl "$spec" "demo_script")" in [1-9]*)
+      grep -q "REPLAY:" "$res05" 2>/dev/null \
+        || die "GATE-E103: demo_script declared but 05 lacks per-sentence REPLAY: runtime evidence — the approver already wrote the correct answers into the artifact (standards §2.5 stage 7, v3.68.0)" ;;
+    esac
+    n_wv=$(grep -cE '"status": *"waived"' "$inv" 2>/dev/null || true)
+  fi
+  if ui_change_true "$spec"; then
+    ujs=$(grep -oE 'UJ-[0-9]+' "$spec" 2>/dev/null | sort -u || true)
+    while IFS= read -r uj; do
+      [[ -n "$uj" ]] || continue
+      grep -E "$uj.*(HTTP|DB|响应体|快照)" "$res05" >/dev/null 2>&1 \
+        || die "GATE-E104: 05 lacks runtime evidence row for $uj (HTTP body/DB row/快照+timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0)"
+    done <<EOF
+$ujs
+EOF
+    e107=""
+    [[ -s "$res07" ]] || e107="ui_change declared but 07-review-report.md missing"
+    if [[ -z "$e107" ]]; then
+      grep -q "运行时走查" "$res07" \
+        || e107="07 lacks 「运行时走查」 journey-evidence section — document-level walkthrough alone is not availability acceptance"
+    fi
+    if [[ -z "$e107" ]]; then
+      grep -qE 'ses-[a-z0-9-]+|task-[a-z0-9-]+' "$res07" \
+        || e107="07 运行时走查 lacks a traceable ses-/task- id"
+    fi
+    [[ -z "$e107" ]] \
+      || die "GATE-E107: $e107 (standards §2.5 stage 8, v3.68.0)"
+  fi
+  # G14d waiver transitivity: a 行为豁免 touching a real business-chain
+  # behavior must carry a 00.5 追加沟通轮 reference — silent scope expansion
+  # of a waiver is the semantic-drift failure shape this family exists to kill.
+  if grep -q "拆除/豁免登记簿" "$spec" 2>/dev/null; then
+    led=$(awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} f' "$spec")
+    if [[ -n "$led" ]]; then
+      while IFS= read -r row; do
+        case "$row" in *行为豁免*) ;; *) continue ;; esac
+        bhv=$(printf '%s' "$row" | grep -oE 'BHV-[0-9]+' | head -1 || true)
+        [[ -n "$bhv" ]] || continue
+        # chain behavior = referenced anywhere in 01-spec OUTSIDE the ledger section
+        if awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} !f' "$spec" | grep -q "$bhv"; then
+          printf '%s' "$row" | grep -qE '00\.5' \
+            || die "GATE-E108: 行为豁免 $bhv touches a real business chain but carries no 00.5 追加沟通轮 reference — waivers must not transit (豁免演示数据≠豁免演示所走真实链路) (standards §2.5 stage 2, v3.68.0)"
+        fi
+      done <<EOF
+$led
+EOF
+    fi
+  fi
+  if [[ -n "$n_bhv" ]]; then
+    echo "agent-gate: G13/G14 stop lane clean — behaviors=$n_bhv waived=${n_wv:-0} orphans=0 (upstream-error counters: record nonzero finds in 07; all-zero is a danger signal, playbook stage 8)"
+  fi
+  return 0
+}
+
+# v3.68.0 (CHG-043): resolve the active change and run the G13/G14 BEGIN lane
+# at staged/stop as well — begin gates them before coding, this catches
+# mid-flight anchor rot (prototype edited after extraction) at commit staging
+# and re-verifies at delivery. Dormant without an active change.
+validate_dimensional_active() {
+  local af id d
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$af" && -s "$af" ]] || return 0
+  id=$(tr -d '[:space:]' < "$af" 2>/dev/null || true)
+  [[ -n "$id" ]] || return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -n "$d" && -d "$d" ]] || return 0
+  validate_dimensional_begin "$d"
 }
 
 # v3.55.0 (CHG-068): communication-first gate semantics, single source —
@@ -440,6 +628,10 @@ validate_artifact_content() {
     [[ "$unanchored" == 0 ]] \
       || die "GATE-E90: $d/01-spec.md declares ui_change: true but $unanchored REQ block(s) carry no UJ-xxx anchor (A-layer, standards §2.5 stage 1, v3.67.0)"
   fi
+  # v3.69.0 (CHG-044): G13/G14 begin lane — G14e element dimension ships inside
+  # the same inventory (kind=element rows; word table = behavior-extract.sh
+  # header, single source — A43 forbids copying it into narrative layers).
+  validate_dimensional_begin "$d"
 }
 
 # v3.67.0 (CHG-090): soft fallback for a MISSED ui_change declaration (the
@@ -1187,6 +1379,9 @@ validate_stop() {
   validate_active_change
   id=$(active_change)
   validate_delivery "$id"
+  # v3.68.0 (CHG-043): G13/G14 stop lane — three-way reconciliation, replay,
+  # per-UJ runtime evidence, review journey, waiver transitivity (E101–E108).
+  validate_dimensional_stop "$(change_dir "$id")"
   # v3.28.0: repo-wide six-piece sweep + provenance for this change's bound
   # defect groups (stamp-provenance.sh --bug).
   validate_bug_groups
@@ -1260,7 +1455,7 @@ complete_valid_change_exists() {
     for id in $(change_ids_in_dir "${dir%/}"); do
       [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || continue
       if ( validate_governance_state "$id" ) >/dev/null 2>&1 \
-         && ( validate_artifact_content "$id" ) >/dev/null 2>&1; then
+         && ( AGENT_GUARD_DIM_PROBE=1 validate_artifact_content "$id" ) >/dev/null 2>&1; then
         return 0
       fi
     done
@@ -1474,6 +1669,12 @@ emit_metrics() {
 }
 
 command="${1:-help}"
+# v3.68.0 (CHG-043, review finding 中2): external env must NOT be able to
+# disarm the dimensional gates — AGENT_GUARD_DIM_PROBE is an INTERNAL probe
+# switch (set only inside complete_valid_change_exists's subshell). Unset it
+# at the dispatch entry so an injected env var cannot bypass E99/E100/E105/
+# E106/E109 at begin/staged/stop/ci; the subshell-local assignment still works.
+unset AGENT_GUARD_DIM_PROBE 2>/dev/null || true
 case "$command" in
   begin)
     id="${2:-}"
@@ -1639,13 +1840,14 @@ case "$command" in
           validate_active_change
         fi
         ;;
-      staged) validate_diff staged; validate_ux_conditions; warn_ux_soft; record_delivery staged ;;
-      stop) validate_stop; validate_ux_conditions; warn_ux_soft; record_delivery stop ;;
+      staged) validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      stop) validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
         validate_diff branch "$base"
         validate_ux_conditions
+        validate_dimensional_active
         ;;
       commit-msg)
         msgfile="${1:-}"

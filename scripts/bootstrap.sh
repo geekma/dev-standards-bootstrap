@@ -45,6 +45,7 @@ Flags (layers; default --core when none given):
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, <scripts>/check-standards-compliance.sh
   --guard      强制执行包: <scripts>/agent-gate, <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
+               <scripts>/behavior-extract.sh (HTML/JS 原型行为抽取器, v3.68.0),
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
@@ -706,6 +707,7 @@ run_layer() {
       ;;
     guard)
       install_file - "$SCRIPTS_DIR/agent-gate" resources/templates/agent-gate.sh 755
+      install_file - "$SCRIPTS_DIR/behavior-extract.sh" resources/templates/behavior-extract.sh 755
       install_file - "$SCRIPTS_DIR/stamp-provenance.sh" resources/templates/stamp-provenance.sh 755
       install_file - "$SCRIPTS_DIR/new-change" resources/templates/new-change.sh 755
       install_file - "$GITHOOKS_DIR/pre-commit" resources/templates/pre-commit 755
