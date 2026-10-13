@@ -3410,11 +3410,11 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.69.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.70.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.68.0" 1 "$(grep -cF '规范版本：v3.69.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.68.0" 1 "$(grep -cF '当前对应规范版本：v3.69.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.68.0 top row" 1 "$(grep -c '^| v3.69.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 DS footer carries v3.70.0" 1 "$(grep -cF '规范版本：v3.70.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.70.0" 1 "$(grep -cF '当前对应规范版本：v3.70.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 CHANGELOG has v3.70.0 top row" 1 "$(grep -c '^| v3.70.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -4193,6 +4193,15 @@ check_output "T54 TC-1238 refusal names GATE-E108 with the element id" "GATE-E10
 sed -e 's/静态占位按钮已确认豁免（无沟通轮）/00.5 追加沟通轮：静态占位按钮已确认豁免/' docs/changes/CHG-1060/01-spec.md > .t54-spec.tmp && mv .t54-spec.tmp docs/changes/CHG-1060/01-spec.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T54 TC-1238 stop green again after 00.5 restored" 0 $?
+# TC-1239（FU-934 收窄①，v3.70.0）：登记簿节外的「行为豁免」表行 → E108 红（堵节外躲检）
+awk '{print} /元素清单/{print "| BHV-001 | 行为豁免 | 节外豁免行试图躲检 |"}' docs/changes/CHG-1060/01-spec.md > .t54-spec.tmp && mv .t54-spec.tmp docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1239 E108 stop red: waiver row outside the ledger section" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T54 TC-1239 refusal names the outside-ledger narrowing" "GATE-E108" "$out"
+grep -v '^| BHV-001 | 行为豁免 | 节外豁免行试图躲检 |$' docs/changes/CHG-1060/01-spec.md > .t54-spec.tmp && mv .t54-spec.tmp docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T54 TC-1239 stop green again after stray row removed" 0 $?
 }
 
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b

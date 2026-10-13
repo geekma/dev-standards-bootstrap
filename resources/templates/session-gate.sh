@@ -18,6 +18,22 @@
 #       idle 同样 exit 0（软执法 + 落盘报告）；硬阻断仍由 gate --stage stop（Claude
 #       Stop hook）与 Git hooks 承担——本脚本只负责"让红灯被看见"。
 #
+# 【机制细节（唯一权威；v3.70.0 CHG-045 自 DS §2.9.6 形状移出，本块与
+#   install-hook-adapter.sh 头注释同源互为镜像）】
+#   · 遥测活性自检（v3.63.0，REQ-1037）：`status/idle` 校验 `session-tool-stats.json.updated_at`
+#     新鲜度（窗口 `AGENT_GUARD_SESSION_TELEMETRY_STALE_MIN` 分钟，默认 30）与「已接线但零遥测」
+#     两态，异常亮 YELLOW 失联提示——adapter 与客户端插件 API 漂移致静默失联
+#     （2026-09 opencode 1.18.x 实证）由此可见化，软执法不阻断。
+#   · adapter 兼容性基线（v3.63.0，REQ-1036；v3.64.0 契约发现替代静态映射，CHG-084）：
+#     install-hook-adapter 生成物须匹配各客户端现行扩展协议；同机多 runtime 契约互斥实证
+#     （opencode homebrew CLI 1.18.x 只认 `server()`、Desktop 内置 CLI 2.0.x 只执行 `setup()`
+#     并 schema 拒 `server`-only default）证明「版本→形状静态映射」不可行——v3.64.0 起
+#     opencode 适配为四段式契约发现（探测 runtime→实时检索官方文档→形状候选→逐 runtime
+#     沙箱真加载仲裁 + session-gate 功能标记，fail-closed ADAPTER-E11/E12/E13），生成物为
+#     dual-active 形状（各 runtime 各执行其一）；静态结构断言（ADAPTER-E09/E10，v3.63.0）
+#     由真加载探测与遥测活性自检替代废止；cursor 按 hooks 文档事件名、gemini/codex 无仓级
+#     hook 面只如实声明不变；协议核对时点与最低兼容版本随模板头注维护。
+#
 # 零依赖：bash 3.2+、git；被调脚本缺失时降级为显式提示，不猜不编。
 set -uo pipefail
 

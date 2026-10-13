@@ -70,6 +70,13 @@ cfg_path() { # key default
 docs_dir="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
 change_root="${AGENT_GUARD_CHANGE_ROOT:-$docs_dir/changes}"
 tmpl_dir="${AGENT_GUARD_TEMPLATES_DIR:-$docs_dir/templates/entry}"
+# FU-932 (CHG-045)：env/yml 把 TEMPLATES_DIR 指到 templates 根（缺 entry 层——目录存在
+# 但没有入口模板件）时自动下探 entry/ 子目录并告警一行；仍找不到才 NC-E06——指错一层
+# 不该直接死，更不该静默生成空骨架。探测锚=00-intent.md（八件之首）。
+if [[ ! -s "$tmpl_dir/00-intent.md" && -s "$tmpl_dir/entry/00-intent.md" ]]; then
+  echo "new-change: AGENT_GUARD_TEMPLATES_DIR 指向 ${tmpl_dir}，已自动改用 ${tmpl_dir}/entry" >&2
+  tmpl_dir="$tmpl_dir/entry"
+fi
 [[ -d "$tmpl_dir" ]] || die "NC-E06: entry templates not found at $tmpl_dir (run bootstrap --core/--guard first; non-default docs root: set AGENT_GUARD_DOCS_DIR=<dir> or pin paths.docs in .agent-governance.yml and reinstall/upgrade)"
 [[ -d "$change_root" ]] || mkdir -p "$change_root"
 
@@ -206,15 +213,10 @@ else
       die_check_confirm_failed "$confirm_gate_rc"
     fi
   fi
-  # v3.67.0 (CHG-090, REQ-1056): conditional artifact — 03.6-ui-spec.md is
-  # required only when 01-spec declares ui_change: true (standards §2.5 stage 3).
-  # Scaffold it automatically once the declaration is present so the author
-  # never forgets the conditional lane.
-  if [[ -s "$d/01-spec.md" && -s "$tmpl_dir/03.6-ui-spec.md" && ! -s "$d/03.6-ui-spec.md" ]] \
-     && grep -qE 'ui_change\*{0,2}[：:][[:space:]]*`?true' "$d/01-spec.md" 2>/dev/null; then
-    fill "$tmpl_dir/03.6-ui-spec.md" > "$d/03.6-ui-spec.md"
-    echo "new-change: ui_change: true detected — scaffolded conditional 03.6-ui-spec.md"
-  fi
+  # FU-933 (CHG-045)：不再自动脚手架 03.6-ui-spec.md——E92 已兜底「ui_change: true
+  # 而 03.6 缺失」（gate staged/stop 拒），自动生成会让作者跳过十节规格设计
+  #（§2.5 阶段 3 条 9，形状唯一权威=entry/03.6-ui-spec.md 模板）；需要时作者从
+  # templates/entry/ 手动复制并填写，E92 红即提示。
   echo "new-change: scaffolded $d"
 fi
 

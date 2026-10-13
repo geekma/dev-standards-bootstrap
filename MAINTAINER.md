@@ -133,12 +133,13 @@ bash scripts/update-assertion-count.sh --check  # 只检查，漂移即 exit 1�
 
 ### 5.1 规范体量上界（A11）与它的重校准
 
-`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **172 KB / 175,104 字节**）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
+`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **164 KB / 167,936 字节**，v3.70.0 自 172KB 回转——CHG-045 下沉后兑现配对减法）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
 
 **重校准是设计内的动作，不是破例**，但必须满足两个条件：
 
 v3.43.0 重校准记录（CHG-053）：156KB 上界被 §2.17.2b 缺陷发现入口（三信号双通道 + 频控 + 自主权，160,160 字节）吃到负值 → 按 KiB 步进（+8KB，跨 4KB 档取整）重设 **164KB**（余量约 7.5KB），有 CHANGELOG v3.43.0 行对应。
 v3.68.0 重校准记录（CHG-043 同版本收尾，2026-10-12 用户裁定"校准"）：164KB 上界的余量先被 v3.67.0 UX 体系压到 455B，再被 v3.68.0 三维对照门禁族（G13/G14，5 条款）吃到 **170,735 字节**（破线 2,799B）→ 按 KiB 步进（+8KB）重设 **172KB**，有 CHANGELOG v3.68.0 行勘误注对应。**配对减法纪律**：下次触软警线（171,008B）必须走结构性减法，禁止连续重校准；减法低垂果实 v3.61.0（FU-911）已摘尽，再减须动硬结构（权威锚点全量重验），另立 CHG。
+v3.70.0 回转记录（CHG-045，2026-10-13 用户"体积要控制"+配对纪律兑现）：172KB 上界被存量法下沉（FU-936，形状迁 entry 模板×4+工具头注释+playbook 瘦身）减至 **167,610 字节** → 上界**回转 164KB**（软警 163,840B 即时常亮=下次结构增长的减法触发器）。**注**：盘点估值 13KB 偏高，无语义损失可移出的形状实为 ~3.2KB——剩余内容均为机校语义/权威定义（L 类），进一步减法须动硬结构。
 
 1. **有 CHANGELOG 条目对应**（新条款必须登记）；
 2. **先压缩再抬高**：把重复条款合并、把机制细节下沉到脚本头部注释（渐进披露），能省多少先省多少。
@@ -200,6 +201,7 @@ audit（源层）与 golden（通用层）断言只进不出 = 维护税复利�
 
 | 版本 | 升级后需要补什么 |
 |---|---|
+| **v3.70.0** | **形状移出法分层减法 + entry 形状件（CHG-045，REQ-1082~1086）**：DS/STAGE_PLAYBOOK 模板形状与机制细节移出到承接点（entry 形状件 ×4：01.5/05/07/09；既有模板与工具头注释承接面见 STANDARDS_CHANGELOG 顶行）；FU-932/933/934/937 收口。**`--upgrade` 带走 DS/AGENTS/STAGE_PLAYBOOK/agent-gate/new-change/audit/bootstrap/session-gate/install-hook-adapter/SKILL/README×2/entry×6/methodologies 版本行**。**回填义务：无** |
 | **v3.69.0** | **G14e 元素对等清单 + 分层瘦身（CHG-044，REQ-1077~1081）**：behavior-extract.sh 增交互元素枚举（kind=element，词表唯一权威=工具头注释）；DS 条 9 +6 字；playbook 细则瘦身为指针（登记簿 schema/否定测试形状/证据行格式移入 entry 模板条件注释块与 agent-gate 头注释）；A43 分层单源 tripwire；T54（TC-1234~1238）；版本链 v3.69.0。**`--upgrade` 带走 DS/AGENTS/STAGE_PLAYBOOK/CLAUSE_REGISTRY/agent-gate/behavior-extract/audit/bootstrap/SKILL/README×2/entry 模板×2/methodologies 版本行**。**回填义务：无（枚举扩展对既有清单向后兼容）** |
 | **v3.68.0** | **三维对照门禁族 G13/G14（CHG-043，REQ-1067~1076）**：源维（origin_artifact 锚点白名单+hash 防腐+behavior-extract.sh 机械抽取+三方对账+剧本回放+豁免传递禁令）/流维（chain_change 事件流切分+数据流规格表）/运行维（否定测试+评审走旅程+逐 UJ 运行痕迹硬门+上游错误计数全零危险信号）；GATE-E99~E109 挂 begin/stop；audit G13/G14；T53 节（TC-1128~1135/1231~1233）。**`--upgrade` 带走 DS/AGENTS/STAGE_PLAYBOOK/CLAUSE_REGISTRY/agent-gate/behavior-extract/audit/bootstrap/SKILL/README×2/methodologies 版本行**。**回填义务：无（声明触发，不追溯既往）**（详 STANDARDS_CHANGELOG v3.68.0） |
 | **v3.67.0** | **用户体验体系（CHG-090，REQ-1052~1066）**：阶段 1 项目上下文包 10 域 + UJ 用户任务（业务专家子 Agent 强制先于 REQ；项目级落新册 P12，总册 12→13）；阶段 3 条件产物 `03.6-ui-spec.md`（`ui_change: true` 必需）+ 禁裸主键作用户入口 + 03.5 任务类型列强制 UX 行；阶段 4 用户旅程 E2E（阈值 L0/L1=1、L2/L3=3）；阶段 8 产品可用性专家 UAT 阻塞门（绑定项目代码背景/行业/系统/业务）+ 四方证据→五方 + 人类 UAT 可选提醒；机器化 GATE-E90/E92–E98 + 审计 G11/G12 + §2.8 埋点强制 + §5 反模式 3 条。T52（TC-1212~1222）+ A39 锚点组。**`--upgrade` 带走 DS/AGENTS/methodologies×2/STAGE_PLAYBOOK/CLAUSE_REGISTRY/entry·project·docs-readme·PR 模板/agent-gate/audit/new-change/bootstrap**。**回填义务：目标仓复制 `templates/project/P12-product-context.md` 到 `<docs>/project/` 并回填现状（缺则 begin 拒）；不追溯既往；在途变更软告警一次**（详 STANDARDS_CHANGELOG v3.67.0）。**勘误（CHG-091，2026-10-11，同版本不 bump）：上下文包 10 域与 UJ 条件化——无 UX/UI 需求的变更不强加**。**勘误（CHG-092，2026-10-11，同版本不 bump）：mtime 读取探测序 GNU-first 修复（gate_mtime/收据新鲜度；GNU `stat -f %m` 输出 `?m` rc=0，Linux 上 BSD-first 回落不可达）——Linux CI T49 E89 state3 + T51 TC-1121 转绿，macOS 行为不变** |
@@ -285,6 +287,10 @@ grep -rnE 'gated-defect-fix|verify-dev-standards-install' scripts/ tests/ SKILL.
 
 > 判定口径（2026-09-16 全项目 review，**两轮收敛**）：本节初版写"全仓 grep 零命中是正确状态"——被**本文件自身的举例**证伪；第二版改成"只应命中解释性文字，**且仅在 MAINTAINER.md**"——**仍不成立**：随分发的 `resources/DEVELOPMENT_STANDARDS.md`「Agent 自进化与派生资产」节当时也举例了两个派生名（该举例已于 v3.21.2 删除，概念保留、名字不留）。**结论：口径必须按"面"分**——解释性文字可以有（本文件 + `docs/review/` 的历史评审；实测命中集合还包括 `.workbuddy*/memory` 的会话笔记，它们被 `.gitignore` 忽略、不进仓库，同属解释性面），**分发载荷（`resources/**`）与可执行面（`scripts/`、`tests/`、`SKILL.md`、安装清单）必须零命中**。
 > 注：脚本内用 `grep -E` 而非 `\|` 交替——BSD grep 的 BRE 不支持 `\|`，本机实测恒空。
+
+## 8.5 研究依据（v2.18.0 实证；v3.70.0 CHG-045 自 DS §2.17 形状移入，唯一权威落点）
+
+「状态外置、只信磁盘」的实证——CIKM '26《The Compaction Cliff》（[arXiv:2608.22752](https://arxiv.org/abs/2608.22752)）：/compact 一轮后安全规则仅存 53%、五轮后 10%，去验证器的系统「报告 100% 保留、实际静默丢失 57% 约束」；流程侧（意图漂移、决策不可复盘、事故不回流）见 Anthropic《[The AI-Native SDLC Playbook](https://claude.com/blog/the-ai-native-sdlc-playbook)》。故铁律：治理状态外置磁盘产物；写盘后以 shell 级验证（`grep -c`/`wc -l`/`git diff`）确认落盘，不采信工具返回值或 Read 缓存；门禁只读磁盘与 git。DS §2.17 原位保留一行指针与本不变量句。
 
 ## 9. 源仓/目标仓边界（source vs target separation，CHG-070 立规）
 

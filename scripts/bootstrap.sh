@@ -37,7 +37,7 @@ Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, CLAUSE_REGISTRY.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
                methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
                <docs>/templates/project/ (总册 13 册 + 评审模板, v3.67.0),
-               <docs>/templates/entry/ (变更入口骨架 8 件 + 条件件 03.6-ui-spec.md, v3.67.0; v3.52.0 起 8 件含 00.5),
+               <docs>/templates/entry/ (变更入口骨架 8 件 + 条件件 03.6-ui-spec.md, v3.67.0; v3.52.0 起 8 件含 00.5; v3.70.0 CHG-045 增形状件 4: 01.5/05/07/09),
                <docs>/README.md (一页文档地图, v3.37.0),
                <docs>/06.5-deployment-config.md, <docs>/06-delivery-summary.md
                (八类最低文档集里原先无模板的两类，CHG-004),
@@ -98,7 +98,7 @@ Path roots (v3.15.0) — 只配置**目录根**：
   required-check 名）——可配即失去跨仓比对与迁移能力。
 
 任何层遇到冲突文件时退出 2（fail-closed），已复制的文件保留，重跑 --force 覆盖。
-变更起编使用的入口骨架落 <docs>/templates/entry/（8 件）、沟通稿正式模板落
+变更起编使用的入口骨架落 <docs>/templates/entry/（8 件 + 条件件 03.6 + 形状件 4：01.5/05/07/09，v3.70.0 CHG-045）、沟通稿正式模板落
 <docs>/templates/communication.md（v3.52.0）；它们由 scripts/new-change 与 SKILL.md
 指导使用，不随变更号动态落盘。
 EOF
@@ -687,8 +687,10 @@ run_layer() {
       # v3.52.0（CHG-064）：八件——00.5-communication.md 为沟通先行门产物（§2.17.2d）；
       # v3.67.0（CHG-090）：另发条件件 03.6-ui-spec.md（01-spec ui_change: true 时必需，
       # 不计入八件基数；new-change 仅在命中 UI 变更时复制）；正式沟通稿模板随 --core 下发。
+      # v3.70.0（CHG-045）：形状件 4——01.5-rtvm-matrix/05-test-results/07-review-report/
+      # 09-changelog（DS 形状移出法的承接点；new-change 不默认脚手架，作者按需复制）。
       mkdir -p "$DOCS_DIR/templates/entry"
-      for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 03.6-ui-spec.md 04-test-scripts.md; do
+      for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 03.6-ui-spec.md 04-test-scripts.md 01.5-rtvm-matrix.md 05-test-results.md 07-review-report.md 09-changelog.md; do
         install_file - "$DOCS_DIR/templates/entry/$e" "resources/templates/entry/$e"
       done
       install_file - "$DOCS_DIR/templates/communication.md" resources/templates/communication.md

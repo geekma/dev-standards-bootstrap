@@ -656,14 +656,17 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #      v3.67.0 时余量仅 455B 已压线）；② 有 CHANGELOG 条目对应（v3.68.0 行勘误注）；
 #   ③ KiB 步进（+8KB）重设为 172KB——**配对减法纪律**：下次触软警线（171,008B）必须走
 #      结构性减法，禁止连续重校准；门禁族稳定后的减法 CHG 另立。
+# v3.70.0 回转 172KB → 164KB（CHG-045，2026-10-13，用户"体积要控制"指令 + 配对减法纪律兑现）：
+#   CHG-045 存量法下沉实移 ~3.2KB（DS 170,823→167,610——盘点估值 13KB 偏高，可无语义损失
+#   移出的形状就这些；软警线 163,840B 常亮=下次结构增长的减法触发器）。A28/MAINTAINER 同步。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 172KB (FU-017, recalibrated v3.68.0)" 1 "$([[ "$std_bytes" -le 175104 ]] && echo 1 || echo 0)"
-# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥171,008B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
+report "A11 standards body size <= 164KB (FU-017, ratchet-down v3.70.0)" 1 "$([[ "$std_bytes" -le 167936 ]] && echo 1 || echo 0)"
+# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥163,840B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 171,008B)" 0 "$([[ "$std_bytes" -ge 171008 ]] && echo 1 || echo 0)"
+report_soft "A11s standards body approaching hard cap (soft warn >= 163,840B)" 0 "$([[ "$std_bytes" -ge 163840 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '172 KB / 175,104 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '164 KB / 167,936 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
@@ -677,7 +680,7 @@ at_least "A30 seven-element history field" 1 "$STD" '历史检索命中的 BUG/C
 # A31 枚举面 pin（CHG-058/REQ-978）：G 组清单于双语 README+SKILL 在册（G10 同步漏更复发防线，A29 同族）+ bugfix-log 模板历史相似字段
 at_least "A31 G10 enumerated in EN README" 1 "$ROOT/README.md" 'G10'
 at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
-at_least "A31 audit-group enumeration in SKILL (G1-G12)" 1 "$ROOT/SKILL.md" 'G1–G12'
+at_least "A31 audit-group enumeration in SKILL (G1-G14)" 1 "$ROOT/SKILL.md" 'G1–G14'
 at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bugfix-log.md" '历史相似'
 
 # A32 版本载体全链清单条款（CHG-061 / REQ-984，对等减法=§2.16.5 标准升级行退役合并）
@@ -1047,7 +1050,14 @@ report "A25 session-gate maintains the water file" 1 "$(a17_at_least_1 "$(grep -
 report "A25 metrics emits artifact cost fields" 1 "$(a17_at_least_1 "$(grep -c 'artifact_bytes' "$GATE_TPL" || true)")"
 report "A25 scaffolder template exists" 1 "$([[ -s "$ROOT/resources/templates/new-change.sh" ]] && echo 1 || echo 0)"
 report "A25 scaffolder shipped by bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/new-change.sh' "$ROOT/scripts/bootstrap.sh" || true)")"
-report "A25 entry templates exist (8 core + conditional 03.6)" 9 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
+report "A25 entry templates exist (8 core + conditional 03.6 + shape 4, CHG-045)" 13 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
+# v3.70.0 (CHG-045): the four DS→entry shape templates must exist and be
+# registered in the bootstrap entry loop — fail-closed against a partial move.
+a25_shape=0
+for sf in 01.5-rtvm-matrix.md 05-test-results.md 07-review-report.md 09-changelog.md; do
+  [[ -s "$ROOT/resources/templates/entry/$sf" ]] && grep -q "$sf" "$ROOT/scripts/bootstrap.sh" && a25_shape=$(( a25_shape + 1 ))
+done
+report "A25 shape templates present + bootstrap-registered (4: 01.5/05/07/09)" 4 "$a25_shape"
 report "A25 entry templates shipped by bootstrap core" 1 "$(a17_at_least_1 "$(grep -c 'templates/entry' "$ROOT/scripts/bootstrap.sh" || true)")"
 report "A25 golden pins the water gate" 1 "$(a17_at_least_1 "$(grep -c 'T24 begin names the water level' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden pins the scaffolder" 1 "$(a17_at_least_1 "$(grep -c 'T25 filled scaffold passes begin' "$ROOT/tests/run-tests.sh" || true)")"
@@ -1184,19 +1194,26 @@ a43_ptr=$(grep -c 'behavior-extract.sh` 头注释\|behavior-extract.sh 头注释
 [[ "$a43_ptr" -ge 1 ]] || { a43_bad=1; echo "A43 layering: playbook lacks the single-source pointer" >&2; }
 report "A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)" 0 "$a43_bad"
 
-printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
 if [[ -f "$AUDIT_BASELINE" ]]; then
   expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')
   # soft (CI) mode: numeric drift warns instead of blocking; warn stays out of
   # this denominator (pass+fail-soft_pass), so the baseline comparison goes soft.
+  # +1 = A10 itself (FU-937): the counter snapshot below is taken BEFORE this
+  # report increments it, while the baseline (synced from the post-report
+  # AUDIT_LAST write below) includes it — the old pre-report write recorded N-1
+  # and the committed baseline sat one below the runtime executed count.
   if [[ -n "$SOFT" ]]; then
-    report_soft "A10 audit executed-count matches baseline (FU-022; CI soft)" "$expected_total" "$(( pass + fail - soft_pass ))"
+    report_soft "A10 audit executed-count matches baseline (FU-022; CI soft)" "$expected_total" "$(( pass + fail - soft_pass + 1 ))"
   else
-    report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail - soft_pass ))"
+    report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail - soft_pass + 1 ))"
   fi
 else
   report "A10 audit baseline exists (FU-022; run scripts/update-assertion-count.sh)" 1 0
 fi
+# FU-937 (CHG-045): written AFTER the A10 report so the synced number equals the
+# runtime executed total (the old pre-report write recorded N-1 → 静态基线恒比
+# 运行时少一，正是 audit-baseline 差一的根因).
+printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
 
 echo
 echo "$pass passed, $fail failed"

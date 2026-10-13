@@ -396,26 +396,31 @@ EOF
     [[ -z "$e107" ]] \
       || die "GATE-E107: $e107 (standards §2.5 stage 8, v3.68.0)"
   fi
-  # G14d waiver transitivity: a 行为豁免 touching a real business-chain
-  # behavior must carry a 00.5 追加沟通轮 reference — silent scope expansion
-  # of a waiver is the semantic-drift failure shape this family exists to kill.
-  if grep -q "拆除/豁免登记簿" "$spec" 2>/dev/null; then
-    led=$(awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} f' "$spec")
-    if [[ -n "$led" ]]; then
-      while IFS= read -r row; do
-        case "$row" in *行为豁免*) ;; *) continue ;; esac
-        bhv=$(printf '%s' "$row" | grep -oE 'BHV-[0-9]+' | head -1 || true)
-        [[ -n "$bhv" ]] || continue
-        # chain behavior = referenced anywhere in 01-spec OUTSIDE the ledger section
-        if awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} !f' "$spec" | grep -q "$bhv"; then
-          printf '%s' "$row" | grep -qE '00\.5' \
-            || die "GATE-E108: 行为豁免 $bhv touches a real business chain but carries no 00.5 追加沟通轮 reference — waivers must not transit (豁免演示数据≠豁免演示所走真实链路) (standards §2.5 stage 2, v3.68.0)"
+  # G14d waiver transitivity (v3.70.0，CHG-045 收窄)：①「行为豁免」表行只允许出现在
+  # 01-spec「拆除/豁免登记簿」节内——节外豁免行直接 E108（堵"节外豁免行躲检"）；
+  # ②触真实业务链的节内豁免行须行内同时含 00.5 引用与「确认」——静默扩大豁免范围
+  # 是本门禁族要杀的语义漂移失效形态。单一 die 点（T41 码唯一性）。
+  e108=""
+  led=$(awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} f' "$spec")
+  if awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} !f' "$spec" | grep -qE '^\|.*行为豁免'; then
+    e108="「行为豁免」表行出现在拆除/豁免登记簿节之外 — waiver rows are only legal inside the ledger section (v3.70.0 CHG-045 收窄)"
+  elif [[ -n "$led" ]]; then
+    while IFS= read -r row; do
+      case "$row" in *行为豁免*) ;; *) continue ;; esac
+      bhv=$(printf '%s' "$row" | grep -oE 'BHV-[0-9]+' | head -1 || true)
+      [[ -n "$bhv" ]] || continue
+      # chain behavior = referenced anywhere in 01-spec OUTSIDE the ledger section
+      if awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} !f' "$spec" | grep -q "$bhv"; then
+        if ! { printf '%s' "$row" | grep -q '00\.5' && printf '%s' "$row" | grep -q '确认'; }; then
+          e108="行为豁免 $bhv touches a real business chain but carries no inline 00.5 追加沟通轮确认 reference — waivers must not transit (豁免演示数据≠豁免演示所走真实链路) (standards §2.5 stage 2, v3.68.0; narrowed v3.70.0)"
+          break
         fi
-      done <<EOF
+      fi
+    done <<EOF
 $led
 EOF
-    fi
   fi
+  [[ -z "$e108" ]] || die "GATE-E108: $e108"
   if [[ -n "$n_bhv" ]]; then
     echo "agent-gate: G13/G14 stop lane clean — behaviors=$n_bhv waived=${n_wv:-0} orphans=0 (upstream-error counters: record nonzero finds in 07; all-zero is a danger signal, playbook stage 8)"
   fi
