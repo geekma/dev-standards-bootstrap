@@ -40,6 +40,62 @@ record_delivery() { # <stage> — v3.63.0 (REQ-1033, DES-1822): delivery marker 
     || echo "agent-gate: note — could not write .agent-state/last-delivery.json (shift gate degrades fail-open)" >&2
   return 0
 }
+
+# --- v3.71.0 (CHG-046, REQ-1088): infra/config smoke gate (fail-closed) ------
+# Trigger face: a changed path matching SMOKE_INFRA_RE (overridable via the
+# .agent-governance.yml flat key `smoke_paths:` — comma-separated EREs; add
+# startup-script faces like `\.sh$` per project). When the diff touches the
+# face the repo MUST declare `smoke_command:` (the project's pre-commit smoke
+# script) — undeclared blocks, per the 2026-10-14 ruling: fail-closed forces
+# the project to configure. With a command declared, 05 evidence (a
+# 「冒烟证据」 line in any docs/changes/*/05-test-results.md whose file mtime
+# is within AGENT_GUARD_SMOKE_EVIDENCE_MAX_AGE_H hours, default 24; 0 disables
+# the window) satisfies the gate. Waiver: a
+# 「基建冒烟」：未命中，不适用（理由） line in any such 05 passes with a stderr
+# warning (the discipline layer records the justification in that 09).
+SMOKE_INFRA_RE='(^|/)(pom\.xml|build\.gradle[^/]*|settings\.gradle[^/]*|application[^/]*\.(yml|yaml|properties)|\.env[^/]*|Dockerfile[^/]*|docker-compose[^/]*|Makefile)$'
+check_smoke_gate() { # <files...> -> dies GATE-E111 on violation; empty input = no-op
+  local files="$1" re hit="" f cmd win ev ok=0 waiver now mt
+  [[ -n "$files" ]] || return 0
+  re=$(cfg_path smoke_paths "")
+  [[ -n "$re" ]] || re="$SMOKE_INFRA_RE"
+  local e111=""
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    if printf '%s\n' "$f" | grep -qE "$re"; then hit="$f"; break; fi
+  done <<< "$files"
+  [[ -n "$hit" ]] || return 0
+  waiver=$(grep -lE '^[[:space:]]*-[[:space:]]*\*\*基建冒烟\*\*(：|:)[[:space:]]*未命中，不适用（.+）' \
+    "$change_root"/*/05-test-results.md 2>/dev/null | head -1 || true)
+  if [[ -n "$waiver" ]]; then
+    echo "agent-gate: smoke gate waived via a 「基建冒烟」 declaration (infra path: $hit) — record the justification in that change's 09 (v3.71.0)" >&2
+    return 0
+  fi
+  cmd=$(cfg_path smoke_command "")
+  if [[ -z "$cmd" ]]; then
+    e111="diff touches the infra/config face (e.g. $hit) but no smoke command is declared — add smoke_command: to .agent-governance.yml (fail-closed, standards §2.5 stage 7; waiver: 「基建冒烟」：未命中，不适用（理由） in 05)"
+  else
+    win=$(cfg_path smoke_evidence_max_age_h 24)
+    [[ "$win" =~ ^[0-9]+$ ]] || win=24
+    # REQ-1088: the evidence LINE is always required once a command is declared;
+    # the window only governs freshness (win=0 = presence-level, yml 注释同义).
+    local ev_found=0 now mt
+    now=$(date -u +%s)
+    for ev in "$change_root"/*/05-test-results.md; do
+      [[ -s "$ev" ]] || continue
+      grep -qE '^[[:space:]]*-[[:space:]]*\*\*冒烟证据\*\*(：|:).+' "$ev" || continue
+      ev_found=1
+      [[ "$win" == "0" ]] && { ok=1; break; }
+      mt=$(gate_mtime "$ev")
+      [[ "$mt" -gt 0 ]] || continue
+      (( now - mt <= win * 3600 )) && { ok=1; break; }
+    done
+    [[ "$ev_found" == 1 || -n "$e111" ]] || e111="infra diff (e.g. $hit) without a 「冒烟证据」 line in any 05 — run the declared smoke command and record a 「冒烟证据」：<命令>：<结果> line in 05"
+    [[ "$ev_found" != 1 || "$ok" == 1 || -n "$e111" ]] || e111="infra diff (e.g. $hit): the 「冒烟证据」 line is stale (beyond window ${win}h) — re-run the declared smoke command and refresh the evidence line"
+  fi
+  [[ -z "$e111" ]] \
+    || die "GATE-E111: $e111 (v3.71.0)"
+}
 cd "$repo_root"
 
 # --- path roots (v3.15.0) ---------------------------------------------------
@@ -395,6 +451,80 @@ EOF
     fi
     [[ -z "$e107" ]] \
       || die "GATE-E107: $e107 (standards §2.5 stage 8, v3.68.0)"
+    # v3.71.0 (CHG-046, REQ-1087): restoration-assertion gate — the E92–E98/E104
+    # family checks artifact EXISTENCE only (external-project retro: five review rounds
+    # all returned "build+unit green ≠ done"); the restoration bar must be
+    # machine-checkable. 05 carries 「还原度断言」: either a waiver declaration
+    # or a pointer to a real test file (exists + a test-assertion marker).
+    local ra ra_file e110=""
+    ra=$(grep -E '^[[:space:]]*-[[:space:]]*\*\*还原度断言\*\*(：|:)' "$res05" 2>/dev/null | head -1 || true)
+    if [[ -z "$ra" ]]; then
+      e110="05 lacks a 「还原度断言」 line — ui_change restoration must be machine-checkable (an assertion test file: section-order/placeholder/section-header DOM assertions) or explicitly waived: 「还原度断言」：未命中，不适用（理由）"
+    elif ! printf '%s\n' "$ra" | grep -q '未命中，不适用'; then
+      # BSD sed C-locale mangling lesson: multibyte negated classes capture
+      # wrong spans — extract with bash parameter expansion (byte-safe).
+      ra_file="${ra#*：}"; [[ "$ra_file" == "$ra" ]] && ra_file="${ra#*:}"
+      ra_file="${ra_file%%（*}"; ra_file="${ra_file%%(*}"
+      ra_file="$(printf '%s' "$ra_file" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      if [[ -z "$ra_file" || ! -f "$ra_file" ]]; then
+        e110="the 05 还原度断言 line points at '$ra_file' which does not exist — name the real assertion test file"
+      elif ! grep -qE 'describe\(|\bit\(|\btest\(|expect\(|assert|def test_|@Test' "$ra_file" 2>/dev/null; then
+        e110="$ra_file carries no recognizable test assertion marker — a plan document is not a test"
+      fi
+    fi
+    [[ -z "$e110" ]] \
+      || die "GATE-E110: $e110 (standards §2.5 stage 7, v3.71.0)"
+  fi
+  # v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — closes the GATE-E89
+  # blind spot (E89 fires only at begin; same-change long sessions never re-run
+  # begin). A re-delivery of a change already delivered IN THIS SESSION, without
+  # handoff evidence, is blocked: write docs/changes/<id>/handoff.md, or record
+  # - **换挡声明**：未到换挡点（<理由>） in 09, or escape via
+  # AGENT_GUARD_ALLOW_NO_SHIFT=1 (same key as E89; the discipline layer still
+  # owes the 09 registration). First delivery passes: record_delivery writes
+  # the marker AFTER validate_stop, and stale/absent markers fail open (E89
+  # semantics).
+  local lastd lc l_started l_delivered
+  lastd="$repo_root/.agent-state/last-delivery.json"
+  if [[ -s "$lastd" && ! -s "$d/handoff.md" ]] \
+     && ! grep -qE '^[[:space:]]*-[[:space:]]*\*\*换挡声明\*\*(：|:).+' "$d/09-changelog.md" 2>/dev/null \
+     && [[ "${AGENT_GUARD_ALLOW_NO_SHIFT:-}" != "1" ]] \
+     && [[ -s "$repo_root/.agent-state/session-started.json" ]]; then
+    lc=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+    if [[ "$lc" == "$id" ]]; then
+      l_started=$(sed -n 's/.*"started_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1)
+      l_delivered=$(sed -n 's/.*"delivered_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+      if [[ -n "$l_started" && -n "$l_delivered" ]] && [[ "$l_delivered" > "$l_started" ]]; then
+        die "GATE-E112: change $id was delivered earlier in this session but has neither handoff.md nor a 09 「换挡声明」 line — shift the session (write handoff), record the declaration, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification in 09 (standards §2.9.6, v3.71.0)"
+      fi
+    fi
+  fi
+  # v3.71.0 (CHG-046, REQ-1091): TC-landing gate — blocks "test planning posing
+  # as tests" (external-project retro: 04 promised ~25 test files, zero materialized).
+  # Only the 「TC 落点清单」 section is scanned (legacy 04 files without the
+  # section keep passing; the discipline layer lands the mapping going forward).
+  # 「人工」-typed entries are skipped (manual walkthroughs have no executable
+  # file); automated entries must point at an existing file carrying a
+  # test-assertion marker.
+  if grep -q '^## TC 落点清单' "$d/04-test-scripts.md" 2>/dev/null; then
+    local tcl tc_path tc_id
+    while IFS= read -r tcl; do
+      [[ -n "$tcl" ]] || continue
+      case "$tcl" in *"自动化"*) ;; *) continue ;; esac
+      tc_id=$(printf '%s\n' "$tcl" | sed -E 's/^[[:space:]]*-[[:space:]]*(TC-[A-Za-z0-9_-]+)[[:space:]]*:[[:space:]].*/\1/')
+      tc_path="${tcl#*:}"; tc_path="${tc_path%%（*}"; tc_path="${tc_path%%(*}"
+      tc_path="$(printf '%s' "$tc_path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      local e113=""
+      if [[ -z "$tc_path" || ! -f "$tc_path" ]]; then
+        e113="TC landing '$tc_id' points at '$tc_path' which does not exist — every automated TC must land an executable file (standards §2.5 stage 7)"
+      elif ! grep -qE 'describe\(|\bit\(|\btest\(|expect\(|assert|def test_|@Test' "$tc_path" 2>/dev/null; then
+        e113="'$tc_id' landing '$tc_path' carries no recognizable test assertion marker"
+      fi
+      [[ -z "$e113" ]] \
+        || die "GATE-E113: $e113 (v3.71.0; escape review: 人工-typed rows are skipped)"
+    done < <(sed -n '/^## TC 落点清单/,/^## /p' "$d/04-test-scripts.md" | grep -E '^[[:space:]]*-[[:space:]]*TC-')
+  else
+    echo "agent-gate: TC landing soft warning: $d/04-test-scripts.md has no 「TC 落点清单」 section (legacy shape passes unblocked; new changes must land TC→file mappings, REQ-1091, v3.71.0)" >&2
   fi
   # G14d waiver transitivity (v3.70.0，CHG-045 收窄)：①「行为豁免」表行只允许出现在
   # 01-spec「拆除/豁免登记簿」节内——节外豁免行直接 E108（堵"节外豁免行躲检"）；
@@ -1391,6 +1521,9 @@ validate_stop() {
   # defect groups (stamp-provenance.sh --bug).
   validate_bug_groups
   validate_bug_ref_provenance
+  # v3.71.0 (CHG-046, REQ-1088): stop-lane smoke gate over the staged + last
+  # commit face (the commit lane is covered in validate_diff).
+  check_smoke_gate "$( { changed_files staged 2>/dev/null; git show --name-only --format= HEAD 2>/dev/null; } | sort -u )"
   # CHG-012 / FU: verification command source chain — env (highest) →
   # .agent-governance.yml ci.verification_command (placeholder skipped) → unset
   # (verify skipped; same fail-open semantics as before). Two-phase per design:
@@ -1509,6 +1642,10 @@ validate_diff() {
   # v3.28.0: defect doc groups are repo-level evidence — sweep them on every
   # diff-anchored stage (staged commits / branch CI), not only at stop.
   validate_bug_groups
+
+  # v3.71.0 (CHG-046, REQ-1088): infra smoke gate on the commit lane
+  # (staged = pre-commit; branch CI keeps a presence-level check).
+  check_smoke_gate "$files"
 
   # v3.5.0: branch-mode CI additionally requires delivery evidence (test
   # results + changelog with ReAct Observation) for every change touched by
@@ -1828,6 +1965,17 @@ case "$command" in
     printf 'agent-gate: check-confirm: %s\n' "$CONFIRM_REASON" >&2
     exit 1
     ;;
+  check-smoke)
+    # v3.71.0 (CHG-046, REQ-1088): read-only smoke-gate probe (check-confirm
+    # sibling). Exit 0 = pass; 1 = violation (GATE-E111 reason on stderr);
+    # 2 = usage. Deliberately non-die-shaped at this level: the probe re-runs
+    # check_smoke_gate in a subshell and maps its die to exit 1.
+    sm_files="$( { changed_files staged 2>/dev/null; git show --name-only --format= HEAD 2>/dev/null; } | sort -u )"
+    if ( check_smoke_gate "$sm_files" ) 2>&1; then
+      exit 0
+    fi
+    exit 1
+    ;;
   metrics)
     emit_metrics
     ;;
@@ -1876,6 +2024,7 @@ Usage:
   scripts/agent-gate --stage ci [--base ref]
   scripts/agent-gate --stage commit-msg <message-file>
   scripts/agent-gate check-confirm <change-id>   # exit 0/1/2, read-only (v3.55.0)
+  scripts/agent-gate check-smoke                 # exit 0/1/2, read-only (v3.71.0)
 
 begin requires eight non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,

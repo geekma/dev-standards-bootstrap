@@ -47,4 +47,15 @@ if [[ -n "${active:-}" && -s "$active" && -f scripts/stamp-provenance.sh ]]; the
   fi
 fi
 
+# v3.71.0 (CHG-046, REQ-1090): 同变更换挡硬提醒（软提醒，不阻塞 commit；硬执法在
+# agent-gate stop 的 GATE-E112）——last-delivery 指向的变更已交付且其目录无
+# handoff.md 时大声提醒收尾必须换挡（E89 盲区：同变更长会话永不重跑 begin）。
+lastd=.agent-state/last-delivery.json
+if [[ -s "$lastd" ]]; then
+  lchange=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+  if [[ -n "$lchange" && -d "docs/changes/$lchange" && ! -s "docs/changes/$lchange/handoff.md" ]]; then
+    echo "pre-commit: SHIFT REMINDER: $lchange 已交付（.agent-state/last-delivery.json）且无 docs/changes/$lchange/handoff.md — 收尾必须写 handoff 文档并换挡新会话（§2.9.6 事件型换挡；确需继续，在 09 登记「换挡声明」；stop 侧 GATE-E112 会硬查）" >&2
+  fi
+fi
+
 scripts/agent-gate --stage staged

@@ -377,6 +377,7 @@
 
 ### 阶段 3：方案设计与任务拆解（Design）
 
+- **生效配置可观测（v3.71.0，CHG-046/REQ-1089）**：服务/应用启动期必须打印生效配置关键项的来源与版本，覆盖式配置（DB/远程模板覆盖本地/默认）必须 WARN 级显式日志——细则与走查项见 STAGE_PLAYBOOK 阶段 7 节。
 - **产物**：`docs/<feature>/03-modification-plan.md`（定义 `DES-xxx`）+ `docs/<feature>/03.5-tasks.md`
 - **必含清单**（按功能规模取用，新增功能全项必含）：
    1. **架构设计**：分层/模块归属、依赖方向、新增组件说明。
@@ -430,6 +431,7 @@
 - **必含清单**：运行环境（JDK/命令）、脱敏摘要（Tests run/Failures/Errors/Time/退出码 + 受控原始日志链接）、用例明细表、**批次保留**（门禁 3：独立批次 §N，不覆盖历史；**每批四要素：[变更前后用例数] [受影响] [新增] [复用]**）、覆盖率三指标（**行 ≥70% + 分支 ≥60% + 业务场景 ≥80%**，v3.3.0；行/分支 JaCoCo 如适用，L2+ 强制分支报告；场景覆盖率 = SC 已覆盖/枚举，L3 ≥90%）、命中性能指标时附**性能/容量验证**（用例在阶段 4 先行设计）、测试 Agent 独立性声明。
 - **失败用例逐条登记**（v3.10.0）：逐条记录（用例/失败步/证据链接），禁仅报汇总计数——失败日志须逐步索引、可审计、每条挂证据（arXiv:2602.02475 §3.3）。
 - **运行时证据硬门（v3.68.0，CHG-043）**：`ui_change: true` 时 05 必含**逐 UJ 运行痕迹**（HTTP 响应体片段/DB 行/快照+时间戳，grep 可验，机校 GATE-E104——事故复盘硬门化：可追溯性只保证无孤儿，运行痕迹才证明源头正确）；01-spec 声明 `demo_script: <N句>` 时必含**逐句回放证据**（`REPLAY:` 行，机校 GATE-E103——批准者已把正确答案写进原始工件）；证据与规格偏差 → 07 评审定责三选一（代码错→修码 / 图纸错→01-spec 追加式修订 / 理解错→00.5 追加沟通轮），禁止带偏差交付。细则唯一权威=`STAGE_PLAYBOOK` 阶段 7。
+- **交付四门（v3.71.0，CHG-046）**：ui_change 变更 05 必含**还原度断言**证据行（指向真实 UI 断言测试文件，机校 GATE-E110）；基建/配置面 diff 触发**冒烟门**（governance.yml `smoke_command` 未声明即拦，fail-closed，机校 GATE-E111）；同会话重复交付无 handoff/换挡声明即拦（机校 GATE-E112，堵 E89 盲区）；04「TC 落点清单」自动化条目必须落真实测试文件（机校 GATE-E113）。细则唯一权威=`STAGE_PLAYBOOK` 阶段 7 节与工具头注释。
 
 - **验收标准**：A 层——05 新增批次 §N 绑定 CHG 且含四要素清单、Tests run/Failures/退出码摘要与**业务场景覆盖率数字**（x/y；L0：05 允许单行声明，v3.44.0）；B 层——测试 Agent 确认证据完整（行 ≥70%/分支 ≥60% 如适用、场景覆盖率 ≥80% 且未覆盖 SC 均有理由、性能验证如命中），历史批次未被覆盖，留 Agent 标识（§2.1.7）。
 
@@ -601,7 +603,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - **单会话单主题**：只做一个变更/主题；禁止混排 bugfix 与 CHG 工作（串行拆会话）。
 - **换挡阈值**：超过 50 轮、主题切换、或上下文长期高位（窗口逼近上限 / cache_read 异常）时，必须 handoff 后开新会话，从磁盘重建状态（§2.16.1）；每次交付前在 09「重要上下文」做**换挡检查登记**（当前轮数/是否换挡/理由）。换挡线未 handoff 时 `gate begin` 拒开新变更（v3.38.0，`AGENT_GUARD_ALLOW_OVER_WATER=1` 豁免并登记；v3.63.0 起阈值比较统一 `-ge` 口径——第 50 轮整即达线，check 与 begin 两侧行为一致）；**会话红灯未清同样禁开新变更（v3.41.0）**——`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付的 09-changelog 时 `begin` 拒绝（`AGENT_GUARD_ALLOW_OVER_RED=1` 豁免并登记 09「重要上下文」）。
 - **事件型换挡触发（v3.63.0，REQ-1032，治"轮次不可观测"）**：任一变更 **commit 完成 / 交付宣言之后**，收尾动作必须包含 ①handoff 文档落盘（写 `docs/changes/<变更号>/handoff.md` 或活跃 BATCH 目录，承载跨会话交接状态）②显式换挡声明（本会话终结、后续开新会话）。不换挡继续在同会话开新变更：`gate begin` 以 **GATE-E89** 硬拦（v3.63.0，REQ-1033——`staged/stop` 落盘 `.agent-state/last-delivery.json`，begin 发现「交付发生在本会话存活期内且无新于交付的 handoff 文档」即拒，豁免 `AGENT_GUARD_ALLOW_NO_SHIFT=1` 须在 09「重要上下文」登记；会话起点标记 `session-started.json` 由 `session-gate.sh start` 写入，新会话自然放行；证据缺失 fail-open）。**豁免边界（同批次连续变更/用户明示继续）**：同日 BATCH 内连续变更经用户明示继续或 09 登记后可用豁免 env 放行；豁免不是默许，连续三次同会话免换挡按 §5 反模式登记。
-- **水位与遥测机校（v3.38.0 引入，v3.39.0 通用化；v3.63.0 活性自检）**：`scripts/session-gate.sh count turn|count tool <name>` 是 **harness 无关的计数通用层**（bash，零依赖）——客户端适配器经 hook/事件转发计数，其余 harness 接等价事件即可，无适配器零开销跳过；落盘文件、超线注入提醒等机制细节见脚本头注释。计数落盘 `.agent-state/`；`agent-gate begin` 读磁盘水位超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即拒开新变更，豁免 `AGENT_GUARD_ALLOW_OVER_WATER=1` 须在 09「重要上下文」登记理由；无水位文件客户端检查跳过、防线后移，语义不变（§2.17.3.2）。**工具级硬拦（v3.58.0，REQ-1008）**：`session-gate.sh check` 供 install-hook-adapter 生成的 PreToolUse（Claude，exit 2=块工具）/ tool.execute.before（OpenCode，throw）调用——水位文件存在且超限即拦（fail-closed），无文件/未超/未装仓 exit 0（防线后移语义不变）；`AGENT_GUARD_SESSION_TURN_LIMIT` 可调，豁免理由登记 09。**遥测活性自检与 adapter 兼容性基线（v3.63.0，REQ-1036/1037；v3.64.0 契约发现，CHG-084）**：活性自检存在且软执法不阻断（失联可见不静默）；opencode 适配为四段式契约发现、fail-closed（ADAPTER-E11/E12/E13）、生成物 dual-active（各 runtime 各执行其一）——机制细节（新鲜度窗口 env、同机多 runtime 契约互斥实证、形状候选与沙箱仲裁、协议核对时点与最低兼容版本）**唯一权威 = `resources/templates/session-gate.sh` 与 `resources/templates/install-hook-adapter.sh` 头注释「机制细节（唯一权威）」块（v3.70.0，CHG-045 形状移出）**；本节只留不变量：水位超线拒开新变更、工具级硬拦 fail-closed、失联可见不静默。
+- **水位与遥测机校（v3.38.0 引入，v3.39.0 通用化；v3.58.0 工具级硬拦；v3.63.0 活性自检；v3.64.0 契约发现）**：`scripts/session-gate.sh` 是 harness 无关的计数通用层（bash 零依赖，适配器经 hook/事件转发计数，无适配器零开销跳过）。不变量三条：①begin 读磁盘水位超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即拒开新变更，豁免 `AGENT_GUARD_ALLOW_OVER_WATER=1` 须 09「重要上下文」登记；②`session-gate check` 工具级硬拦 fail-closed（无文件/未超/未装仓 exit 0，防线后移语义不变）；③活性自检失联可见不静默（YELLOW=adapter 未被客户端加载，须核查客户端日志）。机制细节（落盘文件、超线注入、新鲜度窗口 env、opencode 四段式契约发现、ADAPTER-E11/E12/E13、形状候选与沙箱仲裁、协议核对时点与最低兼容版本）**唯一权威 = `resources/templates/session-gate.sh` 与 `resources/templates/install-hook-adapter.sh` 头注释「机制细节（唯一权威）」块（v3.70.0，CHG-045 形状移出）**。
 - **勘探预算机校（v3.39.0）**：`session-gate idle/status` 从遥测文件读工具调用数——单会话 `bash` >20 亮黄灯（软执法），要求合并检索/下放子代理并在 09「重要上下文」登记超标原因（量化基线见 AGENTS.md 纪律节；纪律 4 勘探下放自本版起为默认强制）。**bash 预算分级口径（v3.60.0，FU-909）**：≤20 硬约束限于**编码/落点类**调用；baseline 校准、全量 suite、长复测类验证调用单列台账（04.5 记次数）不占额。
 - **过程违规**：明知超标续用同一会话按 §5 反模式登记，证据落 09「重要上下文」。
 - **定向验证优先（v3.25.0）**：模块/单测级验证命令先行；全量回归仅由门禁（stop/staged/CI）统一触发，禁止随手裸跑全量（执行细则见 AGENTS.md 纪律节）。
@@ -1116,4 +1118,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.70.0 | 更新时间：2026-10-13 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.71.0 | 更新时间：2026-10-14 | 全局维护责任人：geekma (geekma@gmail.com)*

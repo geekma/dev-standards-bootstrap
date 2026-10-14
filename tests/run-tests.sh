@@ -3410,10 +3410,10 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.70.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.71.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.70.0" 1 "$(grep -cF '规范版本：v3.70.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.70.0" 1 "$(grep -cF '当前对应规范版本：v3.70.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries v3.71.0" 1 "$(grep -cF '规范版本：v3.71.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.71.0" 1 "$(grep -cF '当前对应规范版本：v3.71.0' "$ROOT/resources/AGENTS.md")"
 report "T48 TC-1073 CHANGELOG has v3.70.0 top row" 1 "$(grep -c '^| v3.70.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
@@ -3637,7 +3637,8 @@ section_T50() {
   # gates, so the G13/G14 section registered as T53 (registry growth only;
   # count stays dynamic via t50_expect).
   # CHG-044: tail recalibrated T53→T54 (G14e element-enumeration section joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T54 ]] && echo 0 || echo 1)"
+  # CHG-046: tail recalibrated T54→T55 (delivery four-gate section joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T55 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -4071,6 +4072,7 @@ report "T53 TC-1134 E104 stop red: UJ-001 lacks runtime evidence row in 05" 2 $?
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
 check_output "T53 TC-1134 refusal names GATE-E104" "GATE-E104" "$out"
 printf -- '- UJ-001 运行时证据：HTTP 响应体 200，DB 行 <表> 更新，快照 snap-t53c\n' >> docs/changes/CHG-1040/05-test-results.md
+printf -- '- **还原度断言**：未命中，不适用（T53 夹具无自动化浏览器环境，人工逐屏清单已附）\n' >> docs/changes/CHG-1040/05-test-results.md
 # TC-1134（E107 stop 级）：07 有签名无 运行时走查 → 红
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T53 TC-1134 E107 stop red: 07 lacks 运行时走查 journey section" 2 $?
@@ -4208,7 +4210,176 @@ report "T54 TC-1239 stop green again after stray row removed" 0 $?
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54)
+section_T55() {
+# ------------------------------------------------ T55 交付四门（v3.71.0，CHG-046）
+stamp_all() { # <change-dir> — inline provenance for every artifact md（T5 stamp_fixture_all 同型；节内自带，过滤运行不依赖他节）
+  local pf
+  for pf in "$1"/*.md; do
+    [[ -f "$pf" ]] || continue
+    grep -q '^<!-- provenance' "$pf" && continue
+    { printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+  done
+}
+# ① E110（REQ-1087）：ui_change 变更 05 还原度断言行三态
+new_repo
+seed_begin CHG-1070 L1 claude/s-1
+printf '# spec\n- **ui_change**：true\n## 用户任务\n### UJ-001\n- **入口**：记录列表\n### REQ-001\n**描述**：r\n**挂靠 UJ**：UJ-001\n' > docs/changes/CHG-1070/01-spec.md
+printf '# ui\n## 显示名↔主键映射\n- 记录显示名 → record_id\n' > docs/changes/CHG-1070/03.6-ui-spec.md
+printf '# tasks\n| 任务 | 类型 | 依赖 | 里程碑 | 说明 |\n|---|---|---|---|---|\n| T1 | UX | 无 | M1 | 设计 |\n- 评审输入: x\n' > docs/changes/CHG-1070/03.5-tasks.md
+printf '# tests\n- TC-001 用户旅程 E2E（真人入口）\n覆盖维度: 正常流\n- SC-001 用户旅程 E2E（覆盖: TC-001）\n' > docs/changes/CHG-1070/04-test-scripts.md
+scripts/agent-gate begin CHG-1070 >/dev/null 2>&1
+printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-1070/04.5-coding-record.md
+printf '# 05 测试结果\n- UJ-001 HTTP 200 响应体 {"ok":true} @2026-10-14T00:00:00Z\n' > docs/changes/CHG-1070/05-test-results.md
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
+printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更。\n' > docs/changes/CHG-1070/06.5-deployment-config.md
+printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-1070/06-delivery-summary.md
+printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-1070/09-changelog.md
+append_masters docs/changes/CHG-1070/09-changelog.md
+stamp_all docs/changes/CHG-1070
+echo x > src/a.go
+scripts/agent-gate --stage stop >/dev/null 2>&1
+rc_e110a=$?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+report "T55 TC-1248 E110 red: 05 lacks the restoration-assertion line" 2 "$rc_e110a"
+check_output "T55 TC-1248 refusal names GATE-E110" "GATE-E110" "$out"
+# 豁免声明行 → E110 过（走到后续门全绿，写入首次交付记录）
+printf '# 05 测试结果\n- UJ-001 HTTP 200 响应体 {"ok":true} @2026-10-14T00:00:00Z\n- **还原度断言**：未命中，不适用（无自动化环境，人工逐屏清单已附）\n' > docs/changes/CHG-1070/05-test-results.md
+stamp_all docs/changes/CHG-1070
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1249 waiver declaration passes E110 (full stop green)" 0 $?
+# 指向不存在文件 → 红；点名路径（05 换行重写后补章保 E19）
+printf '# 05 测试结果\n- UJ-001 HTTP 200 响应体 {"ok":true} @2026-10-14T00:00:00Z\n- **还原度断言**：tests/ui-proto.test.js（断言面：节序/占位形态）\n' > docs/changes/CHG-1070/05-test-results.md
+stamp_all docs/changes/CHG-1070
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T55 TC-1249 E110 red: assertion file missing" "GATE-E110.*ui-proto" "$out"
+# 文件在 + 断言标记在 → 绿（全 stop 再绿；为 E112 铺垫交付记录）
+mkdir -p tests
+printf 'describe("proto", () => { it("节序", () => expect(1).toBe(1)); });\n' > tests/ui-proto.test.js
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1247 evidence line with a real test file passes (stop green)" 0 $?
+# ② E112（REQ-1090）：同会话重复交付换挡执法（new_repo 已置 started_at=-1H 与
+#    AGENT_GUARD_ALLOW_NO_SHIFT=1 导出——本组用 =0 显式开启执法面，T49 同法）
+echo y > src/b.js
+AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate --stage stop >/dev/null 2>&1
+rc_e112=$?
+out=$(AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate --stage stop 2>&1 || true)
+report "T55 TC-1254 E112 red: in-session re-delivery without handoff" 2 "$rc_e112"
+check_output "T55 TC-1254 refusal names GATE-E112" "GATE-E112" "$out"
+printf '\n- **换挡声明**：未到换挡点（同批次连续变更，用户明示继续）\n' >> docs/changes/CHG-1070/09-changelog.md
+AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1254 换挡声明 line passes E112" 0 $?
+perl -ni -e 'print unless /换挡声明/' docs/changes/CHG-1070/09-changelog.md
+AGENT_GUARD_ALLOW_NO_SHIFT=1 scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1254 escape env passes E112" 0 $?
+printf '# handoff\nCHG-1070 handoff record\n' > docs/changes/CHG-1070/handoff.md
+stamp_all docs/changes/CHG-1070
+AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1253 handoff.md passes E112" 0 $?
+# ③ E113（REQ-1091）：TC 落点清单
+new_repo
+seed_begin CHG-1071 L1 claude/s-1
+printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-1071/04.5-coding-record.md
+printf '# 05 测试结果\nok: 1\n' > docs/changes/CHG-1071/05-test-results.md
+printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | ok |\n' > docs/changes/CHG-1071/09-changelog.md
+append_masters docs/changes/CHG-1071/09-changelog.md
+printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：无配置。\n' > docs/changes/CHG-1071/06.5-deployment-config.md
+printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-902 | 样例 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-1071/06-delivery-summary.md
+stamp_all docs/changes/CHG-1071
+printf '\n## TC 落点清单\n- TC-9001: tests/missing.test.js（类型：自动化）\n' >> docs/changes/CHG-1071/04-test-scripts.md
+echo z > src/c.go
+scripts/agent-gate --stage stop >/dev/null 2>&1
+rc_e113=$?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+report "T55 TC-1256 E113 red: automated TC landing file missing" 2 "$rc_e113"
+check_output "T55 TC-1256 refusal names GATE-E113 and the TC id" "GATE-E113.*TC-9001" "$out"
+mkdir -p tests
+printf 'it("works", () => expect(1).toBe(1));\n' > tests/ui-proto.test.js
+sed -e 's#tests/missing.test.js#tests/ui-proto.test.js#' docs/changes/CHG-1071/04-test-scripts.md > .t55-04.tmp && mv .t55-04.tmp docs/changes/CHG-1071/04-test-scripts.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1255 E113 green: landing file exists with assertion marker" 0 $?
+sed -e 's#（类型：自动化）#（类型：人工）#' docs/changes/CHG-1071/04-test-scripts.md > .t55-04.tmp && mv .t55-04.tmp docs/changes/CHG-1071/04-test-scripts.md
+rm -f tests/ui-proto.test.js
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T55 TC-1256 人工-typed landing skips the file check" 0 $?
+# ④ E111（REQ-1088）：基建冒烟门 fail-closed 三态 + check-smoke 探针
+new_repo
+seed_begin CHG-1072 L1 claude/s-1
+printf 'smoke_placeholder: true\n' > pom.xml
+git add pom.xml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+rc_e111a=$?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T55 TC-1251 E111 red: infra diff without a declared smoke command" 2 "$rc_e111a"
+check_output "T55 TC-1251 refusal names GATE-E111 fail-closed" "GATE-E111" "$out"
+printf '# 05 测试结果\n- **冒烟证据**：bash scripts/smoke.sh：login 200 ok @2026-10-14T00:00:00Z\n' > docs/changes/CHG-1072/05-test-results.md
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\n' > .agent-governance.yml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1250 E111 green: declared command + fresh evidence line" 0 $?
+perl -ni -e 'print unless /冒烟证据/' docs/changes/CHG-1072/05-test-results.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+rc_e111b=$?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T55 TC-1252 E111 red: declared command but no evidence" 2 "$rc_e111b"
+check_output "T55 TC-1252 refusal asks for the evidence line" "冒烟证据" "$out"
+printf '# 05 测试结果\n- **基建冒烟**：未命中，不适用（文档性配置，无运行面）\n' > docs/changes/CHG-1072/05-test-results.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1252 waiver declaration passes E111 with a warning" 0 $?
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_paths: zzz\.nomatch\n' > .agent-governance.yml
+printf '# 05 测试结果\n' > docs/changes/CHG-1072/05-test-results.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1252 smoke_paths override shrinks the trigger face" 0 $?
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\n' > .agent-governance.yml
+git add pom.xml .agent-governance.yml docs/changes/CHG-1072/05-test-results.md
+scripts/agent-gate check-smoke >/dev/null 2>&1
+report "T55 TC-1257 check-smoke probe: violation exits 1" 1 $?
+printf '# 05 测试结果\n- **冒烟证据**：bash scripts/smoke.sh：ok @2026-10-14T00:00:00Z\n' > docs/changes/CHG-1072/05-test-results.md
+scripts/agent-gate check-smoke >/dev/null 2>&1
+report "T55 TC-1257 check-smoke probe: evidence present exits 0" 0 $?
+# 证据窗时效（TC-1252 评审补强）：证据行在但 mtime 超窗 → 红
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\n' > .agent-governance.yml
+printf '# 05 测试结果\n- **冒烟证据**：bash scripts/smoke.sh：ok @2026-01-01T00:00:00Z\n' > docs/changes/CHG-1072/05-test-results.md
+touch -t 202601010000 docs/changes/CHG-1072/05-test-results.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+rc_stale=$?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T55 TC-1252 E111 red: evidence line present but stale beyond the window" 2 "$rc_stale"
+check_output "T55 TC-1252 refusal names the evidence line requirement" "冒烟证据" "$out"
+# win=0 = 存在级（P1-1 裁定：窗只管时效，行必须查）
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_evidence_max_age_h: 0\n' > .agent-governance.yml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1252 win=0 keeps presence-level enforcement (stale file still passes)" 0 $?
+# pre-commit 运行级（TC-1257 评审补强）：SHIFT REMINDER 输出 + 不阻塞
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\n' > .agent-governance.yml
+touch docs/changes/CHG-1072/05-test-results.md
+printf '{"delivered_at":"%s","change":"CHG-1072","stage":"stop","session":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/last-delivery.json
+cp "$ROOT/scripts/stamp-provenance.sh" scripts/stamp-provenance.sh
+out=$(bash "$ROOT/resources/templates/pre-commit" 2>&1 || true)
+check_output "T55 TC-1257 pre-commit emits the SHIFT REMINDER" "SHIFT REMINDER" "$out"
+bash "$ROOT/resources/templates/pre-commit" >/dev/null 2>&1
+report "T55 TC-1257 pre-commit reminder does not block the commit (rc=0)" 0 $?
+# ⑤ 条款与模板在位（TC-1258，audit 同源口径）
+report "T55 TC-1258 DS carries the four-gate row" 1 "$(grep -c '交付四门' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T55 TC-1258 DS carries the config-observability clause" 1 "$(grep -c '生效配置可观测' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T55 TC-1258 playbook carries the four-gate detail" 1 "$(grep -c '交付四门细则' "$ROOT/resources/STAGE_PLAYBOOK.md")"
+report "T55 TC-1258 playbook carries the no-parallel red line" 1 "$(grep -c '禁并行集成测试' "$ROOT/resources/STAGE_PLAYBOOK.md")"
+report "T55 TC-1258 AGENTS carries the no-parallel discipline" 1 "$(grep -c '禁并行集成测试' "$ROOT/resources/AGENTS.md")"
+report "T55 TC-1258 pre-commit carries the shift reminder" 1 "$(grep -c 'SHIFT REMINDER' "$ROOT/resources/templates/pre-commit")"
+report "T55 TC-1258 04 entry template carries the landing section" 1 "$(grep -c 'TC 落点清单' "$ROOT/resources/templates/entry/04-test-scripts.md")"
+report "T55 TC-1258 governance yml carries the smoke key" 1 "$(grep -c 'smoke_command:' "$ROOT/resources/templates/agent-governance.yml")"
+report "T55 TC-1258 registry indexes the four new codes" 4 "$(grep -cE 'GATE-E11[0-3] \|' "$ROOT/resources/CLAUSE_REGISTRY.md")"
+# ⑥ A42 通用性：四门 payload 面无来源项目特异 token（扫描面=评审 P0-1 扩至 8 文件）
+a42_hit=0
+for pf in resources/templates/agent-gate.sh resources/templates/pre-commit resources/STAGE_PLAYBOOK.md resources/templates/agent-governance.yml resources/templates/entry/04-test-scripts.md resources/DEVELOPMENT_STANDARDS.md resources/AGENTS.md resources/CLAUSE_REGISTRY.md; do
+  grep -qE 'chg044|paper-proto|doctor01|fzzl_|ASR_UPSTREAM|dev\.sh && ' "$ROOT/$pf" && a42_hit=$(( a42_hit + 1 ))
+done
+report "T55 TC-1258 A42: no source-project tokens in the four-gate payload (8 files)" 0 "$a42_hit"
+}
+
+# v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
+# disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
+# misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
+# (unknown key dies rc2), then filtered invocation in original order.
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do

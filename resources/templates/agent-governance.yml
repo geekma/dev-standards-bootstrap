@@ -22,6 +22,16 @@
 #      缺陷六件套名、required-check 名 `agent-governance`。它们一旦随仓库而异，
 #      跨仓逐文件比对与"装一次、迁移到任意仓库"
 #      这一核心能力即失效——参数化目录根是便利，参数化契约名是解体。
+
+# ── 基建冒烟门（v3.71.0，CHG-046，REQ-1088，GATE-E111 fail-closed）──────────
+# smoke_command：项目提交前冒烟命令（基建/配置面变更被 staged/stop 捕获时必须
+#   已声明，否则拦；命令产物以「冒烟证据」行落 05-test-results.md）。
+# smoke_paths：可选，逗号分隔 ERE，覆写默认触发面
+#   （pom/build.gradle/application*.yml|.env*|Dockerfile|docker-compose|Makefile；
+#   启动脚本面如 `\.sh$` 由项目按需声明）。
+# smoke_evidence_max_age_h：可选，证据时效窗小时数（默认 24；0=关窗，仅查存在）。
+# smoke_command: bash scripts/build.sh && bash scripts/smoke.sh
+# smoke_paths: \.sh$,pom\.xml
 paths:
   docs: docs            # 文档根：规范/方法论/变更/缺陷/交付总结都挂在此下
   scripts: scripts      # 治理脚本根：agent-gate、install-hook-adapter、合规检查
