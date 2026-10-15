@@ -181,7 +181,7 @@ oc_clean_repo_litter() { # 终验探针在真实仓根的临时痕——成功/�
   # 两遍清扫：opencode 客户端被杀后可能有延迟的状态异步落盘（实测 .oc-xdg 内
   # tui/tabs.json 在 rm 后数秒内被复活），第二遍兜住 straggler。
   for _i in 1 2; do
-    sleep 1
+    sleep 0.2
     rm -rf "$PWD/.oc-xdg" 2>/dev/null || true
     rm -f "$PWD/probe-serve.out" "$PWD/probe.pid" "$PWD/probe-run.out" "$PWD/probe-session.json" 2>/dev/null || true
   done
@@ -240,10 +240,10 @@ oc_kill_bg() { # <pidfile>
   local pid; pid="$(cat "$1" 2>/dev/null || true)"
   [[ -z "$pid" ]] && return 0
   kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
-  sleep 1
+  sleep 0.2
   if kill -0 -- "-$pid" 2>/dev/null || kill -0 "$pid" 2>/dev/null; then
     kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
-    sleep 1
+    sleep 0.2
   fi
 }
 
@@ -279,18 +279,21 @@ oc_probe() { # <kind: cli|desktop> <bin> <workdir> -> echoes PASS|FAIL|INCONCLUS
             XDG_STATE_HOME="$xdg/state" XDG_CACHE_HOME="$xdg/cache" \
             OPENCODE_DISABLE_AUTOUPDATE=1 OPENCODE_DISABLE_MODELS_FETCH=1 \
             "$bin" serve --port "$port" --hostname 127.0.0.1
-      for ((i = 0; i < OC_PROBE_WINDOW; i++)); do
+      # 步进 0.2s × 5 倍次数 = 总听窗仍为 OC_PROBE_WINDOW 秒（粒度更细，总耐心不变）
+      for ((i = 0; i < OC_PROBE_WINDOW * 5; i++)); do
         grep -q "server listening" "$workdir/probe-serve.out" 2>/dev/null && { listened=true; break; }
-        sleep 1
+        sleep 0.2
       done
       if [[ "$listened" == true ]]; then
         # 免凭据触发 session.created（实证：POST /session 不调用模型）
         curl -s -m 5 -X POST "http://127.0.0.1:$port/session" -H 'content-type: application/json' \
           -d '{}' -o "$workdir/probe-session.json" 2>/dev/null
-        [[ -s "$workdir/probe-session.json" ]] || sleep 2
+        [[ -s "$workdir/probe-session.json" ]] || sleep 0.2
         [[ -s "$workdir/probe-session.json" ]] || { curl -s -m 5 -X POST "http://127.0.0.1:$port/session" \
           -H 'content-type: application/json' -d '{}' -o "$workdir/probe-session.json" 2>/dev/null || true; }
-        sleep 3
+        # POST 后定值窗 3s→0.2s：功能证据的真正耐心由 3 段尝试梯（窗 1x/2x/3x，
+        # 尝试间隔 ≈1-2s）+ 终验加窗重试（窗上限已放大 ×2→×3）承载，非本定值
+        sleep 0.2
         oc_kill_bg "$workdir/probe.pid"
       else
         oc_kill_bg "$workdir/probe.pid"
@@ -317,7 +320,7 @@ oc_probe() { # <kind: cli|desktop> <bin> <workdir> -> echoes PASS|FAIL|INCONCLUS
     sleep "$OC_PROBE_WINDOW"
     oc_kill_bg "$workdir/probe.pid"
   fi
-  sleep 1
+  sleep 0.2
   local logs lf failed=""
   logs="$(find "$xdg" -name '*.log' 2>/dev/null || true)"
   if [[ -z "$logs" ]]; then
@@ -711,7 +714,7 @@ MD
     fv=""; fdetail=""
     pv="$(oc_probe "$fkind" "$fbin" "$PWD")"
     fv="${pv%%|*}"; fdetail="${pv#*|}"
-    sleep 2
+    sleep 0.5
     if [[ "$tag_supported" == true ]]; then
       advanced="$(grep -F "probe-tag: $oc_session_tag" .agent-state/session-gate-last.md 2>/dev/null | head -1 || true)"
     else
@@ -720,10 +723,11 @@ MD
     if [[ "$fv" == "PASS" && -n "$advanced" ]]; then
       final_results="$final_results $fkind=$fver:PASS(function)"
     else
-      # 一次加窗重试（真实 start 可能慢于探测窗：audit --only-fail 耗时随仓大小浮动）
-      pv="$(OC_PROBE_WINDOW=$((OC_PROBE_WINDOW * 2)) oc_probe "$fkind" "$fbin" "$PWD")"
+      # 一次加窗重试（真实 start 可能慢于探测窗：audit --only-fail 耗时随仓大小浮动）；
+      # 重试窗上限 ×2→×3（上限放宽，补偿步进收紧）
+      pv="$(OC_PROBE_WINDOW=$((OC_PROBE_WINDOW * 3)) oc_probe "$fkind" "$fbin" "$PWD")"
       fv="${pv%%|*}"; fdetail="${pv#*|}"
-      sleep 3
+      sleep 1
       if [[ "$tag_supported" == true ]]; then
         advanced="$(grep -F "probe-tag: $oc_session_tag" .agent-state/session-gate-last.md 2>/dev/null | head -1 || true)"
       else

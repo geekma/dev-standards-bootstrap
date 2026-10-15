@@ -181,7 +181,7 @@
 | GATE-E108 | 行为豁免触真实链但无 00.5 追加沟通轮引用 | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
 | GATE-E109 | origin_artifact 路径不存在 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
 | GATE-E110 | ui_change 但 05 无还原度断言证据/豁免行，或指向文件不存在/无断言标记 | agent-gate.sh::validate_delivery()（v3.71.0） |
-| GATE-E111 | 基建面 diff 无 smoke_command 声明或缺窗内冒烟证据（fail-closed） | agent-gate.sh::check_smoke_gate()（v3.71.0） |
+| GATE-E111 | 基建面 diff 无 smoke_command 声明、缺窗内冒烟证据或 smoke_paths 正则非法（fail-closed）；豁免/证据限活跃变更 05，指针缺失 fail-open | agent-gate.sh::check_smoke_gate()（v3.71.0） |
 | GATE-E112 | 同会话重复交付已交付变更且无 handoff.md/换挡声明/豁免 env | agent-gate.sh::validate_delivery()（v3.71.0） |
 | GATE-E113 | TC 落点清单自动化条目指向文件不存在或无断言标记 | agent-gate.sh::validate_delivery()（v3.71.0） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |

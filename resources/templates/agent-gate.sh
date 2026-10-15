@@ -41,47 +41,90 @@ record_delivery() { # <stage> — v3.63.0 (REQ-1033, DES-1822): delivery marker 
   return 0
 }
 
-# --- v3.71.0 (CHG-046, REQ-1088): infra/config smoke gate (fail-closed) ------
-# Trigger face: a changed path matching SMOKE_INFRA_RE (overridable via the
-# .agent-governance.yml flat key `smoke_paths:` — comma-separated EREs; add
-# startup-script faces like `\.sh$` per project). When the diff touches the
-# face the repo MUST declare `smoke_command:` (the project's pre-commit smoke
-# script) — undeclared blocks, per the 2026-10-14 ruling: fail-closed forces
-# the project to configure. With a command declared, 05 evidence (a
-# 「冒烟证据」 line in any docs/changes/*/05-test-results.md whose file mtime
-# is within AGENT_GUARD_SMOKE_EVIDENCE_MAX_AGE_H hours, default 24; 0 disables
-# the window) satisfies the gate. Waiver: a
-# 「基建冒烟」：未命中，不适用（理由） line in any such 05 passes with a stderr
-# warning (the discipline layer records the justification in that 09).
+# --- v3.71.0 (CHG-046, REQ-1088) + v3.71.0 erratum (CHG-093, REQ-1093/1094): -
+# infra/config smoke gate (fail-closed). Trigger face: a changed path matching
+# SMOKE_INFRA_RE (overridable via the .agent-governance.yml flat key
+# `smoke_paths:` — comma-separated EREs; add startup-script faces like
+# `\.sh$` per project). An INVALID ERE dies GATE-E111 immediately with a
+# repair hint (fail-closed: a silently-skipped trigger face is worse than a
+# block); a legal pattern behaves exactly as before (CHG-093). When the diff
+# touches the face the repo MUST declare `smoke_command:` (the project's
+# pre-commit smoke script) — undeclared blocks, per the 2026-10-14 ruling:
+# fail-closed forces the project to configure. With a command declared, 05
+# evidence (a 「冒烟证据」 line) is scanned in THE ACTIVE CHANGE's
+# docs/changes/<id>/05-test-results.md ONLY — id read from the git-path
+# agent-governance/active-change pointer (same mechanism as record_delivery);
+# a line in any historical (non-active) change's 05 never satisfies the gate
+# (CHG-093). Window semantics unchanged: file mtime within
+# AGENT_GUARD_SMOKE_EVIDENCE_MAX_AGE_H hours, default 24; 0 disables the
+# window (presence-level, still limited to the active change). Waiver: a
+# 「基建冒烟」：未命中，不适用（理由） line in THAT SAME active-change 05 passes
+# with a stderr warning naming the 05 path (the discipline layer records the
+# justification in that change's 09). If the pointer is missing/unresolvable
+# or its 05 file is absent (non-governed commit), the waiver/evidence scan
+# FAILS OPEN with a stderr note (E89 evidence-precedent; the smoke_command
+# configuration gate stays fail-closed) and never rescans the history (CHG-093).
 SMOKE_INFRA_RE='(^|/)(pom\.xml|build\.gradle[^/]*|settings\.gradle[^/]*|application[^/]*\.(yml|yaml|properties)|\.env[^/]*|Dockerfile[^/]*|docker-compose[^/]*|Makefile)$'
+smoke_abort() { # <text> — the only smoke-gate abort call site (T41 code-uniqueness)
+  die "GATE-E111: $1 (v3.71.0)"
+}
 check_smoke_gate() { # <files...> -> dies GATE-E111 on violation; empty input = no-op
-  local files="$1" re hit="" f cmd win ev ok=0 waiver now mt
+  local files="$1" re hit="" f cmd win ev ok=0 waiver now mt rc=0 acid="" target
   [[ -n "$files" ]] || return 0
   re=$(cfg_path smoke_paths "")
   [[ -n "$re" ]] || re="$SMOKE_INFRA_RE"
   local e111=""
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
-    if printf '%s\n' "$f" | grep -qE "$re"; then hit="$f"; break; fi
+    # v3.71.0 erratum (CHG-093): three-way rc — 0 hit, 1 keep scanning, >=2 an
+    # invalid ERE (fail-closed die; a silently-skipped trigger face would
+    # defeat the whole gate). The default SMOKE_INFRA_RE is a constant and
+    # cannot be invalid; only user-supplied smoke_paths can reach here.
+    rc=0
+    printf '%s\n' "$f" | grep -qE "$re" || rc=$?
+    if [[ $rc -eq 0 ]]; then hit="$f"; break; fi
+    if [[ $rc -ge 2 ]]; then
+      # T41 die-literal uniqueness: route through the aggregate die below
+      # (same GATE-E111 text, single die call site).
+      e111="smoke_paths regex invalid — fix the comma-separated EREs in .agent-governance.yml (smoke_paths: ...); invalid pattern: $re (v3.71.0 erratum, CHG-093)"
+      break
+    fi
   done <<< "$files"
+  [[ -z "$e111" ]] || smoke_abort "$e111"
   [[ -n "$hit" ]] || return 0
-  waiver=$(grep -lE '^[[:space:]]*-[[:space:]]*\*\*基建冒烟\*\*(：|:)[[:space:]]*未命中，不适用（.+）' \
-    "$change_root"/*/05-test-results.md 2>/dev/null | head -1 || true)
-  if [[ -n "$waiver" ]]; then
-    echo "agent-gate: smoke gate waived via a 「基建冒烟」 declaration (infra path: $hit) — record the justification in that change's 09 (v3.71.0)" >&2
-    return 0
+  # v3.71.0 erratum (CHG-093, REQ-1093/1094): the waiver/evidence scan face is
+  # the ACTIVE change's 05 single file (pointer = git-path
+  # agent-governance/active-change, record_delivery :33 same mechanism).
+  # Pointer missing or its 05 absent -> the SCAN fails open with a stderr note
+  # (E89 evidence-precedent) and historical changes never bless new diffs;
+  # the smoke_command configuration gate below stays fail-closed regardless.
+  local af scan_open=1
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  if [[ -s "$af" ]]; then acid=$(tr -d '[:space:]' < "$af" 2>/dev/null || true); fi
+  target="$change_root/$acid/05-test-results.md"
+  if [[ -z "$acid" || ! -s "$target" ]]; then
+    scan_open=0
+    echo "agent-gate: smoke gate fail-open — no active change (or its 05-test-results.md is absent): waiver/evidence scan skipped (infra path: $hit) (v3.71.0 erratum, CHG-093)" >&2
+  fi
+  if [[ "$scan_open" == 1 ]]; then
+    waiver=$(grep -lE '^[[:space:]]*-[[:space:]]*\*\*基建冒烟\*\*(：|:)[[:space:]]*未命中，不适用（.+）' \
+      "$target" 2>/dev/null | head -1 || true)
+    if [[ -n "$waiver" ]]; then
+      echo "agent-gate: smoke gate waived via a 「基建冒烟」 declaration in $target (infra path: $hit) — record the justification in that change's 09 (v3.71.0)" >&2
+      return 0
+    fi
   fi
   cmd=$(cfg_path smoke_command "")
   if [[ -z "$cmd" ]]; then
-    e111="diff touches the infra/config face (e.g. $hit) but no smoke command is declared — add smoke_command: to .agent-governance.yml (fail-closed, standards §2.5 stage 7; waiver: 「基建冒烟」：未命中，不适用（理由） in 05)"
-  else
+    e111="diff touches the infra/config face (e.g. $hit) but no smoke command is declared — add smoke_command: to .agent-governance.yml (fail-closed, standards §2.5 stage 7; waiver: 「基建冒烟」：未命中，不适用（理由） in the active change's 05)"
+  elif [[ "$scan_open" == 1 ]]; then
     win=$(cfg_path smoke_evidence_max_age_h 24)
     [[ "$win" =~ ^[0-9]+$ ]] || win=24
     # REQ-1088: the evidence LINE is always required once a command is declared;
     # the window only governs freshness (win=0 = presence-level, yml 注释同义).
-    local ev_found=0 now mt
+    local ev_found=0
     now=$(date -u +%s)
-    for ev in "$change_root"/*/05-test-results.md; do
+    for ev in "$target"; do
       [[ -s "$ev" ]] || continue
       grep -qE '^[[:space:]]*-[[:space:]]*\*\*冒烟证据\*\*(：|:).+' "$ev" || continue
       ev_found=1
@@ -90,11 +133,11 @@ check_smoke_gate() { # <files...> -> dies GATE-E111 on violation; empty input = 
       [[ "$mt" -gt 0 ]] || continue
       (( now - mt <= win * 3600 )) && { ok=1; break; }
     done
-    [[ "$ev_found" == 1 || -n "$e111" ]] || e111="infra diff (e.g. $hit) without a 「冒烟证据」 line in any 05 — run the declared smoke command and record a 「冒烟证据」：<命令>：<结果> line in 05"
-    [[ "$ev_found" != 1 || "$ok" == 1 || -n "$e111" ]] || e111="infra diff (e.g. $hit): the 「冒烟证据」 line is stale (beyond window ${win}h) — re-run the declared smoke command and refresh the evidence line"
+    [[ "$ev_found" == 1 || -n "$e111" ]] || e111="infra diff (e.g. $hit) without a 「冒烟证据」 line in the active change's 05 ($target) — run the declared smoke command and record a 「冒烟证据」：<命令>：<结果> line in 05"
+    [[ "$ev_found" != 1 || "$ok" == 1 || -n "$e111" ]] || e111="infra diff (e.g. $hit): the 「冒烟证据」 line in the active change's 05 ($target) is stale (beyond window ${win}h) — re-run the declared smoke command and refresh the evidence line"
   fi
   [[ -z "$e111" ]] \
-    || die "GATE-E111: $e111 (v3.71.0)"
+    || smoke_abort "$e111"
 }
 cd "$repo_root"
 
@@ -1976,6 +2019,50 @@ case "$command" in
     fi
     exit 1
     ;;
+  preflight)
+    # v3.72.0 (CHG-094, REQ-1095): read-only begin-artifact probe (check-smoke
+    # sibling). Exit 0 = all artifact gates clean; 1 = violations, each collected
+    # GATE-Exx reason prefixed "agent-gate: preflight: " on stderr; 2 = usage.
+    # Collect-all, not fail-fast: the begin product-layer validators run in a
+    # subshell whose `die` is shadowed by a print-and-continue recorder — the
+    # real die call sites stay the single reason source (zero new E-codes, zero
+    # new die literals, T41/T30 untouched), and no real die ever runs, so the
+    # friction ledger is never touched. Product layer only: the session-state
+    # gates (E74 water / E89 shift / E75 red) and the active-change pointer
+    # write are NOT part of this probe (zero side effects, zero bypass env).
+    id="${2:-}"
+    if [[ -z "$id" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+      printf 'agent-gate: preflight requires a valid change id (FU-023 shape: start with [A-Za-z0-9], then alnum/_/-; no dots) — usage: scripts/agent-gate preflight <change-id> (exit 0 = all artifact gates clean, 1 = violations listed, 2 = usage)\n' >&2
+      exit 2
+    fi
+    pf_d=$(change_dir "$id")
+    p_n=0
+    p_seen=""
+    p_run() {
+      unset AGENT_GUARD_ALLOW_UNCONFIRMED AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS  # probe determinism (v3.72.0 erratum, CHG-095, REQ-1099)
+      local out p_line
+      out=$( ( die() { printf 'agent-gate: preflight: %s\n' "$*"; }; "$@" ) 2>&1 ) || true
+      while IFS= read -r p_line; do
+        [[ "$p_line" == *GATE-E[0-9]* ]] || continue
+        if [[ -z "$p_seen" || "$p_seen" != *"$p_line"* ]]; then
+          p_seen="$p_seen"$'\n'"$p_line"
+          printf '%s\n' "$p_line" >&2
+          p_n=$((p_n+1))
+        fi
+      done <<< "$out"
+      return 0
+    }
+    p_run required_docs_present "$id"
+    p_run validate_artifact_content "$id"
+    p_run validate_governance_state "$id"
+    p_run validate_dimensional_begin "$pf_d"
+    p_run validate_project_masters
+    if [[ "$p_n" -eq 0 ]]; then
+      echo "agent-gate: preflight: $id: all artifact gates clean"
+      exit 0
+    fi
+    exit 1
+    ;;
   metrics)
     emit_metrics
     ;;
@@ -2025,6 +2112,7 @@ Usage:
   scripts/agent-gate --stage commit-msg <message-file>
   scripts/agent-gate check-confirm <change-id>   # exit 0/1/2, read-only (v3.55.0)
   scripts/agent-gate check-smoke                 # exit 0/1/2, read-only (v3.71.0)
+  scripts/agent-gate preflight <change-id>       # exit 0/1/2, read-only begin-artifact probe, collects all anchor violations in one run (v3.72.0)
 
 begin requires eight non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,

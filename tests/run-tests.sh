@@ -10,7 +10,7 @@
 # Skill 仓库专属用例（T11 安装器、T14b 安装器路径用例、T15 版本自查/自进化、
 # 依赖未装层的 T10/T12）自动 SKIP，已装层全部回归。
 #
-# Usage: tests/run-tests.sh [-T sec[,sec]] [-l|--list]
+# Usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list]
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -31,10 +31,17 @@ STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 [[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
 AG_SRC="$ROOT/resources/AGENTS.md"
 [[ -f "$AG_SRC" ]] || AG_SRC="$ROOT/AGENTS.md"
+# hoisted to top level (order-independence for -j / -T 单节；was section_T17 局部变量、T18 跨节使用 — v3.72.0 erratum, CHG-095, REQ-1097)
+STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
+[[ -f "$STAMP_SRC" ]] || STAMP_SRC="$ROOT/scripts/stamp-provenance.sh"
+# hoisted (order-independence for -j; was a T12 section-local consumed by T13 — v3.72.0 erratum, CHG-095, REQ-1097)
+ci_src="$ROOT/resources/templates/check-standards-compliance.sh"
+[[ -f "$ci_src" ]] || ci_src="$ROOT/scripts/check-standards-compliance.sh"
 
 pass=0
 fail=0
 failed_names=()
+fail_lines=()  # v3.72.0 erratum (CHG-095, DES-1869): verbatim FAIL lines for the red archive
 
 report() { # name expected actual
   local name="$1" expected="$2" actual="$3"
@@ -44,6 +51,7 @@ report() { # name expected actual
   else
     fail=$(( fail + 1 ))
     failed_names+=("$name")
+    fail_lines+=("$(printf 'FAIL %s (expected exit %s, got %s)' "$name" "$expected" "$actual")")
     printf 'FAIL %s (expected exit %s, got %s)\n' "$name" "$expected" "$actual" >&2
   fi
 }
@@ -56,6 +64,7 @@ check_output() { # name pattern actual_output -- pass if pattern matches
   else
     fail=$(( fail + 1 ))
     failed_names+=("$name")
+    fail_lines+=("$(printf 'FAIL %s (output does not match: %s)' "$name" "$pattern")")
     printf 'FAIL %s (output does not match: %s)\n' "$name" "$pattern" >&2
   fi
 }
@@ -252,17 +261,131 @@ append_masters() { # <09-file>
   } >> "$f"
 }
 
+# hoisted to top level (order-independence for -j; was nested in section_T5 — v3.72.0 erratum, CHG-095, REQ-1097)
+# CHG-026 (v3.26.0): provenance is mandatory for EVERY *.md artifact — fixture
+# helper re-stamps all CHG-500 artifacts with inline valid blocks (layout-
+# independent by design; the stamper script itself is exercised in T17).
+stamp_fixture_all() {
+  for pf in docs/changes/CHG-500/*.md; do
+    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
+    if ! grep -q '^<!-- provenance' "$pf"; then
+      { printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+    fi
+  done
+}
+
+# hoisted to top level (order-independence for -j; was nested in section_T6 — v3.72.0 erratum, CHG-095, REQ-1097)
+# CHG-026 (v3.26.0): CI shares validate_delivery — every artifact must carry a
+# provenance block before a ci-positive case can pass.
+ci_stamp_all() {
+  for pf in "$1"/*.md; do
+    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
+    if ! grep -q '^<!-- provenance' "$pf"; then
+      { printf '<!-- provenance\nauthor: claude/s-1\nemail: t@example.com\ngenerated_at: 2026-09-15T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+    fi
+  done
+}
+
+# hoisted to top level (order-independence for -j; was nested in section_T10 — v3.72.0 erratum, CHG-095, REQ-1097)
+audit_fixture() { # dest -> 构造合规目标仓库 fixture
+  local dest="$1"
+  rm -rf "$dest"; mkdir -p "$dest/docs/feata"
+  (cd "$dest" && seed_project_masters)
+  cp "$STD_SRC" "$dest/docs/DEVELOPMENT_STANDARDS.md"
+  cp "$AG_SRC" "$dest/AGENTS.md"
+  printf -- '- REQ-001 用户故事A（DoD: x）\n- REQ-002 用户故事B（DoD: y）\n' > "$dest/docs/feata/01-spec.md"
+  printf '# plan\n\nDES-001 设计\n' > "$dest/docs/feata/03-modification-plan.md"
+  printf '# tests\n\n| TC | 场景 | 覆盖维度 | 覆盖的 REQ-DES |\n|---|---|---|---|\n| TC-001 | a | 正常流 | REQ-001 |\n| TC-002 | b | 边界 | REQ-002 |\n\n## 业务场景清单\n\nSC-001 场景（覆盖: TC-001）\n' > "$dest/docs/feata/04-test-scripts.md"
+  printf '| REQ-001 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n| REQ-002 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n' > "$dest/docs/feata/01.5-rtvm-matrix.md"
+  { echo "### BUG-001：现象（严重度 P1）"; echo; echo "| 字段 | 内容 |"; echo "|---|---|"; echo "| 关联变更 | CHG-001 |"; echo "| 历史相似 | 未命中（根因关键词检索） |"; } > "$dest/docs/bugfix-log.md"
+  awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD_SRC" > "$dest/s3block.md"
+  { echo '## 2026-09-09'; echo; echo '任务编号：CHG-001 / TASK-001   日期：2026-09-09   执行者：dev'; echo;
+    echo '#### 追踪矩阵映射 (Traceability)';
+    echo '- 对应需求：`REQ-001`、`REQ-002`（见 01-spec.md）';
+    echo '- 对应设计：`DES-001`（见 03-modification-plan.md）';
+    echo '- 对应测试：`TC-001`（见 04-test-scripts.md）';
+    echo '- 对应缺陷：`BUG-001`（索引见 docs/bugfix-log.md）';
+    echo '- 完整矩阵：回填 docs/feata/01.5-rtvm-matrix.md'; echo;
+    echo '#### 现象'; echo '背景'; echo; echo '#### 分析'; echo '分析'; echo;
+    echo '#### 根因'; echo '| 编号 | 描述 |'; echo '|---|---|'; echo;
+    echo '#### 方案'; echo '方案'; echo; echo '#### 测试脚本与结论'; echo 'TC-001 通过'; echo;
+    echo '#### 角色签署与独立性（门禁 5）'; echo '签署'; echo;
+    echo '#### 执行记录（ReAct，§2.16.2 铁律）'; echo '记录'; echo;
+    echo '#### 变更执行检查清单（§3）'; cat "$dest/s3block.md"; echo;
+    echo '#### 未动项'; echo '- 无'; } > "$dest/docs/feata/09-changelog.md"
+  append_masters "$dest/docs/feata/09-changelog.md"
+  rm -f "$dest/s3block.md"
+}
+
+# hoisted to top level (order-independence for -j; was nested in section_T18 — v3.72.0 erratum, CHG-095, REQ-1097)
+# 让 `--stage staged` 拒掉整批。夹具必须用真实形状，不能用更规整的形状绕开。
+# 批次夹具：一个 BATCH-YYYYMMDD/ 目录承载多个变更，文件名与独立目录**完全同名**，
+# 靠 `## <id>` 锚点区分，治理记录一行一变更。
+seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
+  local batch="$1"; shift
+  local d="docs/changes/$batch" pair id risk
+  mkdir -p "$d"
+  : > "$d/00-intent.md"
+  : > "$d/00-governance.json"
+  : > "$d/00.5-communication.md"
+  : > "$d/01-spec.md"
+  : > "$d/02-code-impact-analysis.md"
+  : > "$d/03-modification-plan.md"
+  : > "$d/03.5-tasks.md"
+  : > "$d/04-test-scripts.md"
+  for pair in "$@"; do
+    id="${pair%%:*}"; risk="${pair##*:}"
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-t","review_owner":"claude/s-r"}\n' "$id" "$risk" >> "$d/00-governance.json"
+    printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
+    printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' "$id" >> "$d/00.5-communication.md"
+    printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
+    printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
+    printf '## %s\nDES-901 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
+    printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
+    printf '## %s\nTC-901 SC-901 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
+  done
+}
+
+# hoisted to top level (order-independence for -j; was nested in section_T20 — v3.72.0 erratum, CHG-095, REQ-1097)
+audit_change_fixture() { # dest -> 管线态布局：产物落 docs/changes/CHG-001/
+  local dest="$1"
+  rm -rf "$dest"; mkdir -p "$dest/docs/changes/CHG-001"
+  cp "$STD_SRC" "$dest/docs/DEVELOPMENT_STANDARDS.md"
+  cp "$AG_SRC" "$dest/AGENTS.md"
+  printf '# spec\n\n## REQ-001 第一个需求\n## REQ-002 第二个需求\n' > "$dest/docs/changes/CHG-001/01-spec.md"
+  printf '# CHG-001 Changelog\n\n## 2026-09-15\n' > "$dest/docs/changes/CHG-001/09-changelog.md"
+}
+
+# hoisted to top level (order-independence for -j; was nested in section_T55 — v3.72.0 erratum, CHG-095, REQ-1097)
+stamp_all() { # <change-dir> — inline provenance for every artifact md（T5 stamp_fixture_all 同型）
+  local pf
+  for pf in "$1"/*.md; do
+    [[ -f "$pf" ]] || continue
+    grep -q '^<!-- provenance' "$pf" && continue
+    { printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
+  done
+}
+
 # v3.65.0 (CHG-087, REQ-1046~1048): CLI section-filter surface. Sections are
 # wrapped into functions below and dispatched in source order at the bottom.
 # -T <sec[,sec]>  run only the named sections (original relative order kept)
+# -j <N>          section-level parallel dispatch (N>=2 pool; N=1 = the serial
+#                 dispatcher byte-identical to the pre--j behavior)
+#                 (v3.72.0 erratum, CHG-095, DES-1868)
 # -l|--list       print all section keys, one per line
 LIST_ONLY=0
+JOBS=1
 WANTED=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -T) IFS=',' read -r -a WANTED <<< "${2:-}"; shift 2 ;;
+    -j)
+      # v3.72.0 erratum (CHG-095, DES-1868): N must be a positive integer;
+      # 1 keeps the serial dispatcher, N>=2 enables the section-level pool.
+      [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { printf 'invalid -j value: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list])\n' "${2:-}" >&2; exit 2; }
+      JOBS="$2"; shift 2 ;;
     -l|--list) LIST_ONLY=1; shift ;;
-    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-l|--list])\n' "$1" >&2; exit 2 ;;
+    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list])\n' "$1" >&2; exit 2 ;;
   esac
 done
 # `-T ""` normalizes to no filter (equivalent to all sections); bash 3.2 + set -u
@@ -579,18 +702,6 @@ report "stop rejects a negated mid-line 遗留 mention (BUG-002 residual closed)
 printf '# 06-delivery-summary\n本变更无 FU-901 需要登记。\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "stop rejects a mid-sentence FU- mention with no structured row (FU-020)" 2 $?
-# CHG-026 (v3.26.0): provenance is mandatory for EVERY *.md artifact — fixture
-# helper re-stamps all CHG-500 artifacts with inline valid blocks (layout-
-# independent by design; the stamper script itself is exercised in T17).
-stamp_fixture_all() {
-  for pf in docs/changes/CHG-500/*.md; do
-    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
-    if ! grep -q '^<!-- provenance' "$pf"; then
-      { printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
-    fi
-  done
-}
-
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-500/06-delivery-summary.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 stamp_fixture_all
@@ -740,6 +851,17 @@ AGENT_GUARD_VERIFY_COMMAND='true' scripts/agent-gate --stage stop >/dev/null 2>&
 stamp_fixture_all
 report "stop passes when AGENT_GUARD_VERIFY_COMMAND succeeds" 0 $?
 
+# v3.72.0 erratum (CHG-095, REQ-1097): the yml-commit cases below mutate and
+# commit .agent-governance.yml in the CWD — they require the fixture-repo cwd
+# provided by the full-suite/-j SERIAL_CHAIN. Under `-T T16` standalone (cwd is
+# the skill repo itself) they would pollute the source repo's history: skip
+# loudly instead (T17b precedent). Full coverage lives in the full suite;
+# standalone also leaves fixture residue under docs/ (gitignored) — known limitation.
+if [[ "$(pwd -P)" == "$ROOT" ]]; then
+  echo "SKIP T16 yml-commit cases: fixture-repo cwd required (full suite / -j chain); standalone -T T16 would commit into the skill repo"
+  return 0 2>/dev/null || return 0
+fi
+
 # CHG-012/CHG-015 / REQ-066+076：验证命令来源链 env → .agent-governance.yml
 # （占位符跳过；**反篡改**：yml 处于待定变更中时不执行其命令——已提交版本才可信）
 printf 'ci:\n  verification_command: "false"\n' > .agent-governance.yml
@@ -807,17 +929,6 @@ report "ci blocks code diff without 06.5 config record" 2 $?
 printf '# 06.5\n未命中，不适用：本变更无配置/DB 变更。\n' > docs/changes/CHG-601/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## FU 台账\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-902 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-601/06-delivery-summary.md
 commit_all "docs: CHG-601 config + delivery summary"
-# CHG-026 (v3.26.0): CI shares validate_delivery — every artifact must carry a
-# provenance block before a ci-positive case can pass.
-ci_stamp_all() {
-  for pf in "$1"/*.md; do
-    [[ "$(basename "$pf")" == "00-governance.json" ]] && continue
-    if ! grep -q '^<!-- provenance' "$pf"; then
-      { printf '<!-- provenance\nauthor: claude/s-1\nemail: t@example.com\ngenerated_at: 2026-09-15T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
-    fi
-  done
-}
-
 ci_stamp_all docs/changes/CHG-601
 scripts/agent-gate --stage ci --base "$base" >/dev/null 2>&1
 report "ci accepts code diff committed with artifacts and delivery evidence" 0 $?
@@ -1052,36 +1163,6 @@ section_T10() {
 # tests/audit-docs-consistency.sh（v3.7 规范位置）；未安装 --core 时整节跳过。
 if [[ -f "$AUDIT_SRC" ]]; then
 
-audit_fixture() { # dest -> 构造合规目标仓库 fixture
-  local dest="$1"
-  rm -rf "$dest"; mkdir -p "$dest/docs/feata"
-  (cd "$dest" && seed_project_masters)
-  cp "$STD_SRC" "$dest/docs/DEVELOPMENT_STANDARDS.md"
-  cp "$AG_SRC" "$dest/AGENTS.md"
-  printf -- '- REQ-001 用户故事A（DoD: x）\n- REQ-002 用户故事B（DoD: y）\n' > "$dest/docs/feata/01-spec.md"
-  printf '# plan\n\nDES-001 设计\n' > "$dest/docs/feata/03-modification-plan.md"
-  printf '# tests\n\n| TC | 场景 | 覆盖维度 | 覆盖的 REQ-DES |\n|---|---|---|---|\n| TC-001 | a | 正常流 | REQ-001 |\n| TC-002 | b | 边界 | REQ-002 |\n\n## 业务场景清单\n\nSC-001 场景（覆盖: TC-001）\n' > "$dest/docs/feata/04-test-scripts.md"
-  printf '| REQ-001 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n| REQ-002 | x | DES-001 | y | T1 | CHG-001 | TC-001 | test | PASS |\n' > "$dest/docs/feata/01.5-rtvm-matrix.md"
-  { echo "### BUG-001：现象（严重度 P1）"; echo; echo "| 字段 | 内容 |"; echo "|---|---|"; echo "| 关联变更 | CHG-001 |"; echo "| 历史相似 | 未命中（根因关键词检索） |"; } > "$dest/docs/bugfix-log.md"
-  awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; w=0; next} f==1{ if(/^```$/){exit} print }' "$STD_SRC" > "$dest/s3block.md"
-  { echo '## 2026-09-09'; echo; echo '任务编号：CHG-001 / TASK-001   日期：2026-09-09   执行者：dev'; echo;
-    echo '#### 追踪矩阵映射 (Traceability)';
-    echo '- 对应需求：`REQ-001`、`REQ-002`（见 01-spec.md）';
-    echo '- 对应设计：`DES-001`（见 03-modification-plan.md）';
-    echo '- 对应测试：`TC-001`（见 04-test-scripts.md）';
-    echo '- 对应缺陷：`BUG-001`（索引见 docs/bugfix-log.md）';
-    echo '- 完整矩阵：回填 docs/feata/01.5-rtvm-matrix.md'; echo;
-    echo '#### 现象'; echo '背景'; echo; echo '#### 分析'; echo '分析'; echo;
-    echo '#### 根因'; echo '| 编号 | 描述 |'; echo '|---|---|'; echo;
-    echo '#### 方案'; echo '方案'; echo; echo '#### 测试脚本与结论'; echo 'TC-001 通过'; echo;
-    echo '#### 角色签署与独立性（门禁 5）'; echo '签署'; echo;
-    echo '#### 执行记录（ReAct，§2.16.2 铁律）'; echo '记录'; echo;
-    echo '#### 变更执行检查清单（§3）'; cat "$dest/s3block.md"; echo;
-    echo '#### 未动项'; echo '- 无'; } > "$dest/docs/feata/09-changelog.md"
-  append_masters "$dest/docs/feata/09-changelog.md"
-  rm -f "$dest/s3block.md"
-}
-
 FX=$(mktemp -d)
 audit_fixture "$FX"
 bash "$AUDIT_SRC" "$FX" >/dev/null 2>&1
@@ -1260,8 +1341,7 @@ section_T12() {
 # 安装，故不合并为单校验器）；漂移由源层 audit A2 + 本 T12 运行时双守护。
 # 任一处新增/删除代码后缀而不同步，本用例即红——从"发布前 audit 发现"提前到"改完即发现"。
 gate_ext=$(grep -E '\\\.\(c\|' "$GATE_SRC" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
-ci_src="$ROOT/resources/templates/check-standards-compliance.sh"
-[[ -f "$ci_src" ]] || ci_src="$ROOT/scripts/check-standards-compliance.sh"
+# ci_src 由顶层 env 区供给（v3.72.0 erratum 提升，CHG-095 REQ-1097：T13 单跑/-j 依赖）
 if [[ -f "$ci_src" ]]; then
 ci_ext=$(grep -E '\\\.\(c\|' "$ci_src" | head -1 | sed -E 's/.*\\\.\(([^)]+)\)\$.*/\1/')
 report "T12 code-extension list identical in gate and compliance.sh" "$gate_ext" "$ci_ext"
@@ -1609,8 +1689,6 @@ section_T17() {
 # T16 验的是**门禁的校验逻辑**（内联块，与布局无关）；T17 验的是**脚本本体的产出**——
 # 真值取自环境、写入幂等、隐私开关、--check、以及"真脚本产出能过真门禁"的端到端闭环。
 # 脚本是 --guard 层文件：目标仓未装 guard 层时不存在 → SKIP（同 T15 的布局自适应）。
-STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
-[[ -f "$STAMP_SRC" ]] || STAMP_SRC="$ROOT/scripts/stamp-provenance.sh"
 if [[ -f "$STAMP_SRC" ]]; then
   new_repo
   cp "$STAMP_SRC" scripts/stamp-provenance.sh
@@ -1843,34 +1921,6 @@ section_T18() {
 # `local a="$1" b="...$a"` 缺陷正是在这里才会暴露）。
 # v3.19.0 补 ④b：**权威名单**方向。批次共享产物必然含结构标题（§2.16.2 的
 # `## Observation`），"把 `## <ascii 单词>` 当变更号"会让 metrics 造出幽灵变更、
-# 让 `--stage staged` 拒掉整批。夹具必须用真实形状，不能用更规整的形状绕开。
-# 批次夹具：一个 BATCH-YYYYMMDD/ 目录承载多个变更，文件名与独立目录**完全同名**，
-# 靠 `## <id>` 锚点区分，治理记录一行一变更。
-seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
-  local batch="$1"; shift
-  local d="docs/changes/$batch" pair id risk
-  mkdir -p "$d"
-  : > "$d/00-intent.md"
-  : > "$d/00-governance.json"
-  : > "$d/00.5-communication.md"
-  : > "$d/01-spec.md"
-  : > "$d/02-code-impact-analysis.md"
-  : > "$d/03-modification-plan.md"
-  : > "$d/03.5-tasks.md"
-  : > "$d/04-test-scripts.md"
-  for pair in "$@"; do
-    id="${pair%%:*}"; risk="${pair##*:}"
-    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-t","review_owner":"claude/s-r"}\n' "$id" "$risk" >> "$d/00-governance.json"
-    printf '## %s\n## 问题\nproblem: x\n## 预期结果\nexpected: y\n## 目录落位\n- **目录落位**：BATCH-YYYYMMDD（batch member）\n## 开放问题\nopen: none\n' "$id" >> "$d/00-intent.md"
-    printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' "$id" >> "$d/00.5-communication.md"
-    printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
-    printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
-    printf '## %s\nDES-901 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
-    printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
-    printf '## %s\nTC-901 SC-901 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
-  done
-}
-
 new_repo
 seed_batch_artifacts BATCH-20260101 CHG-800:L0 CHG-801:L1
 commit_all "docs: batch artifacts"
@@ -2096,15 +2146,6 @@ section_T20() {
 # v3.21.0 修法：正信号识别 + 空转**显式声明** + 定义式/自身区间；G2 覆盖两轨，
 # G3/G5/G6 只覆盖活文档（冻结变更目录按 §2.15 硬性规则 4 不可回填，事后判红是时代错置）。
 if [[ -f "$AUDIT_SRC" ]]; then
-
-audit_change_fixture() { # dest -> 管线态布局：产物落 docs/changes/CHG-001/
-  local dest="$1"
-  rm -rf "$dest"; mkdir -p "$dest/docs/changes/CHG-001"
-  cp "$STD_SRC" "$dest/docs/DEVELOPMENT_STANDARDS.md"
-  cp "$AG_SRC" "$dest/AGENTS.md"
-  printf '# spec\n\n## REQ-001 第一个需求\n## REQ-002 第二个需求\n' > "$dest/docs/changes/CHG-001/01-spec.md"
-  printf '# CHG-001 Changelog\n\n## 2026-09-15\n' > "$dest/docs/changes/CHG-001/09-changelog.md"
-}
 
 # ① 靶心：管线态仓库里 REQ 跳号必须判红。v3.21.0 之前 G2 一条断言都不跑 → 整个审计通过。
 AC=$(mktemp -d); audit_change_fixture "$AC"
@@ -3410,11 +3451,14 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.71.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.72.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.71.0" 1 "$(grep -cF '规范版本：v3.71.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.71.0" 1 "$(grep -cF '当前对应规范版本：v3.71.0' "$ROOT/resources/AGENTS.md")"
-report "T48 TC-1073 CHANGELOG has v3.70.0 top row" 1 "$(grep -c '^| v3.70.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 DS footer carries v3.72.0" 1 "$(grep -cF '规范版本：v3.72.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.72.0" 1 "$(grep -cF '当前对应规范版本：v3.72.0' "$ROOT/resources/AGENTS.md")"
+# v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
+# is), but its history row must stay present — grep pattern unchanged, label now
+# states the superseded-row semantics.
+report "T48 TC-1073 CHANGELOG v3.70.0 row exists (superseded by current top)" 1 "$(grep -c '^| v3.70.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -3489,7 +3533,14 @@ cat > stub-runtime.sh <<'STUB'
 # （T49-04 桩设计，CHG-084 04-test-scripts；模拟 拒载/载入/功能死 三态）
 case "$1" in
   --version) echo "${SG_STUB_VERSION:-9.9.9-stub}"; exit 0 ;;
-  serve) echo "opencode server listening on http://127.0.0.1:${3:-0}" ;;
+  serve)
+    echo "opencode server listening on http://127.0.0.1:${3:-0}"
+    # 探测契约对齐：POST /session 返回 200 体（免凭据，adapter 探针 POST 后
+    # 即可拿到非空 probe-session.json）。nc 循环接受连接直到探针整组回收。
+    if [[ "${3:-}" =~ ^[0-9]+$ ]]; then
+      ( while true; do printf 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}' | nc -l 127.0.0.1 "$3" >/dev/null 2>&1; done ) &
+    fi
+    ;;
 esac
 # SG_STUB_SILENT=1：除 --version 外零输出零痕迹（E11 全 INCONCLUSIVE 路径）
 if [[ "${SG_STUB_SILENT:-0}" == "1" && "$1" != "--version" ]]; then exit 0; fi
@@ -3515,7 +3566,9 @@ if [[ "${SG_STUB_DESKTOP_REJECT:-0}" == "1" && "$1" != "serve" && "$1" != "--ver
   printf '%s\n' "timestamp=T level=WARN message=\"failed to load plugin\" target=$PWD/.opencode/plugins/dev-standards-gate.js cause=\"SchemaError(stub-desktop)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
   exit 0
 fi
-sleep 30
+# 存活窗只需盖过探测窗（ arb 窗上限 3s + 终验重试 2s）：日志/功能标记均为
+# spawn 同步落盘，先于本 sleep；探针按进程组回收，早退只让 kill 变 no-op。
+sleep 2
 STUB
 chmod +x stub-runtime.sh
 STUB_SH="$PWD/stub-runtime.sh"
@@ -3638,7 +3691,9 @@ section_T50() {
   # count stays dynamic via t50_expect).
   # CHG-044: tail recalibrated T53→T54 (G14e element-enumeration section joins).
   # CHG-046: tail recalibrated T54→T55 (delivery four-gate section joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T55 ]] && echo 0 || echo 1)"
+  # CHG-094: tail recalibrated T55→T56 (begin-artifact preflight probe joins).
+  # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T57 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -4212,14 +4267,6 @@ report "T54 TC-1239 stop green again after stray row removed" 0 $?
 # (unknown key dies rc2), then filtered invocation in original order.
 section_T55() {
 # ------------------------------------------------ T55 交付四门（v3.71.0，CHG-046）
-stamp_all() { # <change-dir> — inline provenance for every artifact md（T5 stamp_fixture_all 同型；节内自带，过滤运行不依赖他节）
-  local pf
-  for pf in "$1"/*.md; do
-    [[ -f "$pf" ]] || continue
-    grep -q '^<!-- provenance' "$pf" && continue
-    { printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"
-  done
-}
 # ① E110（REQ-1087）：ui_change 变更 05 还原度断言行三态
 new_repo
 seed_begin CHG-1070 L1 claude/s-1
@@ -4357,6 +4404,74 @@ out=$(bash "$ROOT/resources/templates/pre-commit" 2>&1 || true)
 check_output "T55 TC-1257 pre-commit emits the SHIFT REMINDER" "SHIFT REMINDER" "$out"
 bash "$ROOT/resources/templates/pre-commit" >/dev/null 2>&1
 report "T55 TC-1257 pre-commit reminder does not block the commit (rc=0)" 0 $?
+# ④b CHG-093（v3.71.0 erratum，REQ-1093/1094）：E111 扫描面收敛活跃变更 + 非法 smoke_paths ERE 拦截
+new_repo
+seed_begin CHG-1080 L1 claude/s-1
+mkdir -p docs/changes/CHG-1079
+printf '# 05 测试结果\n- **冒烟证据**：bash scripts/smoke.sh：ok @2026-01-01T00:00:00Z\n- **基建冒烟**：未命中，不适用（历史变更裁定）\n' > docs/changes/CHG-1079/05-test-results.md
+printf '# 05 测试结果\n' > docs/changes/CHG-1080/05-test-results.md
+printf 'smoke_placeholder: true\n' > pom.xml
+git add pom.xml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+rc_hist=$?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T55 TC-1259 E111 red: historical change 05 waiver line no longer passes" 2 "$rc_hist"
+check_output "T55 TC-1259 refusal names GATE-E111" "GATE-E111" "$out"
+# TC-1260：活跃变更 05 豁免行放行 + stderr 指明活跃变更路径
+printf '# 05 测试结果\n- **基建冒烟**：未命中，不适用（本变更裁定，无运行面）\n' > docs/changes/CHG-1080/05-test-results.md
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1260 active-change 05 waiver line passes E111" 0 $?
+check_output "T55 TC-1260 waiver stderr names the active-change 05 path" "CHG-1080/05-test-results\.md" "$out"
+# TC-1261：win=0 下非活跃陈年证据行失效；活跃变更证据行放行
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_evidence_max_age_h: 0\n' > .agent-governance.yml
+printf '# 05 测试结果\n' > docs/changes/CHG-1080/05-test-results.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+rc_evid=$?
+report "T55 TC-1261 E111 red: win=0 evidence line in a non-active change is void" 2 "$rc_evid"
+printf '# 05 测试结果\n- **冒烟证据**：bash scripts/smoke.sh：ok @2026-01-01T00:00:00Z\n' > docs/changes/CHG-1080/05-test-results.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1261 win=0 evidence line in the active change passes" 0 $?
+# TC-1262：指针缺失 fail-open（rc=0 + stderr 含 fail-open）
+rm -f "$(git rev-parse --git-path agent-governance/active-change)"
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1262 missing active-change pointer fail-opens E111" 0 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T55 TC-1262 fail-open stderr explains the skip" "smoke gate fail-open" "$out"
+printf 'CHG-1080\n' > "$(git rev-parse --git-path agent-governance/active-change)"
+# TC-1263：smoke_paths 非法 ERE die + 报文含修复指引
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_paths: pom\\.xml((\n' > .agent-governance.yml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+rc_ere=$?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T55 TC-1263 E111 red: invalid smoke_paths ERE dies fail-closed" 2 "$rc_ere"
+check_output "T55 TC-1263 refusal names GATE-E111 regex invalid" "GATE-E111.*regex invalid" "$out"
+check_output "T55 TC-1263 refusal carries the smoke_paths repair guidance" "fix the comma-separated EREs" "$out"
+# TC-1264：合法 ERE 覆写触发面行为不变（回归钉）
+printf '# 05 测试结果\n' > docs/changes/CHG-1080/05-test-results.md
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_paths: pom\\.xml\n' > .agent-governance.yml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1264 valid ERE override still trips E111 on the matched face" 2 $?
+printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_paths: zzz\\.nomatch\n' > .agent-governance.yml
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1264 valid ERE override that misses keeps the gate green" 0 $?
+# TC-1265：pre-commit 零触碰钉 + 行形权威派生面在位
+report "T55 TC-1265 pre-commit consumes no ALLOW_NO_SHIFT env (FU-943 erratum pin)" 0 "$(grep -c 'ALLOW_NO_SHIFT' "$ROOT/resources/templates/pre-commit")"
+report "T55 TC-1265 gate header pins the CHG-093 erratum" 1 "$(grep -c '^# --- v3.71.0 (CHG-046, REQ-1088) + v3.71.0 erratum (CHG-093, REQ-1093/1094)' "$ROOT/resources/templates/agent-gate.sh")"
+report "T55 TC-1265 governance yml pins the active-change scan face" 1 "$(grep -c '扫描面' "$ROOT/resources/templates/agent-governance.yml")"
+report "T55 TC-1265 playbook pins the narrowed scan face" 1 "$(grep -c '扫描面限活跃变更 05' "$ROOT/resources/STAGE_PLAYBOOK.md")"
+report "T55 TC-1265 DS anchor pins the narrowed scan face" 1 "$(grep -c '豁免/证据限活跃变更 05' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T55 TC-1265 registry pins pointer fail-open semantics" 1 "$(grep -c '指针缺失 fail-open' "$ROOT/resources/CLAUSE_REGISTRY.md")"
+# TC-1266（评审 P1-1 第 4 象限机钉）：指针缺失 × 未声明 smoke_command → 配置门仍拦（fail-open 仅豁免扫描面）
+new_repo
+seed_begin CHG-1081 L1 claude/s-1
+printf 'smoke_placeholder: true\n' > pom.xml
+git add pom.xml
+rm -f "$(git rev-parse --git-path agent-governance/active-change)"
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T55 TC-1266 E111 fail-closed: config gate survives a missing pointer" 2 $?
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+check_output "T55 TC-1266 stderr shows the bounded fail-open skip" "smoke gate fail-open" "$out"
 # ⑤ 条款与模板在位（TC-1258，audit 同源口径）
 report "T55 TC-1258 DS carries the four-gate row" 1 "$(grep -c '交付四门' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T55 TC-1258 DS carries the config-observability clause" 1 "$(grep -c '生效配置可观测' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
@@ -4375,22 +4490,207 @@ done
 report "T55 TC-1258 A42: no source-project tokens in the four-gate payload (8 files)" 0 "$a42_hit"
 }
 
+# ------------------------------------------------ T56 begin 前产物预检探针（v3.72.0，CHG-094/REQ-1095~1096）
+# 探针语义：preflight <id> 对 begin 产物层校验链做子 shell 捕获聚合，一次报全部
+# 缺锚 reason（collect-all，非 fail-fast 首错）；exit 0=全过 / 1=违规 / 2=usage；
+# 零副作用（不写指针、不记 friction、不消费 bypass env；TC-1270 钉）。
+section_T56() {
+  # TC-1267 + TC-1270 共仓：四类缺锚并存（DES 行/SC 行/覆盖维度行/00.5 确认标记）
+  new_repo
+  seed_artifacts CHG-1073 L1 claude/s-56
+  grep -v 'DES-001' docs/changes/CHG-1073/03-modification-plan.md > .t56-03.tmp && mv .t56-03.tmp docs/changes/CHG-1073/03-modification-plan.md
+  grep -v -e '覆盖维度' -e 'SC-001' docs/changes/CHG-1073/04-test-scripts.md > .t56-04.tmp && mv .t56-04.tmp docs/changes/CHG-1073/04-test-scripts.md
+  printf '# 00.5\n## 深挖结论\nf\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n' > docs/changes/CHG-1073/00.5-communication.md
+  t56_friction_before=$([[ -f .agent-state/gate-friction.tsv ]] && wc -l < .agent-state/gate-friction.tsv || echo 0)  # -f 守卫免 "No such file" stderr 噪声（TC-1275，CHG-095）
+  t56_out=$(scripts/agent-gate preflight CHG-1073 2>&1); t56_rc=$?
+  report "T56 TC-1267 preflight multi-anchor dir exits 1" 1 "$t56_rc"
+  report "T56 TC-1267 collects GATE-E83 (empty confirmation)" 1 "$(printf '%s\n' "$t56_out" | grep -c 'GATE-E83')"
+  report "T56 TC-1267 collects GATE-E07 (DES anchor)" 1 "$(printf '%s\n' "$t56_out" | grep -c 'GATE-E07')"
+  report "T56 TC-1267 collects GATE-E09 (SC scenario)" 1 "$(printf '%s\n' "$t56_out" | grep -c 'GATE-E09')"
+  report "T56 TC-1267 collects GATE-E11 (coverage dimension)" 1 "$(printf '%s\n' "$t56_out" | grep -c 'GATE-E11')"
+  report "T56 TC-1267 single run reports ≥4 GATE lines" 0 "$([[ $(printf '%s\n' "$t56_out" | grep -c 'GATE-E') -ge 4 ]] && echo 0 || echo 1)"
+  t56_friction_after=$([[ -f .agent-state/gate-friction.tsv ]] && wc -l < .agent-state/gate-friction.tsv || echo 0)  # -f 守卫免 "No such file" stderr 噪声（TC-1275，CHG-095）
+  report "T56 TC-1270 friction ledger unchanged" 0 "$([[ "$t56_friction_after" == "$t56_friction_before" ]] && echo 0 || echo 1)"
+  report "T56 TC-1270 active-change pointer not written" 0 "$([[ -e .git/agent-governance/active-change ]] && echo 1 || echo 0)"
+  # TC-1268: 干净夹具（seed_begin 全件）→ exit 0 + clean 行
+  new_repo
+  seed_begin CHG-1074 L1 claude/s-56
+  scripts/agent-gate preflight CHG-1074 >/dev/null 2>&1
+  report "T56 TC-1268 clean fixture exits 0" 0 $?
+  t56_out=$(scripts/agent-gate preflight CHG-1074 2>&1)
+  check_output "T56 TC-1268 clean run prints the all-clean line" "agent-gate: preflight: CHG-1074: all artifact gates clean" "$t56_out"
+  # TC-1269: usage/bad-id → exit 2（不经 die 的探针参数面）
+  scripts/agent-gate preflight >/dev/null 2>&1
+  report "T56 TC-1269 no argument exits 2" 2 $?
+  t56_out=$(scripts/agent-gate preflight 'CHG.094' 2>&1)
+  report "T56 TC-1269 dotted id exits 2" 2 "$?"
+  check_output "T56 TC-1269 bad id names the FU-023 shape" "valid change id" "$t56_out"
+  # TC-1277（v3.72.0 erratum，CHG-095/DES-1870）：bypass env 不得泄漏进 preflight
+  # 探针（p_run unset，探针确定性）；实现缺席时本组两断言红。
+  new_repo
+  seed_artifacts CHG-1075 L1 claude/s-56
+  printf '# 00.5\n## 用户整体确认记录\n' > docs/changes/CHG-1075/00.5-communication.md
+  t56_bypass_out=$(AGENT_GUARD_ALLOW_UNCONFIRMED=1 scripts/agent-gate preflight CHG-1075 2>&1); t56_bypass_rc=$?
+  report "T56 TC-1277 bypass env does not relax preflight (rc stays 1)" 1 "$t56_bypass_rc"
+  report "T56 TC-1277 preflight still collects GATE-E83 under bypass env" 1 "$(printf '%s\n' "$t56_bypass_out" | grep -c 'GATE-E83')"
+  # TC-1278（N4 顺手项）：tpl usage 块 preflight 行存在钉
+  report "T56 TC-1278 tpl usage block carries the preflight line" 1 "$(grep -c '^  scripts/agent-gate preflight <change-id>' "$ROOT/resources/templates/agent-gate.sh")"
+}
+
+# ------------------------------------------------ T57 -j 并行调度 + 红归档/FORCE_RED 缝自测（v3.72.0 erratum，CHG-095/DES-1868~1869）
+# 嵌套纪律（FU-907）：只嵌套轻量节选（T41/T48/T56 全为 grep/夹具轻节），绝不嵌套全跑。
+# 夹具：复用 $ROOT 直跑 run-tests.sh 自身 + 收据/红归档文件前后快照比对。
+# FORCE_RED 缝为通用测试面（尾块注释声明测试缝语义），供 T57/CI 演练红路径。
+section_T57() {
+  local t57_a t57_b t57_c t57_rc t57_had t57_redhad t57_tmp
+  t57_tmp="${TMPDIR:-/tmp}"
+  # TC-1272: -j 2 ≡ 串行（通过数/序/汇总行同形）
+  t57_a=$(bash "$ROOT/tests/run-tests.sh" -T T41,T48 2>&1)
+  t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T41,T48 -j 2 2>&1)
+  report "T57 TC-1272 -j2 keeps the serial pass count" "$(printf '%s\n' "$t57_a" | grep -c '^ok ')" "$(printf '%s\n' "$t57_b" | grep -c '^ok ')"
+  report "T57 TC-1272 -j2 keeps the serial fail count" "$(printf '%s\n' "$t57_a" | grep -c '^FAIL ')" "$(printf '%s\n' "$t57_b" | grep -c '^FAIL ')"
+  report "T57 TC-1272 -j2 replay keeps source order" "T41" "$(printf '%s\n' "$t57_b" | grep -m1 '^ok' | awk '{print $2}')"
+  report "T57 TC-1272 -j2 keeps the summary shape" 1 "$(printf '%s\n' "$t57_b" | tail -2 | head -1 | grep -cE '^[0-9]+ passed, [0-9]+ failed$')"
+  # TC-1273: 过滤 × 并行 → 收据不写（预播已知值 → 前后 cmp → 还原；T51 同型）
+  t57_had=$([[ -f "$ROOT/.agent-state/last-suite-receipt.json" ]] && echo 1 || echo 0)
+  if [[ "$t57_had" == 1 ]]; then cp "$ROOT/.agent-state/last-suite-receipt.json" "$t57_tmp/t57-receipt.real" 2>/dev/null || t57_had=0; fi
+  mkdir -p "$ROOT/.agent-state"
+  printf '{"head":"seed","passed":12345,"failed":0,"wall_time_s":0,"generated_at":"seed"}\n' > "$ROOT/.agent-state/last-suite-receipt.json"
+  cp "$ROOT/.agent-state/last-suite-receipt.json" "$t57_tmp/t57-receipt.seeded"
+  bash "$ROOT/tests/run-tests.sh" -T T41,T48 -j 2 >/dev/null 2>&1; t57_rc=$?
+  report "T57 TC-1273 filtered -j2 run exits clean" 0 "$t57_rc"
+  report "T57 TC-1273 filtered -j2 run leaves receipt untouched" 0 "$(cmp -s "$t57_tmp/t57-receipt.seeded" "$ROOT/.agent-state/last-suite-receipt.json" && echo 0 || echo 1)"
+  # TC-1276: FORCE_RED 缝 → rc 1 + 红归档含 FAIL 行 + 收据仍不被过滤跑触碰
+  t57_redhad=$([[ -f "$ROOT/.agent-state/last-suite-red.txt" ]] && echo 1 || echo 0)
+  if [[ "$t57_redhad" == 1 ]]; then cp "$ROOT/.agent-state/last-suite-red.txt" "$t57_tmp/t57-red.real" 2>/dev/null || t57_redhad=0; fi
+  rm -f "$ROOT/.agent-state/last-suite-red.txt"
+  AGENT_GUARD_SUITE_FORCE_RED=1 bash "$ROOT/tests/run-tests.sh" -T T41 >/dev/null 2>&1; t57_rc=$?
+  report "T57 TC-1276 FORCE_RED run exits 1" 1 "$t57_rc"
+  report "T57 TC-1276 red archive carries the forced FAIL line" 1 "$(grep -cF 'FAIL T0 forced-red seam (AGENT_GUARD_SUITE_FORCE_RED)' "$ROOT/.agent-state/last-suite-red.txt")"
+  report "T57 TC-1276 FORCE_RED filtered run leaves receipt untouched" 0 "$(cmp -s "$t57_tmp/t57-receipt.seeded" "$ROOT/.agent-state/last-suite-receipt.json" && echo 0 || echo 1)"
+  # TC-1274: 并行 T56 计数互证 + -j 1 逐字节等价串行（wall-time 行除外）
+  t57_a=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>&1)
+  t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 2 2>&1)
+  t57_c=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 1 2>&1)
+  report "T57 TC-1274 -j2 T56 pass count matches serial" "$(printf '%s\n' "$t57_a" | grep -c '^ok ')" "$(printf '%s\n' "$t57_b" | grep -c '^ok ')"
+  report "T57 TC-1274 -j1 is byte-equivalent to serial (modulo wall-time)" "$(printf '%s\n' "$t57_a" | grep -v '^wall-time: ')" "$(printf '%s\n' "$t57_c" | grep -v '^wall-time: ')"
+  # TC-1275: 源层卫生钉（:3417 label 语义 + T56 friction -f 守卫 + stderr 无噪声）
+  # TC-1275 钉用 -F + 引号拼接断开字面（T51 自匹配三连教训），只命中 T48 label 行
+  report "T57 TC-1275 T48 label carries the superseded-row semantics" 1 "$(grep -cF 'v3.70.0 row exists (superseded by current '"top)" "$ROOT/tests/run-tests.sh")"
+  report "T57 TC-1275 T56 friction reads carry the -f guard" 2 "$(grep -cE '\[\[ -f \.agent-state/gate-friction\.tsv \]\] && wc -l < \.agent-state/gate-friction\.tsv' "$ROOT/tests/run-tests.sh")"
+  t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>&1 1>/dev/null)
+  report "T57 TC-1275 T56 stderr carries no missing-file noise" 0 "$(printf '%s\n' "$t57_b" | grep -c 'No such file')"
+  # 收据/红归档还原（T51 同型：夹具不残留）
+  if [[ "$t57_had" == 1 ]]; then cp "$t57_tmp/t57-receipt.real" "$ROOT/.agent-state/last-suite-receipt.json"; else rm -f "$ROOT/.agent-state/last-suite-receipt.json"; fi
+  if [[ "$t57_redhad" == 1 ]]; then cp "$t57_tmp/t57-red.real" "$ROOT/.agent-state/last-suite-red.txt"; else rm -f "$ROOT/.agent-state/last-suite-red.txt"; fi
+  rm -f "$t57_tmp/t57-receipt.real" "$t57_tmp/t57-receipt.seeded" "$t57_tmp/t57-red.real"
+  # TC-1279: helper 提升后的顺序无关性持久钉（T19 单跑须全绿；嵌套 ≈8s 可接受）
+  out=$(bash "$ROOT/tests/run-tests.sh" -T T19 2>&1 || true)
+  report "T57 TC-1279 T19 standalone passes after hoisting (order-independence)" 1 "$(printf '%s\n' "$out" | grep -cE '^9 passed, 0 failed')"
+  # TC-1280: CHG-500 续仓链（T5→T22a→T16）经 SERIAL_CHAIN 在 -j 下串行保续，须全绿
+  out=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a,T16 -j 2 2>&1 || true)
+  report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 "$(( $(printf '%s\n' "$out" | grep -cE '^FAIL ') > 0 || $(printf '%s\n' "$out" | grep -cE '^ok ') < 51 ? 1 : 0 ))"
+}
+
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do
     case " ${SECTIONS[*]} " in *" $_w "*) ;; *) printf 'unknown section: %s (available: bash tests/run-tests.sh -l)\n' "$_w" >&2; exit 2 ;; esac
   done
 fi
-for _s in "${SECTIONS[@]}"; do
-  if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
-    "section_${_s//-/_}"
+# v3.72.0 erratum (CHG-095, DES-1868): replay/re-export anchors — defined ONCE
+# here; the parallel branch's counter/failed_names re-export shares them with
+# the report() wire format (^ok / ^FAIL).
+_RE_OK='^ok '
+_RE_FAIL='^FAIL '
+if [[ "$JOBS" -ge 2 ]]; then
+  # ---- parallel branch: section-level pool + source-order replay ----------
+  # SERIAL_CHAIN: sections that cannot run in parallel subshells, in THIS
+  # execution order — T50/T51 nest the real run-tests.sh and want cwd=$ROOT
+  # (so they go first); T5→T22a→T16 form a CHG-500 fixture continuation chain
+  # (T22a/T16 evolve T5's temp repo via cwd, deliberately not self-contained —
+  # known limitation: `-T T22a` standalone is unsupported, use -T T5,T22a,T16).
+  # They run serially (captured, not pooled) before the replay.
+  SERIAL_CHAIN=(T50 T51 T5 T22a T16)
+  _ran=(); _pool=(); _serial=()
+  for _s in "${SECTIONS[@]}"; do
+    if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
+      _ran+=("$_s")
+      case " ${SERIAL_CHAIN[*]} " in
+        *" $_s "*) ;; # chain member: collected below, in chain order
+        *) _pool+=("$_s") ;;
+      esac
+    fi
+  done
+  # chain members are collected in SERIAL_CHAIN execution order (the order
+  # itself carries the cwd/fixture continuity), same WANTED gate as the pool
+  for _s in "${SERIAL_CHAIN[@]}"; do
+    if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
+      _serial+=("$_s")
+    fi
+  done
+  # pool: N jobs at a time (bash 3.2 has no `wait -n` — poll-reap instead of
+  # chunk-wait: before each spawn, idle only while the pool is full, so one
+  # slow section no longer pins the whole chunk behind `wait`; 0.3s step is
+  # scheduler noise vs section runtimes. Capture files + source-order replay
+  # below are untouched.)
+  if [[ ${#_pool[@]} -gt 0 ]]; then
+    for _s in "${_pool[@]}"; do
+      while [[ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$JOBS" ]]; do sleep 0.3; done
+      ( "section_${_s//-/_}" ) >"${TMPDIR:-/tmp}/suite-${_s}.$$.out" 2>&1 &
+    done
+    wait
   fi
-done
+  # chain: serial execution inside ONE shared subshell — the members depend on
+  # each other's shell state, not just cwd: T50/T51 want cwd=$ROOT, and
+  # T5→T22a→T16 continue the CHG-500 fixture repo (cwd) plus the escapes
+  # new_repo exports (e.g. AGENT_GUARD_ALLOW_INDEPENDENT, GATE-E86). One
+  # subshell reproduces the serial branch's state-continuation semantics
+  # exactly; per-section capture shape is unchanged and counters stay
+  # subshell-local (the replay re-counts from the captured files).
+  if [[ ${#_serial[@]} -gt 0 ]]; then
+    (
+      for _s in "${_serial[@]}"; do
+        "section_${_s//-/_}" >"${TMPDIR:-/tmp}/suite-${_s}.$$.out" 2>&1
+      done
+    )
+  fi
+  # replay in SECTIONS source order: non-FAIL lines → stdout, FAIL lines →
+  # stderr; counters and failed_names/fail_lines re-exported from the captured
+  # files (subshell-local report() tallies are discarded by design).
+  for _s in "${_ran[@]}"; do
+    _sf="${TMPDIR:-/tmp}/suite-${_s}.$$.out"
+    p=$(grep -cE "$_RE_OK" "$_sf")
+    f=$(grep -cE "$_RE_FAIL" "$_sf")
+    pass=$(( pass + p ))
+    fail=$(( fail + f ))
+    while IFS= read -r _fl; do fail_lines+=("$_fl"); done < <(grep -hE "$_RE_FAIL" "$_sf")
+    while IFS= read -r _fn; do failed_names+=("$_fn"); done < <(grep -hE "$_RE_FAIL" "$_sf" | sed -E 's/^FAIL (.*) \((expected exit|output does not match).*$/\1/')
+    grep -vE "$_RE_FAIL" "$_sf"
+    grep -E "$_RE_FAIL" "$_sf" >&2
+    rm -f "$_sf"
+  done
+else
+  # ---- serial branch: pre--j dispatcher, byte-identical (JOBS<=1) ---------
+  for _s in "${SECTIONS[@]}"; do
+    if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
+      "section_${_s//-/_}"
+    fi
+  done
+fi
+
+# v3.72.0 erratum (CHG-095, DES-1869): forced-red test seam. Setting
+# AGENT_GUARD_SUITE_FORCE_RED=1 injects one guaranteed red case so red-path
+# consumers (T57 archive drill, CI drills) can exercise the red path without a
+# broken product. Test-only seam — real gate runs never set it.
+if [[ "${AGENT_GUARD_SUITE_FORCE_RED:-0}" == "1" ]]; then
+  report "T0 forced-red seam (AGENT_GUARD_SUITE_FORCE_RED)" 0 1
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant tail wall-time; summary line format unchanged (update-assertion-count / audit A3 sed anchors)
@@ -4414,6 +4714,21 @@ if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
   else
     rm -f "$ROOT/.agent-state/last-suite-receipt.json"
   fi
+fi
+# v3.72.0 erratum (CHG-095, DES-1869): red-run archive. ANY red run (fail > 0,
+# filtered or full) overwrites .agent-state/last-suite-red.txt with the failed
+# cases + FAIL lines — test-seam semantics: a re-run/CI drill aid, never a
+# product-health signal. The receipt block above keeps its full-run-only
+# semantics untouched (red FULL run still deletes it). Note: the condition is
+# intentionally unquoted ($fail) so the T51 TC-1126 pin literal stays unique.
+if [[ $fail -gt 0 ]]; then
+  mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
+  {
+    printf '# agent-guard suite red-run archive (test-seam semantics; not a product-health signal)\n'
+    printf '# failed cases: %s\n' "${failed_names[*]}"
+    if [[ ${#fail_lines[@]} -gt 0 ]]; then printf '%s\n' "${fail_lines[@]}"; fi
+  } > "$ROOT/.agent-state/last-suite-red.txt" 2>/dev/null \
+    || printf 'warning: could not write red archive .agent-state/last-suite-red.txt (non-fatal)\n' >&2
 fi
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2
