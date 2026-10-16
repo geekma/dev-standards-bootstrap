@@ -1192,6 +1192,20 @@ for a42_f in $(git ls-files 'resources/*' 'SKILL.md' 'README.md' 'README.zh-CN.m
 done
 report "A42 payload genericity — no single-project markers (user hard gate 2026-10-12)" 0 "$([[ -z "$a42_hits" ]] && echo 0 || { printf 'foreign markers:\n%s' "$a42_hits" >&2; echo 1; })"
 
+# A44 private-face drift tripwire (2026-10-16 user directive, CHG-097/REQ-1103):
+# 源仓本地安装副本必须与 shipped 模板 byte-identical——防「私有面落后于公开面」复发
+# （实证：.githooks/pre-commit 与 scripts/session-gate.sh 滞后于 v3.73.0 交付）。
+# 判定口径（DES-1874）：本地缺=SKIP（未安装/新克隆合法态）；模板缺=RED（公开面破损）；
+# 两全且 cmp 不等=RED（漂移）。本文件为 source-layer，目标仓不可见，无 payload 面。
+a44_bad=""
+for a44_p in scripts/agent-gate:resources/templates/agent-gate.sh scripts/stamp-provenance.sh:resources/templates/stamp-provenance.sh scripts/session-gate.sh:resources/templates/session-gate.sh .githooks/pre-commit:resources/templates/pre-commit; do
+  a44_l="$ROOT/${a44_p%%:*}"; a44_t="$ROOT/${a44_p##*:}"
+  [[ -f "$a44_t" ]] || { a44_bad="$a44_bad${a44_p}(template-missing) "; continue; }
+  [[ -f "$a44_l" ]] || continue
+  cmp -s "$a44_l" "$a44_t" || a44_bad="$a44_bad${a44_p} "
+done
+report "A44 local-copy drift vs template (private face == public face, CHG-097)" 0 "$([[ -z "$a44_bad" ]] && echo 0 || { printf 'drifted: %s\n' "$a44_bad" >&2; echo 1; })"
+
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层
 # （DS/playbook/registry/AGENTS）禁止复制工具词表指纹——命中即越层红。指针句必须在位。
