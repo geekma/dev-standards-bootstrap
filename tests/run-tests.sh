@@ -3451,10 +3451,11 @@ section_T48() {
 # ------------------------------------------------ T48 版本链同源 + 批次时序措辞（v3.62.0，REQ-1018/1020）
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.72.0' "$ROOT/SKILL.md")"
+# CHG-096: TC-1073 version pins recalibrated v3.72.0→v3.73.0 (four-chain bump).
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.73.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.72.0" 1 "$(grep -cF '规范版本：v3.72.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.72.0" 1 "$(grep -cF '当前对应规范版本：v3.72.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries v3.73.0" 1 "$(grep -cF '规范版本：v3.73.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.73.0" 1 "$(grep -cF '当前对应规范版本：v3.73.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3693,7 +3694,8 @@ section_T50() {
   # CHG-046: tail recalibrated T54→T55 (delivery four-gate section joins).
   # CHG-094: tail recalibrated T55→T56 (begin-artifact preflight probe joins).
   # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T57 ]] && echo 0 || echo 1)"
+  # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T58 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -4592,11 +4594,69 @@ section_T57() {
   report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 "$(( $(printf '%s\n' "$out" | grep -cE '^FAIL ') > 0 || $(printf '%s\n' "$out" | grep -cE '^ok ') < 51 ? 1 : 0 ))"
 }
 
+section_T58() {
+# ------------------------------------------------ T58 long-task wait + full-suite telemetry (v3.73.0)
+new_repo
+SESSION_GATE_SRC="$ROOT/resources/templates/session-gate.sh"
+if [[ -f "$SESSION_GATE_SRC" ]]; then
+  cp "$SESSION_GATE_SRC" scripts/session-gate.sh
+  chmod +x scripts/session-gate.sh
+  # TC-1281 (REQ-1100/SC-001 positive): declared governance; sleep-head counted; yellow at threshold 2
+  printf 'full_test_patterns: ^mvn test$\n' > .agent-governance.yml
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  DEV_STDARDS_CMD_HEAD='sleep 900; grep -c FAIL x.log' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1281 sleep head counted once" '"sleep_polls":1' "$(cat .agent-state/session-tool-stats.json)"
+  DEV_STDARDS_CMD_HEAD='sleep 900; grep -c FAIL x.log' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1281 sleep head counted twice" '"sleep_polls":2' "$(cat .agent-state/session-tool-stats.json)"
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  check_output "T58 TC-1281 sleep yellow light on status" "YELLOW.*长任务等待" "$out"
+  bash scripts/session-gate.sh count tool bash 'sleep 15' >/dev/null 2>&1
+  check_output "T58 TC-1281 argv cmd-head counted" '"sleep_polls":3' "$(cat .agent-state/session-tool-stats.json)"
+  printf '{"tool_name":"bash","tool_input":{"command":"sleep 5; ls"}}\n' | bash scripts/session-gate.sh count tool - >/dev/null 2>&1
+  check_output "T58 TC-1281 stdin tool_input.command counted" '"sleep_polls":4' "$(cat .agent-state/session-tool-stats.json)"
+  # TC-1282 (REQ-1100 negative): while-form exempt (first token); env override fires at 1
+  DEV_STDARDS_CMD_HEAD='while ! grep -q DONE f; do sleep 30; done' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1282 while-form not counted" '"sleep_polls":4' "$(cat .agent-state/session-tool-stats.json)"
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  DEV_STDARDS_CMD_HEAD='sleep 60' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  if printf '%s' "$out" | grep -q "长任务等待"; then report "T58 TC-1282 default threshold stays silent at 1" 1 0; else report "T58 TC-1282 default threshold stays silent at 1" 0 0; fi
+  out=$(AGENT_GUARD_SLEEP_POLL_LIMIT=1 bash scripts/session-gate.sh status 2>&1)
+  check_output "T58 TC-1282 sleep-limit env override fires at 1" "YELLOW.*长任务等待" "$out"
+  # TC-1283 (REQ-1102 declared): anchored ERE counts the exact full form; variants miss
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  DEV_STDARDS_CMD_HEAD='mvn test' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1283 anchored full pattern counted" '"full_suite":1' "$(cat .agent-state/session-tool-stats.json)"
+  DEV_STDARDS_CMD_HEAD='mvn test -Dtest=X' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  DEV_STDARDS_CMD_HEAD='mvn -q test' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1283 flag/reordered variants not matched" '"full_suite":1' "$(cat .agent-state/session-tool-stats.json)"
+  # TC-1284 (REQ-1102 negative): undeclared = off (fail-open); limit env override
+  rm -f .agent-governance.yml
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  DEV_STDARDS_CMD_HEAD='mvn test' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1284 undeclared pattern not counted" '"full_suite":0' "$(cat .agent-state/session-tool-stats.json)"
+  printf 'full_test_patterns: ^mvn test$\n' > .agent-governance.yml
+  DEV_STDARDS_CMD_HEAD='mvn test' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  out=$(AGENT_GUARD_FULL_TEST_LIMIT=1 bash scripts/session-gate.sh status 2>&1)
+  check_output "T58 TC-1284 full-test limit env override fires at 1" "YELLOW.*全量回归" "$out"
+  # TC-1286 (regression): legacy pre-CHG-096 stats JSON survives count (missing keys read 0) + status read
+  printf '{"turns":3,"bash":1,"grep":0,"other":0,"total":1,"updated_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-tool-stats.json
+  DEV_STDARDS_CMD_HEAD='sleep 30' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  check_output "T58 TC-1286 legacy stats JSON migrates on count (missing keys read 0)" '"sleep_polls":1,"full_suite":0' "$(cat .agent-state/session-tool-stats.json)"
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  check_output "T58 TC-1286 status reads migrated stats" "session stats" "$out"
+  rm -f .agent-governance.yml
+else
+  echo "SKIP T58: session-gate.sh absent — 跳过长任务等待/全量遥测 golden cases"
+fi
+
+}
+
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do

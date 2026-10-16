@@ -34,6 +34,15 @@
 # smoke_evidence_max_age_h：可选，证据时效窗小时数（默认 24；0=关窗，仅查存在）。
 # smoke_command: bash scripts/build.sh && bash scripts/smoke.sh
 # smoke_paths: \.sh$,pom\.xml
+
+# ── 定向验证遥测（v3.73.0，CHG-096，REQ-1102，黄灯软执法）──────────────────────
+# full_test_patterns：可选，逗号分隔「锚定全量形态」ERE 列表（首尾锚定，如
+#   ^<runner> test$，按项目测试命令方言逐条声明，含变体的形态不要声明过宽）；
+#   不声明=关闭（不声明不执法）。声明后 session-gate 对 LLM bash 直跑全量的调用
+#   计数（full_suite），达阈值 AGENT_GUARD_FULL_TEST_LIMIT（默认 2）亮黄灯并要求
+#   09「重要上下文」登记；门禁/CI 触发的全量不经 LLM bash turn，天然豁免；
+#   非法正则该条跳过（fail-open）。判定口径唯一权威=session-gate.sh 头注释。
+# full_test_patterns: ^mvn test$|^npm test$|^cargo test$
 paths:
   docs: docs            # 文档根：规范/方法论/变更/缺陷/交付总结都挂在此下
   scripts: scripts      # 治理脚本根：agent-gate、install-hook-adapter、合规检查

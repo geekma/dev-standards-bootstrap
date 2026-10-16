@@ -33,6 +33,24 @@
 #     dual-active 形状（各 runtime 各执行其一）；静态结构断言（ADAPTER-E09/E10，v3.63.0）
 #     由真加载探测与遥测活性自检替代废止；cursor 按 hooks 文档事件名、gemini/codex 无仓级
 #     hook 面只如实声明不变；协议核对时点与最低兼容版本随模板头注维护。
+#   · 长任务等待/全量回归软执法（v3.73.0，CHG-096，REQ-1100/1102）：`count tool` 可携带
+#     命令片段（cmd head）供两个独立计数器分类。抽取顺序：环境变量 DEV_STDARDS_CMD_HEAD
+#     （插件注入面，值整体透传不进 shell 重解析，防引号注入）> argv 第 4 参 > stdin JSON
+#     `tool_input.command`（仅 `count tool -` 读 stdin 的既有路径一次读出 tool_name 与
+#     command）；片段抽首行、截 200 字符。
+#     判定口径：①sleep_polls——片段首 token 匹配 `^[[:space:]]*sleep[[:space:]]+[0-9]`
+#     才计数；`while ! 判据; do sleep 30; done` 形态首 token 为 while，天然豁免；
+#     `bash -c 'sleep 5'` 包裹形态首 token 为 bash，不识别（已知边界，接受）。
+#     ②full_suite——仅当仓库根 `.agent-governance.yml` 声明 `full_test_patterns`（逗号
+#     分隔「锚定全量形态」ERE 列表，形状仿 smoke_paths，示例 `^<runner> test$`，按项目
+#     测试命令方言声明）且片段命中任一 pattern 才计数；不声明=关闭（fail-open），非法
+#     正则该条跳过不报错。两个计数器都要求片段非空（片段仅由 shell 类工具调用产生；
+#     name-only 调用不计数）。
+#     降级路径：harness 取不到命令片段时保持 name-only 计数（v3.39.0 现状行为）——遥测
+#     退化为探索预算口径，sleep_polls/full_suite 两计数器停摆（软执法不阻塞，取不到
+#     不算违规）。
+#     阈值：AGENT_GUARD_SLEEP_POLL_LIMIT / AGENT_GUARD_FULL_TEST_LIMIT，默认均 2，
+#     达阈值在 idle/status 亮 YELLOW 并要求 09「重要上下文」登记（硬执法仍在 gate 层）。
 #
 # 零依赖：bash 3.2+、git；被调脚本缺失时降级为显式提示，不猜不编。
 set -uo pipefail
@@ -40,7 +58,7 @@ set -uo pipefail
 mode="${1:-}"
   case "$mode" in
   start|idle|status|check|count) ;;
-  *) echo "usage: scripts/session-gate.sh start|idle|status|check|count turn|count tool <name|->" >&2; exit 2 ;;
+  *) echo "usage: scripts/session-gate.sh start|idle|status|check|count turn|count tool <name|-> [cmd-head]" >&2; exit 2 ;;
 esac
 
 ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)
@@ -66,22 +84,48 @@ mkdir -p "$STATE_DIR"
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S; }
 
 reset_state() {
-  printf '{"turns":0,"bash":0,"grep":0,"other":0,"total":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
+  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
   printf '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)" > "$WATER_FILE"
   # v3.63.0（REQ-1033，DES-1822）：会话起点标记——agent-gate begin 的 GATE-E89
   # 以「交付时刻晚于本会话起点」判定同会话交付后未换挡；新会话 start 重置起点后放行。
   printf '{"started_at":"%s"}\n' "$(now_iso)" > "${STATE_DIR}/session-started.json"
 }
 
-stat_get() { sed -n "s/.*\"$1\":[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$STATS_FILE" 2>/dev/null | head -1; }
+stat_get() { # <key> — 缺键（旧格式 stats 文件，CHG-096 前schema）读数默认 0（向后兼容）
+  local v
+  v=$(sed -n "s/.*\"$1\":[[:space:]]*\([0-9][0-9]*\).*/\1/p" "$STATS_FILE" 2>/dev/null | head -1)
+  printf '%s' "${v:-0}"
+}
 
-stat_write() { # turns bash grep other total
-  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"total":%s,"updated_at":"%s"}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$(now_iso)" > "$STATS_FILE"
+stat_write() { # turns bash grep other sleep_polls full_suite total
+  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"updated_at":"%s"}\n' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$(now_iso)" > "$STATS_FILE"
 }
 
 water_write() { # <turns>
   printf '{"turns":%s,"session":"","updated_at":"%s"}\n' "$1" "$(now_iso)" > "$WATER_FILE"
+}
+
+# v3.73.0（CHG-096，REQ-1102）：仓库根 .agent-governance.yml 声明的「锚定全量形态」
+# ERE 列表（flat key `full_test_patterns`，逗号分隔，形状仿 smoke_paths）。
+# 不声明=关闭（fail-open，返回非零）；机制细则唯一权威=本文件头注释。
+gov_full_test_patterns() {
+  [[ -f .agent-governance.yml ]] || return 1
+  sed -nE 's/^[[:space:]]*full_test_patterns:[[:space:]]*([^#]*).*$/\1/p' .agent-governance.yml 2>/dev/null | head -1
+}
+
+full_suite_hit() { # <cmd_head> — 命中任一声明 pattern 即 0；非法正则该条跳过（fail-open 不报错）
+  local pats p
+  pats=$(gov_full_test_patterns) || return 1
+  [[ -n "$pats" ]] || return 1
+  IFS=',' read -r -a __ftp <<< "$pats" || true
+  for p in "${__ftp[@]}"; do
+    p="${p#"${p%%[![:space:]]*}"}"   # ltrim（只去首尾空白；pattern 内部空格是语义，保留）
+    p="${p%"${p##*[![:space:]]}"}"   # rtrim
+    [[ -n "$p" ]] || continue
+    if printf '%s' "$1" | grep -Eq -- "$p" 2>/dev/null; then return 0; fi
+  done
+  return 1
 }
 
 stats_line() {
@@ -130,6 +174,20 @@ stats_warnings() { # 软执法黄灯：idle/status 时提示，不阻断（硬�
     emit "session-gate: YELLOW — ${t} turns > ${limit} (§2.9.6)——handoff 换挡，gate begin 已拒开新变更"
     report_add "- YELLOW: 会话 ${t} 轮超 ${limit} 换挡线（§2.9.6）——handoff"
   fi
+  # v3.73.0（CHG-096，REQ-1100/1102）：长任务等待 + 全量回归两盏黄灯（软执法）
+  local sp fs slimit flimit
+  sp=$(stat_get sleep_polls); fs=$(stat_get full_suite)
+  slimit="${AGENT_GUARD_SLEEP_POLL_LIMIT:-2}"; flimit="${AGENT_GUARD_FULL_TEST_LIMIT:-2}"
+  case "$slimit" in ''|*[!0-9]*) slimit=2 ;; esac
+  case "$flimit" in ''|*[!0-9]*) flimit=2 ;; esac
+  if [[ "$sp" -ge "$slimit" ]]; then
+    emit "session-gate: YELLOW — sleep-poll calls ${sp} >= ${slimit} (AGENTS.md 纪律 10 长任务等待)——改用前台 timeout / while 单调用 / 后台通知三式之一，等待原因在 09「重要上下文」登记"
+    report_add "- YELLOW: sleep 轮询 ${sp} 次达阈值 ${slimit}（长任务等待纪律）——合法三式改写，原因登记 09"
+  fi
+  if [[ "$fs" -ge "$flimit" ]]; then
+    emit "session-gate: YELLOW — full-suite runs ${fs} >= ${flimit} (AGENTS.md 纪律 7 定向验证/全量回归)——模块/单测级验证先行，全量回归交门禁触发，直跑原因在 09「重要上下文」登记"
+    report_add "- YELLOW: 全量回归直跑 ${fs} 次达阈值 ${flimit}（定向验证/全量回归）——原因登记 09"
+  fi
 }
 
 emit() { # 摘要进 stdout（Claude SessionStart 会把 stdout 注入上下文）+ 全文落盘
@@ -142,8 +200,9 @@ if [[ "$mode" == "count" ]]; then
     turn)
       [[ -s "$STATS_FILE" ]] || reset_state
       t=$(stat_get turns); t=$(( ${t:-0} + 1 ))
-      b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other); tot=$(stat_get total)
-      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${tot:-0}"
+      b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other)
+      sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total)
+      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "${tot:-0}"
       water_write "$t"
       limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
       if [[ "$t" -ge "$limit" && $(( (t - limit) % 10 )) -eq 0 ]]; then
@@ -152,20 +211,40 @@ if [[ "$mode" == "count" ]]; then
       ;;
     tool)
       name="${3:-}"
+      cmd_head="${4:-}"
+      # v3.73.0（CHG-096，REQ-1100/1102）：命令片段抽取顺序——env DEV_STDARDS_CMD_HEAD
+      # （插件注入面，值整体透传）> argv 第 4 参 > stdin JSON tool_input.command（仅
+      # `count tool -` 既有读 stdin 路径；一次读出 tool_name 与 command）。抽首行、
+      # 截 200 字符；取不到=name-only 降级（两计数器停摆）。细则唯一权威=头注释。
+      cmd_head="${DEV_STDARDS_CMD_HEAD:-$cmd_head}"
       if [[ "$name" == "-" ]]; then
-        name=$(sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' 2>/dev/null | head -1)
+        stdin_json=$(cat 2>/dev/null || true)
+        name=$(printf '%s' "$stdin_json" | sed -n 's/.*"tool_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+        if [[ -z "$cmd_head" ]]; then
+          cmd_head=$(printf '%s' "$stdin_json" | sed -n 's/.*"tool_input"[[:space:]]*:[[:space:]]*{.*"command"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+        fi
       fi
+      cmd_head=$(printf '%s' "$cmd_head" | head -1 | cut -c1-200)
       lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
       [[ -s "$STATS_FILE" ]] || reset_state
-      t=$(stat_get turns); b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other); tot=$(stat_get total)
+      t=$(stat_get turns); b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other)
+      sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total)
       case "$lc" in
         bash) b=$(( ${b:-0} + 1 )) ;;
         grep) g=$(( ${g:-0} + 1 )) ;;
         *)    o=$(( ${o:-0} + 1 )) ;;
       esac
-      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "$(( ${tot:-0} + 1 ))"
+      if [[ -n "$cmd_head" ]]; then
+        if printf '%s' "$cmd_head" | grep -Eq '^[[:space:]]*sleep[[:space:]]+[0-9]'; then
+          sp=$(( ${sp:-0} + 1 ))
+        fi
+        if full_suite_hit "$cmd_head"; then
+          fs=$(( ${fs:-0} + 1 ))
+        fi
+      fi
+      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "$(( ${tot:-0} + 1 ))"
       ;;
-    *) echo "usage: scripts/session-gate.sh count turn|count tool <name|->" >&2; exit 2 ;;
+    *) echo "usage: scripts/session-gate.sh count turn|count tool <name|-> [cmd-head]" >&2; exit 2 ;;
   esac
   exit 0
 fi

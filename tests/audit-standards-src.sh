@@ -1069,6 +1069,16 @@ report "A25 telemetry lives in the session-gate common layer" 1 "$(a17_at_least_
 report "A25 claude adapter forwards telemetry hooks" 1 "$(a17_at_least_1 "$(grep -c 'UserPromptSubmit' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
 report "A25 opencode plugin is a thin forwarder" 1 "$(a17_at_least_1 "$(grep -c 'session-gate.sh count turn' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
 report "A25 golden pins the telemetry suite" 1 "$(a17_at_least_1 "$(grep -c 'T26 idle carries yellow light' "$ROOT/tests/run-tests.sh" || true)")"
+# --- A25 v3.73.0：长任务等待/环境归因/全量遥测四门 pin（CHG-096，REQ-1100~1102；TC-1285 文档断言面）---
+report "A25 AGENTS discipline 10 long-task wait present (REQ-1100)" 1 "$(a17_at_least_1 "$(grep -c '长任务等待纪律' "$AGENTS" || true)")"
+report "A25 AGENTS discipline 11 env-attribution present (REQ-1101)" 1 "$(a17_at_least_1 "$(grep -c '环境归因续跑' "$AGENTS" || true)")"
+report "A25 AGENTS discipline 11 carries both attribution criteria (TC-1285)" 1 "$(a17_at_least_1 "$(grep -c '任务类（方案错/理解错）' "$AGENTS" || true)")"
+report "A25 session-gate carries the sleep-poll threshold env (REQ-1100)" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_SLEEP_POLL_LIMIT' "$ROOT/resources/templates/session-gate.sh" || true)")"
+report "A25 session-gate carries the full-test threshold env (REQ-1102)" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_FULL_TEST_LIMIT' "$ROOT/resources/templates/session-gate.sh" || true)")"
+report "A25 session-gate counts sleep_polls" 1 "$(a17_at_least_1 "$(grep -c 'sleep_polls' "$ROOT/resources/templates/session-gate.sh" || true)")"
+report "A25 session-gate counts full_suite" 1 "$(a17_at_least_1 "$(grep -c 'full_suite' "$ROOT/resources/templates/session-gate.sh" || true)")"
+report "A25 governance template declares full_test_patterns (commented default-off)" 1 "$(a17_at_least_1 "$(grep -c 'full_test_patterns' "$GOV_YML_TPL" || true)")"
+report "A25 golden pins the wait/full-suite telemetry suite" 1 "$(a17_at_least_1 "$(grep -c 'T58 TC-1281 sleep yellow light on status' "$ROOT/tests/run-tests.sh" || true)")"
 # --- A25 v3.40.0：pre-commit 自动章 / P3 缺陷轻量通道 / 红灯门 / die 错误码 / G10 减法（CHG-044~048）---
 report "A25 pre-commit stamps provenance automatically" 1 "$(a17_at_least_1 "$(grep -c 'stamp-provenance.sh --all' "$ROOT/resources/templates/pre-commit" || true)")"
 report "A25 gate resolves the P3 defect channel" 1 "$(a17_at_least_1 "$(grep -c 'bug_p3_lightweight' "$GATE_TPL" || true)")"

@@ -28,6 +28,12 @@
 #     dual-active 形状（各 runtime 各执行其一）；静态结构断言（ADAPTER-E09/E10，v3.63.0）
 #     由真加载探测与遥测活性自检替代废止；cursor 按 hooks 文档事件名、gemini/codex 无仓级
 #     hook 面只如实声明不变；协议核对时点与最低兼容版本随模板头注维护。
+#   · 长任务等待/全量回归软执法（v3.73.0，CHG-096，REQ-1100/1102）：opencode 插件
+#     message.part.updated 从 `part.state.input` 取命令片段（候选键 command|cmd|script，
+#     string 非空才取，抽首行截 200 字符），经 DEV_STDARDS_CMD_HEAD 环境变量传给
+#     `count tool`（bun `$` 插值整体透传防注入 / execFile env 选项无 shell 面）；取不到
+#     传空=name-only 降级（两计数器停摆，现状行为）。Claude/cursor hook 走 stdin JSON
+#     `tool_input.command` 无需 adapter 改动；判定口径/阈值唯一权威=session-gate.sh 头注释。
 set -euo pipefail
 
 usage() {
@@ -493,7 +499,7 @@ PY
 // see SKILL.md install-hook-adapter section). Event wiring (both implementations):
 //   session.created      -> session-gate.sh start   (audit + telemetry reset)
 //   message.updated      -> session-gate.sh count turn      (§2.9.6 water level; user role only)
-//   message.part.updated -> session-gate.sh count tool <name>   (exploration budget)
+//   message.part.updated -> session-gate.sh count tool <name> [cmd-head via DEV_STDARDS_CMD_HEAD]   (exploration budget + v3.73.0 wait/full-suite soft counters)
 //   tool.execute.before  -> session-gate.sh check       (v3.58.0 handoff hard stop: throw on rc 2)
 //   session.idle         -> session-gate.sh idle    (gate --stage stop 等价检查落盘)
 HDR
@@ -512,9 +518,12 @@ export const DevStandardsGate = async ({ client, $, directory }) => {
       await relay(String(res.stdout || ""))
     } catch {}
   }
-  const countTool = async (tool) => {
+  const countTool = async (tool, cmd) => {
     try {
-      const res = await $`bash scripts/session-gate.sh count tool ${tool}`.cwd(directory).nothrow().quiet()
+      // v3.73.0 (CHG-096, REQ-1100/1102): pass the command head via env — the value
+      // is interpolated as ONE literal word by Bun shell (no shell re-parsing, no
+      // quote injection); empty cmd = name-only degradation (existing behavior).
+      const res = await $`DEV_STDARDS_CMD_HEAD=${cmd} bash scripts/session-gate.sh count tool ${tool}`.cwd(directory).nothrow().quiet()
       await relay(String(res.stdout || ""))
     } catch {}
   }
@@ -550,7 +559,18 @@ export const DevStandardsGate = async ({ client, $, directory }) => {
       } else if (event.type === "message.part.updated") {
         try {
           const p = event.properties && event.properties.part
-          if (p && p.type === "tool" && p.tool) await countTool(p.tool)
+          if (p && p.type === "tool" && p.tool) {
+            // v3.73.0 (CHG-096): best-effort command head from part.state.input
+            // (candidate keys command|cmd|script; first line, 200 chars). Unavailable
+            // = empty string = name-only degradation (two soft counters idle).
+            let cmd = ""
+            try {
+              const inp = p.state && p.state.input
+              const raw = inp && (inp.command || inp.cmd || inp.script)
+              if (typeof raw === "string" && raw) cmd = raw.split("\n")[0].slice(0, 200)
+            } catch {}
+            await countTool(p.tool, cmd)
+          }
         } catch {}
       } else if (event.type === "session.idle") {
         await run("idle")
@@ -564,8 +584,8 @@ export const DevStandardsGate = async ({ client, $, directory }) => {
 JS
   cat > "$OC_TMP/frag-v2.js" <<'JS'
 import { execFile as _ocExecFile, execFileSync as _ocExecFileSync } from "node:child_process"
-const _ocRun = (dir, args) => new Promise((resolve) => {
-  _ocExecFile("bash", ["scripts/session-gate.sh", ...args], { cwd: dir, timeout: 15000 }, (err, stdout) => {
+const _ocRun = (dir, args, env) => new Promise((resolve) => {
+  _ocExecFile("bash", ["scripts/session-gate.sh", ...args], { cwd: dir, timeout: 15000, env: env || process.env }, (err, stdout) => {
     resolve({ out: String(stdout || "") })
   })
 })
@@ -595,11 +615,22 @@ export const DevStandardsGateV2 = async (ctx) => {
             _ocRun(dir, ["count", "turn"]).then((r) => _ocRelay(ctx, r.out)).catch(() => {})
           } else if (ev.type === "message.part.updated") {
             let tool = ""
+            let cmd = ""
             try {
               const p = ev.properties && ev.properties.part
-              if (p && p.type === "tool" && p.tool) tool = p.tool
+              if (p && p.type === "tool" && p.tool) {
+                tool = p.tool
+                // v3.73.0 (CHG-096): command head via execFile env option (no shell,
+                // no injection surface); unavailable = name-only degradation.
+                const inp = p.state && p.state.input
+                const raw = inp && (inp.command || inp.cmd || inp.script)
+                if (typeof raw === "string" && raw) cmd = raw.split("\n")[0].slice(0, 200)
+              }
             } catch {}
-            if (tool) _ocRun(dir, ["count", "tool", tool]).then((r) => _ocRelay(ctx, r.out)).catch(() => {})
+            if (tool) {
+              const env = cmd ? { ...process.env, DEV_STDARDS_CMD_HEAD: cmd } : process.env
+              _ocRun(dir, ["count", "tool", tool], env).then((r) => _ocRelay(ctx, r.out)).catch(() => {})
+            }
           } else if (ev.type === "session.idle") {
             _ocRun(dir, ["idle"]).then((r) => _ocRelay(ctx, r.out)).catch(() => {})
           }
