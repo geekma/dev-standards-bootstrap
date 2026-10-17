@@ -3079,7 +3079,7 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  report "T39 registry row count" 55 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 58 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
@@ -3364,7 +3364,7 @@ if [[ -s "$GATE46_SRC" ]]; then
   # TC-1061: 07 含签名行+task- id → stop 过（顺序：先 begin——09 落盘即闭合 E72）
   seed_begin CHG-980 L1 claude/s-46
   report "T46 fixture begins clean" 0 $?
-  printf '## CHG-980 评审\n\n- 评审主体：agent-platform / llm-model / task-ses_0000000000fixture00000000\n- 结论：APPROVE\n' > docs/changes/CHG-980/07-review-report.md
+  printf '## CHG-980 评审\n\n- 评审主体：agent-platform / llm-model / task-ses_0000000000fixture00000000\n- 结论：APPROVE\n- **发现处置**：未命中，不适用（T46 署名夹具，无发现）\n' > docs/changes/CHG-980/07-review-report.md
   printf '# coding\n实现记录\n' > docs/changes/CHG-980/04.5-coding-record.md
   printf '# results\nTests run: 1, Failures: 0\n' > docs/changes/CHG-980/05-test-results.md
   printf '# deploy\n未命中，不适用\n' > docs/changes/CHG-980/06.5-deployment-config.md
@@ -3452,10 +3452,11 @@ section_T48() {
 # TC-1073: four-chain version sameness (SKILL/AGENTS/DS/CHANGELOG) + wording
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
 # CHG-096: TC-1073 version pins recalibrated v3.72.0→v3.73.0 (four-chain bump).
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.73.0' "$ROOT/SKILL.md")"
+# CHG-098: TC-1073 pins recalibrated v3.73.0→v3.74.0 (four-chain bump).
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.74.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.73.0" 1 "$(grep -cF '规范版本：v3.73.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.73.0" 1 "$(grep -cF '当前对应规范版本：v3.73.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries v3.74.0" 1 "$(grep -cF '规范版本：v3.74.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.74.0" 1 "$(grep -cF '当前对应规范版本：v3.74.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3695,7 +3696,7 @@ section_T50() {
   # CHG-094: tail recalibrated T55→T56 (begin-artifact preflight probe joins).
   # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
   # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T58 ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T59 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -4117,6 +4118,7 @@ cat > docs/changes/CHG-1040/07-review-report.md <<'EOF'
 ## 用户可用性验收
 - 结论：通过（依据 03.6 与 UJ-001）
 - **建议人类走查（非阻塞）**：建议交付前真人走查一次
+- **发现处置**：未命中，不适用（T53 可用性夹具，无发现）
 - 评审主体：platform / glm-5.3-flash / ses-t53c
 EOF
 scripts/agent-gate begin CHG-1040 >/dev/null 2>&1
@@ -4279,7 +4281,7 @@ printf '# tests\n- TC-001 用户旅程 E2E（真人入口）\n覆盖维度: 正�
 scripts/agent-gate begin CHG-1070 >/dev/null 2>&1
 printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-1070/04.5-coding-record.md
 printf '# 05 测试结果\n- UJ-001 HTTP 200 响应体 {"ok":true} @2026-10-14T00:00:00Z\n' > docs/changes/CHG-1070/05-test-results.md
-printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n- **发现处置**：未命中，不适用（T55 交付四门夹具，无发现）\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
 printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更。\n' > docs/changes/CHG-1070/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-1070/06-delivery-summary.md
 printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-1070/09-changelog.md
@@ -4655,8 +4657,191 @@ fi
 # v3.65.0 (CHG-087, REQ-1046~1048): SECTIONS = source-order registry (T22a/T22b
 # disambiguate the duplicate "T22" label at :570/:2173; 摘要 at :2172 is a
 # misplaced separator, not a boundary). Dispatcher: -l list, wanted validation
+section_T59() {
+# --------------------------------- T59 发现处置闭环 + 评审轮次收敛（v3.74.0，CHG-098）
+# TC↔REQ：TC-1307/1308/1309/1310/1311→REQ-1104；TC-1312/1313→REQ-1105；TC-1314/1317→REQ-1106。
+# 夹具沿用 T53 的 L0 轻量通道形态（seed_t53_delivery = 已证绿的 stop 交付面）；07 一律
+# 本行自写 provenance（在 seed_t53_delivery 之后覆写，避免出现两个 provenance 块）。
+new_repo
+# 本节负例矩阵会反复改写 07（每改一次即一轮），故先把阈值抬高；只有收敛用例用
+# 行内 `AGENT_GUARD_REVIEW_ROUND_LIMIT=0` 覆写来触发 E116。
+export AGENT_GUARD_REVIEW_ROUND_LIMIT=99
+seed_artifacts CHG-1090 L0 claude/s-1
+cat > docs/changes/CHG-1090/01-spec.md <<'EOF'
+# spec
+- REQ-001: 发现处置与评审轮次闭环
+- **origin_artifact**: 未命中（无原型页）
+- **chain_change**: 未命中（无数据链变更）
+- **ui_change**: false
+EOF
+scripts/agent-gate begin CHG-1090 >/dev/null 2>&1
+seed_t53_delivery CHG-1090
+echo y > src/t59a.js
+t59_07() { { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat; } > docs/changes/CHG-1090/07-review-report.md; }
+# TC-1307（REQ-1104/SC-001 正面）：处置节齐备且严重行已处置 → 放行
+t59_07 <<'EOF'
+# review
+## 问题分级
+- 严重：1 条（F1）
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 边界条件缺失 | 严重 | 已修复 | 补测并复跑全绿 |
+| F2 | 命名不一致 | 低 | 已驳回（误报） | 与 §1.3 命名表一致 |
+- **评审轮次**：1
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T59 TC-1307 stop green with a complete disposition table" 0 $?
+# TC-1308（REQ-1104/SC-002 负面）：无「发现处置」节 → E115
+t59_07 <<'EOF'
+# review
+## 问题分级
+- 严重：1 条（F1）
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T59 TC-1308 E115 red: disposition section missing" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T59 TC-1308 refusal names GATE-E115" "GATE-E115" "$out"
+# TC-1309（负面）：严重行处置=待处置 → E114
+t59_07 <<'EOF'
+# review
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 边界条件缺失 | 严重 | 待处置 | 尚未修复 |
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T59 TC-1309 E114 red: severe row left undisposed" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T59 TC-1309 refusal names GATE-E114" "GATE-E114" "$out"
+# TC-1310（负面）：安全性质发现处置=不处理 → E114（安全面须修复或显式驳回）
+t59_07 <<'EOF'
+# review
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 输入未做安全转义 | 低 | 不处理（登记 FU-99） | 待下批 |
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T59 TC-1310 E114 red: security finding shelved as 不处理" 2 $?
+# TC-1311（边界，三值化）：表头/分隔行/列数不足行一律不判罚（不得假红）
+t59_07 <<'EOF'
+# review
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 已处置的真实行 | 低 | 已修复 | 已统一 |
+| F2 | 列数不足的畸形行 | 严重 |
+| 低 | 仅两列的畸形行 |
+- **评审轮次**：1
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T59 TC-1311 header/separator/short rows never fire a verdict" 0 $?
+# TC-1311b（fail-closed）：只有占位/畸形行且无单行声明 → E115（畸形不得成为短路借口）
+t59_07 <<'EOF'
+# review
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| <编号> | <发现> | <严重度> | <处置> | <证据/理由> |
+- **评审轮次**：1
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+report "T59 TC-1311b placeholder-only disposition section fails closed" 2 "$(scripts/agent-gate --stage stop >/dev/null 2>&1; echo $?)"
+check_output "T59 TC-1311b refusal names GATE-E115" "GATE-E115" "$out"
+# TC-1311c（放行）：单行声明等价于处置节（无发现时的轻量形态）
+t59_07 <<'EOF'
+# review
+- **发现处置**：未命中，不适用（本夹具无发现）
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T59 TC-1311c single-line 未命中 declaration passes" 0 $?
+# TC-1312a（REQ-1105 幂等）：同一 07 内容重复调用不增轮
+t59_n=$(awk -F'\t' '$1=="CHG-1090" && $2!=""{c++} END{print c+0}' .agent-state/review-rounds.tsv 2>/dev/null)
+scripts/agent-gate --stage stop >/dev/null 2>&1
+t59_n2=$(awk -F'\t' '$1=="CHG-1090" && $2!=""{c++} END{print c+0}' .agent-state/review-rounds.tsv 2>/dev/null)
+report "T59 TC-1312a ledger records at least one round" 1 "$([[ "${t59_n:-0}" -ge 1 ]] && echo 1 || echo 0)"
+report "T59 TC-1312a unchanged 07 adds no round (idempotent)" "$t59_n" "$t59_n2"
+# TC-1312b（REQ-1105 收敛）：超限且无「超限处置」行 → E116；补行后放行且亮黄灯
+report "T59 TC-1312b E116 red: over the round cap without a 超限处置 line" 2 "$(AGENT_GUARD_REVIEW_ROUND_LIMIT=0 scripts/agent-gate --stage stop >/dev/null 2>&1; echo $?)"
+out=$(AGENT_GUARD_REVIEW_ROUND_LIMIT=0 scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T59 TC-1312b refusal names GATE-E116" "GATE-E116" "$out"
+t59_07 <<'EOF'
+# review
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 命名不一致 | 低 | 已修复 | 已统一 |
+- **评审轮次**：4
+- **超限处置**：回退重议——拆分为两批，先落门禁再做版本链
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+rc=0
+out=$(AGENT_GUARD_REVIEW_ROUND_LIMIT=0 scripts/agent-gate --stage stop 2>&1) || rc=$?
+report "T59 TC-1312b over-cap run passes once the 超限处置 line exists" 0 "$rc"
+check_output "T59 TC-1312b over-cap run prints the YELLOW convergence notice" "YELLOW.*review rounds" "$out"
+# TC-1312c（F3 回归）：模板派生的 07（占位行 + 注释态「超限处置」）不得短路 E116 / E115
+t59_07_tpl() { { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# CHG-1090 评审报告（L2）\n'; sed -n '2,$p' "$ROOT/resources/templates/entry/07-review-report.md"; printf -- '- 评审主体：platform / fixture-model / ses-t59tpl\n'; } > docs/changes/CHG-1090/07-review-report.md; }
+t59_07_tpl
+out=$(AGENT_GUARD_REVIEW_ROUND_LIMIT=0 scripts/agent-gate --stage stop 2>&1 || true)
+report "T59 TC-1312c template-derived 07 still hits E116 over the cap" 2 "$(AGENT_GUARD_REVIEW_ROUND_LIMIT=0 scripts/agent-gate --stage stop >/dev/null 2>&1; echo $?)"
+check_output "T59 TC-1312c refusal names GATE-E116" "GATE-E116" "$out"
+report "T59 TC-1312c template-derived 07 fails closed on the unfilled disposition table" 2 "$(AGENT_GUARD_REVIEW_ROUND_LIMIT=99 scripts/agent-gate --stage stop >/dev/null 2>&1; echo $?)"
+# TC-1313（兼容性/降级）：非法阈值回落 3（非 0）；`.agent-state` 整体缺位 → fail-open
+t59_07 <<'EOF'
+# review
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 命名不一致 | 低 | 已修复 | 已统一 |
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t59a
+EOF
+rm -f .agent-state/review-rounds.tsv
+report "T59 TC-1313 invalid AGENT_GUARD_REVIEW_ROUND_LIMIT falls back to 3, not 0" 0 "$(AGENT_GUARD_REVIEW_ROUND_LIMIT=abc scripts/agent-gate --stage stop >/dev/null 2>&1; echo $?)"
+rm -rf .agent-state
+report "T59 TC-1313 absent .agent-state is fail-open (no counting, no E116)" 0 "$(AGENT_GUARD_REVIEW_ROUND_LIMIT=0 scripts/agent-gate --stage stop >/dev/null 2>&1; echo $?)"
+# TC-1314（REQ-1106）：metrics 追加评审质效字段；无 07 的变更输出 0/null
+seed_artifacts CHG-1091 L0 claude/s-1
+out=$(scripts/agent-gate metrics 2>/dev/null || true)
+check_output "T59 TC-1314 metrics emits review-quality fields" \
+  '"change_id":"CHG-1090".*"review_rounds":[0-9]+,"review_rounds_over_limit":(true|false),"findings_total":[0-9]+,"findings_dismissed":[0-9]+,"dismissal_rate":(null|[0-9]+\.[0-9]+)' "$out"
+check_output "T59 TC-1314 metrics defaults to 0/null without a review report" \
+  '"change_id":"CHG-1091".*"findings_total":0,"findings_dismissed":0,"dismissal_rate":null' "$out"
+# TC-1317（CHG-098 评审 V2 回归）：模板派生的 07（仅占位行）不得被 metrics 计为发现——
+# 处置计数必须与门禁裁决同源（占位/注释态行一律不计），否则空 07 会报出"最高噪声"。
+t59_07_tpl
+out=$(scripts/agent-gate metrics 2>/dev/null || true)
+check_output "T59 TC-1317 metrics ignores the template placeholder row" \
+  '"change_id":"CHG-1090".*"findings_total":0,"findings_dismissed":0,"dismissal_rate":null' "$out"
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do

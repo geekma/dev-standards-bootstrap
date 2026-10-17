@@ -1206,6 +1206,26 @@ for a44_p in scripts/agent-gate:resources/templates/agent-gate.sh scripts/stamp-
 done
 report "A44 local-copy drift vs template (private face == public face, CHG-097)" 0 "$([[ -z "$a44_bad" ]] && echo 0 || { printf 'drifted: %s\n' "$a44_bad" >&2; echo 1; })"
 
+# A45 发现处置闭环 + 评审轮次收敛（v3.74.0，CHG-098/REQ-1104~1107）：五面互锁——门禁 E 码、
+# 07 形状模板、规范正文条款、注册表（E 码行 + R 条款行）、golden 节注册。任一面缺失即红
+# （单面绿不得声称能力落地；与 A39 计数互锁同源口径）。
+at_least "A45 gate carries the disposition gates (E114/E115, CHG-098)" 2 "$GATE_TPL" 'GATE-E11[45]'
+at_least "A45 gate carries the round-cap gate (E116, CHG-098)" 1 "$GATE_TPL" 'GATE-E116'
+at_least "A45 gate derives review rounds from the ledger (CHG-098)" 1 "$GATE_TPL" 'review-rounds.tsv'
+at_least "A45 gate exposes the round-limit knob (CHG-098)" 1 "$GATE_TPL" 'AGENT_GUARD_REVIEW_ROUND_LIMIT'
+at_least "A45 metrics emits the dismissal rate (CHG-098)" 1 "$GATE_TPL" 'dismissal_rate'
+at_least "A45 07 template carries the disposition section (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '发现处置'
+at_least "A45 07 template carries the conditional cap-disposition line (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '超限处置'
+at_least "A45 standards body carries the disposition clause (CHG-098)" 1 "$STD" '发现处置（v3.74.0'
+at_least "A45 standards body carries the convergence clause (CHG-098)" 1 "$STD" '评审收敛（v3.74.0）'
+at_least "A45 standards body carries the new metric fields (CHG-098)" 1 "$STD" 'dismissal_rate'
+at_least "A45 registry indexes the new gate codes (CHG-098)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E11[456] '
+at_least "A45 registry registers the new clauses (CHG-098)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R5[678] '
+at_least "A45 golden suite registers the T59 section (CHG-098)" 1 "$ROOT/tests/run-tests.sh" 'T58 T59)'
+at_least "A45 cap-disposition predicate requires a filled line, not a bare word (CHG-098)" 1 "$GATE_TPL" '\[\^\[:space:\]<\]'
+at_least "A45 disposition tally skips template placeholder rows (CHG-098)" 1 "$GATE_TPL" '\^<\.\*>\$'
+at_least "A45 07 template marks its example row as a placeholder (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '^| <编号> |'
+
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层
 # （DS/playbook/registry/AGENTS）禁止复制工具词表指纹——命中即越层红。指针句必须在位。

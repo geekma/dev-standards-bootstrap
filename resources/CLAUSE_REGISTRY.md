@@ -77,6 +77,9 @@
 | R53 | 否定测试抽查（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**否定测试抽查（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
 | R54 | 运行时证据硬门（§2.5 阶段 7） | DEVELOPMENT_STANDARDS.md::**运行时证据硬门（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
 | R55 | 评审跑旅程与上游错误计数（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**评审跑旅程与上游错误计数（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
+| R56 | 发现处置闭环（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**发现处置（v3.74.0；逐条处置，严重或安全发现未处置即拒 E114/E115，无发现可单行声明）** | universal | 硬 | 行为 |
+| R57 | 评审轮次收敛与超限处置（§2.1.8） | DEVELOPMENT_STANDARDS.md::**评审收敛（v3.74.0）** | universal | 硬 | 行为 |
+| R58 | 评审质效度量的五项新字段（§2.17.5） | DEVELOPMENT_STANDARDS.md::**`review_rounds` / `review_rounds_over_limit` / `findings_total` / `findings_dismissed` / `dismissal_rate`（v3.74.0）** | universal | 软 | 计数 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
@@ -184,6 +187,9 @@
 | GATE-E111 | 基建面 diff 无 smoke_command 声明、缺窗内冒烟证据或 smoke_paths 正则非法（fail-closed）；豁免/证据限活跃变更 05，指针缺失 fail-open | agent-gate.sh::check_smoke_gate()（v3.71.0） |
 | GATE-E112 | 同会话重复交付已交付变更且无 handoff.md/换挡声明/豁免 env | agent-gate.sh::validate_delivery()（v3.71.0） |
 | GATE-E113 | TC 落点清单自动化条目指向文件不存在或无断言标记 | agent-gate.sh::validate_delivery()（v3.71.0） |
+| GATE-E114 | 07「发现处置」表存在未处置行（处置空/待处置）或严重·安全发现记「不处理」 | agent-gate.sh::assert_finding_disposition()（v3.74.0） |
+| GATE-E115 | 07 既无「发现处置」节（或节内无真实发现行）也无「未命中，不适用」单行声明 | agent-gate.sh::assert_finding_disposition()（v3.74.0） |
+| GATE-E116 | 评审轮次超 AGENT_GUARD_REVIEW_ROUND_LIMIT 且 07 无「已填写的超限处置行」 | agent-gate.sh::track_review_round()（v3.74.0） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

@@ -28,6 +28,119 @@ gate_mtime() { # <file> — GNU then BSD stat, 0 on failure (v3.67.0 erratum CHG
   # fallback never fires. GNU-first works on both: BSD stat has no -c.)
   stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
 }
+
+# --- review convergence & finding disposition (v3.74.0, CHG-098) ------------
+# Review rounds are DERIVED from disk, never self-reported: the ledger keeps one
+# row per distinct content revision of a change's 07-review-report.md observed
+# at gate time, so begin/staged/stop/ci runs on unchanged content add nothing
+# (idempotent). A missing .agent-state is fail-open — no counting, no E116;
+# E114/E115 depend only on the report text, never on the ledger.
+review_round_limit() { # AGENT_GUARD_REVIEW_ROUND_LIMIT, invalid => 3
+  local l="${AGENT_GUARD_REVIEW_ROUND_LIMIT:-3}"
+  [[ "$l" =~ ^[0-9]+$ ]] || l=3
+  printf '%s' "$l"
+}
+
+review_round_hash() { # <file> — shasum (macOS) then sha256sum (Linux), cksum last
+  if [[ ! -s "$1" ]]; then printf ''; return 0; fi
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else cksum "$1" | awk '{print $1"-"$2}'
+  fi
+}
+
+review_rounds_of() { # <change-id> — distinct recorded hashes (0 when absent)
+  local id="$1"
+  [[ -f ".agent-state/review-rounds.tsv" ]] || { printf '0'; return 0; }
+  awk -F'\t' -v k="$id" '$1==k && $2!="" {c++} END{print c+0}' \
+    .agent-state/review-rounds.tsv 2>/dev/null || printf '0'
+}
+
+track_review_round() { # <dir> <change-id> <report-file>
+  local d="$1" id="$2" f="$3" hash rounds limit
+  [[ -s "$f" ]] || return 0
+  hash=$(review_round_hash "$f")
+  [[ -n "$hash" ]] || return 0
+  if [[ -d ".agent-state" ]]; then
+    # grep -F on the id+hash pair: a row for THIS revision already recorded
+    # means no new round — the ledger is append-only, never rewritten.
+    if ! grep -qF -- "$(printf '%s\t%s' "$id" "$hash")" ".agent-state/review-rounds.tsv" 2>/dev/null; then
+      printf '%s\t%s\t%s\n' "$id" "$hash" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+        >> ".agent-state/review-rounds.tsv" 2>/dev/null || true
+    fi
+  fi
+  rounds=$(review_rounds_of "$id")
+  limit=$(review_round_limit)
+  if [[ "${rounds:-0}" -gt "$limit" ]]; then
+    echo "agent-gate: YELLOW: $id review rounds $rounds exceed the cap $limit (standards §2.2 convergence; raise AGENT_GUARD_REVIEW_ROUND_LIMIT only with a recorded reason)" >&2
+    # Conditional shape requirement, not a ban on reviewing: past the cap the
+    # author must record what "step back and reconsider the approach" produced.
+    # The predicate is a FILLED line, not a bare substring: the shape template
+    # itself carries the words 「超限处置」 in its guidance comment and in a
+    # placeholder line, so a literal grep would be short-circuited by any
+    # template-derived report (found in independent review of CHG-098, F3).
+    grep -qE '^[[:space:]]*-[[:space:]]*\*\*超限处置\*\*(：|:)[[:space:]]*[^[:space:]<]' "$f" \
+      || die "GATE-E116: $d/07-review-report.md exceeded the review-round cap ($rounds > $limit) without a filled 「超限处置」 line — review must converge by re-considering the approach, not by another pass (standards §2.2 review convergence, v3.74.0 CHG-098)"
+  fi
+  return 0
+}
+
+assert_finding_disposition() { # <dir> <report-file>
+  local d="$1" f="$2" bad rows dhead ddecl e115
+  [[ -s "$f" ]] || return 0
+  # Stage 1 — structural guard (E115): the disposition lane is part of the
+  # stage-8 review-report shape. Two accepted forms: a 「发现处置」 section
+  # carrying at least one REAL finding row, or the single-line declaration
+  # (mirrors §1.1) for a review with nothing to dispose of. Angle-bracket
+  # placeholder rows and header/separator/short rows are not data rows —
+  # otherwise the shape template itself would satisfy the guard (v3.74.0
+  # independent review of CHG-098, same short-circuit class as F3).
+  dhead='^#{1,6}[[:space:]]*发现处置'
+  ddecl='^[[:space:]]*-[[:space:]]*\*\*发现处置\*\*(：|:)[[:space:]]*未命中，不适用（.+）'
+  e115=""
+  if ! grep -qE "$dhead" "$f" && ! grep -qE "$ddecl" "$f"; then
+    e115="missing the 「发现处置」 section (declare 未命中 when there is nothing to dispose of)"
+  fi
+  rows=$(awk -F'|' '
+    /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+    sec && /^#{1,6}[[:space:]]/ { sec=0 }
+    !sec { next }
+    /^[[:space:]]*\|/ {
+      if (NF < 6) next
+      id=$2
+      gsub(/<!--[^>]*-->/,"",id); gsub(/[[:space:]]/,"",id)
+      if (id == "" || id == "编号" || id ~ /^-+$/ || id ~ /^<.*>$/) next
+      n++
+    }
+    END { print n+0 }' "$f" 2>/dev/null || true)
+  if [[ -z "$e115" ]] && grep -qE "$dhead" "$f" && [[ "${rows:-0}" -eq 0 ]] && ! grep -qE "$ddecl" "$f"; then
+    e115="「发现处置」 section carries no real finding row and no 未命中 declaration"
+  fi
+  if [[ -n "$e115" ]]; then
+    die "GATE-E115: $d/07-review-report.md $e115 — every finding must be fixed or dismissed with a reason (standards §2.5 stage 8, v3.74.0 CHG-098)"
+  fi
+  grep -qE "$dhead" "$f" || return 0
+  # Stage 2 — assertion (E114) by column position: an empty / 待处置
+  # disposition on any real row, or a 严重 row or a security-nature finding
+  # marked 「不处理」. HTML comments are stripped first so a leftover
+  # `<!-- 待填 -->` cell is read as empty, not as content.
+  bad=$(awk -F'|' '
+    /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+    sec && /^#{1,6}[[:space:]]/ { sec=0 }
+    !sec { next }
+    /^[[:space:]]*\|/ {
+      if (NF < 6) next
+      id=$2; sev=$4; dis=$5
+      gsub(/<!--[^>]*-->/,"",id); gsub(/<!--[^>]*-->/,"",sev); gsub(/<!--[^>]*-->/,"",dis)
+      gsub(/[[:space:]]/,"",id); gsub(/[[:space:]]/,"",sev); gsub(/[[:space:]]/,"",dis)
+      if (id == "" || id == "编号" || id ~ /^-+$/ || id ~ /^<.*>$/) next
+      if (dis == "" || dis ~ /^(待处置|未处置|PENDING|TODO|待定)$/) { print; next }
+      if (sev ~ /^严重/ && dis ~ /^不处理/) print
+      if ($3 ~ /安全|security/ && dis ~ /^不处理/) print
+    }' "$f" 2>/dev/null || true)
+  [[ -z "$bad" ]] || die "GATE-E114: $d/07-review-report.md has an undisposed finding — an empty / 待处置 disposition, or a 严重 or security-nature finding marked 「不处理」; fix it or dismiss it with a reason (standards §2.5 stage 8, v3.74.0 CHG-098)"
+  return 0
+}
 record_delivery() { # <stage> — v3.63.0 (REQ-1033, DES-1822): delivery marker for begin GATE-E89
   local ac cid
   ac=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
@@ -1260,6 +1373,13 @@ validate_delivery() { # change-id
     grep -Eq "${sig_head}(task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)" "$d/07-review-report.md" \
       || die "GATE-E85: $d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
   fi
+  # v3.74.0 (CHG-098, REQ-1104/1105): finding disposition (E114/E115) and review
+  # convergence (E116). Both are no-ops without a review report; the round
+  # ledger stays fail-open when .agent-state is absent.
+  if [[ -s "$d/07-review-report.md" ]]; then
+    track_review_round "$d" "$id" "$d/07-review-report.md"
+    assert_finding_disposition "$d" "$d/07-review-report.md"
+  fi
   # Every executed stage must leave an Observation record (verification
   # command + actual output) in the changelog.
   grep -q "Observation" "$d/09-changelog.md" \
@@ -1789,7 +1909,7 @@ delivery_ready() {
 
 emit_metrics() {
   local dir id risk t_intent t_gov t_spec t_plan t_test t_chg t_code
-  local sigs esess esess_over
+  local sigs esess esess_over r_rounds r_limit r_over f_tot f_dis f_rate
   [[ -d "$change_root" ]] || exit 0
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
@@ -1833,7 +1953,49 @@ emit_metrics() {
       # from aborting metrics mid-run; wc still prints 0.
       a_bytes=$(cat "$dir"/*.md 2>/dev/null | wc -c | tr -d ' ' || true)
       [[ "$a_bytes" =~ ^[0-9]+$ ]] || a_bytes=0
-      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s}\n' \
+      # v3.74.0 (CHG-098, REQ-1106): review-quality observation — rounds come
+      # from the derived ledger (never self-reported), findings from the
+      # report's disposition table. Read-only by contract; the numbers never
+      # substitute for the DoD (§2.17.5). dismissed = any disposition that is
+      # not 已修复, i.e. the disagreement/noise signal the round cap watches.
+      r_rounds=$(review_rounds_of "$id")
+      [[ "$r_rounds" =~ ^[0-9]+$ ]] || r_rounds=0
+      r_limit=$(review_round_limit)
+      r_over=false
+      if [[ "$r_rounds" -gt "$r_limit" ]]; then r_over=true; fi
+      f_tot=0
+      f_dis=0
+      if [[ -s "$dir/07-review-report.md" ]]; then
+        f_tot=$(awk -F'|' '
+          /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+          sec && /^#{1,6}[[:space:]]/ { sec=0 }
+          !sec { next }
+          /^[[:space:]]*\|/ {
+            if (NF < 6) next
+            id=$2; gsub(/<!--[^>]*-->/,"",id); gsub(/[[:space:]]/,"",id)
+            if (id == "" || id == "编号" || id ~ /^-+$/ || id ~ /^<.*>$/) next
+            c++
+          } END { print c+0 }' "$dir/07-review-report.md" 2>/dev/null || true)
+        f_dis=$(awk -F'|' '
+          /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+          sec && /^#{1,6}[[:space:]]/ { sec=0 }
+          !sec { next }
+          /^[[:space:]]*\|/ {
+            if (NF < 6) next
+            id=$2; dis=$5
+            gsub(/<!--[^>]*-->/,"",id); gsub(/<!--[^>]*-->/,"",dis)
+            gsub(/[[:space:]]/,"",id); gsub(/[[:space:]]/,"",dis)
+            if (id == "" || id == "编号" || id ~ /^-+$/ || id ~ /^<.*>$/) next
+            if (dis == "" || dis !~ /^已修复/) c++
+          } END { print c+0 }' "$dir/07-review-report.md" 2>/dev/null || true)
+      fi
+      [[ "$f_tot" =~ ^[0-9]+$ ]] || f_tot=0
+      [[ "$f_dis" =~ ^[0-9]+$ ]] || f_dis=0
+      f_rate=null
+      if [[ "$f_tot" -gt 0 ]]; then
+        f_rate=$(awk -v t="$f_tot" -v d="$f_dis" 'BEGIN { printf "%.2f", d/t }')
+      fi
+      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s}\n' \
         "$id" "$risk" "${esess:-0}" "$esess_over" "${a_files:-0}" "${a_bytes:-0}" \
         "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
         "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
@@ -1843,7 +2005,8 @@ emit_metrics() {
         "$(delta_or_null "$t_code" "$t_plan")" \
         "$(delta_or_null "$t_test" "$t_code")" \
         "$(delta_or_null "$t_chg" "$t_intent")" \
-        "$(delivery_ready "$dir")"
+        "$(delivery_ready "$dir")" \
+        "$r_rounds" "$r_over" "$f_tot" "$f_dis" "$f_rate"
     done
   done
   # v3.43.0 (REQ-960): gate 摩擦聚合——append-only TSV（die 事件账）按错误码聚合计数。
@@ -2164,7 +2327,10 @@ metrics prints one JSON object per change (JSON Lines) with stage timestamps
 and intervals derived from git history; pipe it to a CI artifact for trending.
 v3.38.0 adds artifact_files / artifact_bytes (md files in the change's
 directory; in a BATCH they measure the shared directory — do not sum across
-members).
+members). v3.74.0 adds review_rounds / review_rounds_over_limit (derived from
+.agent-state/review-rounds.tsv, never self-reported) and findings_total /
+findings_dismissed / dismissal_rate (read from the 07 disposition table;
+dismissed = any disposition that is not 已修复).
 
 Session water level (v3.38.0, generalized v3.39.0, standards §2.9.6): begin reads
 .agent-state/session-water.json, maintained by `session-gate.sh count turn` —
