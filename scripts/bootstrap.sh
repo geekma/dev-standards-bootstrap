@@ -47,6 +47,8 @@ Flags (layers; default --core when none given):
   --guard      强制执行包: <scripts>/agent-gate, <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
                <scripts>/behavior-extract.sh (HTML/JS 原型行为抽取器, v3.68.0),
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
+               <scripts>/eval-cases + <scripts>/eval-rescore (评测资产派生与重打分, v3.75.0),
+               <github>/workflows/github-reviewer-rescore.yml (评测集重打分回路, v3.75.0),
                <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
@@ -712,6 +714,9 @@ run_layer() {
       install_file - "$SCRIPTS_DIR/behavior-extract.sh" resources/templates/behavior-extract.sh 755
       install_file - "$SCRIPTS_DIR/stamp-provenance.sh" resources/templates/stamp-provenance.sh 755
       install_file - "$SCRIPTS_DIR/new-change" resources/templates/new-change.sh 755
+      install_file - "$SCRIPTS_DIR/eval-cases" resources/templates/eval-cases.sh 755
+      install_file - "$SCRIPTS_DIR/eval-rescore" resources/templates/eval-rescore.sh 755
+      install_file - ".github/workflows/github-reviewer-rescore.yml" resources/templates/github-reviewer-rescore.yml
       install_file - "$GITHOOKS_DIR/pre-commit" resources/templates/pre-commit 755
       install_file - "$GITHOOKS_DIR/pre-push" resources/templates/pre-push 755
       install_file - "$GITHOOKS_DIR/commit-msg" resources/templates/commit-msg 755

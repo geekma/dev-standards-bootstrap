@@ -1198,7 +1198,7 @@ report "A42 payload genericity — no single-project markers (user hard gate 202
 # 判定口径（DES-1874）：本地缺=SKIP（未安装/新克隆合法态）；模板缺=RED（公开面破损）；
 # 两全且 cmp 不等=RED（漂移）。本文件为 source-layer，目标仓不可见，无 payload 面。
 a44_bad=""
-for a44_p in scripts/agent-gate:resources/templates/agent-gate.sh scripts/stamp-provenance.sh:resources/templates/stamp-provenance.sh scripts/session-gate.sh:resources/templates/session-gate.sh .githooks/pre-commit:resources/templates/pre-commit; do
+for a44_p in scripts/agent-gate:resources/templates/agent-gate.sh scripts/stamp-provenance.sh:resources/templates/stamp-provenance.sh scripts/session-gate.sh:resources/templates/session-gate.sh scripts/eval-cases:resources/templates/eval-cases.sh scripts/eval-rescore:resources/templates/eval-rescore.sh .githooks/pre-commit:resources/templates/pre-commit; do
   a44_l="$ROOT/${a44_p%%:*}"; a44_t="$ROOT/${a44_p##*:}"
   [[ -f "$a44_t" ]] || { a44_bad="$a44_bad${a44_p}(template-missing) "; continue; }
   [[ -f "$a44_l" ]] || continue
@@ -1221,10 +1221,51 @@ at_least "A45 standards body carries the convergence clause (CHG-098)" 1 "$STD" 
 at_least "A45 standards body carries the new metric fields (CHG-098)" 1 "$STD" 'dismissal_rate'
 at_least "A45 registry indexes the new gate codes (CHG-098)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E11[456] '
 at_least "A45 registry registers the new clauses (CHG-098)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R5[678] '
-at_least "A45 golden suite registers the T59 section (CHG-098)" 1 "$ROOT/tests/run-tests.sh" 'T58 T59)'
+at_least "A45 golden suite registers the T59 section (CHG-098)" 1 "$ROOT/tests/run-tests.sh" 'T58 T59'
 at_least "A45 cap-disposition predicate requires a filled line, not a bare word (CHG-098)" 1 "$GATE_TPL" '\[\^\[:space:\]<\]'
 at_least "A45 disposition tally skips template placeholder rows (CHG-098)" 1 "$GATE_TPL" '\^<\.\*>\$'
 at_least "A45 07 template marks its example row as a placeholder (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '^| <编号> |'
+
+# A46 评测资产派生 + 重打分 + 来源维 + 复盘汲取（v3.75.0，CHG-099/REQ-1108~1114）：六面互锁——
+# 脚本件（派生/打分）、工作流模板、门禁 E117 与 metrics 字段、形状件（07/bug-diagnosis）、
+# 规范正文条款、注册表 + 分发链（bootstrap/SKILL/README×2）。单面绿不得声称能力落地（同 A45）。
+at_least "A46 eval-cases script ships (CHG-099)" 1 "$ROOT/resources/templates/eval-cases.sh" 'eval-cases — 评测资产派生视图'
+at_least "A46 eval-cases declares the --verify contract (CHG-099)" 1 "$ROOT/resources/templates/eval-cases.sh" '\-\-verify'
+at_least "A46 eval-cases derives the capture layer (CHG-099)" 1 "$ROOT/resources/templates/eval-cases.sh" '应捕获层'
+at_least "A46 eval-cases documents the runtime-only discipline (CHG-099)" 1 "$ROOT/resources/templates/eval-cases.sh" '禁止入库、禁止手编'
+at_least "A46 eval-rescore script ships (CHG-099)" 1 "$ROOT/resources/templates/eval-rescore.sh" 'eval-rescore — 评测集重打分'
+at_least "A46 eval-rescore binds the governance-face hash (CHG-099)" 1 "$ROOT/resources/templates/eval-rescore.sh" 'config_sha'
+at_least "A46 eval-rescore keeps the null-score contract (CHG-099)" 1 "$ROOT/resources/templates/eval-rescore.sh" 'score = null'
+at_least "A46 eval-rescore scopes out approval binding (CHG-099)" 1 "$ROOT/resources/templates/eval-rescore.sh" '不含人工审批/放行结论绑定提交'
+at_least "A46 rescore workflow ships with a schedule (CHG-099)" 1 "$ROOT/resources/templates/github-reviewer-rescore.yml" 'schedule'
+at_least "A46 rescore workflow calls the local script (CHG-099)" 1 "$ROOT/resources/templates/github-reviewer-rescore.yml" 'scripts/eval-rescore'
+at_least "A46 gate carries the provenance gate (E117, CHG-099)" 1 "$GATE_TPL" 'GATE-E117'
+at_least "A46 gate soft-passes legacy 07 shapes (CHG-099)" 1 "$GATE_TPL" '发现处置表缺「来源」列'
+at_least "A46 gate counts finding provenance (CHG-099)" 1 "$GATE_TPL" 'finding_source_counts'
+at_least "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$GATE_TPL" 'findings_introduced\|findings_pre_existing'
+# v3.75.0 (CHG-099, 收尾整改 C-1)：pin 必须钉**真表头行**而非「本次引入|既有存量」字面——
+# 后者在模板的条件注释里本就出现，删掉真表头行后仍 ≥1 → 恒真断言（独立验证子代理 M2 变异未变红）。
+# 注意 `grep_count` 走 **BRE**（基础 grep）：`\|` 在 BRE 是**交替**不是字面管道——实测
+# `^\| 编号 \| … \|$` 因 `$` 单独成支会匹配全文件 70 行（恒真复现）；故用 `[|]` 表字面管道。
+at_least "A46 07 template pins the literal provenance header row (CHG-099)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '^[|] 编号 [|] 发现 [|] 严重度 [|] 处置 [|] 证据/理由 [|] 来源 [|]$'
+at_least "A46 bug template requires the capture layer (CHG-099)" 2 "$ROOT/resources/templates/bug-diagnosis.md" '应捕获层'
+at_least "A46 standards body carries the incident review duty (CHG-099)" 1 "$STD" '复盘义务（v3.75.0'
+at_least "A46 standards body carries the eval-asset clause (CHG-099)" 1 "$STD" '评测资产与重打分（v3.75.0'
+at_least "A46 standards body carries the written priority order (CHG-099)" 1 "$STD" '真缺陷召回优先于轮次下降'
+at_least "A46 standards body carries the provenance column (CHG-099)" 1 "$STD" 'v3.75.0 增「来源」列'
+at_least "A46 AGENTS carries the per-repo review-focus block (CHG-099)" 1 "$ROOT/resources/AGENTS.md" '本仓评审要点'
+at_least "A46 AGENTS block forbids a second authority (CHG-099)" 1 "$ROOT/resources/AGENTS.md" '禁止\*\*另建按仓评审文件'
+at_least "A46 registry indexes the new gate code (CHG-099)" 1 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E117 '
+at_least "A46 registry registers the new clauses (CHG-099)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R\(59\|60\|61\) '
+at_least "A46 bootstrap guard installs the eval layer (CHG-099)" 3 "$ROOT/scripts/bootstrap.sh" 'eval-cases\|eval-rescore\|github-reviewer-rescore'
+# v3.75.0 收尾整改（独立评审 F-3）：安装侧三处 install_file 后的**卸载侧互锁**——既有 A26/A27
+# 先例要求 Tier 覆盖；漏卸会留下孤儿 workflow（每日 schedule 调已删脚本）。两条 pin 钉住三件。
+at_least "A46 uninstall removes the eval runtime scripts (CHG-099)" 2 "$ROOT/resources/templates/uninstall-standards.sh" 'eval-cases\|eval-rescore'
+at_least "A46 uninstall removes the rescore workflow (CHG-099)" 1 "$ROOT/resources/templates/uninstall-standards.sh" 'github-reviewer-rescore.yml'
+at_least "A46 SKILL names the eval layer (CHG-099)" 1 "$ROOT/SKILL.md" 'eval-cases'
+at_least "A46 README (EN) names the eval layer (CHG-099)" 1 "$ROOT/README.md" 'eval-cases'
+at_least "A46 README (zh) names the eval layer (CHG-099)" 1 "$ROOT/README.zh-CN.md" 'eval-cases'
+at_least "A46 golden suite registers the T60 section (CHG-099)" 1 "$ROOT/tests/run-tests.sh" 'T59 T60)'
 
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层

@@ -1,0 +1,64 @@
+# Reviewer rescore — 评测集重打分工作流（v3.75.0, CHG-099 / REQ-1109）
+#
+# 定位：把「事故/回归 → 评测资产」的派生与打分化作确定性 CI 步骤（规范 §2.17.4 第 4 条）。
+# 契约（唯一权威 = 规范 §2.17.4 与 scripts/eval-rescore 头注释）：
+#   · 每日 schedule + 治理面路径 push + 手动 dispatch 触发；
+#   · 步骤 = 派生评测集（--verify 校验输入面）→ 重打分 → 上传收据 → stale 时置失败（告警）；
+#   · 闭环语义：**告警而非阻断合入**——漂移意味着「评审器/基线变了，旧分作废」，
+#     处置顺序 = 复核 → `--update-baseline` 重建基线（写进变更 05 证据）；
+#   · 平台边界：本模板只交付形状与契约；本规范仓不声称该工作流已在 Actions 运行，
+#     本地等价复跑 = `bash scripts/eval-cases --verify && bash scripts/eval-rescore`。
+#
+# 安装：bootstrap --guard 复制到 .github/workflows/；`scripts/` 路径与仓库布局一致（默认）。
+name: Reviewer rescore
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  push:
+    paths:
+      - 'resources/DEVELOPMENT_STANDARDS.md'
+      - 'resources/CLAUSE_REGISTRY.md'
+      - 'resources/AGENTS.md'
+      - 'SKILL.md'
+      - 'resources/templates/**'
+      - 'docs/bugs/**'
+      - 'docs/bugfix-log.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rescore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive eval cases (verify input face)
+        run: bash scripts/eval-cases --verify
+
+      - name: Rescore
+        id: rescore
+        run: |
+          set +e
+          bash scripts/eval-rescore
+          rc=$?
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload score receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-score-receipt
+          path: .agent-state/eval-score-receipt.json
+          if-no-files-found: warn
+
+      - name: Drift alert
+        if: steps.rescore.outputs.rc == '1'
+        run: |
+          echo "::warning::reviewer rescore drift detected — re-baseline with 'bash scripts/eval-rescore --update-baseline' after review (standards §2.17.4)"
+          exit 1

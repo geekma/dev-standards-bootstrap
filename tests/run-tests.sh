@@ -3079,7 +3079,7 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  report "T39 registry row count" 58 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 61 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
@@ -3453,10 +3453,11 @@ section_T48() {
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
 # CHG-096: TC-1073 version pins recalibrated v3.72.0→v3.73.0 (four-chain bump).
 # CHG-098: TC-1073 pins recalibrated v3.73.0→v3.74.0 (four-chain bump).
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.74.0' "$ROOT/SKILL.md")"
+# CHG-099: TC-1073 pins recalibrated v3.74.0→v3.75.0 (four-chain bump).
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.75.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.74.0" 1 "$(grep -cF '规范版本：v3.74.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.74.0" 1 "$(grep -cF '当前对应规范版本：v3.74.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries v3.75.0" 1 "$(grep -cF '规范版本：v3.75.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.75.0" 1 "$(grep -cF '当前对应规范版本：v3.75.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3696,7 +3697,7 @@ section_T50() {
   # CHG-094: tail recalibrated T55→T56 (begin-artifact preflight probe joins).
   # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
   # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T59 ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T60 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -4840,8 +4841,228 @@ check_output "T59 TC-1317 metrics ignores the template placeholder row" \
   '"change_id":"CHG-1090".*"findings_total":0,"findings_dismissed":0,"dismissal_rate":null' "$out"
 }
 
+section_T60() {
+# ------------------------------- T60 评测资产派生 + 重打分 + 来源维 + 复盘汲取（v3.75.0，CHG-099）
+# TC↔REQ：TC-1318/1319/1320/1321/1322→REQ-1108；TC-1323/1324/1325/1328/1333→REQ-1109；
+# TC-1326/1327→REQ-1110；TC-1329/1330/1331/1332→REQ-1111；TC-1334→全量回归；TC-1335→安全面。
+# 夹具纪律：new_repo 自带 scripts/agent-gate；本节自拷 eval-cases/eval-rescore，治理面一律用
+# `--face` 指向自建 fixture 目录（不读本仓真实治理面，避免自指漂移与跨平台哈希耦合）。
+CASES_SRC="$ROOT/resources/templates/eval-cases.sh"
+[[ -f "$CASES_SRC" ]] || CASES_SRC="$ROOT/scripts/eval-cases"
+SCORE_SRC="$ROOT/resources/templates/eval-rescore.sh"
+[[ -f "$SCORE_SRC" ]] || SCORE_SRC="$ROOT/scripts/eval-rescore"
+new_repo
+cp "$CASES_SRC" scripts/eval-cases
+cp "$SCORE_SRC" scripts/eval-rescore
+chmod +x scripts/eval-cases scripts/eval-rescore
+mkdir -p docs/bugs/BUG-002 docs/bugs/BUG-001 docs/bugs/BUG-20260101120000 docs/bugs/BATCH-20260102
+# 手工缺陷（manual）：无「应捕获层」行 → 未声明；含敏感 canary 供 TC-1335 断言
+cat > docs/bugs/BUG-001/01-diagnosis.md <<'EOF'
+# 诊断
+- **应捕获层**：测试
+- **该层检查落点 / 补强**：tests/run-tests.sh T60（本次新增）
+EOF
+printf '# 矩阵\n| TC | 覆盖 |\n|---|---|\n| TC-1111 | 回归 |\n' > docs/bugs/BUG-001/04-matrix.md
+cat > docs/bugs/BUG-002/01-diagnosis.md <<'EOF'
+# 诊断
+SECRET-CANARY-9f3
+## 根因表
+- R1 触发条件
+EOF
+printf '# 矩阵\n| TC | 覆盖 |\n|---|---|\n| 无 | — |\n' > docs/bugs/BUG-002/04-matrix.md
+# 事故通道（incident）：id 形如 BUG-<UTC 时间戳>
+cat > docs/bugs/BUG-20260101120000/01-diagnosis.md <<'EOF'
+# 诊断
+- **应捕获层**：门禁
+- **该层检查落点 / 补强**：agent-gate E999（本次新增）
+EOF
+# 扁平批次（BATCH-* + `## BUG-*` 锚点）：自动回归锚点 + 事故锚点
+cat > docs/bugs/BATCH-20260102/01-diagnosis.md <<'EOF'
+# 批次诊断
+## BUG-20260102000000 自动回归
+- **复现记录（自动）**：fingerprint abc
+- **应捕获层**：设计
+## BUG-20260103000000 事故重入
+- **应捕获层**：编码前置
+EOF
+cat > docs/bugs/BATCH-20260102/04-matrix.md <<'EOF'
+# 批次矩阵
+## BUG-20260102000000 自动回归
+| TC | 覆盖 |
+|---|---|
+| TC-2222 | 回归 |
+## BUG-20260103000000 事故重入
+| TC | 覆盖 |
+|---|---|
+| 无 | — |
+EOF
+t60_tsv=.agent-state/eval-cases.tsv
+rm -f "$t60_tsv"
+scripts/eval-cases >/dev/null 2>&1
+report "T60 TC-1318 derivation exits 0" 0 $?
+report "T60 TC-1318 header + 5 derived cases" 6 "$(wc -l < "$t60_tsv" | tr -d ' ')"
+t60_p1=$(printf '^EC-BUG-001\tmanual\tBUG-001\t测试\tdocs/bugs/BUG-001\tTC-1111$')
+t60_p2=$(printf '^EC-BUG-002\tmanual\tBUG-002\t未声明\tdocs/bugs/BUG-002\t$')
+t60_p3=$(printf '^EC-BUG-20260101120000\tincident\tBUG-20260101120000\t门禁\t')
+t60_p4=$(printf '^EC-BUG-20260102000000\tregression\tBUG-20260102000000\t设计\t')
+t60_p5=$(printf '^EC-BUG-20260103000000\tincident\tBUG-20260103000000\t编码前置\t')
+check_output "T60 TC-1318 derived columns for the manual case" "$t60_p1" "$(cat "$t60_tsv")"
+check_output "T60 TC-1322 undeclared capture layer stays 未声明" "$t60_p2" "$(cat "$t60_tsv")"
+check_output "T60 TC-1322 incident channel derived from a timestamp id" "$t60_p3" "$(cat "$t60_tsv")"
+check_output "T60 TC-1322 regression channel derived from the auto marker" "$t60_p4" "$(cat "$t60_tsv")"
+check_output "T60 TC-1322 flat-batch anchor derives its own case" "$t60_p5" "$(cat "$t60_tsv")"
+report "T60 TC-1320 stable order: first derived case is the lowest id" 0 "$([[ "$(awk -F'\t' 'NR==2{print $1}' "$t60_tsv")" == "EC-BUG-001" ]] && echo 0 || echo 1)"
+# v3.75.0 收尾整改（独立评审 F-7）：补齐 REQ-1108 的两条 A 层验收——原 TC-1318 断言的是
+# "5 组 → 6 行"，**空缺陷面**与**派生视图禁止入库**两条从未被机校（用例声称与实际断言不一致）。
+t60_cases="$PWD/scripts/eval-cases"
+t60_empty=$(mktemp -d "${TMPDIR:-/tmp}/t60-empty.XXXXXX")
+( cd "$t60_empty" && bash "$t60_cases" --out "$t60_empty/out.tsv" >/dev/null 2>&1; echo $? > "$t60_empty/rc" )
+report "T60 TC-1318b empty defect face exits 0" 0 "$(cat "$t60_empty/rc")"
+report "T60 TC-1318b empty defect face emits the header only" 1 "$(wc -l < "$t60_empty/out.tsv" | tr -d ' ')"
+# 派生视图禁止入库：路径无跟踪文件 → `git ls-files --error-unmatch` 以 1 退出
+report "T60 TC-1318c no docs/evals derived asset is tracked" 1 "$(git ls-files --error-unmatch docs/evals >/dev/null 2>&1; echo $?)"
+# F-8：同一缺陷 id 以"嵌套目录 + 扁平锚点"两形态出现时，必须按 case_id 去重（覆盖比分母不重复计数）
+t60_mix=$(mktemp -d "${TMPDIR:-/tmp}/t60-mix.XXXXXX")
+mkdir -p "$t60_mix/docs/bugs/BATCH-A/BUG-900" "$t60_mix/docs/bugs/BATCH-B"
+printf '# 诊断\n- **应捕获层**：测试\n' > "$t60_mix/docs/bugs/BATCH-A/BUG-900/01-diagnosis.md"
+printf '# 矩阵\n| TC | 覆盖 |\n|---|---|\n| TC-9 | 回归 |\n' > "$t60_mix/docs/bugs/BATCH-A/BUG-900/04-matrix.md"
+printf '# 批诊断\n## BUG-900 重复锚点\n- **应捕获层**：测试\n' > "$t60_mix/docs/bugs/BATCH-B/01-diagnosis.md"
+( cd "$t60_mix" && bash "$t60_cases" --out "$t60_mix/out.tsv" >/dev/null 2>&1 )
+report "T60 TC-1318d duplicate bug id collapses to one case_id" 2 "$(wc -l < "$t60_mix/out.tsv" | tr -d ' ')"
+rm -rf "$t60_empty" "$t60_mix"
+t60_sum1=$(cksum < "$t60_tsv")
+scripts/eval-cases >/dev/null 2>&1
+report "T60 TC-1319 re-derivation is byte-identical (idempotent)" 0 "$([[ "$t60_sum1" == "$(cksum < "$t60_tsv")" ]] && echo 0 || echo 1)"
+out=$(scripts/eval-cases --verify 2>&1)
+report "T60 TC-1321 verify green on a well-formed defect face" 0 $?
+report "T60 TC-1321 verify is silent when green" 0 "$([[ -z "$out" ]] && echo 0 || echo 1)"
+cp docs/bugs/BUG-002/01-diagnosis.md "$TMPDIR/t60-diag.bak"
+: > docs/bugs/BUG-002/01-diagnosis.md
+out=$(scripts/eval-cases --verify 2>&1)
+report "T60 TC-1321 verify red on an empty diagnosis artifact" 1 $?
+check_output "T60 TC-1321 refusal names the empty artifact" "empty diagnosis artifact" "$out"
+cp "$TMPDIR/t60-diag.bak" docs/bugs/BUG-002/01-diagnosis.md
+out=$(scripts/eval-cases --verify 2>&1)
+report "T60 TC-1321 verify green again after repair" 0 $?
+# TC-1323/1324/1325/1328（REQ-1109）：覆盖比口径、零 case 契约、确定性、只读
+out=$(scripts/eval-rescore --dry-run 2>&1)
+report "T60 TC-1323 rescore dry-run exits 0" 0 $?
+check_output "T60 TC-1323 coverage ratio = 2/5 and no invented fields" '"cases_total":5,"covered":2,"missed":3,"score":0.4000' "$out"
+printf 'case_id\tsource\tbug_id\tcaptured_layer\tlanding\tregression_ref\n' > t60-empty.tsv
+out=$(scripts/eval-rescore --cases t60-empty.tsv --dry-run 2>&1)
+report "T60 TC-1324 zero-case run exits 0" 0 $?
+check_output "T60 TC-1324 zero cases yields a null score, not 0 or 1" '"cases_total":0,"covered":0,"missed":0,"score":null,"config_sha"' "$out"
+check_output "T60 TC-1324 zero cases is not reported stale" '"baseline_present":false,"stale":false' "$out"
+t60_d1=$(scripts/eval-rescore --dry-run 2>&1 | sed 's/"generated_at":"[^"]*"/"generated_at":"X"/')
+t60_d2=$(scripts/eval-rescore --dry-run 2>&1 | sed 's/"generated_at":"[^"]*"/"generated_at":"X"/')
+report "T60 TC-1325 rescore is deterministic apart from the timestamp" 0 "$([[ "$t60_d1" == "$t60_d2" && -n "$t60_d1" ]] && echo 0 || echo 1)"
+rm -f .agent-state/eval-score-receipt.json .agent-state/eval-score-baseline.json
+scripts/eval-rescore --dry-run >/dev/null 2>&1
+report "T60 TC-1328 dry-run writes no receipt" 0 "$([[ ! -e .agent-state/eval-score-receipt.json ]] && echo 0 || echo 1)"
+report "T60 TC-1328 dry-run writes no baseline" 0 "$([[ ! -e .agent-state/eval-score-baseline.json ]] && echo 0 || echo 1)"
+# TC-1335（安全面）：派生视图与收据不得携带诊断正文里的敏感值
+report "T60 TC-1335 derived view carries no diagnosis-body secret" 0 "$([[ "$(grep -c 'SECRET-CANARY-9f3' "$t60_tsv" || true)" == 0 ]] && echo 0 || echo 1)"
+# TC-1326/1327（REQ-1110）：治理面内容哈希漂移 + 用例集成员漂移
+mkdir -p face1/resources/templates
+printf 'g1=v1\n' > face1/resources/templates/g1.sh
+scripts/eval-rescore --cases "$t60_tsv" --face "$REPO/face1" --update-baseline >/dev/null 2>&1
+report "T60 TC-1326 baseline build exits 0" 0 $?
+scripts/eval-rescore --cases "$t60_tsv" --face "$REPO/face1" >/dev/null 2>&1
+report "T60 TC-1326 unchanged governance face stays green" 0 $?
+printf 'g1=v2\n' > face1/resources/templates/g1.sh
+out=$(scripts/eval-rescore --cases "$t60_tsv" --face "$REPO/face1" 2>&1)
+report "T60 TC-1326 governance-face change is stale (rc 1)" 1 $?
+check_output "T60 TC-1326 stale receipt marks the drift" '"stale":true' "$(cat .agent-state/eval-score-receipt.json)"
+check_output "T60 TC-1326 drift alert is surfaced" "STALE" "$out"
+scripts/eval-rescore --cases "$t60_tsv" --face "$REPO/face1" --update-baseline >/dev/null 2>&1
+mkdir -p docs/bugs/BUG-003
+printf '# 诊断\n- **应捕获层**：需求\n' > docs/bugs/BUG-003/01-diagnosis.md
+scripts/eval-cases >/dev/null 2>&1
+scripts/eval-rescore --cases "$t60_tsv" --face "$REPO/face1" >/dev/null 2>&1
+report "T60 TC-1327 new eval member is stale (rc 1)" 1 $?
+report "T60 TC-1335 receipt carries no diagnosis-body secret" 0 "$([[ "$(grep -c 'SECRET-CANARY-9f3' .agent-state/eval-score-receipt.json || true)" == 0 ]] && echo 0 || echo 1)"
+# TC-1329/1330/1331/1332（REQ-1111）：07「来源」列与 metrics 字段
+# 夹具切换：评测面用的 docs/bugs 夹具只服务派生测试（非六件套），在门禁面测试前移除，
+# 避免把「缺陷组缺六件套」的无关红灯误记到本节的门禁断言上。
+rm -rf docs/bugs
+export AGENT_GUARD_REVIEW_ROUND_LIMIT=99
+seed_artifacts CHG-1091 L0 claude/s-1
+cat > docs/changes/CHG-1091/01-spec.md <<'EOF'
+# spec
+- REQ-001: 发现来源维闭环
+- **origin_artifact**: 未命中（无原型页）
+- **chain_change**: 未命中（无数据链变更）
+- **ui_change**: false
+EOF
+scripts/agent-gate begin CHG-1091 >/dev/null 2>&1
+seed_t53_delivery CHG-1091
+echo y > src/t60a.js
+t60_07() { { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat; } > docs/changes/CHG-1091/07-review-report.md; }
+t60_07 <<'EOF'
+# review
+## 问题分级
+- 严重：1 条（F1）
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 | 来源 |
+|---|---|---|---|---|---|
+| F1 | 边界条件缺失 | 严重 | 已修复 | 补测并复跑全绿 | 本次引入 |
+| F2 | 命名不一致 | 低 | 已驳回（误报） | 与 §1.3 命名表一致 | 既有存量 |
+| F3 | 注释缺失 | 低 | 已修复 | 补齐注释 | 本次引入 |
+- **评审轮次**：1
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t60a
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T60 TC-1329 stop green with a lawful provenance column" 0 $?
+out=$(scripts/agent-gate metrics 2>/dev/null || true)
+check_output "T60 TC-1332 metrics counts introduced/pre-existing findings" '"findings_introduced":2,"findings_pre_existing":1' "$out"
+t60_07 <<'EOF'
+# review
+## 问题分级
+- 严重：1 条（F1）
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 | 来源 |
+|---|---|---|---|---|---|
+| F1 | 边界条件缺失 | 严重 | 已修复 | 补测并复跑全绿 | 存量问题 |
+- **评审轮次**：1
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t60a
+EOF
+out=$(scripts/agent-gate --stage stop 2>&1)
+report "T60 TC-1330 E117 red on an unlawful provenance value" 2 $?
+check_output "T60 TC-1330 refusal names GATE-E117" "GATE-E117" "$out"
+t60_07 <<'EOF'
+# review
+## 问题分级
+- 严重：1 条（F1）
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 |
+|---|---|---|---|---|
+| F1 | 边界条件缺失 | 严重 | 已修复 | 补测并复跑全绿 |
+- **评审轮次**：1
+## 评审结论
+通过
+- 评审主体：platform / fixture-model / ses-t60a
+EOF
+out=$(scripts/agent-gate --stage stop 2>&1)
+report "T60 TC-1331 legacy five-column table stays green (upgrade compat)" 0 $?
+check_output "T60 TC-1331 legacy shape gets a soft notice" "缺「来源」列" "$out"
+out=$(scripts/agent-gate metrics 2>/dev/null || true)
+check_output "T60 TC-1332 legacy shape reports null provenance, not zero" '"findings_introduced":null,"findings_pre_existing":null' "$out"
+# TC-1333（REQ-1109）：工作流模板形状（schedule + 调用本地脚本）
+# v3.75.0 收尾整改（独立评审 F-14）：原断言只数 `schedule:` 关键词（注释里也有），改钉
+# **锚定行**（`^\s+schedule:` + `^\s+cron:` 同现），注释掉/空格错位即红。
+t60_wf="$ROOT/resources/templates/github-reviewer-rescore.yml"
+t60_sched=$(grep -cE '^[[:space:]]+schedule:' "$t60_wf" || true)
+t60_cron=$(grep -cE '^[[:space:]]+(-[[:space:]]+)?cron:' "$t60_wf" || true)
+report "T60 TC-1333 rescore workflow declares an anchored schedule + cron" 1 "$([[ "$t60_sched" -ge 1 && "$t60_cron" -ge 1 ]] && echo 1 || echo 0)"
+report "T60 TC-1333 rescore workflow calls scripts/eval-rescore" 0 "$([[ "$(grep -c 'scripts/eval-rescore' "$ROOT/resources/templates/github-reviewer-rescore.yml")" -ge 1 ]] && echo 0 || echo 1)"
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60)
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do

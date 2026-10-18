@@ -141,6 +141,63 @@ assert_finding_disposition() { # <dir> <report-file>
   [[ -z "$bad" ]] || die "GATE-E114: $d/07-review-report.md has an undisposed finding — an empty / 待处置 disposition, or a 严重 or security-nature finding marked 「不处理」; fix it or dismiss it with a reason (standards §2.5 stage 8, v3.74.0 CHG-098)"
   return 0
 }
+
+finding_source_counts() { # <report-file> — prints "<introduced> <pre_existing> <none>" (none=1 when no 来源 column)
+  local f=$1 has col
+  has=$(awk -F'|' '
+    /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+    sec && /^#{1,6}[[:space:]]/ { exit }
+    !sec { next }
+    /^[[:space:]]*\|/ {
+      for (i = 1; i <= NF; i++) {
+        t = $i; gsub(/<!--[^>]*-->/, "", t); gsub(/[[:space:]]/, "", t)
+        if (t == "来源") { print 1; exit }
+      }
+    }' "$f" 2>/dev/null || true)
+  [[ "$has" = 1 ]] || { printf '0 0 1'; return 0; }
+  awk -F'|' '
+    /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+    sec && /^#{1,6}[[:space:]]/ { sec=0 }
+    !sec { next }
+    /^[[:space:]]*\|/ {
+      if (NF < 6) next
+      id = $2; src = $(NF - 1)
+      for (i = 1; i <= NF; i++) gsub(/<!--[^>]*-->/, "", $i)
+      id = $2; src = $(NF - 1)
+      gsub(/[[:space:]]/, "", id); gsub(/[[:space:]]/, "", src)
+      if (id == "" || id == "编号" || id ~ /^-+$/ || id ~ /^<.*>$/) next
+      if (src == "本次引入") a++
+      else if (src == "既有存量") b++
+    } END { printf "%d %d 0", a + 0, b + 0 }' "$f" 2>/dev/null || printf '0 0 0'
+}
+
+assert_finding_source() { # <dir> <report-file> — v3.75.0 (CHG-099, REQ-1111, GATE-E117)
+  local d=$1 f=$2 counts bad
+  [[ -s "$f" ]] || return 0
+  grep -qE '^#{1,6}[[:space:]]*发现处置' "$f" || return 0
+  counts=$(finding_source_counts "$f")
+  if [[ "${counts##* }" = 1 ]]; then
+    # Backward-compatible upgrade path (user-adjudicated): pre-v3.75.0 report
+    # shapes carry a five-column table — a soft notice, never a hard stop.
+    printf 'agent-gate: notice: %s/07-review-report.md 发现处置表缺「来源」列（v3.75.0 CHG-099 新增；存量形状放行，新变更请补列）\n' "$d" >&2
+    return 0
+  fi
+  bad=$(awk -F'|' '
+    /^#{1,6}[[:space:]]*发现处置/ { sec=1; next }
+    sec && /^#{1,6}[[:space:]]/ { sec=0 }
+    !sec { next }
+    /^[[:space:]]*\|/ {
+      if (NF < 6) next
+      id = $2
+      for (i = 1; i <= NF; i++) gsub(/<!--[^>]*-->/, "", $i)
+      id = $2; src = $(NF - 1)
+      gsub(/[[:space:]]/, "", id); gsub(/[[:space:]]/, "", src)
+      if (id == "" || id == "编号" || id ~ /^-+$/ || id ~ /^<.*>$/) next
+      if (src != "本次引入" && src != "既有存量") print
+    }' "$f" 2>/dev/null || true)
+  [[ -z "$bad" ]] || die "GATE-E117: $d/07-review-report.md 发现处置表「来源」列取值非法（须为 本次引入 | 既有存量）— 存量问题与本次引入必须可分，否则归责信号失真 (standards §2.5 stage 8, v3.75.0 CHG-099)"
+  return 0
+}
 record_delivery() { # <stage> — v3.63.0 (REQ-1033, DES-1822): delivery marker for begin GATE-E89
   local ac cid
   ac=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
@@ -1379,6 +1436,7 @@ validate_delivery() { # change-id
   if [[ -s "$d/07-review-report.md" ]]; then
     track_review_round "$d" "$id" "$d/07-review-report.md"
     assert_finding_disposition "$d" "$d/07-review-report.md"
+    assert_finding_source "$d" "$d/07-review-report.md"
   fi
   # Every executed stage must leave an Observation record (verification
   # command + actual output) in the changelog.
@@ -1995,7 +2053,19 @@ emit_metrics() {
       if [[ "$f_tot" -gt 0 ]]; then
         f_rate=$(awk -v t="$f_tot" -v d="$f_dis" 'BEGIN { printf "%.2f", d/t }')
       fi
-      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s}\n' \
+      # v3.75.0 (CHG-099, REQ-1111): finding provenance (N1) — 本次引入 vs 既有存量.
+      # null when the disposition table is absent or predates the 来源 column
+      # (upgrade compatibility); never a substitute for the DoD (§2.17.5).
+      f_int=null
+      f_pre=null
+      if [[ -s "$dir/07-review-report.md" ]]; then
+        f_counts=$(finding_source_counts "$dir/07-review-report.md")
+        if [[ "${f_counts##* }" = 0 ]]; then
+          f_int=${f_counts%% *}
+          f_pre=${f_counts#* }; f_pre=${f_pre%% *}
+        fi
+      fi
+      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s,"findings_introduced":%s,"findings_pre_existing":%s}\n' \
         "$id" "$risk" "${esess:-0}" "$esess_over" "${a_files:-0}" "${a_bytes:-0}" \
         "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
         "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
@@ -2006,7 +2076,7 @@ emit_metrics() {
         "$(delta_or_null "$t_test" "$t_code")" \
         "$(delta_or_null "$t_chg" "$t_intent")" \
         "$(delivery_ready "$dir")" \
-        "$r_rounds" "$r_over" "$f_tot" "$f_dis" "$f_rate"
+        "$r_rounds" "$r_over" "$f_tot" "$f_dis" "$f_rate" "$f_int" "$f_pre"
     done
   done
   # v3.43.0 (REQ-960): gate 摩擦聚合——append-only TSV（die 事件账）按错误码聚合计数。
@@ -2330,7 +2400,10 @@ directory; in a BATCH they measure the shared directory — do not sum across
 members). v3.74.0 adds review_rounds / review_rounds_over_limit (derived from
 .agent-state/review-rounds.tsv, never self-reported) and findings_total /
 findings_dismissed / dismissal_rate (read from the 07 disposition table;
-dismissed = any disposition that is not 已修复).
+dismissed = any disposition that is not 已修复). v3.75.0 adds
+findings_introduced / findings_pre_existing (read from the 07 disposition
+table's trailing 「来源」 column: 本次引入 / 既有存量; a missing column
+reports null, never 0 — legacy five-column tables stay lawful).
 
 Session water level (v3.38.0, generalized v3.39.0, standards §2.9.6): begin reads
 .agent-state/session-water.json, maintained by `session-gate.sh count turn` —
