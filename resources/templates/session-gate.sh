@@ -133,6 +133,27 @@ stats_line() {
     "$(stat_get turns)" "$(stat_get bash)" "$(stat_get grep)" "$(stat_get other)"
 }
 
+# v3.76.0 (CHG-100, REQ-1117): 验证通道状态行——读 agent-gate stop 落盘的最近一次
+# 判定（.agent-state/verify-channel.json）。缺档显式"未记录"，绝不猜："没配"与
+# "被跳过"必须可区分（另一仓"验证从未真正跑过却无痕"的规范侧根因）。
+# 字段序固定（gate 写入端唯一权威）：state/source/command/exit_code/reason/...
+channel_line() {
+  local f="$STATE_DIR/verify-channel.json" st src cmd reason
+  if [[ ! -s "$f" ]]; then
+    printf -- '- 验证通道：未记录（本会话尚未跑到 stop 判定；可用 scripts/agent-gate verify-channel 现测）\n'
+    return 0
+  fi
+  st=$(sed -n 's/.*"state":"\([^"]*\)".*/\1/p' "$f" | head -1)
+  src=$(sed -n 's/.*"source":"\([^"]*\)".*/\1/p' "$f" | head -1)
+  cmd=$(sed -n 's/.*"command":"\(.*\)","exit_code".*/\1/p' "$f" | head -1)
+  reason=$(sed -n 's/.*"reason":"\(.*\)","env_fingerprint".*/\1/p' "$f" | head -1)
+  if [[ -n "$cmd" ]]; then
+    printf -- '- 验证通道：%s（source=%s，command=%s）\n' "${st:-unknown}" "${src:--}" "$cmd"
+  else
+    printf -- '- 验证通道：%s（source=%s，%s）\n' "${st:-unknown}" "${src:--}" "${reason:-无原因记录}"
+  fi
+}
+
 iso_to_epoch() { # <iso8601Z> — GNU date -d first, BSD date -j -f fallback, 0 on failure
   local s="$1"
   if date -u -d "$s" +%s >/dev/null 2>&1; then
@@ -295,6 +316,8 @@ has_code_changes() {
 case "$mode" in
   status)
     [[ -f "$REPORT" ]] && cat "$REPORT" || echo "session-gate: no report yet (run start/idle)"
+    # v3.76.0 (CHG-100, REQ-1117)：验证通道状态（四态可见化）
+    channel_line
     # v3.39.0（CHG-042）：会话水位 + 勘探统计观测（§2.9.6 / AGENTS.md 纪律节）——只展示；执法在 gate begin
     if [[ -s "$STATS_FILE" ]]; then
       stats_line

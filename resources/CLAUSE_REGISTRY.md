@@ -83,6 +83,7 @@
 | R59 | 事故/回归复盘「应捕获层」与补强（§2.17.2） | DEVELOPMENT_STANDARDS.md::**复盘义务（v3.75.0，CHG-099，REQ-1112）** | universal | 硬 | 行为 |
 | R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 |
 | R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 |
+| R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
@@ -194,6 +195,7 @@
 | GATE-E115 | 07 既无「发现处置」节（或节内无真实发现行）也无「未命中，不适用」单行声明 | agent-gate.sh::assert_finding_disposition()（v3.74.0） |
 | GATE-E116 | 评审轮次超 AGENT_GUARD_REVIEW_ROUND_LIMIT 且 07 无「已填写的超限处置行」 | agent-gate.sh::track_review_round()（v3.74.0） |
 | GATE-E117 | 07「发现处置」表「来源」列取值非法（非 本次引入/既有存量）；缺列软提示放行 | agent-gate.sh::assert_finding_source()（v3.75.0） |
+| GATE-E118 | 验证通道 `ci.verification_command` 有值但形态非法（空值/未闭合引号/非法块指示符/多行裸标量/不在 `ci:` 段内）——fail-closed，不静默跳过 | agent-gate.sh::yml_scalar()/validate_stop()（v3.76.0） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

@@ -80,6 +80,24 @@ ci:
   # wins). bootstrap auto-detects a project test command and replaces the
   # placeholder; edit freely — never leave the placeholder if you want stop/ci
   # to run your tests.
+  #
+  # 条款承载面：方言与四态（v3.76.0，CHG-100，REQ-1115~1120）——本注释是方言声明的
+  # 唯一权威载体（DS §2.17 该条只留口径与指针）。
+  # 方言（v3.76.0）：只支持**标量**，且是以下声明的形态（越界即 GATE-E118 硬拒，
+  # 不静默跳过）：双引号 "…"（含 \\ \" \n）、单引号 '…'（'' 转义）、裸标量
+  # （行尾 ` # 注释` 会被剥掉）、块标量 | 或 >（含 - / + 裁剪）。推荐写成一行：
+  # 多行命令请用块标量 | 或 >，或用 `bash -lc "…"` 单行包裹。
+  # **位置**：只认本 `ci:` 段内、与其它 ci 子键同缩进的 `verification_command`；
+  # 顶层、别的段（如 stop_hook）、别的键的块正文里的同名键一律 unparsable（拒），
+  # 多行裸标量（裸值下一行再缩进续写）同样拒——这些形态**不会**被静默忽略。
+  # 块正文里的同名行严格说不是 YAML 键，但同样按 misplaced 拒：挡住"看起来配了
+  # 却没生效"的静默形态（本条款的立意）。
+  # 四态可见：absent（未声明）/ placeholder（仍是本占位符）/ tampered（本文件在
+  # 在途变更中被改动，anti-tamper 生效）/ unparsable（值或位置非法→拒）。
+  # 现测：`<scripts>/agent-gate verify-channel`；最近一次判定见
+  # `.agent-state/verify-channel.json` 与 `session-gate status` 的「验证通道」行。
+  # 在途维护路径：本文件随变更在途时，用 AGENT_GUARD_VERIFY_COMMAND 并在 09
+  # 「重要上下文」登记（状态 tampered+env），不得为了跳过 anti-tamper 而回退方言。
   verification_command: "<replace-with-project-test-command>"
 stop_hook:
   # Set AGENT_GUARD_VERIFY_COMMAND in a client adapter when a fast deterministic

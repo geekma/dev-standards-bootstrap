@@ -759,6 +759,13 @@ if [[ "$upgrade" == true ]]; then
     echo "WARNING     target is not a git repository — upgraded files cannot be rolled back" >&2
   fi
 fi
+# v3.76.0 (CHG-100, REQ-1120): 安装前快照 .agent-governance.yml 指纹——本轮若写入或
+# 重写它，"验证通道是否生效"可能变化（新文件=未配置；重写=刚改值），auto_wire_guard
+# 末尾据此提示（见 §5）。未触碰则不提示（零噪声）。
+YML_PRE_STATE="absent"
+if [[ -f "$target/.agent-governance.yml" ]]; then
+  YML_PRE_STATE="$(file_cksum "$target/.agent-governance.yml" 2>/dev/null || echo unhashed)"
+fi
 for l in $layers; do
   run_layer "$l"
 done
@@ -910,7 +917,25 @@ auto_wire_guard() {
       echo "NOTE         could not detect a test command — set ci.verification_command in .agent-governance.yml (or AGENT_GUARD_VERIFY_COMMAND)" >&2
     fi
   fi
-  # 4) platform-side step cannot be automated via files — print exact hint.
+  # 5) v3.76.0 (CHG-100, REQ-1120): 验证通道提示——本轮写入/重写了
+  #    .agent-governance.yml 时显式告知，避免维护者"以为还在验证"（另一仓事故的
+  #    认知侧缺口）。**口径按实际结果分叉**（独立评审 F9）：本轮刚自动探测写入命令
+  #    时不能说"paused，请声明"（与事实相反）；只有仍是占位符/无值才是"未配置"。
+  local ymlf="$target/.agent-governance.yml" yml_post="absent" yml_ph=0
+  if [[ -f "$ymlf" ]]; then
+    yml_post="$(file_cksum "$ymlf" 2>/dev/null || echo unhashed)"
+    grep -q '<replace-with-project-test-command>' "$ymlf" 2>/dev/null && yml_ph=1
+  fi
+  if [[ "${YML_PRE_STATE:-absent}" != "$yml_post" ]]; then
+    if [[ -n "${detected:-}" ]]; then
+      echo "NOTE         verification channel updated by this run: ci.verification_command = $detected — commit .agent-governance.yml and re-confirm with $SCRIPTS_DIR/agent-gate verify-channel (an uncommitted yml is skipped by anti-tamper)"
+    elif [[ "$yml_ph" == 1 ]]; then
+      echo "NOTE         verification channel paused: .agent-governance.yml still carries the install placeholder — declare ci.verification_command (or set AGENT_GUARD_VERIFY_COMMAND) and confirm with $SCRIPTS_DIR/agent-gate verify-channel"
+    else
+      echo "NOTE         verification channel: .agent-governance.yml was written by this run — re-confirm the effective command with $SCRIPTS_DIR/agent-gate verify-channel"
+    fi
+  fi
+  # 6) platform-side step cannot be automated via files — print exact hint.
   echo "manual       GitHub: mark 'agent-governance' workflow as a required check (repo Settings -> Branches -> Branch protection, or via gh api)"
 }
 case " $layers " in

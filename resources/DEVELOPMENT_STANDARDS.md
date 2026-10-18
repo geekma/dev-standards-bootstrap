@@ -832,9 +832,9 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 > **管线治理声明 `00-governance.json`**：与 `00-intent.md` 同目录创建——`change_id`（与变更目录名一致）、`risk_level`（L0-L3，§0.5.1）、`implementation_owner`/`test_owner`/`review_owner`（§2.1.7 格式）；**L2/L3 四主体两两互异**（spec_author/implementation/test/review，§0.5.2/§2.1 规则 10/门禁 5），全等级最低线=作者≠评审，否则 `agent-gate begin` 拒绝；执行主体不得为占位符（`PENDING`/`TODO`/`TBD`/`待定`；implementation_owner 恒检，其余按 L2/L3）；**L3 另须释放授权三字段** `release_authorized_by`/`release_authorized_at`/`release_authorization_evidence`（全非空，缺失 begin 拒绝）。**缺陷修复须声明 `bug_ref`**（可选，如 `BUG-042`）——非空时 begin 校验 `docs/bugs/<bug_ref>/` 六件存在且非空（`AGENT_GUARD_BUGS_ROOT` 可覆盖），缺失即拒；非缺陷修复留空跳过。创建后不可变（§2.15），风险等级修订（降级禁令见 §0.5）记 09「重要上下文」；模板见 `governance-state.json`。
 
-> **产物目录双轨约定**（v3.54.0）：管线入口件与必检产物落**变更目录** `docs/changes/<变更号>/`（`AGENT_GUARD_CHANGE_ROOT` 可覆盖），gate 以该目录为核对根；解析顺序=`<变更根>/<变更号>/` → `AGENT_GUARD_CHANGE_DIR` → 含锚点 `BATCH-*/` → 规范专用路径回落（与 gate `change_dir` 实现一致）。`docs/<feature>/` 仍是功能级长期文档（05/06/07/09、01.5 矩阵、06.5 等）的权威落点（§2.5），入口件与 05/09 须同内容双落点、禁止分叉。**§2.5 校验命令中的 `docs/<feature>/` 路径按变更目录解释**。**`01.5-rtvm-matrix.md` 属审计层边界（v3.7.0）**：单落点不两处分叉（§1.2），有功能目录落 `docs/<feature>/`、否则落 `<变更根>/<变更号>/`；`agent-gate` 不当必检产物，但读两处做「门禁 4」回填核对（`09-changelog.md` 引用的每个 `REQ-` 须在其中一份成行）。**治理工具自身**（gate/audit/hook 适配器，§2.17.4）不视为产品代码——安装/升级它们的提交不需要变更产物。
+> **产物目录双轨约定**（v3.54.0）：管线入口件与必检产物落**变更目录** `docs/changes/<变更号>/`（`AGENT_GUARD_CHANGE_ROOT` 可覆盖），gate 以该目录为核对根；解析顺序=`<变更根>/<变更号>/` → `AGENT_GUARD_CHANGE_DIR` → 含锚点 `BATCH-*/` → 规范专用路径回落（同 gate `change_dir`）。`docs/<feature>/` 仍是功能级长期文档（05/06/07/09、01.5、06.5 等）的权威落点（§2.5），入口件与 05/09 须同内容双落点、禁止分叉。**§2.5 校验命令中的 `docs/<feature>/` 路径按变更目录解释**。**`01.5-rtvm-matrix.md` 属审计层边界（v3.7.0）**：单落点不两处分叉（§1.2），有功能目录落 `docs/<feature>/`、否则落 `<变更根>/<变更号>/`；`agent-gate` 不当必检产物，但读两处做「门禁 4」回填核对（`09-changelog.md` 引用的每个 `REQ-` 须在其中一份成行）。**治理工具自身**（gate/audit/hook 适配器，§2.17.4）不视为产品代码——安装/升级提交不需变更产物。
 
-> **本地 Git Hook 强制面（v3.5.0）**：`commit-msg` 归因闸门（`agent-gate --stage commit-msg <msgfile>`，模板 `resources/templates/commit-msg`）——暂存区含代码文件的提交消息必须引用有效变更号，豁免阶梯：合并提交、`Revert` 开头、纯文档/纯产物提交（无代码文件）；branch 模式（`--stage ci --base <ref>`）对 diff 触及的变更追加 delivery 证据核验（05+09 与 Observation，§2.17.5）；`pre-push` 模板接线 `--stage ci`（base 取 upstream，无 upstream 退化为 HEAD）。**安装器自动接线（v3.11.0）**：`bootstrap --guard` 自动配置 `core.hooksPath`（已有自定义值不覆盖）、自动生成客户端适配器、自动探测构建系统测试命令预填 `.agent-governance.yml`；gate 验证命令来源链 = env → yml → 未配置跳过。
+> **本地 Git Hook 强制面（v3.5.0）**：`commit-msg` 归因闸门（`agent-gate --stage commit-msg <msgfile>`，模板 `resources/templates/commit-msg`）——暂存区代码提交的消息须引用有效变更号，豁免阶梯：合并提交、`Revert` 开头、纯文档/纯产物提交（无代码文件）；branch 模式（`--stage ci --base <ref>`）对 diff 触及的变更追加 delivery 证据核验（05+09 与 Observation，§2.17.5）；`pre-push` 模板接线 `--stage ci`（base=upstream，无则 HEAD）。**安装器自动接线（v3.11.0）**：`bootstrap --guard` 自动配置 `core.hooksPath`（不覆盖已有值）、自动生成客户端适配器、自动探测测试命令预填 `.agent-governance.yml`；gate 验证通道四态 absent/placeholder/tampered/unparsable（stop 车道；unparsable→`GATE-E118`）；方言与在途维护见模板注释。
 
 #### 2.17.1 传动机制（Artifact Pipeline）
 
@@ -1120,4 +1120,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.75.0 | 更新时间：2026-10-17 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.76.0 | 更新时间：2026-10-18 | 全局维护责任人：geekma (geekma@gmail.com)*

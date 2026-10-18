@@ -3079,7 +3079,8 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  report "T39 registry row count" 61 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  # v3.76.0 (CHG-100): 62 rows — R62（验证通道方言与四态）joins the registry.
+  report "T39 registry row count" 62 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
@@ -3453,11 +3454,11 @@ section_T48() {
 # "first-of-day creates the batch" present, old "same-day-many" trigger gone
 # CHG-096: TC-1073 version pins recalibrated v3.72.0→v3.73.0 (four-chain bump).
 # CHG-098: TC-1073 pins recalibrated v3.73.0→v3.74.0 (four-chain bump).
-# CHG-099: TC-1073 pins recalibrated v3.74.0→v3.75.0 (four-chain bump).
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.75.0' "$ROOT/SKILL.md")"
+# CHG-100: TC-1073 pins recalibrated v3.75.0→v3.76.0 (four-chain bump).
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.76.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.75.0" 1 "$(grep -cF '规范版本：v3.75.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.75.0" 1 "$(grep -cF '当前对应规范版本：v3.75.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries v3.75.0" 1 "$(grep -cF '规范版本：v3.76.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.75.0" 1 "$(grep -cF '当前对应规范版本：v3.76.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3697,7 +3698,8 @@ section_T50() {
   # CHG-094: tail recalibrated T55→T56 (begin-artifact preflight probe joins).
   # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
   # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T60 ]] && echo 0 || echo 1)"
+  # CHG-100: tail recalibrated T60→T61 (验证通道方言与四态 golden 节 joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T61 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -5061,8 +5063,277 @@ report "T60 TC-1333 rescore workflow declares an anchored schedule + cron" 1 "$(
 report "T60 TC-1333 rescore workflow calls scripts/eval-rescore" 0 "$([[ "$(grep -c 'scripts/eval-rescore' "$ROOT/resources/templates/github-reviewer-rescore.yml")" -ge 1 ]] && echo 0 || echo 1)"
 }
 
+# ------------------------------------------------ T61 验证通道方言与四态（v3.76.0, CHG-100）
+# REQ-1115~1122 / SC-1822~1827。判定口径 = `.agent-governance.yml` 的
+# `ci.verification_command`（gate 唯一读取点 yml_scalar）。探针 `verify-channel` 是
+# **只读**的（不执行命令、不写状态），因此方言矩阵可以零副作用全覆盖；执行面
+# （状态文件 + 05 自检证据）另起两个夹具走 `--stage stop` 真车道。
+section_T61() {
+  local yml=".agent-governance.yml" out rc t61_bt t61_f
+  new_repo
+  t61_yml() { printf '%b' "$1" > "$yml"; git add -A >/dev/null 2>&1; git commit -qm yml >/dev/null 2>&1 || true; }
+  t61_probe() { out=$(scripts/agent-gate verify-channel 2>&1); rc=$?; }
+
+  # ---- TC-1338 / REQ-1115：旧型（双引号无转义）语义零回归 -------------------
+  t61_yml 'ci:\n  verification_command: "bash tests/run-tests.sh"\n'
+  t61_probe
+  report "T61 TC-1338 legacy double-quoted yml still resolves (rc 0)" 0 "$rc"
+  check_output "T61 TC-1338 legacy value is byte-identical" 'state=yml .*command=bash tests/run-tests\.sh$' "$out"
+
+  # ---- TC-1337 / REQ-1115：方言矩阵（声明式超集） --------------------------
+  t61_yml "ci:\n  verification_command: 'bash tests/run-tests.sh'\n"
+  t61_probe
+  check_output "T61 TC-1337 single-quoted scalar parses" 'command=bash tests/run-tests\.sh$' "$out"
+  t61_yml 'ci:\n  verification_command: bash tests/run-tests.sh\n'
+  t61_probe
+  check_output "T61 TC-1337 bare scalar parses" 'command=bash tests/run-tests\.sh$' "$out"
+  t61_yml 'ci:\n  verification_command: bash a.sh  # trailing comment\n'
+  t61_probe
+  check_output "T61 TC-1337 trailing comment is stripped" 'command=bash a\.sh$' "$out"
+  t61_yml 'ci:\n  verification_command: "bash -lc \\"echo hi\\""\n'
+  t61_probe
+  check_output "T61 TC-1337 escaped double quote decodes" 'command=bash -lc "echo hi"$' "$out"
+  t61_yml 'ci:\n  verification_command: |\n    bash a.sh\n    bash b.sh\n'
+  t61_probe
+  check_output "T61 TC-1337 literal block keeps the first line" 'bash a\.sh' "$out"
+  check_output "T61 TC-1337 literal block keeps the second line" 'bash b\.sh' "$out"
+  t61_yml 'ci:\n  verification_command: >\n    bash a.sh\n    bash b.sh\n'
+  t61_probe
+  check_output "T61 TC-1337 folded block joins lines with a space" 'command=bash a\.sh bash b\.sh$' "$out"
+  # F1（独立评审）：块标量**后面还有同级键/别的段**时，已收集的块不得被丢掉——
+  # 本变更初版会在这种（最常见的）形态下静默判 absent，正是要消灭的事故形态。
+  t61_yml 'ci:\n  verification_command: |\n    bash blk.sh\n  smoke_command: "x"\n'
+  t61_probe
+  check_output "T61 TC-1337 block scalar survives a following sibling key" 'command=bash blk\.sh$' "$out"
+  t61_yml 'ci:\n  verification_command: >\n    bash fol.sh\nstop_hook:\n  a: b\n'
+  t61_probe
+  check_output "T61 TC-1337 folded block survives a following section" 'command=bash fol\.sh$' "$out"
+  t61_yml 'ci:\n  verification_command: |-\n    bash a.sh\n'
+  t61_probe
+  check_output "T61 TC-1337 chomping indicator is accepted" 'command=bash a\.sh$' "$out"
+  t61_yml 'ci:\r\n  verification_command: "bash c.sh"\r\n'
+  t61_probe
+  check_output "T61 TC-1337 CRLF line endings parse" 'command=bash c\.sh$' "$out"
+
+  # ---- TC-1339 / REQ-1116：unparsable → fail-closed（探针 rc 2）-------------
+  t61_yml 'ci:\n  verification_command:\n'
+  t61_probe
+  report "T61 TC-1339 empty value is unparsable (rc 2)" 2 "$rc"
+  check_output "T61 TC-1339 empty value names the state" 'state=unparsable' "$out"
+  t61_yml 'ci:\n  verification_command: ""\n'
+  t61_probe
+  report "T61 TC-1339 empty double quotes are unparsable (rc 2)" 2 "$rc"
+  t61_yml 'ci:\n  verification_command: "bash a.sh\n'
+  t61_probe
+  report "T61 TC-1339 unterminated quote is unparsable (rc 2)" 2 "$rc"
+  t61_yml 'ci:\n  verification_command: |x\n'
+  t61_probe
+  report "T61 TC-1339 illegal block indicator is unparsable (rc 2)" 2 "$rc"
+  # F7：多行裸标量（合法 YAML，方言外）不得被静默截断成第一行
+  t61_yml 'ci:\n  verification_command: bash a.sh\n    bash b.sh\n'
+  t61_probe
+  report "T61 TC-1339c multiline plain scalar is unparsable (rc 2)" 2 "$rc"
+  # F6①：别的段（stop_hook）里的同名键不是通道
+  t61_yml 'ci:\n  docs: ok\nstop_hook:\n  verification_command: "bash hook.sh"\n'
+  t61_probe
+  report "T61 TC-1339c a foreign-section key is unparsable (rc 2)" 2 "$rc"
+  # F6②：更深的同名键（ci 子键之下）不是通道
+  t61_yml 'ci:\n  sub:\n    verification_command: "bash nested.sh"\n'
+  t61_probe
+  report "T61 TC-1339c a deeper key is unparsable (rc 2)" 2 "$rc"
+  # F6③ / 整改 R1：别的键的**块正文**里出现同名行 → fail-closed（不是配置，也不是
+  # 静默 absent——yml 注释是方言声明唯一权威载体，已声明这类形态"一律 unparsable"）。
+  t61_yml 'ci:\n  docs: |\n    verification_command: "bash ex.sh"\n'
+  t61_probe
+  report "T61 TC-1339c a block-body lookalike inside ci is unparsable (rc 2)" 2 "$rc"
+  check_output "T61 TC-1339c block-body lookalike names the misplaced state" 'state=unparsable' "$out"
+  # R1②：顶层键的块正文（同一形态、另一位置）——同样 misplaced，不许"合法跳过"
+  t61_yml 'docs: |\n  verification_command: "bash ex.sh"\n'
+  t61_probe
+  report "T61 TC-1339c a top-level block-body lookalike is unparsable (rc 2)" 2 "$rc"
+  check_output "T61 TC-1339c top-level block-body lookalike names the misplaced state" 'state=unparsable' "$out"
+  # R1 反例（真键胜出，第 3 轮评审新发现 1）：兄弟键块正文含同名行不得污染真键
+  t61_yml 'ci:\n  docs: |\n    verification_command: "bash ex.sh"\n  verification_command: "bash real.sh"\n'
+  t61_probe
+  report "T61 TC-1339c a real key beats a sibling block-body lookalike (rc 0)" 0 "$rc"
+  check_output "T61 TC-1339c the real key's command wins over the lookalike" 'command=bash real.sh' "$out"
+  # 第 3 轮评审新发现 4：行尾垃圾（引号后跟残余 token）是方言外形态，不得静默采值
+  t61_yml 'ci:\n  verification_command: "bash a.sh" trailing\n'
+  t61_probe
+  report "T61 TC-1339c trailing garbage after a quoted value is unparsable (rc 2)" 2 "$rc"
+  check_output "T61 TC-1339c trailing garbage names the state" 'state=unparsable' "$out"
+  # 第 3 轮评审新发现 4：注释行里的同名键不得被误采（合法跳过，不是配置）
+  t61_yml 'ci:\n  # verification_command: "bash x.sh"\n'
+  t61_probe
+  report "T61 TC-1339c a commented-out key is not the channel (rc 0)" 0 "$rc"
+  check_output "T61 TC-1339c a commented-out key names the absent state" 'state=absent' "$out"
+
+  # ---- TC-1340 / REQ-1116：合法跳过态（absent / placeholder）---------------
+  rm -f "$yml"
+  git add -A >/dev/null 2>&1; git commit -qm rmyml >/dev/null 2>&1 || true
+  t61_probe
+  report "T61 TC-1340 missing key is a lawful skip (rc 0)" 0 "$rc"
+  check_output "T61 TC-1340 missing key names the absent state" 'state=absent' "$out"
+  t61_yml 'ci:\n  verification_command: "<replace-with-project-test-command>"\n'
+  t61_probe
+  report "T61 TC-1340 install placeholder is a lawful skip (rc 0)" 0 "$rc"
+  check_output "T61 TC-1340 install placeholder names the state" 'state=placeholder' "$out"
+  # v3.76.0 整改（独立评审 F13）：顶层同名键**显式拒**（曾静默 absent，与旧 sed 的
+  # "会执行"行为反向差异且无痕）——位置非法 = unparsable → GATE-E118。
+  t61_yml 'verification_command: "bash toplevel.sh"\n'
+  t61_probe
+  report "T61 TC-1340 a top-level key is rejected, not silently absent (rc 2)" 2 "$rc"
+  check_output "T61 TC-1340 misplaced key names the state" 'state=unparsable' "$out"
+
+  # ---- TC-1341 / REQ-1119：anti-tamper × env 组合矩阵 ----------------------
+  t61_yml 'ci:\n  verification_command: "bash committed.sh"\n'
+  out=$(AGENT_GUARD_VERIFY_COMMAND='bash env.sh' scripts/agent-gate verify-channel 2>&1)
+  check_output "T61 TC-1341 env wins over a clean yml" 'state=env source=env command=bash env\.sh' "$out"
+  printf 'ci:\n  verification_command: "bash edited.sh"\n' > "$yml"
+  t61_probe
+  check_output "T61 TC-1341 pending yml blocks auto-execution (tampered)" 'state=tampered' "$out"
+  out=$(AGENT_GUARD_VERIFY_COMMAND='bash env.sh' scripts/agent-gate verify-channel 2>&1)
+  check_output "T61 TC-1341 pending yml + env is the lawful maintenance path" 'state=tampered\+env' "$out"
+
+  # ---- TC-1342/1343 / REQ-1117/1118：stop 车道落状态文件 + 05 自检证据 ------
+  new_repo
+  seed_artifacts CHG-710 L0 claude/s-1
+  scripts/agent-gate begin CHG-710 >/dev/null 2>&1
+  seed_t53_delivery CHG-710
+  cp "$ROOT/resources/templates/session-gate.sh" scripts/session-gate.sh
+  chmod +x scripts/session-gate.sh
+  out=$(scripts/session-gate.sh status 2>&1 || true)
+  check_output "T61 TC-1342 status says the channel is unrecorded before any stop" '验证通道：未记录' "$out"
+  t61_yml 'ci:\n  verification_command: "printf ok > t61-probe.txt"\n'
+  echo y > src/t61a.js
+  out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+  report "T61 TC-1342 stop executes the yml channel command" 0 "$([[ -s t61-probe.txt ]] && echo 0 || echo 1)"
+  report "T61 TC-1342 stop stays green when the channel passes" 0 "$rc"
+  for t61_f in state source command exit_code reason env_fingerprint generated_at head; do
+    grep -q "\"$t61_f\":" .agent-state/verify-channel.json
+    report "T61 TC-1342 channel state file carries '$t61_f'" 0 $?
+  done
+  grep -q '"state":"yml"' .agent-state/verify-channel.json
+  report "T61 TC-1342 channel state file records the yml source" 0 $?
+  grep -q '通道自检证据' docs/changes/CHG-710/05-test-results.md
+  report "T61 TC-1343 05 records the channel self-check evidence" 0 $?
+  out=$(scripts/session-gate.sh status 2>&1 || true)
+  check_output "T61 TC-1342 session-gate status shows the channel line" '- 验证通道：' "$out"
+
+  # ---- TC-1343 / REQ-1118：未执行时 05 显式写「通道未验证」-----------------
+  new_repo
+  seed_artifacts CHG-711 L0 claude/s-1
+  scripts/agent-gate begin CHG-711 >/dev/null 2>&1
+  seed_t53_delivery CHG-711
+  cp "$ROOT/resources/templates/session-gate.sh" scripts/session-gate.sh
+  chmod +x scripts/session-gate.sh
+  echo y > src/t61b.js
+  out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+  report "T61 TC-1343 stop without a channel still passes" 0 "$rc"
+  grep -q '通道未验证（absent' docs/changes/CHG-711/05-test-results.md
+  report "T61 TC-1343 05 records the explicit not-verified reason" 0 $?
+  out=$(scripts/session-gate.sh status 2>&1 || true)
+  check_output "T61 TC-1343 status surfaces the absent state, not a silent skip" '验证通道：absent' "$out"
+
+  # ---- TC-1344 / REQ-1120：安装/升级写入 yml 提示通道暂停 ------------------
+  t61_bt=$(mktemp -d "${TMPDIR:-/tmp}/t61-boot.XXXXXX")
+  if [[ -f "$BOOT_SRC" ]]; then
+    out=$(bash "$BOOT_SRC" --guard "$t61_bt" 2>&1 || true)
+    check_output "T61 TC-1344 guard install warns the channel is paused" 'verification channel paused' "$out"
+    out=$(bash "$BOOT_SRC" --guard --upgrade "$t61_bt" 2>&1 || true)
+    report "T61 TC-1344 upgrade without a yml rewrite stays quiet" 0 "$(printf '%s' "$out" | grep -c 'verification channel paused')"
+  else
+    report "T61 TC-1344 bootstrap available (skill-repo layout only)" 0 "$([[ -f "$BOOT_SRC" ]] && echo 0 || echo 1)"
+  fi
+  rm -rf "$t61_bt"
+
+  # ---- TC-1344b / REQ-1120（整改 F9）：提示口径必须与实际结果一致 -------------
+  # 初版不分叉：本轮刚自动探测并把 `npm test` 写进 yml，却提示「paused：请声明
+  # ci.verification_command」——与磁盘事实相反，维护者会以为通道还是断的。
+  t61_bt2="${TMPDIR:-/tmp}/t61-boot-detect.$$"
+  rm -rf "$t61_bt2"; mkdir -p "$t61_bt2"
+  if [[ -f "$BOOT_SRC" ]]; then
+    printf '{"name":"x","scripts":{"test":"exit 0"}}\n' > "$t61_bt2/package.json"
+    out=$(bash "$BOOT_SRC" --guard "$t61_bt2" 2>&1 || true)
+    check_output "T61 TC-1344b auto-wired channel reports the detected command" 'verification channel updated by this run' "$out"
+    check_output "T61 TC-1344b the detected command is named" 'verification_command = npm test' "$out"
+    report "T61 TC-1344b auto-wired channel is not called paused" 0 "$(printf '%s' "$out" | grep -c 'verification channel paused')"
+  else
+    report "T61 TC-1344b bootstrap available (skill-repo layout only)" 0 "$([[ -f "$BOOT_SRC" ]] && echo 0 || echo 1)"
+  fi
+  rm -rf "$t61_bt2"
+
+  # ---- TC-1346 / REQ-1122：红档语义=最近一次运行结果（绿跑清档）-----------
+  grep -qF 'if [[ ${#WANTED[@]} -eq 0 && "$fail" -eq 0 && -n "$SUITE_HEAD" ]]; then' "$ROOT/tests/run-tests.sh"
+  report "T61 TC-1346 green clear is gated on a FULL run" 0 $?
+  grep -qF 'rm -f "$ROOT/.agent-state/last-suite-red.txt"' "$ROOT/tests/run-tests.sh"
+  report "T61 TC-1346 full green run deletes the stale red archive" 0 $?
+  grep -qF "recent run's result" "$ROOT/tests/run-tests.sh"
+  report "T61 TC-1346 archive semantics documented as the most recent run" 0 $?
+  # 行为面（F16：结构性 pin 不等于行为验证）：强制红跑留档；**过滤**绿跑不清档
+  # （清档只归"全量绿跑"这一条路径）。夹具前后还原，不残留。
+  t61_ar="$ROOT/.agent-state/last-suite-red.txt"
+  t61_arhad=0; [[ -f "$t61_ar" ]] && { t61_arhad=1; cp "$t61_ar" "${TMPDIR:-/tmp}/t61-red.bak" 2>/dev/null; }
+  rm -f "$t61_ar"
+  AGENT_GUARD_SUITE_FORCE_RED=1 bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1
+  report "T61 TC-1346 a forced-red filtered run leaves the archive" 1 "$([[ -f "$t61_ar" ]] && echo 1 || echo 0)"
+  bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1
+  report "T61 TC-1346 a filtered green run does NOT clear the archive" 1 "$([[ -f "$t61_ar" ]] && echo 1 || echo 0)"
+  if [[ "$t61_arhad" == 1 ]]; then cp "${TMPDIR:-/tmp}/t61-red.bak" "$t61_ar" 2>/dev/null; else rm -f "$t61_ar"; fi
+
+  # ---- TC-1339b / REQ-1116：unparsable 在 **stop 车道**也 fail-closed ----------
+  # （F3/F16：初版只测了探针，正好漏掉"die 行在 bash 3.2 上因全角标点吞变量名而
+  #  崩溃、GATE-E118 文案根本没打出来"这一类缺陷——现在真跑 stop 车道。）
+  new_repo
+  seed_artifacts CHG-712 L0 claude/s-1
+  scripts/agent-gate begin CHG-712 >/dev/null 2>&1
+  seed_t53_delivery CHG-712
+  t61_yml 'ci:\n  verification_command: "bash never-closed\n'
+  echo y > src/t61c.js
+  out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+  report "T61 TC-1339b stop lane rejects an unparsable channel (rc 2)" 2 "$rc"
+  check_output "T61 TC-1339b stop lane names GATE-E118" 'GATE-E118' "$out"
+  check_output "T61 TC-1339b stop lane carries the repair example" '修复示例' "$out"
+  report "T61 TC-1339b state file is written before the refusal" 0 "$(grep -c '\"state\":\"unparsable\"' .agent-state/verify-channel.json >/dev/null 2>&1 && echo 0 || echo 1)"
+
+  # ---- TC-1341b / REQ-1119：SKIP_VERIFY 真跳过（既有存量缺口，当批闭环）-----
+  new_repo
+  seed_artifacts CHG-713 L0 claude/s-1
+  scripts/agent-gate begin CHG-713 >/dev/null 2>&1
+  seed_t53_delivery CHG-713
+  echo y > src/t61d.js
+  rm -f t61-skip.txt
+  out=$(AGENT_GUARD_SKIP_VERIFY=1 AGENT_GUARD_VERIFY_COMMAND='printf ran > t61-skip.txt' scripts/agent-gate --stage stop 2>&1); rc=$?
+  report "T61 TC-1341b SKIP_VERIFY does not execute an env channel" 0 "$([[ -e t61-skip.txt ]] && echo 1 || echo 0)"
+  report "T61 TC-1341b SKIP_VERIFY keeps the stop lane green" 0 "$rc"
+  report "T61 TC-1341b a skipped run leaves no channel state file behind" 0 "$([[ -e .agent-state/verify-channel.json ]] && echo 1 || echo 0)"
+
+  # ---- TC-1343b / REQ-1118：证据行受控覆盖 + 不刷新 05 的 mtime ------------
+  # （F5：行内含 UTC 时间戳 → 无界追加把 05 涨成噪声；F4：通道证据刷新 05 的
+  #  mtime 会把 GATE-E111 冒烟时效窗静默降级为"存在性"。）
+  new_repo
+  seed_artifacts CHG-714 L0 claude/s-1
+  scripts/agent-gate begin CHG-714 >/dev/null 2>&1
+  seed_t53_delivery CHG-714
+  t61_yml 'ci:\n  verification_command: "printf ok > t61-ev.txt"\n'
+  echo y > src/t61e.js
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  touch -t 202001010000 docs/changes/CHG-714/05-test-results.md
+  t61_m1=$(stat -c %Y docs/changes/CHG-714/05-test-results.md 2>/dev/null || stat -f %m docs/changes/CHG-714/05-test-results.md 2>/dev/null || echo 0)
+  echo y2 > src/t61e2.js
+  scripts/agent-gate --stage stop >/dev/null 2>&1
+  t61_m2=$(stat -c %Y docs/changes/CHG-714/05-test-results.md 2>/dev/null || stat -f %m docs/changes/CHG-714/05-test-results.md 2>/dev/null || echo 0)
+  report "T61 TC-1343b repeated stops keep exactly one evidence line" 1 "$(grep -c '通道自检证据' docs/changes/CHG-714/05-test-results.md)"
+  report "T61 TC-1343b the evidence line does not refresh the 05 mtime" 0 "$([[ -n "$t61_m1" && "$t61_m1" == "$t61_m2" ]] && echo 0 || echo 1)"
+
+  # ---- TC-1347 / REQ-1115/1117：两对镜像可解析（工具面零新依赖）-----------
+  bash -n "$GATE_SRC" && bash -n "$ROOT/scripts/session-gate.sh"
+  report "T61 TC-1347 gate + session-gate mirrors parse (bash -n)" 0 $?
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61)
+
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do
@@ -5181,12 +5452,21 @@ if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
     rm -f "$ROOT/.agent-state/last-suite-receipt.json"
   fi
 fi
-# v3.72.0 erratum (CHG-095, DES-1869): red-run archive. ANY red run (fail > 0,
-# filtered or full) overwrites .agent-state/last-suite-red.txt with the failed
-# cases + FAIL lines — test-seam semantics: a re-run/CI drill aid, never a
-# product-health signal. The receipt block above keeps its full-run-only
-# semantics untouched (red FULL run still deletes it). Note: the condition is
-# intentionally unquoted ($fail) so the T51 TC-1126 pin literal stays unique.
+# v3.72.0 erratum (CHG-095, DES-1869) + v3.76.0 (CHG-100, REQ-1122): red-run
+# archive. ANY red run (fail > 0, filtered or full) overwrites
+# .agent-state/last-suite-red.txt with the failed cases + FAIL lines — and, since
+# v3.76.0, a FULL GREEN run DELETES it: the archive's semantics are "the most
+# recent run's result", symmetric with the receipt above (which a red run
+# deletes). A stale archive used to survive a green run and mislead diagnosis
+# (live incident: an archive pinned T39/T50 while the suite was fully green).
+# Filtered runs keep the archive untouched, exactly like the receipt (only a
+# full run is evidence about the whole suite). Test-seam semantics otherwise
+# unchanged: a re-run/CI drill aid, never a product-health signal. Note: the
+# condition is intentionally unquoted ($fail) so the T51 TC-1126 pin literal
+# stays unique.
+if [[ ${#WANTED[@]} -eq 0 && "$fail" -eq 0 && -n "$SUITE_HEAD" ]]; then
+  rm -f "$ROOT/.agent-state/last-suite-red.txt"
+fi
 if [[ $fail -gt 0 ]]; then
   mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
   {

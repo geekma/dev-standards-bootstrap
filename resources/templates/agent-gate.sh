@@ -1729,6 +1729,248 @@ validate_project_masters() {
   [[ -z "$missing" ]] || die "GATE-E63: project masters incomplete:$missing — initialize all thirteen under $docs_dir/project/ (standards §1.3; P12 产品上下文册 v3.67.0)"
 }
 
+# v3.76.0 (CHG-100, REQ-1115~1116): 验证通道标量读取器——**唯一解析权威**（旧 sed
+# 一次性解析已删，禁止回退成第二权威）。方言（越界一律 unparsable，fail-closed，
+# 绝不猜）：双引号 "…"（含 \\ \" \n 反转义）；单引号 '…'（'' 转义）；裸标量
+# （剥行尾 ` #` 注释与行尾空白）；块标量 | / >（含 - / + 裁剪、块内相对缩进保留、
+# 折叠 > 用空行分段）。作用域：只认 `<sect>:` 段内、缩进等于该段首个子键缩进的
+# `key:` —— 顶层、其它段内、其它键的块正文里的同名键一律 unparsable（显式，不
+# 静默 absent："配了却没跑且无痕"正是要消灭的事故形态）。
+# 输出协议（调用端唯一契约）：ok<TAB>值 / absent<TAB> / unparsable<TAB>细节
+# 细节 ∈ value-invalid（空值/未闭合引号/非法块标量）| multiline（多行裸标量）
+#        | misplaced（不在 <sect>: 段内或层级不对）
+yml_dump_block() { # <fold> <chomp> <blk> — 块标量收尾（裁剪 + 折叠收口）
+  local fold="$1" chomp="$2" val="$3"
+  if [[ "$fold" == 1 ]]; then
+    while [[ "$val" == *" " ]]; do val="${val% }"; done
+    case "$chomp" in '-'*) : ;; *) val="$val"$'\n' ;; esac
+  fi
+  case "$chomp" in
+    '-') while [[ "$val" == *$'\n' ]]; do val="${val%$'\n'}"; done ;;
+    '+') : ;;
+    *)   while [[ "$val" == *$'\n'$'\n' ]]; do val="${val%$'\n'}"; done ;;
+  esac
+  [[ -n "$val" ]] || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+  printf 'ok\t%s\n' "$val"
+}
+
+yml_scalar() { # <file> <key> [section=ci]
+  local f="$1" key="$2" sect="${3:-ci}"
+  local _l _r _ind _ki=-1 _st=seek _val _fold=0 _chomp=keep _blk="" _prevblank=0
+  local _i _c _n _closed _top="" _sect_ind=-1 _ans=-1 _bi=-1 _misplaced=0
+  local _hk _rest _isblk
+  [[ -f "$f" ]] || { printf 'absent\t\n'; return 0; }
+  while IFS= read -r _l || [[ -n "$_l" ]]; do
+    _l="${_l//$'\r'/}"
+    _ind=0
+    while [[ "${_l:_ind:1}" == " " || "${_l:_ind:1}" == $'\t' ]]; do _ind=$((_ind+1)); done
+    _r="${_l:_ind}"
+    case "$_st" in
+      block)
+        # 我们的键的块正文：空行保留；更浅的非空行 = 块结束 → 立即出值（首个命中
+        # 即返回，不能因为后面还有同级键/别的段就把已收集的块丢掉，独立评审 F1）。
+        if [[ -z "$_r" ]]; then
+          if [[ "$_fold" == 1 ]]; then _prevblank=1; else _blk="$_blk"$'\n'; fi
+          continue
+        fi
+        if (( _ind <= _ans )); then
+          yml_dump_block "$_fold" "$_chomp" "$_blk"
+          return 0
+        fi
+        (( _bi >= 0 )) || _bi=$_ind
+        _r="${_l:_bi}"
+        if [[ "$_fold" == 1 ]]; then
+          if (( _prevblank == 1 )); then _blk="$_blk"$'\n'"$_r"; else
+            [[ -n "$_blk" ]] && _blk="$_blk "
+            _blk="$_blk$_r"
+          fi
+        else
+          _blk="$_blk$_r"$'\n'
+        fi
+        _prevblank=0
+        continue
+        ;;
+      skip)
+        # 其它键的块正文：整段跳过（正文里的同名键不得被当成配置）。但正文里出现
+        # **同名行**要 fail-closed（misplaced）：它"看起来配了"却永不被解析——正是
+        # 本变更要消灭的形态（yml 注释是方言声明唯一权威载体，已声明这类形态
+        # "一律 unparsable，不静默忽略"；独立评审 R1 复评收口）。
+        [[ -z "$_r" ]] && continue
+        if (( _ind > _ans )); then
+          case "$_r" in "$key":*) _misplaced=1 ;; esac
+          continue
+        fi
+        _st=seek
+        ;;
+      scalar)
+        # 标量值的续行判定：更深缩进 = 多行裸标量（不支持）→ unparsable（不静默截断）。
+        if [[ -n "$_r" ]] && (( _ind > _ki )); then
+          printf 'unparsable\tmultiline\n'; return 0
+        fi
+        printf 'ok\t%s\n' "$_val"; return 0
+        ;;
+    esac
+    [[ -n "$_r" ]] || continue
+    case "$_r" in '#'*) continue ;; esac
+    if (( _ind == 0 )); then
+      # 顶层段：记录当前段名并重置段内子键缩进基准。顶层出现同名键 = 位置非法
+      # （旧 sed 会匹配到并执行，新读取器必须显式 reject，不能静默 absent）。
+      case "$_r" in *:*) _top="${_r%%:*}" ;; *) _top="" ;; esac
+      [[ "$_top" == "$key" ]] && _misplaced=1
+      _sect_ind=-1
+      continue
+    fi
+    # 非空子行：拆出键名与值区。
+    case "$_r" in
+      *:*) _hk="${_r%%:*}" ;;
+      *)   _hk="" ;;
+    esac
+    _rest="${_r#*:}"
+    while [[ "$_rest" == " "* || "$_rest" == $'\t'* ]]; do _rest="${_rest:1}"; done
+    _isblk=0
+    case "$_rest" in
+      '|'*|'>'*)
+        _n="${_rest:1}"
+        case "$_n" in [-+]*) _n="${_n:1}" ;; esac
+        while [[ "$_n" == " "* || "$_n" == $'\t'* ]]; do _n="${_n:1}"; done
+        [[ -z "$_n" || "$_n" == "#"* ]] && _isblk=1
+        ;;
+    esac
+    if [[ "$_hk" != "$key" ]]; then
+      # 段内第一个子键定义缩进基准（`ci: sub:` 之后的更深同名键因此落 misplaced，
+      # 而不是被当成真配置——独立评审 F6② 同族）。
+      [[ "$_top" == "$sect" ]] && (( _sect_ind < 0 )) && _sect_ind=$_ind
+      (( _isblk == 1 )) && { _ans=$_ind; _st=skip; }
+      continue
+    fi
+    if [[ "$_top" == "$sect" ]] && (( _sect_ind < 0 )); then _sect_ind=$_ind; fi
+    if [[ "$_top" != "$sect" || "$_ind" != "$_sect_ind" ]]; then _misplaced=1; continue; fi
+    _ki=$_ind
+    if (( _isblk == 1 )); then
+      _ans=$_ind; _bi=-1; _blk=""; _prevblank=0; _st=block
+      case "$_rest" in '|'*) _fold=0 ;; *) _fold=1 ;; esac
+      _n="${_rest:1}"
+      case "$_n" in [-+]*) _chomp="${_n:0:1}" ;; *) _chomp=keep ;; esac
+      continue
+    fi
+    if [[ -z "$_rest" || "$_rest" == "#"* ]]; then printf 'unparsable\tvalue-invalid\n'; return 0; fi
+    # `|` / `>` 是保留指示符：不是合法块标量开头就不能当裸标量（`|x` 曾静默成命令）。
+    case "$_rest" in '|'*|'>'*) printf 'unparsable\tvalue-invalid\n'; return 0 ;; esac
+    case "$_rest" in
+      '"'*)
+        _val=""; _i=1; _closed=0
+        while (( _i < ${#_rest} )); do
+          _c="${_rest:_i:1}"
+          if [[ "$_c" == '\' ]]; then
+            _n="${_rest:_i+1:1}"
+            case "$_n" in
+              '"') _val="$_val\"" ;;
+              '\') _val="$_val\\" ;;
+              'n') _val="$_val"$'\n' ;;
+              '') _closed=-1; break ;;
+              *) _val="$_val\\$_n" ;;
+            esac
+            _i=$((_i+2))
+          elif [[ "$_c" == '"' ]]; then
+            _closed=1; _i=$((_i+1)); break
+          else
+            _val="$_val$_c"; _i=$((_i+1))
+          fi
+        done
+        (( _closed == 1 )) || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        _rest="${_rest:_i}"
+        while [[ "$_rest" == " "* || "$_rest" == $'\t'* ]]; do _rest="${_rest:1}"; done
+        [[ -z "$_rest" || "$_rest" == "#"* ]] || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        [[ -n "$_val" ]] || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        _st=scalar; continue ;;
+      "'"*)
+        _val=""; _i=1; _closed=0
+        while (( _i < ${#_rest} )); do
+          _c="${_rest:_i:1}"
+          if [[ "$_c" == "'" ]]; then
+            if [[ "${_rest:_i+1:1}" == "'" ]]; then _val="$_val'"; _i=$((_i+2)); continue; fi
+            _closed=1; _i=$((_i+1)); break
+          fi
+          _val="$_val$_c"; _i=$((_i+1))
+        done
+        (( _closed == 1 )) || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        _rest="${_rest:_i}"
+        while [[ "$_rest" == " "* || "$_rest" == $'\t'* ]]; do _rest="${_rest:1}"; done
+        [[ -z "$_rest" || "$_rest" == "#"* ]] || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        [[ -n "$_val" ]] || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        _st=scalar; continue ;;
+      *)
+        _val="$_rest"
+        case "$_val" in *[[:space:]]#*) _val="${_val%%[[:space:]]#*}" ;; esac
+        while [[ "$_val" == *" " ]]; do _val="${_val% }"; done
+        while [[ "$_val" == *$'\t' ]]; do _val="${_val%$'\t'}"; done
+        [[ -n "$_val" ]] || { printf 'unparsable\tvalue-invalid\n'; return 0; }
+        _st=scalar; continue ;;
+    esac
+  done < "$f"
+  if [[ "$_st" == block ]]; then yml_dump_block "$_fold" "$_chomp" "$_blk"; return 0; fi
+  if [[ "$_st" == scalar ]]; then printf 'ok\t%s\n' "$_val"; return 0; fi
+  (( _misplaced == 1 )) && { printf 'unparsable\tmisplaced\n'; return 0; }
+  printf 'absent\t\n'
+}
+
+# v3.76.0 (CHG-100, REQ-1117): 通道状态机器可见——唯一写点，失败 fail-open。
+# command 的换行折叠为空格（JSON 单行约束）；exit_code 用 null 表示未执行。
+# DES-1890 口径：BASH_VERSION + uname -sm + **yml sha256 前 12 位**（缺第三段则
+# 状态档无法回答"这条判定对应哪一版 yml"——排障第一问，独立评审 F15）。
+channel_fingerprint() {
+  local y="none"
+  if [[ -f "$repo_root/.agent-governance.yml" ]]; then
+    y=$(sha256_file "$repo_root/.agent-governance.yml" 2>/dev/null) || y=""
+    [[ -n "$y" ]] || y="unhashed"
+    y="${y:0:12}"
+  fi
+  printf '%s/%s/yml:%s' "${BASH_VERSION%%(*}" "$(uname -sm 2>/dev/null | tr -d '\n')" "$y"
+}
+
+# 换行**折叠为空格**（不是删除——独立评审 F10：删掉会把多行命令粘成
+# `bash a.shbash b.sh`，与真实执行值不符）。
+json_escape() { printf '%s' "$1" | tr '\t' ' ' | tr '\n' ' ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'; }
+
+write_verify_channel() { # <state> <source> <command> <exit_code-json> <reason>
+  local st="$1" src="$2" cmd="$3" ec="$4" reason="$5" out
+  out="$repo_root/.agent-state/verify-channel.json"
+  mkdir -p "$repo_root/.agent-state" 2>/dev/null || return 0
+  printf '{"state":"%s","source":"%s","command":"%s","exit_code":%s,"reason":"%s","env_fingerprint":"%s","generated_at":"%s","head":"%s"}\n' \
+    "$(json_escape "$st")" "$(json_escape "$src")" "$(json_escape "$cmd")" "$ec" \
+    "$(json_escape "$reason")" "$(json_escape "$(channel_fingerprint)")" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$(json_escape "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || echo '')")" \
+    > "$out" 2>/dev/null \
+    || echo "agent-gate: note — 无法写 ${out}（fail-open，不阻断交付）" >&2
+  return 0
+}
+
+# v3.76.0 (CHG-100, REQ-1118): 通道证据行 → 活跃变更 05。语义 = **单行受控覆盖**
+# （最近一次判定），不是无界追加：每行都带 UTC 时间戳，`grep -qF` 永不命中，
+# 无界追加会把 05 涨成噪声（独立评审 F5）。同时 **保留 05 的 mtime**——冒烟证据
+# 时效窗（GATE-E111）判定的正是 05 的 mtime，通道证据不得把它刷新成"刚冒烟过"
+# （独立评审 F4）。无活跃变更指针/无 05 时静默跳过（fail-open，不新建指针）。
+append_verify_evidence() { # <line>（单行；调用端负责折叠换行）
+  local line="$1" af id dir f ref tmp
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$af" && -s "$af" ]] || return 0
+  id=$(tr -d '[:space:]' < "$af" 2>/dev/null || true)
+  [[ -n "$id" ]] || return 0
+  dir=$(change_dir "$id" 2>/dev/null || true)
+  [[ -n "$dir" && -d "$dir" ]] || return 0
+  f="$dir/05-test-results.md"
+  [[ -s "$f" ]] || return 0
+  ref="$f.time-ref"; tmp="$f.tmp.$$"
+  cp -p "$f" "$ref" 2>/dev/null || ref=""
+  grep -v -e '- 通道自检证据：' -e '- 通道未验证（' "$f" > "$tmp" 2>/dev/null || cp "$f" "$tmp" 2>/dev/null || return 0
+  printf '%s\n' "$line" >> "$tmp" 2>/dev/null || { rm -f "$tmp" "$ref"; return 0; }
+  [[ -n "$ref" ]] && touch -r "$ref" "$tmp" 2>/dev/null
+  mv "$tmp" "$f" 2>/dev/null || { rm -f "$tmp" "$ref"; return 0; }
+  [[ -n "$ref" ]] && rm -f "$ref"
+  return 0
+}
+
 validate_stop() {
   local id
   working_code_changed || return 0
@@ -1746,34 +1988,89 @@ validate_stop() {
   # commit face (the commit lane is covered in validate_diff).
   check_smoke_gate "$( { changed_files staged 2>/dev/null; git show --name-only --format= HEAD 2>/dev/null; } | sort -u )"
   # CHG-012 / FU: verification command source chain — env (highest) →
-  # .agent-governance.yml ci.verification_command (placeholder skipped) → unset
-  # (verify skipped; same fail-open semantics as before). Two-phase per design:
+  # .agent-governance.yml ci.verification_command → absent. Two-phase per design:
   # the file/config is the guard for "is there a command", bash is the assertion.
+  # v3.76.0 (CHG-100, REQ-1115~1119): 通道从"静默可能不生效"改为**四态显式**——
+  #   absent（键不存在）/ placeholder（安装占位符）/ tampered（yml 在在途改动中，
+  #   CHG-015 anti-tamper）/ unparsable（值无法按声明方言解析，见 yml_scalar 头注释）
+  #   前三态跳过并打印显式 reason；unparsable **硬 fail-closed**（GATE-E118）——
+  #   "看起来配了实际没跑"不得静默（另一仓事故的规范侧根因，外部编号不入载荷）。
+  #   判定结果落 .agent-state/verify-channel.json（session-gate status 读取）；
+  #   真实执行/跳过的证据行落活跃变更 05（append_verify_evidence）。
+  #   anti-tamper 的合法维护路径：yml 在途时用 AGENT_GUARD_VERIFY_COMMAND + 09
+  #   「重要上下文」登记（状态 tampered+env）。
   # v3.28.0: AGENT_GUARD_SKIP_VERIFY=1 short-circuits the command — session-time
   # soft checks (session-gate idle) must not run a full regression (mvn test …)
   # on every turn; the real delivery line (Claude Stop hook / pre-commit / CI)
   # never sets it and keeps the full bar.
-  local vcmd="${AGENT_GUARD_VERIFY_COMMAND:-}" vsrc="env" yml_tampered=0
+  local vcmd="${AGENT_GUARD_VERIFY_COMMAND:-}" vsrc="" vstate="" vreason="" vraw="" vfile=".agent-governance.yml" yml_pending=0 vexit=0
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+     && [[ -n "$(git status --porcelain -- "$vfile" 2>/dev/null)" ]]; then yml_pending=1; fi
   if [[ "${AGENT_GUARD_SKIP_VERIFY:-}" == "1" ]]; then
+    vstate="skipped"; vreason="AGENT_GUARD_SKIP_VERIFY=1（会话期软执法；真实交付线不设）"
+    # F2（既有存量，当批闭环）：跳过分支持有 env 命令时必须**清空 vcmd**——否则
+    # 后面的 `[[ -n "$vcmd" ]]` 仍会执行它，会话期 idle（session-gate 每轮设
+    # SKIP_VERIFY=1）就会跑全量回归并在失败时 rc 2，与"软执法不跑"直接矛盾。
+    vcmd=""
     echo "agent-gate: verification command skipped (AGENT_GUARD_SKIP_VERIFY=1, session-time soft check) — full bar still enforced at staged/CI"
-  elif [[ -z "$vcmd" && -f ".agent-governance.yml" ]]; then
+  elif [[ -n "$vcmd" ]]; then
+    vsrc="env"
+    if [[ "$yml_pending" == 1 ]]; then
+      vstate="tampered+env"
+      vreason="在途 yml + env 通道（合法路径，须在 09「重要上下文」登记）"
+    else
+      vstate="env"
+    fi
+  elif [[ -f "$vfile" && "$yml_pending" == 1 ]]; then
     # CHG-015 anti-tamper: if the yml itself is part of the pending change
     # (modified/untracked), its command must NOT auto-execute — a PR could
     # otherwise inject arbitrary commands into the reviewer's stop/ci hook.
     # Committed versions are trusted (standard repo-trust model).
-    if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-       && [[ -n "$(git status --porcelain -- .agent-governance.yml 2>/dev/null)" ]]; then
-      yml_tampered=1
-      echo "agent-gate: verification command from .agent-governance.yml skipped — the file is modified in the pending change (anti-tamper, CHG-015); set AGENT_GUARD_VERIFY_COMMAND to run verification"
-    else
-      vcmd=$(sed -nE 's/^[[:space:]]*verification_command:[[:space:]]*"(.+)".*/\1/p' .agent-governance.yml 2>/dev/null | head -n 1)
-      vsrc=".agent-governance.yml"
-      case "$vcmd" in ""|*"<replace"*) vcmd=""; vsrc="" ;; esac
+    vstate="tampered"
+    vreason="$vfile 在途（anti-tamper，CHG-015）：设 AGENT_GUARD_VERIFY_COMMAND 并在 09「重要上下文」登记后重跑"
+    echo "agent-gate: verification command from $vfile skipped — the file is modified in the pending change (anti-tamper, CHG-015); set AGENT_GUARD_VERIFY_COMMAND to run verification"
+  else
+    vraw=$(yml_scalar "$vfile" verification_command)
+    case "$vraw" in
+      absent*)     vstate="absent";     vreason="$vfile 未声明 ci.verification_command（合法态：本仓库未配置验证通道）" ;;
+      unparsable*)
+        vstate="unparsable"
+        case "${vraw#*$'\t'}" in
+          misplaced) vreason="$vfile 的 ci.verification_command 位置非法（必须位于 ci: 段内、与其它 ci 子键同缩进；顶层、其它段或其它键块标量正文里的同名行不被接受）" ;;
+          multiline) vreason="$vfile 的 ci.verification_command 是多行裸标量（不支持；请写双引号单行，或用块标量 | / >）" ;;
+          *)         vreason="$vfile 的 ci.verification_command 无法按声明方言解析（空值 / 未闭合引号 / 非法块标量）" ;;
+        esac ;;
+      ok*)         vcmd="${vraw#*$'\t'}"; vsrc="$vfile"
+                   case "$vcmd" in
+                     *"<replace"*) vcmd=""; vsrc=""; vstate="placeholder"
+                                   vreason="$vfile 仍为安装占位符（合法态：等待项目填测试命令）" ;;
+                     *) vstate="yml" ;;
+                   esac ;;
+      *)           vstate="unparsable"; vreason="$vfile 的 ci.verification_command 读取异常" ;;
+    esac
+    if [[ "$vstate" == "unparsable" ]]; then
+      write_verify_channel "$vstate" "" "" "null" "$vreason"
+      die "GATE-E118: cannot finish: ${vreason}；修复示例：ci: / verification_command: \"bash tests/run-tests.sh\"（或设 AGENT_GUARD_VERIFY_COMMAND）"
     fi
   fi
   if [[ -n "$vcmd" ]]; then
     echo "agent-gate: verification command from $vsrc: $vcmd"
-    bash -lc "$vcmd" || die "GATE-E64: cannot finish: verification command failed (from $vsrc): $vcmd"
+    bash -lc "$vcmd" || vexit=$?
+  fi
+  # F8：会话期软执法（skipped）**不落盘**——否则每轮 idle 都用 state=skipped 覆盖
+  # 上一次真实判定，`session-gate status` 将长期显示 skipped（REQ-1117 要回答的
+  # 正是"到底跑没跑"）。跳过本身仍是显式行为：上面已 echo reason。
+  [[ "$vstate" == "skipped" ]] || write_verify_channel "$vstate" "$vsrc" "$vcmd" "$vexit" "$vreason"
+  if [[ "$vstate" == "skipped" ]]; then
+    : # 会话期软执法不写 05（每轮都会跑到这里，写 05 会刷屏）
+  elif [[ -n "$vcmd" ]]; then
+    local vcmd1="${vcmd//$'\n'/ }"
+    append_verify_evidence "- 通道自检证据：${vcmd1}；退出码 ${vexit}；环境指纹 $(channel_fingerprint)；$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  else
+    append_verify_evidence "- 通道未验证（${vstate}：${vreason}）"
+  fi
+  if [[ "$vexit" != "0" ]]; then
+    die "GATE-E64: cannot finish: verification command failed (from $vsrc): $vcmd"
   fi
 }
 
@@ -2241,6 +2538,41 @@ case "$command" in
     printf 'agent-gate: check-confirm: %s\n' "$CONFIRM_REASON" >&2
     exit 1
     ;;
+  verify-channel)
+    # v3.76.0 (CHG-100, REQ-1116/1117): read-only 验证通道探针（check-confirm
+    # 同族）。**不执行**命令、**不写**状态文件，只报四态判定：exit 0 = 有可用
+    # 命令或合法跳过（absent/placeholder/tampered/环境变量）；exit 2 = unparsable
+    # （GATE-E118 的干跑形态，供 T61 方言矩阵与人工排查使用）。
+    _vc_file=".agent-governance.yml"
+    _vc_flag=""
+    if git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+       && [[ -n "$(git status --porcelain -- "$_vc_file" 2>/dev/null)" ]]; then _vc_flag="pending"; fi
+    if [[ -n "${AGENT_GUARD_VERIFY_COMMAND:-}" ]]; then
+      _vc_state="env"
+      [[ "$_vc_flag" == "pending" ]] && _vc_state="tampered+env"
+      echo "agent-gate: verify-channel state=$_vc_state source=env command=${AGENT_GUARD_VERIFY_COMMAND}"
+    elif [[ -f "$_vc_file" && "$_vc_flag" == "pending" ]]; then
+      echo "agent-gate: verify-channel state=tampered source=$_vc_file reason=yml-modified-in-pending-change"
+    else
+      _vc_raw=$(yml_scalar "$_vc_file" verification_command)
+      case "$_vc_raw" in
+        absent*)     echo "agent-gate: verify-channel state=absent reason=ci.verification_command-not-declared" ;;
+        unparsable*) _vc_detail="${_vc_raw#*$'\t'}"
+                     case "$_vc_detail" in
+                       misplaced) _vc_detail="misplaced-key(must-live-under-ci-at-sibling-indent)" ;;
+                       multiline) _vc_detail="multiline-plain-scalar(use-one-quoted-line-or-block-scalar)" ;;
+                       *)         _vc_detail="dialect-parse-failed(empty-value/unterminated-quote/invalid-block-indicator)" ;;
+                     esac
+                     echo "agent-gate: verify-channel state=unparsable reason=$_vc_detail" >&2; exit 2 ;;
+        ok*)         _vc_cmd="${_vc_raw#*$'\t'}"
+                     case "$_vc_cmd" in
+                       *"<replace"*) echo "agent-gate: verify-channel state=placeholder source=$_vc_file" ;;
+                       *) echo "agent-gate: verify-channel state=yml source=$_vc_file command=$_vc_cmd" ;;
+                     esac ;;
+        *)           echo "agent-gate: verify-channel state=unparsable reason=read-failed" >&2; exit 2 ;;
+      esac
+    fi
+    ;;
   check-smoke)
     # v3.71.0 (CHG-046, REQ-1088): read-only smoke-gate probe (check-confirm
     # sibling). Exit 0 = pass; 1 = violation (GATE-E111 reason on stderr);
@@ -2344,6 +2676,7 @@ Usage:
   scripts/agent-gate --stage ci [--base ref]
   scripts/agent-gate --stage commit-msg <message-file>
   scripts/agent-gate check-confirm <change-id>   # exit 0/1/2, read-only (v3.55.0)
+  scripts/agent-gate verify-channel              # exit 0/2, read-only 通道探针 (v3.76.0)
   scripts/agent-gate check-smoke                 # exit 0/1/2, read-only (v3.71.0)
   scripts/agent-gate preflight <change-id>       # exit 0/1/2, read-only begin-artifact probe, collects all anchor violations in one run (v3.72.0)
 

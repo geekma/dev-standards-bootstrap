@@ -94,6 +94,17 @@ at_least() { # name min file pattern
   fi
 }
 
+# v3.76.0 (CHG-100, REQ-1121, 候选 8)：结构性 pin 必须钉住**唯一**行。`at_least` 的
+# >= 语义对"钉结构行"是恒真陷阱：同一字面若在别处也出现（注释/条件块/兄弟行），删掉
+# 真结构行后计数仍 >=1，断言不会变红（CHG-099 实证：A46 曾钉「本次引入|既有存量」
+# 字面，而该字面在模板条件注释里本就存在）。结构性 pin（整行锚定）一律用本 helper：
+# 计数必须恰好 1——0 = 结构行被删/未落地，>1 = 没钉住具体结构，两者都是红。
+at_least_unique() { # name file pattern -> exactly one matching line
+  local name="$1" file="$2" pattern="$3" c
+  c=$(grep_count "$file" "$pattern")
+  report "$name" 1 "$c"
+}
+
 # ===================== PART A：永久结构不变量（跨版本有效） =====================
 
 # ---------- 版本链（单一权威：规范页脚） ----------
@@ -598,6 +609,8 @@ report "A24 quick-start surface is git-tracked (CHG-020)" 0 "$a24_missing"
 #   门禁行为已由 run-tests golden case 守护；此处锁"实现形态"，防行为被静默回退成弱检查
 #   （BUG-001 同族：检查模式弱于其声称语义）。取值用 grep -F 固定串，防正则元字符歧义。
 GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
+# v3.76.0 (CHG-100)：验证通道方言声明的唯一权威载体（yml 模板 ci 段注释，A43 单源）。
+YML_TPL="$ROOT/resources/templates/agent-governance.yml"
 # v3.18.0：FU-015 的闭环判定从"changelog 文件存在"细化为两种形态——独立目录仍看文件，
 # 批次目录看**本变更自己的 `## <id>` 小节**（同批共享 changelog，"文件存在"会把后加入的
 # 变更一起判为已关闭）。故此处由"恰好 1 处"改为"两种形态各至少 1 处"：恒等断言会把
@@ -706,6 +719,14 @@ at_least "A12 change dynamic constraints present (REQ-058)" 1 "$STD" '变更动�
 # A13 安装器自动接线锚点（CHG-012）
 at_least "A13 bootstrap auto-wires hooksPath (CHG-012)" 1 "$ROOT/scripts/bootstrap.sh" 'auto-wired   git config core.hooksPath'
 at_least "A13 gate reads yml verification fallback (CHG-012)" 1 "$GATE_TPL" 'agent-governance.yml'
+# v3.76.0 (CHG-100, REQ-1121)：A13 由"子串出现即绿"升级为**语义断言**——验证通道必须
+# ①只有唯一读取器（旧 sed 一次性解析已删，禁止回退成第二解析权威）②有 golden 方言矩阵
+# ③有 fail-closed 码。子串计数对"解析仍然只认双引号"是瞎的（CHG-100 根因即此）。
+report "A13 legacy sed channel parser is gone (CHG-100)" 0 "$(grep -cF 's/^[[:space:]]*verification_command:' "$GATE_TPL" 2>/dev/null || true)"
+at_least_unique "A13 single channel reader is defined once (CHG-100)" "$GATE_TPL" '^yml_scalar() { # <file> <key>'
+# BRE 口径（grep_count 不是 -E）：分组/交替在这里是**字面**——本行初稿用过 `TC-13(3|4)…`
+# 直接计数 0（自证：检测器口径必须与实现同族）。方括号字符类是 BRE 安全写法。
+at_least "A13 golden dialect matrix covers the declared dialect (CHG-100)" 8 "$ROOT/tests/run-tests.sh" 'T61 TC-13[34][0-9]'
 
 # A14 升级模式锚点（CHG-013）
 at_least "A14 bootstrap upgrade mode present (CHG-013)" 1 "$ROOT/scripts/bootstrap.sh" '--upgrade'
@@ -1028,7 +1049,13 @@ at_least "A39 standards pins the bare-key ban" 1 "$STD" '禁止 DB 主键'
 at_least "A39 standards pins the usability UAT section" 1 "$STD" '用户可用性验收'
 report "A39 03.6-ui-spec template exists" 1 "$([[ -s "$ROOT/resources/templates/entry/03.6-ui-spec.md" ]] && echo 1 || echo 0)"
 report "A39 P12 product-context template exists" 1 "$([[ -s "$ROOT/resources/templates/project/P12-product-context.md" ]] && echo 1 || echo 0)"
-report "A39 schema registers the UX clauses (R44-R50)" 1 "$(a17_at_least_1 "$(grep -c -E '^\| R4[4-9] \||^\| R50 \|' "$ROOT/resources/CLAUSE_REGISTRY.md" || true)")"
+# v3.76.0 (CHG-100, REQ-1121)：本行原写 `'^\| R4[4-9] \||^\| R50 \|'`，配的是
+# `grep -c -E`（**ERE**）——那里 `\|` 是**字面管道**，语义正确（已实测计数 7）。
+# 改用 `[|]` 字符类**不是修 bug**，而是让模式在 BRE/ERE 两种口径下同义（`\|` 在
+# ERE 属未定义行为，POSIX 未规定；`[|]` 无歧义）。同批真正的"恒真陷阱"在 BRE 面，
+# 由 A47 tripwire 覆盖（本批初版 tripwire 曾把本行误报为恒真——规则口径与检测器
+# 口径不同族，评审 F11 同族教训，当批已修正）。
+report "A39 schema registers the UX clauses (R44-R50)" 1 "$(a17_at_least_1 "$(grep -c -E '^[|] R4[4-9] [|]|^[|] R50 [|]' "$ROOT/resources/CLAUSE_REGISTRY.md" || true)")"
 
 # ── PART A40: UX lane conditionality (v3.67.0 erratum CHG-091) ────────────────
 # 防反向回退：无 UX/UI 需求的变更不强加——上下文包/UJ 的条件措辞（触发面 + 未命中
@@ -1265,7 +1292,57 @@ at_least "A46 uninstall removes the rescore workflow (CHG-099)" 1 "$ROOT/resourc
 at_least "A46 SKILL names the eval layer (CHG-099)" 1 "$ROOT/SKILL.md" 'eval-cases'
 at_least "A46 README (EN) names the eval layer (CHG-099)" 1 "$ROOT/README.md" 'eval-cases'
 at_least "A46 README (zh) names the eval layer (CHG-099)" 1 "$ROOT/README.zh-CN.md" 'eval-cases'
-at_least "A46 golden suite registers the T60 section (CHG-099)" 1 "$ROOT/tests/run-tests.sh" 'T59 T60)'
+at_least "A46 golden suite registers the T60 section (CHG-099)" 1 "$ROOT/tests/run-tests.sh" 'T59 T60 T61)'
+
+# A47 pin 唯一性 + BRE 语义 tripwire（v3.76.0，CHG-100/REQ-1121，候选 8）：把 CHG-099
+# 两条同族教训机校化。①结构性 pin（整行锚定）必须钉住**唯一**行——见 at_least_unique
+# （`>=` 语义下删掉真结构行仍可能命中注释/兄弟行，恒真陷阱）。
+# ②**BRE 口径**：`at_least`/`at_least_unique`/`grep_count`/`grep -c`（无 `-E`）走 BRE，
+# `\|` 是**交替**而非字面管道——交替里任何**空分支**（行首 `^\|` / 双连 `\|\|` /
+# 尾随 `\|`）都匹配全文件（恒真复现）；字面管道必须写 `[|]`。
+# 注：`grep -c -E`/`grep -cE`（ERE）里 `\|` 是**字面管道**，合法——不扫（独立评审
+# F11：扫描面必须与检测器口径同族，否则既漏检又假阳）。
+# 扫描面=本脚本非注释代码行里"最后一个单引号段"（=模式实参），跳过本 tripwire 自身。
+a47_bre=0
+while IFS= read -r a47_l; do
+  [[ -n "$a47_l" ]] || continue
+  case "$a47_l" in *a47_*) continue ;; esac
+  a47_pat="${a47_l%\'*}"; a47_pat="${a47_pat##*\'}"
+  [[ "$a47_pat" == *'\|'* ]] || continue
+  # 把模式按 `\|` 切成分支：**任一分支为空或只含锚点**（`` / `^` / `$`）即恒真。
+  # 穷举式（不是只查首尾）——`a\|^\|b` 中间的空锚分支同样要红（独立评审 F11）。
+  a47_rest="$a47_pat"
+  while :; do
+    a47_br="${a47_rest%%'\|'*}"
+    case "$a47_br" in ''|'^'|'$') a47_bre=$(( a47_bre + 1 )); break ;; esac
+    [[ "$a47_rest" == *'\|'* ]] || break
+    a47_rest="${a47_rest#*'\|'}"
+  done
+done < <(grep -E 'at_least|grep_count|grep -c' "$ROOT/tests/audit-standards-src.sh" 2>/dev/null \
+           | grep -vE 'grep -c[[:space:]]*-E|grep -cE' | grep -v '^[[:space:]]*#' || true)
+report "A47 no BRE alternation with an empty branch (CHG-100)" 0 "$a47_bre"
+at_least_unique "A47 bootstrap snapshots the yml before the layers (CHG-100)" "$ROOT/scripts/bootstrap.sh" '^YML_PRE_STATE="absent"$'
+at_least "A47 bootstrap warns when the channel is paused (CHG-100)" 1 "$ROOT/scripts/bootstrap.sh" 'verification channel paused'
+at_least_unique "A47 E118 die site is unique in the gate (CHG-100)" "$GATE_TPL" '^      die "GATE-E118: cannot finish:'
+at_least_unique "A47 channel state writer is defined once (CHG-100)" "$GATE_TPL" '^write_verify_channel() { # <state> <source> <command> <exit_code-json> <reason>$'
+at_least_unique "A47 session-gate channel line is defined once (CHG-100)" "$ROOT/scripts/session-gate.sh" '^channel_line() {$'
+at_least_unique "A47 yml template declares the dialect block once (CHG-100)" "$YML_TPL" '^  # 方言（v3.76.0）'
+at_least_unique "A47 registry indexes the new gate code (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E118 '
+at_least_unique "A47 registry registers the new clause row (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R62 '
+at_least_unique "A47 golden section T61 is registered once (CHG-100)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T61)$'
+at_least "A47 suite clears the red archive on a full green run (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'rm -f "\$ROOT/\.agent-state/last-suite-red\.txt"'
+at_least "A47 channel probe is exposed as a read-only subcommand (CHG-100)" 1 "$GATE_TPL" 'verify-channel)'
+# 整改面（独立评审 F1~F15）：新不变量各自钉一行，防回退。
+at_least_unique "A47 channel evidence writer is defined once (CHG-100)" "$GATE_TPL" '^append_verify_evidence() {'
+at_least "A47 evidence append preserves the 05 mtime (CHG-100)" 1 "$GATE_TPL" 'touch -r "\$ref" "\$tmp"'
+at_least "A47 evidence lines are replaced, not appended unboundedly (CHG-100)" 1 "$GATE_TPL" 'grep -v -e'
+at_least "A47 skipped runs never write the channel state (CHG-100)" 1 "$GATE_TPL" '\[\[ "\$vstate" == "skipped" \]\] || write_verify_channel'
+at_least "A47 channel fingerprint carries the yml digest (CHG-100)" 1 "$GATE_TPL" 'yml:%s'
+at_least "A47 reader/probe carry the misplaced-key detail (CHG-100)" 2 "$GATE_TPL" 'misplaced'
+at_least "A47 the BRE tripwire ignores ERE counts (CHG-100)" 1 "$ROOT/tests/audit-standards-src.sh" 'grep -vE .grep -c\[\[:space:\]\]\*-E'
+at_least "A47 standards enumerates the four states correctly (CHG-100)" 1 "$STD" '四态 absent/placeholder/tampered/unparsable'
+at_least "A47 stop lane rejects an unparsable channel with rc 2 (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'TC-1339b stop lane rejects an unparsable channel'
+at_least "A47 skip-verify behaviour is pinned (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'TC-1341b SKIP_VERIFY does not execute'
 
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层
