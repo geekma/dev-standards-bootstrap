@@ -3472,10 +3472,10 @@ section_T48() {
 # CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
 # footer labels no longer spell a version literal — a label carrying a stale
 # number was itself a drift source (renamed to "carries the current version").
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.79.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.79.1' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.79.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.79.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.79.1' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.79.1' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.

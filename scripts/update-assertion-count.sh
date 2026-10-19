@@ -72,7 +72,7 @@ if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]] && command -v suite_
     r_cur=$(suite_tree_fingerprint "$ROOT")
     if [[ -z "$r_fp" || -z "$r_cur" ]]; then
       printf 'update-assertion-count: receipt tree-fingerprint missing (%s) — embedded full run\n' \
-        "$([[ -z "$r_fp" ]] && echo "receipt field (pre-v3.79.0 schema)" || echo "worktree fingerprint")" >&2
+        "$([[ -z "$r_fp" ]] && echo "receipt field (pre-v3.79.0 schema or lib absent at emit)" || echo "worktree fingerprint")" >&2
     elif [[ "$r_fp" != "$r_cur" ]]; then
       printf 'update-assertion-count: receipt tree-fingerprint mismatch (worktree changed since the run) — embedded full run\n' >&2
     else
