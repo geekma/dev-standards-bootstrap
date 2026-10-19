@@ -1292,7 +1292,7 @@ at_least "A46 uninstall removes the rescore workflow (CHG-099)" 1 "$ROOT/resourc
 at_least "A46 SKILL names the eval layer (CHG-099)" 1 "$ROOT/SKILL.md" 'eval-cases'
 at_least "A46 README (EN) names the eval layer (CHG-099)" 1 "$ROOT/README.md" 'eval-cases'
 at_least "A46 README (zh) names the eval layer (CHG-099)" 1 "$ROOT/README.zh-CN.md" 'eval-cases'
-at_least "A46 golden suite registers the T60 section (CHG-099)" 1 "$ROOT/tests/run-tests.sh" 'T59 T60 T61)'
+at_least "A46 golden suite registers the T62 section (CHG-101)" 1 "$ROOT/tests/run-tests.sh" 'T60 T61 T62)'
 
 # A47 pin 唯一性 + BRE 语义 tripwire（v3.76.0，CHG-100/REQ-1121，候选 8）：把 CHG-099
 # 两条同族教训机校化。①结构性 pin（整行锚定）必须钉住**唯一**行——见 at_least_unique
@@ -1329,7 +1329,7 @@ at_least_unique "A47 session-gate channel line is defined once (CHG-100)" "$ROOT
 at_least_unique "A47 yml template declares the dialect block once (CHG-100)" "$YML_TPL" '^  # 方言（v3.76.0）'
 at_least_unique "A47 registry indexes the new gate code (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E118 '
 at_least_unique "A47 registry registers the new clause row (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R62 '
-at_least_unique "A47 golden section T61 is registered once (CHG-100)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T61)$'
+at_least_unique "A47 golden section T62 is registered once (CHG-101)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T62)$'
 at_least "A47 suite clears the red archive on a full green run (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'rm -f "\$ROOT/\.agent-state/last-suite-red\.txt"'
 at_least "A47 channel probe is exposed as a read-only subcommand (CHG-100)" 1 "$GATE_TPL" 'verify-channel)'
 # 整改面（独立评审 F1~F15）：新不变量各自钉一行，防回退。

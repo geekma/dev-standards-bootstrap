@@ -84,6 +84,7 @@
 | R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 |
 | R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 |
 | R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 |
+| R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理与增量读（v3.77.0，CHG-101，REQ-1124/1125）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 

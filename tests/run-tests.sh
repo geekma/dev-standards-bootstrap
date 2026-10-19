@@ -3079,11 +3079,11 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  # v3.76.0 (CHG-100): 62 rows — R62（验证通道方言与四态）joins the registry.
-  report "T39 registry row count" 62 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  # v3.77.0 (CHG-101): 63 rows — R63（调用批处理与增量读）joins the registry.
+  report "T39 registry row count" 63 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
-  for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:11"; do
+  for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:12"; do
     t39_lab="${t39_t%%:*}"; t39_min="${t39_t##*:}"
     t39_n=$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' -v l="$t39_lab" '{gsub(/[[:space:]]/,"",$5); if($5==l)n++} END{print n+0}')
     report "T39 type minimum $t39_lab >= $t39_min" 1 "$([[ "$t39_n" -ge "$t39_min" ]] && echo 1 || echo 0)"
@@ -3455,10 +3455,11 @@ section_T48() {
 # CHG-096: TC-1073 version pins recalibrated v3.72.0→v3.73.0 (four-chain bump).
 # CHG-098: TC-1073 pins recalibrated v3.73.0→v3.74.0 (four-chain bump).
 # CHG-100: TC-1073 pins recalibrated v3.75.0→v3.76.0 (four-chain bump).
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.76.0' "$ROOT/SKILL.md")"
+# CHG-101: TC-1073 pins recalibrated v3.76.0→v3.77.0 (four-chain bump).
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.77.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.75.0" 1 "$(grep -cF '规范版本：v3.76.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.75.0" 1 "$(grep -cF '当前对应规范版本：v3.76.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries v3.75.0" 1 "$(grep -cF '规范版本：v3.77.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries v3.75.0" 1 "$(grep -cF '当前对应规范版本：v3.77.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3699,7 +3700,7 @@ section_T50() {
   # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
   # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
   # CHG-100: tail recalibrated T60→T61 (验证通道方言与四态 golden 节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T61 ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T62 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -5331,8 +5332,63 @@ section_T61() {
   report "T61 TC-1347 gate + session-gate mirrors parse (bash -n)" 0 $?
 }
 
+section_T62() {
+# --------------------------------- T62 edit/write 密度遥测（v3.77.0，CHG-101）
+# TC↔REQ：TC-1110~1113（REQ-1127/SC-1101~1106）。夹具仿 T58（templates 副本直装）。
+new_repo
+SESSION_GATE_SRC="$ROOT/resources/templates/session-gate.sh"
+if [[ -f "$SESSION_GATE_SRC" ]]; then
+  cp "$SESSION_GATE_SRC" scripts/session-gate.sh
+  chmod +x scripts/session-gate.sh
+  # TC-1110 (SC-1101 positive): edit/write/MultiEdit 族计数；bash/grep 不计
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  bash scripts/session-gate.sh count tool edit >/dev/null 2>&1
+  check_output "T62 TC-1349 edit counted" '"edits":1' "$(cat .agent-state/session-tool-stats.json)"
+  bash scripts/session-gate.sh count tool Write >/dev/null 2>&1
+  bash scripts/session-gate.sh count tool multiedit >/dev/null 2>&1
+  check_output "T62 TC-1349 write+MultiEdit counted (case-insensitive)" '"edits":3' "$(cat .agent-state/session-tool-stats.json)"
+  bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
+  bash scripts/session-gate.sh count tool grep >/dev/null 2>&1
+  check_output "T62 TC-1349 bash/grep not counted" '"edits":3' "$(cat .agent-state/session-tool-stats.json)"
+  # TC-1111 (SC-1102 boundary): default threshold 40 silent below / fires at 40
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  for i in $(seq 1 39); do bash scripts/session-gate.sh count tool edit >/dev/null 2>&1; done
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  if printf '%s' "$out" | grep -q "调用批处理"; then report "T62 TC-1350 below threshold stays silent at 39" 1 0; else report "T62 TC-1350 below threshold stays silent at 39" 0 0; fi
+  bash scripts/session-gate.sh count tool edit >/dev/null 2>&1
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  check_output "T62 TC-1350 yellow at threshold 40" "YELLOW.*调用批处理" "$out"
+  # TC-1112 (SC-1103): env override fires at 1
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  bash scripts/session-gate.sh count tool edit >/dev/null 2>&1
+  out=$(AGENT_GUARD_EDIT_LIMIT=1 bash scripts/session-gate.sh status 2>&1)
+  check_output "T62 TC-1351 env override fires at 1" "YELLOW.*调用批处理" "$out"
+  # TC-1113 (SC-1104): legacy stats JSON (no edits key) reads 0, no false yellow
+  printf '{"turns":3,"bash":1,"grep":0,"other":0,"total":1,"updated_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-tool-stats.json
+  bash scripts/session-gate.sh count tool edit >/dev/null 2>&1
+  check_output "T62 TC-1352 legacy schema migrates (edits reads 0 then 1)" '"edits":1' "$(cat .agent-state/session-tool-stats.json)"
+  rm -f .agent-state/session-gate-last.md # stale report yellow lines would leak into status cat
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  if printf '%s' "$out" | grep -q "调用批处理"; then report "T62 TC-1352 legacy schema no false yellow at 1" 1 0; else report "T62 TC-1352 legacy schema no false yellow at 1" 0 0; fi
+  # SC-1105: reset writes initial edits key
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  check_output "T62 TC-1353 reset writes edits:0" '"edits":0' "$(cat .agent-state/session-tool-stats.json)"
+  # SC-1106: emit wording + report file carries 09 registration line
+  for i in $(seq 1 40); do bash scripts/session-gate.sh count tool write >/dev/null 2>&1; done
+  out=$(bash scripts/session-gate.sh idle 2>&1 || true)
+  check_output "T62 TC-1354 idle yellow wording" "YELLOW.*调用批处理" "$out"
+  check_output "T62 TC-1354 report file carries 09 wording" "调用批处理.*登记 09" "$(cat .agent-state/session-gate-last.md 2>/dev/null || echo)"
+  # mirror consistency (source vs template) — same-file identity
+  cmp -s "$ROOT/scripts/session-gate.sh" "$SESSION_GATE_SRC"
+  report "T62 TC-1355 session-gate source/template byte-identical" 0 $?
+else
+  echo "SKIP T62: session-gate.sh absent — 跳过 edit/write 密度 golden cases"
+fi
+
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then

@@ -51,6 +51,11 @@
 #     不算违规）。
 #     阈值：AGENT_GUARD_SLEEP_POLL_LIMIT / AGENT_GUARD_FULL_TEST_LIMIT，默认均 2，
 #     达阈值在 idle/status 亮 YELLOW 并要求 09「重要上下文」登记（硬执法仍在 gate 层）。
+#   · edit/write 密度软执法（v3.77.0，CHG-101，REQ-1124/1127）：`count tool` 小写化
+#     工具名含 `edit` 或 `write` 子串（Edit/Write/MultiEdit 命名族）计入 `edits`
+#     （同步计入 other 总口径，既有读者不受影响）；阈值 AGENT_GUARD_EDIT_LIMIT 默认 40，
+#     达阈值 idle/status 亮 YELLOW 要求 09 登记。name-only 降级路径同样可用（不依赖
+#     cmd head）；旧 stats 文件缺 `edits` 键读 0（stat_get 既有兼容语义）。
 #
 # 零依赖：bash 3.2+、git；被调脚本缺失时降级为显式提示，不猜不编。
 set -uo pipefail
@@ -84,7 +89,7 @@ mkdir -p "$STATE_DIR"
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S; }
 
 reset_state() {
-  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
+  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"edits":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
   printf '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)" > "$WATER_FILE"
   # v3.63.0（REQ-1033，DES-1822）：会话起点标记——agent-gate begin 的 GATE-E89
   # 以「交付时刻晚于本会话起点」判定同会话交付后未换挡；新会话 start 重置起点后放行。
@@ -97,9 +102,9 @@ stat_get() { # <key> — 缺键（旧格式 stats 文件，CHG-096 前schema）�
   printf '%s' "${v:-0}"
 }
 
-stat_write() { # turns bash grep other sleep_polls full_suite total
-  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"updated_at":"%s"}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$(now_iso)" > "$STATS_FILE"
+stat_write() { # turns bash grep other sleep_polls full_suite total edits
+  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"edits":%s,"updated_at":"%s"}\n' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$(now_iso)" > "$STATS_FILE"
 }
 
 water_write() { # <turns>
@@ -209,6 +214,16 @@ stats_warnings() { # 软执法黄灯：idle/status 时提示，不阻断（硬�
     emit "session-gate: YELLOW — full-suite runs ${fs} >= ${flimit} (AGENTS.md 纪律 7 定向验证/全量回归)——模块/单测级验证先行，全量回归交门禁触发，直跑原因在 09「重要上下文」登记"
     report_add "- YELLOW: 全量回归直跑 ${fs} 次达阈值 ${flimit}（定向验证/全量回归）——原因登记 09"
   fi
+  # v3.77.0（CHG-101，REQ-1124/1127）：edit/write 族密度黄灯（软执法）——小步高频
+  # 读写同一形态 = 请求数 × 上下文水位乘数失控；提示合并批量，不阻断。
+  local e elimit
+  e=$(stat_get edits)
+  elimit="${AGENT_GUARD_EDIT_LIMIT:-40}"
+  case "$elimit" in ''|*[!0-9]*) elimit=40 ;; esac
+  if [[ "${e:-0}" -ge "$elimit" ]]; then
+    emit "session-gate: YELLOW — edit/write calls ${e} >= ${elimit} (AGENTS.md 纪律 12 调用批处理)——同文件多段合并一次 edit、独立命令 && 合并/并行，超标原因在 09「重要上下文」登记"
+    report_add "- YELLOW: edit/write 调用 ${e} 次达阈值 ${elimit}（调用批处理）——合并批量，原因登记 09"
+  fi
 }
 
 emit() { # 摘要进 stdout（Claude SessionStart 会把 stdout 注入上下文）+ 全文落盘
@@ -222,8 +237,8 @@ if [[ "$mode" == "count" ]]; then
       [[ -s "$STATS_FILE" ]] || reset_state
       t=$(stat_get turns); t=$(( ${t:-0} + 1 ))
       b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other)
-      sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total)
-      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "${tot:-0}"
+      sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total); e=$(stat_get edits)
+      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "${tot:-0}" "${e:-0}"
       water_write "$t"
       limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
       if [[ "$t" -ge "$limit" && $(( (t - limit) % 10 )) -eq 0 ]]; then
@@ -249,10 +264,11 @@ if [[ "$mode" == "count" ]]; then
       lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
       [[ -s "$STATS_FILE" ]] || reset_state
       t=$(stat_get turns); b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other)
-      sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total)
+      sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total); e=$(stat_get edits)
       case "$lc" in
         bash) b=$(( ${b:-0} + 1 )) ;;
         grep) g=$(( ${g:-0} + 1 )) ;;
+        *edit*|*write*) e=$(( ${e:-0} + 1 )); o=$(( ${o:-0} + 1 )) ;;
         *)    o=$(( ${o:-0} + 1 )) ;;
       esac
       if [[ -n "$cmd_head" ]]; then
@@ -263,7 +279,7 @@ if [[ "$mode" == "count" ]]; then
           fs=$(( ${fs:-0} + 1 ))
         fi
       fi
-      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "$(( ${tot:-0} + 1 ))"
+      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "$(( ${tot:-0} + 1 ))" "${e:-0}"
       ;;
     *) echo "usage: scripts/session-gate.sh count turn|count tool <name|-> [cmd-head]" >&2; exit 2 ;;
   esac

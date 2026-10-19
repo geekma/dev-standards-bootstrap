@@ -601,10 +601,11 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 > 管会话形态的 token 成本（§2.9.5 管调用单价；量纲：cache_read = 上下文水位 × 轮数，单会话不换挡即成本乘数失控）。
 
 - **单会话单主题**：只做一个变更/主题；禁止混排 bugfix 与 CHG 工作（串行拆会话）。
-- **换挡阈值**：超过 50 轮、主题切换、或上下文长期高位（窗口逼近上限 / cache_read 异常）时，必须 handoff 后开新会话，从磁盘重建状态（§2.16.1）；每次交付前在 09「重要上下文」做**换挡检查登记**（当前轮数/是否换挡/理由）。换挡线未 handoff 时 `gate begin` 拒开新变更（v3.38.0，`AGENT_GUARD_ALLOW_OVER_WATER=1` 豁免并登记；v3.63.0 起阈值比较统一 `-ge` 口径——第 50 轮整即达线，check 与 begin 两侧行为一致）；**会话红灯未清同样禁开新变更（v3.41.0）**——`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付的 09-changelog 时 `begin` 拒绝（`AGENT_GUARD_ALLOW_OVER_RED=1` 豁免并登记 09「重要上下文」）。
-- **事件型换挡触发（v3.63.0，REQ-1032，治"轮次不可观测"）**：任一变更 **commit 完成 / 交付宣言之后**，收尾动作必须包含 ①handoff 文档落盘（写 `docs/changes/<变更号>/handoff.md` 或活跃 BATCH 目录，承载跨会话交接状态）②显式换挡声明（本会话终结、后续开新会话）。不换挡继续在同会话开新变更：`gate begin` 以 **GATE-E89** 硬拦（v3.63.0，REQ-1033——`staged/stop` 落盘 `.agent-state/last-delivery.json`，begin 发现「交付发生在本会话存活期内且无新于交付的 handoff 文档」即拒，豁免 `AGENT_GUARD_ALLOW_NO_SHIFT=1` 须在 09「重要上下文」登记；会话起点标记 `session-started.json` 由 `session-gate.sh start` 写入，新会话自然放行；证据缺失 fail-open）。**豁免边界（同批次连续变更/用户明示继续）**：同日 BATCH 内连续变更经用户明示继续或 09 登记后可用豁免 env 放行；豁免不是默许，连续三次同会话免换挡按 §5 反模式登记。
-- **水位与遥测机校（v3.38.0 引入，v3.39.0 通用化；v3.58.0 工具级硬拦；v3.63.0 活性自检；v3.64.0 契约发现）**：`scripts/session-gate.sh` 是 harness 无关的计数通用层（bash 零依赖，适配器经 hook/事件转发计数，无适配器零开销跳过）。不变量三条：①begin 读磁盘水位超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即拒开新变更，豁免 `AGENT_GUARD_ALLOW_OVER_WATER=1` 须 09「重要上下文」登记；②`session-gate check` 工具级硬拦 fail-closed（无文件/未超/未装仓 exit 0，防线后移语义不变）；③活性自检失联可见不静默（YELLOW=adapter 未被客户端加载，须核查客户端日志）。机制细节（落盘文件、超线注入、新鲜度窗口 env、opencode 四段式契约发现、ADAPTER-E11/E12/E13、形状候选与沙箱仲裁、协议核对时点与最低兼容版本）**唯一权威 = `resources/templates/session-gate.sh` 与 `resources/templates/install-hook-adapter.sh` 头注释「机制细节（唯一权威）」块（v3.70.0，CHG-045 形状移出）**。
-- **勘探预算机校（v3.39.0）**：`session-gate idle/status` 从遥测文件读工具调用数——单会话 `bash` >20 亮黄灯（软执法），要求合并检索/下放子代理并在 09「重要上下文」登记超标原因（量化基线见 AGENTS.md 纪律节；纪律 4 勘探下放自本版起为默认强制）。**bash 预算分级口径（v3.60.0，FU-909）**：≤20 硬约束限于**编码/落点类**调用；baseline 校准、全量 suite、长复测类验证调用单列台账（04.5 记次数）不占额。
+- **换挡阈值**：超过 50 轮、主题切换、或上下文长期高位（窗口逼近上限 / cache_read 异常）时，必须 handoff 后开新会话，从磁盘重建状态（§2.16.1）；每次交付前在 09「重要上下文」做**换挡检查登记**（轮数/换挡/理由）。换挡线未 handoff 时 `gate begin` 拒开新变更（v3.38.0，`AGENT_GUARD_ALLOW_OVER_WATER=1` 豁免并登记；阈值比较 `-ge` 口径（v3.63.0）——第 50 轮整即达线，check/begin 一致）；**会话红灯未清同样禁开新变更（v3.41.0）**——`.agent-state/session-gate-last.md` 含 `GATE RED` 且新于最后交付的 09-changelog 时 `begin` 拒绝（`AGENT_GUARD_ALLOW_OVER_RED=1` 豁免并登记 09「重要上下文」）。
+- **事件型换挡触发（v3.63.0，REQ-1032）**：任一变更 **commit 完成 / 交付宣言之后**，收尾动作必须包含 ①handoff 文档落盘（写 `docs/changes/<变更号>/handoff.md` 或活跃 BATCH 目录）②显式换挡声明（本会话终结、后开新会话）。不换挡继续在同会话开新变更：`gate begin` 以 **GATE-E89** 硬拦（v3.63.0，REQ-1033——`staged/stop` 落盘 `.agent-state/last-delivery.json`，begin 发现「交付发生在本会话存活期内且无新于交付的 handoff 文档」即拒，豁免 `AGENT_GUARD_ALLOW_NO_SHIFT=1` 须在 09「重要上下文」登记；会话起点标记由 `session-gate.sh start` 写入，新会话自然放行；证据缺失 fail-open）。**豁免边界（同批次连续变更/用户明示继续）**：同批次连续变更经用户明示或 09 登记后豁免 env 放行；豁免不是默许，连续三次同会话免换挡按 §5 反模式登记。
+- **水位与遥测机校（v3.38.0；沿革见 STANDARDS_CHANGELOG）**：`scripts/session-gate.sh` 是 harness 无关的计数通用层（bash 零依赖；适配器转发计数，无适配器零开销）。不变量三条：①begin 读磁盘水位超 `AGENT_GUARD_SESSION_TURN_LIMIT`（默认 50）即拒开新变更，豁免 `AGENT_GUARD_ALLOW_OVER_WATER=1` 须 09「重要上下文」登记；②`session-gate check` 工具级硬拦 fail-closed（无文件/未超/未装仓 exit 0，防线后移语义不变）；③活性自检失联可见不静默（YELLOW=adapter 未被客户端加载，须核查客户端日志）。机制细节**唯一权威 = `resources/templates/session-gate.sh` 与 `resources/templates/install-hook-adapter.sh` 头注释「机制细节（唯一权威）」块**（v3.70.0，CHG-045 形状移出）。
+- **勘探预算机校（v3.39.0）**：`session-gate idle/status` 从遥测文件读工具调用数——单会话 `bash` >20 亮黄灯（软执法），要求合并检索/下放子代理并在 09「重要上下文」登记超标原因（量化基线与强制口径见 AGENTS.md 纪律节）。**bash 预算分级口径（v3.60.0，FU-909）**：≤20 硬约束限于**编码/落点类**调用；baseline 校准、全量 suite、长复测类验证调用单列台账（04.5 记次数）不占额。
+- **调用批处理与增量读（v3.77.0，CHG-101，REQ-1124/1125）**：独立 shell 命令合并单调用（`&&`/并行）；同文件多段改动一次 edit，禁小步高频写（每调用重付全前缀：请求数×水位=乘数）；追加用 `cat >>`/定点写禁全量重读。细则唯一权威 = AGENTS.md 纪律 12/13；机校 = session-gate `edits` 黄灯（默认 40，`AGENT_GUARD_EDIT_LIMIT`，超限登记 09）。
 - **过程违规**：明知超标续用同一会话按 §5 反模式登记，证据落 09「重要上下文」。
 - **定向验证优先（v3.25.0）**：模块/单测级验证命令先行；全量回归仅由门禁（stop/staged/CI）统一触发，禁止随手裸跑全量（执行细则见 AGENTS.md 纪律节）。
 
@@ -1120,4 +1121,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.76.0 | 更新时间：2026-10-18 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.77.0 | 更新时间：2026-10-19 | 全局维护责任人：geekma (geekma@gmail.com)*
