@@ -5651,7 +5651,7 @@ section_T64() {
   local t64 rc out
   t64=$(mktemp -d "${TMPDIR:-/tmp}/t64.XXXXXX")
   (cd "$t64" && git init -q && git config user.email t@x.invalid && git config user.name t)
-  out=$(cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t1 --scaffold 2>&1); rc=$?
+  out=$(cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$GATE_SRC" begin t1 --scaffold 2>&1); rc=$?
   report "T64 TC-1400 scaffold runs clean (rc=0)" 0 "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
   report "T64 TC-1400 scaffold reports created 8" 1 "$(printf '%s\n' "$out" | grep -c 'created 8, member-appended 0')"
   report "T64 TC-1400 member anchors in 7 md artifacts" 7 "$(grep -l '^## t1' "$t64"/docs/changes/BATCH-*/0*.md 2>/dev/null | wc -l | tr -d ' ')"
@@ -5661,24 +5661,24 @@ section_T64() {
   for tf in "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
   sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
   done
-  (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t1 >/dev/null 2>&1); rc=$?
+  (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$GATE_SRC" begin t1 >/dev/null 2>&1); rc=$?
   report "T64 TC-1400 filled scaffold passes begin (rc=0)" 0 "$rc"
   # TC-1400b (评审 F1/F7): same-day second member — gov.json stays bare-object
   # parseable (no markdown injection between JSON objects) and begin reads the
   # member's OWN governance record (risk_level/owners), not a sibling's.
-  out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t9 --risk L1 --scaffold 2>&1); rc=$?
+  out=$(cd "$t64" && bash "$GATE_SRC" begin t9 --risk L1 --scaffold 2>&1); rc=$?
   report "T64 TC-1400b second member appends 8 (created 0)" 1 "$(printf '%s\n' "$out" | grep -c 'created 0, member-appended 8')"
   for tf in "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
   sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
   done
-  (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t9 >/dev/null 2>&1); rc=$?
+  (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$GATE_SRC" begin t9 >/dev/null 2>&1); rc=$?
   report "T64 TC-1400b second member begin passes (gov_record per-member)" 0 "$rc"
-  out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t1 --scaffold 2>&1); rc=$?
+  out=$(cd "$t64" && bash "$GATE_SRC" begin t1 --scaffold 2>&1); rc=$?
   report "T64 TC-1401 re-scaffold same id refuses (E121)" 0 "$([[ $rc -ne 0 ]] && printf '%s\n' "$out" | grep -q 'GATE-E121' && echo 0 || echo 1)"
   mkdir -p "$t64/docs/changes/t1c" && echo x > "$t64/docs/changes/t1c/junk.md"
-  out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t1c --risk L2 --scaffold 2>&1); rc=$?
+  out=$(cd "$t64" && bash "$GATE_SRC" begin t1c --risk L2 --scaffold 2>&1); rc=$?
   report "T64 TC-1401 non-empty dedicated dir refuses (E120)" 0 "$([[ $rc -ne 0 ]] && printf '%s\n' "$out" | grep -q 'GATE-E120' && echo 0 || echo 1)"
-  (cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t2 --risk L2 --scaffold >/dev/null 2>&1); rc=$?
+  (cd "$t64" && bash "$GATE_SRC" begin t2 --risk L2 --scaffold >/dev/null 2>&1); rc=$?
   report "T64 TC-1402 L2 lands dedicated dir (not BATCH)" 0 "$([[ $rc -eq 0 && -f "$t64/docs/changes/t2/00-intent.md" ]] && echo 0 || echo 1)"
   report "T64 TC-1403 AGENTS carries the phase read-set discipline" 1 "$(grep -c '分阶段最小读集（v3.80.0' "$ROOT/resources/AGENTS.md")"
   report "T64 TC-1403 CLAUSE_REGISTRY registers R65" 1 "$(grep -c '^| R65 ' "$ROOT/resources/CLAUSE_REGISTRY.md")"
