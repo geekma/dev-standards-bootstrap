@@ -851,6 +851,15 @@ for d in "$ROOT/docs/changes"/*/; do
   # 盖章属于整批交付动作，按成员拆分反而会把合法盖章误判为回填。
   [[ -f "$d/09-changelog.md" ]] && continue
   [[ "$dname" == "$active_id" ]] && continue
+  # CHG-106（REQ-1151，DES-1916）：日批成员目录豁免——active 判定原比目录名，
+  # BATCH-YYYYMMDD 目录名恒 ≠ 成员 id，首成员 09 未写（closed 代理缺失）时该目录
+  # 盖章全数误报（CHG-105 实测 ×7）。与门禁 change_dir 同款锚点解析：BATCH 目录
+  # 含 `## <active_id>` 成员锚即视为 active 目录（盖章属整批交付动作，目录级豁免
+  # 与上方注释语义一致）。grep -qs：静默容忍无文件/不可读。
+  if [[ -n "$active_id" && "$active_id" =~ ^[A-Za-z0-9._-]+$ && "$dname" =~ ^BATCH-[0-9]{8}$ ]] \
+    && grep -qsE "^##[[:space:]]+${active_id}([[:space:]]|$)" "$d"*.md 2>/dev/null; then
+    continue
+  fi
   for f in "$d"*.md; do
     [[ -f "$f" ]] || continue
     grep -q '^<!-- provenance$' "$f" 2>/dev/null || continue
