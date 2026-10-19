@@ -5060,12 +5060,12 @@ report "T60 TC-1319 re-derivation is byte-identical (idempotent)" 0 "$([[ "$t60_
 out=$(scripts/eval-cases --verify 2>&1)
 report "T60 TC-1321 verify green on a well-formed defect face" 0 $?
 report "T60 TC-1321 verify is silent when green" 0 "$([[ -z "$out" ]] && echo 0 || echo 1)"
-cp docs/bugs/BUG-002/01-diagnosis.md "$TMPDIR/t60-diag.bak"
+cp docs/bugs/BUG-002/01-diagnosis.md "${TMPDIR:-/tmp}/t60-diag.bak"
 : > docs/bugs/BUG-002/01-diagnosis.md
 out=$(scripts/eval-cases --verify 2>&1)
 report "T60 TC-1321 verify red on an empty diagnosis artifact" 1 $?
 check_output "T60 TC-1321 refusal names the empty artifact" "empty diagnosis artifact" "$out"
-cp "$TMPDIR/t60-diag.bak" docs/bugs/BUG-002/01-diagnosis.md
+cp "${TMPDIR:-/tmp}/t60-diag.bak" docs/bugs/BUG-002/01-diagnosis.md
 out=$(scripts/eval-cases --verify 2>&1)
 report "T60 TC-1321 verify green again after repair" 0 $?
 # TC-1323/1324/1325/1328（REQ-1109）：覆盖比口径、零 case 契约、确定性、只读
@@ -5655,7 +5655,12 @@ section_T64() {
   report "T64 TC-1400 scaffold runs clean (rc=0)" 0 "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
   report "T64 TC-1400 scaffold reports created 8" 1 "$(printf '%s\n' "$out" | grep -c 'created 8, member-appended 0')"
   report "T64 TC-1400 member anchors in 7 md artifacts" 7 "$(grep -l '^## t1' "$t64"/docs/changes/BATCH-*/0*.md 2>/dev/null | wc -l | tr -d ' ')"
-  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md 2>/dev/null
+  for tf in "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
+  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
+  done
+  for tf in "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
+  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
+  done
   (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t1 >/dev/null 2>&1); rc=$?
   report "T64 TC-1400 filled scaffold passes begin (rc=0)" 0 "$rc"
   # TC-1400b (评审 F1/F7): same-day second member — gov.json stays bare-object
@@ -5663,7 +5668,9 @@ section_T64() {
   # member's OWN governance record (risk_level/owners), not a sibling's.
   out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t9 --risk L1 --scaffold 2>&1); rc=$?
   report "T64 TC-1400b second member appends 8 (created 0)" 1 "$(printf '%s\n' "$out" | grep -c 'created 0, member-appended 8')"
-  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md 2>/dev/null
+  for tf in "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
+  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
+  done
   (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t9 >/dev/null 2>&1); rc=$?
   report "T64 TC-1400b second member begin passes (gov_record per-member)" 0 "$rc"
   out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t1 --scaffold 2>&1); rc=$?

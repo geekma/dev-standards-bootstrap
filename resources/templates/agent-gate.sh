@@ -707,7 +707,7 @@ validate_dimensional_begin() { # <change-dir>
 # journey evidence (E107), waiver transitivity (E108). Prints upstream-error
 # counters on success (all-zero is a danger signal — playbook stage 8).
 validate_dimensional_stop() { # <change-dir>
-  local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row bhv n_bhv n_wv
+  local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row bhv="" n_bhv="" n_wv=""
   [[ -s "$spec" ]] || return 0
   oa=$(spec_decl "$spec" "origin_artifact")
   cc=$(spec_decl "$spec" "chain_change")

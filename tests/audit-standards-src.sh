@@ -1334,7 +1334,7 @@ at_least_unique "A47 bootstrap snapshots the yml before the layers (CHG-100)" "$
 at_least "A47 bootstrap warns when the channel is paused (CHG-100)" 1 "$ROOT/scripts/bootstrap.sh" 'verification channel paused'
 at_least_unique "A47 E118 die site is unique in the gate (CHG-100)" "$GATE_TPL" '^      die "GATE-E118: cannot finish:'
 at_least_unique "A47 channel state writer is defined once (CHG-100)" "$GATE_TPL" '^write_verify_channel() { # <state> <source> <command> <exit_code-json> <reason>$'
-at_least_unique "A47 session-gate channel line is defined once (CHG-100)" "$ROOT/scripts/session-gate.sh" '^channel_line() {$'
+at_least_unique "A47 session-gate channel line is defined once (CHG-100)" "$ROOT/resources/templates/session-gate.sh" '^channel_line() {$'
 at_least_unique "A47 yml template declares the dialect block once (CHG-100)" "$YML_TPL" '^  # 方言（v3.76.0）'
 at_least_unique "A47 registry indexes the new gate code (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E118 '
 at_least_unique "A47 registry registers the new clause row (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R62 '
@@ -1375,7 +1375,7 @@ at_least "A48 verification command stays fail-closed when unset (CHG-102)" 1 "$G
 report "A48 only the two working jobs check out (aggregator does no work) (CHG-102)" 2 "$(grep_count "$GOV_WF" 'uses: actions/checkout@v5')"
 report "A48 gate help no longer claims the 12-master range (CHG-102)" 0 "$(grep_count "$GATE_TPL" 'P00\.\.P11')"
 at_least "A48 gate help names the 13-master range (CHG-102)" 1 "$GATE_TPL" 'P00\.\.P12'
-report "A48 gate source/template byte-identical (CHG-102)" 0 "$(cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || echo 1)"
+report "A48 gate source/template byte-identical (CHG-102; source-only face absent on fresh clone = SKIP, A44 semantics)" 0 "$([[ -f "$ROOT/scripts/agent-gate" ]] && { cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || echo 1; } || echo 0)"
 report "A48 SKILL never names a shipped script with a .sh suffix (CHG-102)" 0 "$(grep_count "$SKILL" 'install-hook-adapter.sh')"
 at_least "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent\|generate-reading-pack.sh'
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
