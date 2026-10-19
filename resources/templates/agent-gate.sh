@@ -386,6 +386,102 @@ is_batch_dir() { # <dir> -> 0 if it is a BATCH-YYYYMMDD directory
 # resolver and the scanners can never disagree about what an anchor is.
 anchor_re() { printf '^##[[:space:]]+%s([[:space:]]|$)' "$1"; }
 
+# v3.80.0 (CHG-107, REQ-1152, DES-1917): scaffold — batch-artifact skeleton
+# generator. One command emits the eight begin-stage artifacts with every gate
+# shape contract baked in (placement declaration, five-element 00.5, expected-
+# outcome/open-questions sections, DES/TC/SC/coverage-column hints, fail-closed
+# confirmation placeholder). The shape contracts previously lived only in gate
+# source + tribal experience; the end-to-end pin (scaffold output passes begin)
+# couples generator and gate so they cannot drift apart. Idempotent fail-closed:
+# an artifact that already exists is appended to as a batch-member section (or
+# refused when it already carries this change's anchor) — existing content is
+# never rewritten.
+# v3.80.0 (CHG-107, REQ-1152): global next-id cursor computed once per scaffold
+# run — REQ/DES/TC/SC continue the ledger max (change dir + STANDARDS_CHANGELOG),
+# so scaffolded specs carry REAL numbers and the E06/E07/E08/E09 numbering gates
+# pass without hand-grep. Empty ledger → e.g. REQ-1 (never empty string). NOTE:
+# next_id must stay invoked inside $() — a bare top-level call under set -e would
+# kill the gate on empty ledgers (grep no-match rc=1 absorbed by command subst).
+next_id() { # <prefix> -> <prefix>-<max+1>
+  local p="$1" m
+  m=$( { grep -rhoE "${p}-[0-9]+" "$change_root" "$repo_root/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true; } \
+    | grep -oE '[0-9]+' | sort -n | tail -1)
+  printf '%s-%d' "$p" "$(( ${m:-0} + 1 ))"
+}
+
+scaffold_body() { # <doc> <id> <risk> <placement>
+  local doc="$1" id="$2" risk="$3" placement="$4"
+  case "$doc" in
+    00-intent.md)
+      printf '# %s Intent\n\n- **目录落位**：%s\n- **来源**：<!-- FILL: 一句话来源（用户裁定/事故/评审发现） -->\n- **范围**：① <!-- FILL: 改动面 1 --> ② <!-- FILL: 改动面 2 -->\n- **不做**：<!-- FILL: 显式排除项 -->\n\n### 预期结果\n\n- <!-- FILL: 可验收结果（与 04 的 TC 对应） -->\n\n### 开放问题\n\n- <!-- FILL: 无 或 开放问题清单 -->\n' "$id" "$placement" ;;
+    00.5-communication.md)
+      printf '# %s Communication（00.5）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
+    00-governance.json)
+      printf '{"change_id": "%s", "risk_level": "%s", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$risk" ;;
+    01-spec.md)
+      printf '# %s Spec\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+    02-code-impact-analysis.md)
+      printf '# %s Code Impact Analysis\n\n### 改动面\n\n| 文件 | 层 | 影响 |\n|---|---|---|\n| <!-- FILL --> | <!-- FILL: payload/源层 --> | <!-- FILL --> |\n\n### 业务影响\n\n<!-- FILL: 目标仓/源仓/治理链 -->\n\n### 历史相似检索\n\n- 检索词：<!-- FILL -->——命中：<!-- FILL -->\n\n### 风险
+
+<!-- FILL: 行为风险/回归风险/等级（L0~L3） -->
+
+### 延伸发现\n\n- <!-- FILL: 无 或 发现 -->\n\n### 回滚策略\n\n- <!-- FILL: revert 面/触发条件/版本链回退 -->\n' "$id" ;;
+    03-modification-plan.md)
+      printf '# %s Modification Plan\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+    03.5-tasks.md)
+      printf '# %s Tasks\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
+    04-test-scripts.md)
+      printf '# %s Test Scripts\n\n场景：%s <!-- FILL: 场景名 -->。\n\n| 编号 | TC | SC | 覆盖维度 | 命令 | 期望 | REQ | 来源 |\n|---|---|---|---|---|---|---|---|\n| T1 | %s | %s | <!-- FILL --> | <!-- FILL --> | <!-- FILL --> | %s | 本次引入 |\n\n## TC 落点清单（REQ-1091，v3.71.0）\n\n- %s → <!-- FILL: 文件/节 -->\n' "$id" "$nxt_sc" "$nxt_tc" "$nxt_sc" "$nxt_req" "$nxt_tc" ;;
+  esac
+}
+
+scaffold_change() { # <id> <risk> — generate the eight begin-stage artifacts
+  local id="$1" risk="$2" d doc body target anchor
+  local nxt_req nxt_des nxt_tc nxt_sc
+  nxt_req=$(next_id REQ); nxt_des=$(next_id DES); nxt_tc=$(next_id TC); nxt_sc=$(next_id SC)
+  case "$risk" in
+    L0|L1) local dd; dd=$(date -u +%Y%m%d); d="$change_root/BATCH-${dd}"; local placement="BATCH-${dd}（L0/L1 首批触发首-of-日日批规则，§1.1）" ;;
+    *)     d="$change_root/$id";                local placement="独立目录（$risk 风险档，§1.1 专用目录形态）" ;;
+  esac
+  if [[ -d "$d" && -n "$(ls -A "$d" 2>/dev/null | head -1)" ]] \
+     && ! is_batch_dir "$d"; then
+    die "GATE-E120: scaffold refuses non-empty dedicated dir $d — use a fresh change id"
+  fi
+  mkdir -p "$d"
+  local created=0 appended=0
+  for doc in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+    target="$d/$doc"
+    body=$(scaffold_body "$doc" "$id" "$risk" "$placement")
+    t121=""
+    if [[ ! -e "$target" ]]; then
+      if [[ "$doc" == "00-governance.json" ]]; then
+        printf '%s\n' "$body" > "$target"   # JSON 不插锚不盖戳（gov_record 扁平解析 + stamper 豁免）
+      else
+        { printf '%s\n\n## %s\n\n' "${body%%$'\n'*}" "$id"; printf '%s\n' "${body#*$'\n'}"; } > "$target"
+      fi
+      created=$(( created + 1 ))
+    else
+      # E121 防重入（评审 F1）：gov.json 按 change_id 判重（裸对象无锚），md 按成员锚判重；
+      # die 站点全 gate 唯一（T41 唯一性钉），消息变量化。
+      if [[ "$doc" == "00-governance.json" ]] && grep -qs "\"change_id\": \"$id\"" "$target"; then
+        t121="$target already carries change_id $id (id already materialized)"
+      elif grep -qsE "$(anchor_re "$id")" "$target" && [[ "$doc" != "00-governance.json" ]]; then
+        t121="$target already carries this change's anchor (id already materialized)"
+      fi
+      [[ -z "$t121" ]] || die "GATE-E121: $t121"
+      if [[ "$doc" == "00-governance.json" ]]; then
+        printf '%s\n' "$body" >> "$target"   # 裸追对象行：gov_record 扁平解析禁止夹注 markdown 行（new-change batch_put 同款不变量，评审 F1）
+      else
+        { printf '\n\n## %s\n\n' "$id"; printf '%s\n' "$body"; } >> "$target"
+      fi
+      appended=$(( appended + 1 ))
+    fi
+  done
+  printf 'agent-gate: scaffolded %s → %s (created %s, member-appended %s); fill every <!-- FILL --> then re-run begin\n' \
+    "$id" "$d" "$created" "$appended" >&2
+}
+
+
 # §2.1.7 signature regex head, shared by GATE-E85 (07-review-report) and
 # GATE-E82 (专家评审记录): `platform / model / <trailing id>` with spaced
 # slashes. Second real use case extracted (CHG-071, CHG-068 single-source
@@ -2392,8 +2488,31 @@ command="${1:-help}"
 unset AGENT_GUARD_DIM_PROBE 2>/dev/null || true
 case "$command" in
   begin)
-    id="${2:-}"
-    [[ -n "$id" ]] || die "GATE-E69: usage: scripts/agent-gate begin <change-id>"
+    id=""
+    scaffold=0; srisk=""; srisk_pending=0; e69msg=""
+    if [[ -n "${2:-}" ]]; then
+      for arg in "${@:2}"; do
+        case "$arg" in
+          --scaffold) scaffold=1 ;;
+          --risk) [[ "$srisk_pending" = 0 ]] || { e69msg="--risk needs a value (L0|L1|L2|L3)"; break; }; srisk_pending=1 ;;
+          L0|L1|L2|L3) if [[ "$srisk_pending" = 1 ]]; then srisk="$arg"; srisk_pending=0; else [[ -z "$id" ]] || { e69msg="multiple change ids given"; break; }; id="$arg"; fi ;;
+          *) [[ -z "$id" ]] || { e69msg="multiple change ids given"; break; }; id="$arg" ;;
+        esac
+      done
+    fi
+    # 评审 F2（CHG-107）：悬空/非法/越位 --risk 与多 id fail-closed（不静默回落默认，
+    # 用户想 L2 却落日批 = 静默错落位）。E69 die 站点全 gate 唯一（T41 唯一性钉）。
+    if [[ -z "$e69msg" && "$srisk_pending" = 1 ]]; then e69msg="--risk needs a value (L0|L1|L2|L3)"; fi
+    if [[ -z "$e69msg" && -n "${srisk:-}" && "$scaffold" != 1 ]]; then e69msg="--risk only takes effect with --scaffold"; fi
+    if [[ -z "$e69msg" && -z "$id" ]]; then
+      if [[ "$scaffold" = 1 ]]; then e69msg="usage: scripts/agent-gate begin <change-id> --scaffold [--risk L0|L1|L2|L3]"
+      else e69msg="usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]"; fi
+    fi
+    [[ -z "$e69msg" ]] || die "GATE-E69: $e69msg"
+    if [[ "$scaffold" = 1 ]]; then
+      : "${srisk:=L1}"
+      scaffold_change "$id" "$srisk"; exit 0
+    fi
     # FU-015 (BUG-003): a change dir carrying a changelog is a CLOSED change —
     # re-opening it would let a new change write into a read-only artifact set
     # (standards §2.15 rule 4, one change one document set).

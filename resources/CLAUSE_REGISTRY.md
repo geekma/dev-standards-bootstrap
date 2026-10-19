@@ -84,8 +84,9 @@
 | R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 |
 | R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 |
 | R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 |
-| R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理与增量读（v3.77.0，CHG-101，REQ-1124/1125）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 |
+| R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 |
 | R64 | 冻结树并行派发评审/验证子代理（§2.2；前提三条=树冻结、输入契约互斥、不共写 `.agent-state`） | DEVELOPMENT_STANDARDS.md::**冻结树并行派发（REQ-1140）** | universal | 软 | 行为 |
+| R65 | 分阶段最小读集（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 15） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软 | 行为 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
@@ -198,6 +199,8 @@
 | GATE-E116 | 评审轮次超 AGENT_GUARD_REVIEW_ROUND_LIMIT 且 07 无「已填写的超限处置行」 | agent-gate.sh::track_review_round()（v3.74.0） |
 | GATE-E117 | 07「发现处置」表「来源」列取值非法（非 本次引入/既有存量）；缺列软提示放行 | agent-gate.sh::assert_finding_source()（v3.75.0） |
 | GATE-E118 | 验证通道 `ci.verification_command` 有值但形态非法（空值/未闭合引号/非法块指示符/多行裸标量/不在 `ci:` 段内）——fail-closed，不静默跳过 | agent-gate.sh::yml_scalar()/validate_stop()（v3.76.0） |
+| GATE-E120 | scaffold 拒绝非空专用目录——existing 产物会被同 id 遮蔽，换新变更号重跑（fail-closed，幂等保护） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
+| GATE-E121 | scaffold 拒绝对已携带本变更成员锚的产物重入——id 已物化，防双节污染（fail-closed） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

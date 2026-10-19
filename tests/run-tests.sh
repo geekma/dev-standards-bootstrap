@@ -3092,7 +3092,7 @@ REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
   # v3.78.0 (CHG-102): 64 rows — R64（冻结树并行派发）joins the registry.
-  report "T39 registry row count" 64 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 65 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:12"; do
@@ -3472,10 +3472,10 @@ section_T48() {
 # CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
 # footer labels no longer spell a version literal — a label carrying a stale
 # number was itself a drift source (renamed to "carries the current version").
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.79.1' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.80.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.79.1' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.79.1' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.80.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.80.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -5646,8 +5646,41 @@ fi
 
 }
 
+# v3.80.0 (CHG-107, REQ-1152/1153): scaffold end-to-end + phase read-set pins.
+section_T64() {
+  local t64 rc out
+  t64=$(mktemp -d "${TMPDIR:-/tmp}/t64.XXXXXX")
+  (cd "$t64" && git init -q && git config user.email t@x.invalid && git config user.name t)
+  out=$(cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t1 --scaffold 2>&1); rc=$?
+  report "T64 TC-1400 scaffold runs clean (rc=0)" 0 "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+  report "T64 TC-1400 scaffold reports created 8" 1 "$(printf '%s\n' "$out" | grep -c 'created 8, member-appended 0')"
+  report "T64 TC-1400 member anchors in 7 md artifacts" 7 "$(grep -l '^## t1' "$t64"/docs/changes/BATCH-*/0*.md 2>/dev/null | wc -l | tr -d ' ')"
+  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md 2>/dev/null
+  (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t1 >/dev/null 2>&1); rc=$?
+  report "T64 TC-1400 filled scaffold passes begin (rc=0)" 0 "$rc"
+  # TC-1400b (评审 F1/F7): same-day second member — gov.json stays bare-object
+  # parseable (no markdown injection between JSON objects) and begin reads the
+  # member's OWN governance record (risk_level/owners), not a sibling's.
+  out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t9 --risk L1 --scaffold 2>&1); rc=$?
+  report "T64 TC-1400b second member appends 8 (created 0)" 1 "$(printf '%s\n' "$out" | grep -c 'created 0, member-appended 8')"
+  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md 2>/dev/null
+  (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$ROOT/scripts/agent-gate" begin t9 >/dev/null 2>&1); rc=$?
+  report "T64 TC-1400b second member begin passes (gov_record per-member)" 0 "$rc"
+  out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t1 --scaffold 2>&1); rc=$?
+  report "T64 TC-1401 re-scaffold same id refuses (E121)" 0 "$([[ $rc -ne 0 ]] && printf '%s\n' "$out" | grep -q 'GATE-E121' && echo 0 || echo 1)"
+  mkdir -p "$t64/docs/changes/t1c" && echo x > "$t64/docs/changes/t1c/junk.md"
+  out=$(cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t1c --risk L2 --scaffold 2>&1); rc=$?
+  report "T64 TC-1401 non-empty dedicated dir refuses (E120)" 0 "$([[ $rc -ne 0 ]] && printf '%s\n' "$out" | grep -q 'GATE-E120' && echo 0 || echo 1)"
+  (cd "$t64" && bash "$ROOT/scripts/agent-gate" begin t2 --risk L2 --scaffold >/dev/null 2>&1); rc=$?
+  report "T64 TC-1402 L2 lands dedicated dir (not BATCH)" 0 "$([[ $rc -eq 0 && -f "$t64/docs/changes/t2/00-intent.md" ]] && echo 0 || echo 1)"
+  report "T64 TC-1403 AGENTS carries the phase read-set discipline" 1 "$(grep -c '分阶段最小读集（v3.80.0' "$ROOT/resources/AGENTS.md")"
+  report "T64 TC-1403 CLAUSE_REGISTRY registers R65" 1 "$(grep -c '^| R65 ' "$ROOT/resources/CLAUSE_REGISTRY.md")"
+  report "T64 TC-1403 DS carries the read-set pointer line" 1 "$(grep -c '分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+  report "T64 TC-1404 gate usage names --scaffold" 1 "$(grep -c 'begin <change-id> \[--risk L0|L1|L2|L3\] \[--scaffold\]' "$ROOT/scripts/agent-gate")"
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then

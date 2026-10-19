@@ -1381,7 +1381,13 @@ at_least "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scri
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body did not grow past the v3.79.0 ratchet (CHG-103; growth requires explicit recalibration)" 1 "$([[ "$std_bytes" -le 167928 ]] && echo 1 || echo 0)"
+report "A48 standards body did not grow past the v3.80.0 ratchet (CHG-107; growth requires explicit recalibration)" 1 "$([[ "$std_bytes" -le 167933 ]] && echo 1 || echo 0)"
+# v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
+at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/scripts/agent-gate" 'scaffold_change\(\)'
+at_least "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/scripts/agent-gate" 'begin <change-id> \[--risk L0\|L1\|L2\|L3\] \[--scaffold\]'
+at_least "A49 AGENTS carries the phase read-set discipline (CHG-107)" 1 "$AGENTS" '分阶段最小读集（v3.80.0'
+at_least_unique "A49 registry registers R65 (CHG-107)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R65 '
+at_least_unique "A49 DS carries the read-set pointer (CHG-107)" "$STD" '分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）'
 at_least_unique "A48 registry registers R64 (CHG-102)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R64 '
 at_least_unique "A48 R64 anchor resolves to a single standards line (CHG-102)" "$STD" '^> \*\*冻结树并行派发（REQ-1140）\*\*'
 at_least "A48 AGENTS carries the parallel-dispatch discipline (CHG-102)" 1 "$AGENTS" '冻结树并行派发（v3.78.0'
