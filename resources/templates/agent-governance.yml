@@ -98,6 +98,9 @@ ci:
   # `.agent-state/verify-channel.json` 与 `session-gate status` 的「验证通道」行。
   # 在途维护路径：本文件随变更在途时，用 AGENT_GUARD_VERIFY_COMMAND 并在 09
   # 「重要上下文」登记（状态 tampered+env），不得为了跳过 anti-tamper 而回退方言。
+  # 并行建议（v3.78.0，CHG-102，REQ-1136）：runner 支持节级并行时，验证命令可写并行
+  # 形态（示例 `bash tests/run-tests.sh -j 4`：节级池 + 串行链分离，实测 807s→227s）。
+  # 小内存机器下调 `-j 2`；并发数只改墙钟，不改判定结果与收据语义。
   verification_command: "<replace-with-project-test-command>"
 stop_hook:
   # Set AGENT_GUARD_VERIFY_COMMAND in a client adapter when a fast deterministic

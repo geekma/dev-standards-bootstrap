@@ -1292,7 +1292,7 @@ at_least "A46 uninstall removes the rescore workflow (CHG-099)" 1 "$ROOT/resourc
 at_least "A46 SKILL names the eval layer (CHG-099)" 1 "$ROOT/SKILL.md" 'eval-cases'
 at_least "A46 README (EN) names the eval layer (CHG-099)" 1 "$ROOT/README.md" 'eval-cases'
 at_least "A46 README (zh) names the eval layer (CHG-099)" 1 "$ROOT/README.zh-CN.md" 'eval-cases'
-at_least "A46 golden suite registers the T62 section (CHG-101)" 1 "$ROOT/tests/run-tests.sh" 'T60 T61 T62)'
+at_least "A46 golden suite registers the T62 section (CHG-101)" 1 "$ROOT/tests/run-tests.sh" 'T60 T61 T62'
 
 # A47 pin 唯一性 + BRE 语义 tripwire（v3.76.0，CHG-100/REQ-1121，候选 8）：把 CHG-099
 # 两条同族教训机校化。①结构性 pin（整行锚定）必须钉住**唯一**行——见 at_least_unique
@@ -1329,7 +1329,7 @@ at_least_unique "A47 session-gate channel line is defined once (CHG-100)" "$ROOT
 at_least_unique "A47 yml template declares the dialect block once (CHG-100)" "$YML_TPL" '^  # 方言（v3.76.0）'
 at_least_unique "A47 registry indexes the new gate code (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E118 '
 at_least_unique "A47 registry registers the new clause row (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R62 '
-at_least_unique "A47 golden section T62 is registered once (CHG-101)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T62)$'
+at_least_unique "A47 golden section T62 is registered once (CHG-101)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T62 '
 at_least "A47 suite clears the red archive on a full green run (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'rm -f "\$ROOT/\.agent-state/last-suite-red\.txt"'
 at_least "A47 channel probe is exposed as a read-only subcommand (CHG-100)" 1 "$GATE_TPL" 'verify-channel)'
 # 整改面（独立评审 F1~F15）：新不变量各自钉一行，防回退。
@@ -1343,6 +1343,52 @@ at_least "A47 the BRE tripwire ignores ERE counts (CHG-100)" 1 "$ROOT/tests/audi
 at_least "A47 standards enumerates the four states correctly (CHG-100)" 1 "$STD" '四态 absent/placeholder/tampered/unparsable'
 at_least "A47 stop lane rejects an unparsable channel with rc 2 (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'TC-1339b stop lane rejects an unparsable channel'
 at_least "A47 skip-verify behaviour is pinned (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'TC-1341b SKIP_VERIFY does not execute'
+
+# A48 治理面口径 + 下发面缺口（v3.78.0，CHG-102/REQ-1129~1141）：本版全部是"声称的覆盖面
+# ≠ 实际覆盖面"类静默失效，故每面都**反例与正例成对**——只写"改完形态在位"挡不住回退到
+# 改前形态（源仓采样 / 死链路径 / 无限定指针 / 改了必检项名）。反例串一律钉改前形态。
+at_least "A48 eval-rescore samples the installed docs face (CHG-102)" 4 "$ROOT/resources/templates/eval-rescore.sh" 'face_add "\$docs_dir/'
+at_least "A48 eval-rescore resolves the docs root (CHG-102)" 1 "$ROOT/resources/templates/eval-rescore.sh" 'AGENT_GUARD_DOCS_DIR'
+report "A48 eval-rescore never samples the source tree as its primary face (CHG-102)" 0 "$(grep_count "$ROOT/resources/templates/eval-rescore.sh" '^face_add resources/')"
+report "A48 eval-rescore source/template byte-identical (CHG-102)" 0 "$(cmp -s "$ROOT/scripts/eval-rescore" "$ROOT/resources/templates/eval-rescore.sh" && echo 0 || echo 1)"
+A48_WF="$ROOT/resources/templates/github-reviewer-rescore.yml"
+# paths 块按缩进取段（注释行说明改前形态，不计入）：块内零源仓路径 + 9 条安装落点
+a48_paths=$(awk '/^[[:space:]]+paths:/{f=1;next} f && /^[[:space:]]*[[:alnum:]_]/ && !/^[[:space:]]*#/{exit} f{print}' "$A48_WF")
+report "A48 rescore workflow push paths carry no source-repo path (CHG-102)" 0 "$(printf '%s\n' "$a48_paths" | grep -v '^[[:space:]]*#' | grep -c 'resources/')"
+report "A48 rescore workflow push paths list nine installed anchors (CHG-102)" 9 "$(printf '%s\n' "$a48_paths" | grep -c '^[[:space:]]*- ')"
+at_least "A48 pre-push template calls the strict branch gate (CHG-102)" 1 "$ROOT/resources/templates/pre-push" 'agent-gate --stage ci --base'
+at_least "A48 commit-msg template forwards the message file (CHG-102)" 1 "$ROOT/resources/templates/commit-msg" 'agent-gate --stage commit-msg "\$1"'
+at_least_unique "A48 required-check job name is preserved verbatim (CHG-102)" "$GOV_WF" '^    name: agent-governance$'
+at_least_unique "A48 aggregator needs both parallel jobs (CHG-102)" "$GOV_WF" '^    needs: \[governance, verify\]$'
+at_least_unique "A48 aggregator runs unconditionally (CHG-102)" "$GOV_WF" '^    if: always()$'
+at_least "A48 aggregator fails on any non-success dependency (CHG-102)" 1 "$GOV_WF" 'an upstream job did not succeed'
+at_least "A48 verification command stays fail-closed when unset (CHG-102)" 1 "$GOV_WF" 'Set repository variable AGENT_GUARD_VERIFY_COMMAND'
+report "A48 only the two working jobs check out (aggregator does no work) (CHG-102)" 2 "$(grep_count "$GOV_WF" 'uses: actions/checkout@v5')"
+report "A48 gate help no longer claims the 12-master range (CHG-102)" 0 "$(grep_count "$GATE_TPL" 'P00\.\.P11')"
+at_least "A48 gate help names the 13-master range (CHG-102)" 1 "$GATE_TPL" 'P00\.\.P12'
+report "A48 gate source/template byte-identical (CHG-102)" 0 "$(cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || echo 1)"
+report "A48 SKILL never names a shipped script with a .sh suffix (CHG-102)" 0 "$(grep_count "$SKILL" 'install-hook-adapter.sh')"
+at_least "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent\|generate-reading-pack.sh'
+at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
+report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
+at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
+report "A48 standards body did not grow past the v3.79.0 ratchet (CHG-103; growth requires explicit recalibration)" 1 "$([[ "$std_bytes" -le 167928 ]] && echo 1 || echo 0)"
+at_least_unique "A48 registry registers R64 (CHG-102)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R64 '
+at_least_unique "A48 R64 anchor resolves to a single standards line (CHG-102)" "$STD" '^> \*\*冻结树并行派发（REQ-1140）\*\*'
+at_least "A48 AGENTS carries the parallel-dispatch discipline (CHG-102)" 1 "$AGENTS" '冻结树并行派发（v3.78.0'
+at_least "A48 golden suite defines the T63 section (CHG-102)" 1 "$ROOT/tests/run-tests.sh" '^section_T63() {'
+at_least_unique "A48 golden section T63 is registered once (CHG-102)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T63)'
+report "A48 no long-stale version literal survives in a T48 label (CHG-102)" 0 "$(grep_count "$ROOT/tests/run-tests.sh" 'carries v3.75.0')"
+
+# v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
+# 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时
+# 本组断言红，而不是目标仓用户静默拿到串行/无指纹的下发态。
+at_least "A48 governance config carries the parallel-runner hint (CHG-102/103)" 1 "$ROOT/resources/templates/agent-governance.yml" 'run-tests\.sh -j 4'
+at_least "A48 suite usage line exposes -j (CHG-103)" 1 "$ROOT/tests/run-tests.sh" 'Usage: tests/run-tests\.sh \[-T sec\[,sec\]\] \[-j N\]'
+at_least "A48 bootstrap usage exposes the fingerprint lib (CHG-103)" 1 "$ROOT/scripts/bootstrap.sh" 'lib-suite-tree-fingerprint\.sh'
+at_least "A48 AGENTS carries the call-batching discipline (CHG-101)" 1 "$AGENTS" '调用批处理（v3.77.0'
+at_least "A48 AGENTS carries the tail-incremental-read discipline (CHG-101)" 1 "$AGENTS" '尾部增量读（v3.77.0'
+report "A48 fingerprint lib ships and sources cleanly" 1 "$(bash -c 'source scripts/lib-suite-tree-fingerprint.sh 2>/dev/null && command -v suite_tree_fingerprint >/dev/null 2>&1 && echo 1 || echo 0')"
 
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层

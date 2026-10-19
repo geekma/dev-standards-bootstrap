@@ -9,7 +9,13 @@
 #   cases_total = 0  → score = null（禁臆造 0 或 1，§2.17.5 第 2 条）
 #
 # 结果绑定提交与漂移（N3）：
-#   config_sha   = 治理面文件内容哈希（DS / CLAUSE_REGISTRY / AGENTS / SKILL / resources/templates/**）
+#   config_sha   = 治理面文件内容哈希——面 = **安装落点**的治理文本
+#                  （AGENTS.md / <docs>/DEVELOPMENT_STANDARDS.md / <docs>/CLAUSE_REGISTRY.md /
+#                   <docs>/METHODOLOGY.md / <docs>/STAGE_PLAYBOOK.md /
+#                   <docs>/methodologies/** / <docs>/templates/**；
+#                   <docs> = AGENT_GUARD_DOCS_DIR → .agent-governance.yml paths.docs → docs）
+#                  （v3.78.0，CHG-102，REQ-1129：改前按源仓 resources/**+SKILL.md 取样，目标仓
+#                   不存在这些路径 → 面清单为空 → config_sha 退化为常量、stale 永不真 = fail-open）
 #   member_cksum = 评测集 case_id 集合哈希
 #   commit_sha   = 当前 HEAD（可追溯用；漂移判据用内容哈希，避免"整仓提交即假漂移"）
 #   stale = (config_sha != 基线 config_sha) || (member_cksum != 基线 member_cksum)
@@ -86,15 +92,45 @@ done < "$cases"
 
 member_cksum=$(printf '%s' "$members" | cksum | awk '{print $1"-"$2}')
 
+# ---- 治理面清单（v3.78.0，CHG-102，REQ-1129）--------------------------------
+# 取样面 = 目标仓**真实存在**的治理文本（安装落点），不是源仓的 resources/**。
+# docs 根解析顺序与其它脚本同法（agent-gate `cfg_path`）：AGENT_GUARD_DOCS_DIR →
+#   .agent-governance.yml paths.docs → 默认 docs；取值去空白与**引号**（`docs: "specs"`
+#   与 `docs: specs` 等价——留引号会让装点面全部落空并静默回落源仓路径 = 漂移告警失效）。
+# 每一项取「安装落点 → 源仓回落」中第一个存在者：目标仓走前者（口径正确），
+# 源仓自身（无安装落点）走后者（与变更前行为等价，既有 --face fixture 不回归）。
+docs_dir="${AGENT_GUARD_DOCS_DIR:-}"
+if [[ -z "$docs_dir" && -f "$face/.agent-governance.yml" ]]; then
+  docs_dir=$(sed -nE 's/^[[:space:]]*docs:[[:space:]]*([^#]*).*$/\1/p' "$face/.agent-governance.yml" 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
+fi
+[[ -n "$docs_dir" ]] || docs_dir=docs
+
 face_list=""
-for p in resources/DEVELOPMENT_STANDARDS.md resources/CLAUSE_REGISTRY.md resources/AGENTS.md SKILL.md; do
-  [[ -f "$face/$p" ]] && face_list="$face_list$face/$p"$'\n'
-done
-if [[ -d "$face/resources/templates" ]]; then
+face_add() { # <installed-relative> [<source-relative>]
+  if [[ -f "$face/$1" ]]; then face_list="$face_list$face/$1"$'\n'; return 0; fi
+  if [[ -n "${2:-}" && -f "$face/$2" ]]; then face_list="$face_list$face/$2"$'\n'; fi
+  return 0
+}
+face_add AGENTS.md resources/AGENTS.md
+face_add "$docs_dir/DEVELOPMENT_STANDARDS.md" resources/DEVELOPMENT_STANDARDS.md
+face_add "$docs_dir/CLAUSE_REGISTRY.md" resources/CLAUSE_REGISTRY.md
+face_add "$docs_dir/METHODOLOGY.md" resources/METHODOLOGY.md
+face_add "$docs_dir/STAGE_PLAYBOOK.md" resources/STAGE_PLAYBOOK.md
+# 目录面：优先安装落点，缺失才回落源仓同类目录（二选一，不叠加，避免双面重复计数）
+for _d in "$face/$docs_dir/methodologies" "$face/resources/methodologies"; do
+  [[ -d "$_d" ]] || continue
   while IFS= read -r f; do
     [[ -n "$f" ]] && face_list="$face_list$f"$'\n'
-  done < <(find "$face/resources/templates" -type f 2>/dev/null | sort)
-fi
+  done < <(find "$_d" -type f 2>/dev/null | sort)
+  break
+done
+for _d in "$face/$docs_dir/templates" "$face/resources/templates"; do
+  [[ -d "$_d" ]] || continue
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && face_list="$face_list$f"$'\n'
+  done < <(find "$_d" -type f 2>/dev/null | sort)
+  break
+done
 config_sha=$(printf '%s' "$face_list" | sed '/^$/d' | while IFS= read -r f; do cat "$f" 2>/dev/null || true; done | cksum | awk '{print $1"-"$2}')
 
 commit_sha=$(git -C "$root" rev-parse HEAD 2>/dev/null || echo unknown)

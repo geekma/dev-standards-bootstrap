@@ -10,6 +10,9 @@
 #     本地等价复跑 = `bash scripts/eval-cases --verify && bash scripts/eval-rescore`。
 #
 # 安装：bootstrap --guard 复制到 .github/workflows/；`scripts/` 路径与仓库布局一致（默认）。
+# 触发面（v3.78.0，CHG-102，REQ-1130）：push paths 列的是**目标仓的安装落点**（AGENTS.md +
+#   <docs>/ 治理文本 + <docs>/templates/**），不是本 Skill 源仓的 resources/**；非默认
+#   docs 根由安装器在安装期改写模板内的路径引用。
 name: Reviewer rescore
 
 on:
@@ -17,11 +20,16 @@ on:
     - cron: '17 3 * * *'
   push:
     paths:
-      - 'resources/DEVELOPMENT_STANDARDS.md'
-      - 'resources/CLAUSE_REGISTRY.md'
-      - 'resources/AGENTS.md'
-      - 'SKILL.md'
-      - 'resources/templates/**'
+      # v3.78.0（CHG-102，REQ-1130）：触发面 = **安装落点**（目标仓真实存在的治理文本）。
+      # 改前这里是源仓路径（resources/**、SKILL.md）——目标仓一个都不存在，触发器是死链，
+      # 只有 docs/** 两条有效（漂移告警静默失效）。非默认 docs 根由安装器安装期改写。
+      - 'AGENTS.md'
+      - 'docs/DEVELOPMENT_STANDARDS.md'
+      - 'docs/CLAUSE_REGISTRY.md'
+      - 'docs/METHODOLOGY.md'
+      - 'docs/STAGE_PLAYBOOK.md'
+      - 'docs/methodologies/**'
+      - 'docs/templates/**'
       - 'docs/bugs/**'
       - 'docs/bugfix-log.md'
   workflow_dispatch:

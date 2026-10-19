@@ -50,11 +50,15 @@ Flags (layers; default --core when none given):
                <scripts>/eval-cases + <scripts>/eval-rescore (评测资产派生与重打分, v3.75.0),
                <github>/workflows/github-reviewer-rescore.yml (评测集重打分回路, v3.75.0),
                <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
+               <scripts>/bug-autointent (缺陷发现入口, v3.28.0),
+               <scripts>/generate-reading-pack.sh (阅读包生成, v3.46.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
                <github>/workflows/agent-governance.yml,
-               .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4)
-  --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml
+               .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4),
+               <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0)
+  --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml,
+               regression-to-bug.yml
   --all        以上全部
   --upgrade    升级已接入仓库：治理自有文件（规范/方法论/模板/脚本/hooks/workflows/tests）
                更新到本 Skill 携带版本；跳过 live/用户文件（bugfix-log、06-delivery-summary、
@@ -729,6 +733,11 @@ run_layer() {
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases
       install_file - "$TESTS_DIR/run-tests.sh" tests/run-tests.sh 755
+      # v3.79.0 (CHG-103, REQ-1144): 树指纹 lib 随 run-tests.sh 同包下发——run-tests.sh
+      # 收据块 source "$ROOT/scripts/lib-…"，缺文件 = 收据指纹恒空（降级安全但 emitter
+      # 半失效）。声明文件排除清单（README×2/tests/.audit-baseline）为源仓收口工具
+      # 改写面；目标仓无这些面时 reset pathspec 宽容放行（rc=0），配方原样可用。
+      install_file - "$SCRIPTS_DIR/lib-suite-tree-fingerprint.sh" scripts/lib-suite-tree-fingerprint.sh 755
       ;;
     pipeline)
       install_file - ".github/workflows/artifact-pipeline.yml" resources/templates/github-artifact-pipeline.yml

@@ -498,7 +498,7 @@ is_code_path() {
   # 第一次 commit 即死锁——鸡生蛋）。它们由 §2.17.4 golden-case 回归背书。
   # v3.17.0：**新增治理脚本必须同步加进本清单**——stamp-provenance.sh 漏加时，
   # 全新安装后的第一次 commit 会被判为"源码变更"而拦下（T15 D5 用例实测暴露）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -1461,7 +1461,7 @@ validate_delivery() { # change-id
   # CHG-004 / REQ-022: the remaining two of the eight-category minimum doc set.
   check_delivery_doc "$d" 06.5-deployment-config.md '^([#>-][[:space:]]*)*未命中|^[|].*(未命中|(CFG|DB)-[0-9]+)|(CFG|DB)-[0-9]+' 'config/DB record'
   check_delivery_doc "$d" 06-delivery-summary.md '^[|].*FU-[0-9]+|^[-*][[:space:]]+.*FU-[0-9]+|^(#{1,6}[[:space:]]*).*遗留' 'delivery summary / FU ledger'
-  # v3.35.0 (standards §1.3): project-master backfill checklist — P00..P11
+  # v3.35.0 (standards §1.3): project-master backfill checklist — P00..P12
   # rows present, each [x] or 未命中 with reason.
   validate_master_backfill "$d"
   # v3.17.0 provenance, scope widened v3.26.0 (CHG-026): EVERY *.md artifact in
@@ -1696,7 +1696,7 @@ validate_bug_ref_provenance() {
 }
 
 # v3.35.0 (standards §1.3): the changelog of a delivered change must carry the
-# project-master backfill checklist — one row per master P00..P11, each either
+# project-master backfill checklist — one row per master P00..P12, each either
 # `[x]` (backfilled) or explicitly `未命中（理由）`. An unchecked `[ ]` row
 # without a reason is an open loop, not a completion.
 validate_master_backfill() { # change-dir
@@ -2706,7 +2706,7 @@ commits that touch no code path are exempt.
 stop and branch-mode CI enforce delivery evidence: 04.5-coding-record.md,
 05-test-results.md, and 09-changelog.md carrying ReAct Observation records,
 plus the project-master backfill checklist (v3.35.0): a 「项目总册回填清单」
-section with one P00..P11 row each, marked [x] or 未命中 with a reason.
+section with one P00..P12 row each, marked [x] or 未命中 with a reason.
 Gate 4 RTVM (v3.7.0): REQ ids referenced by the changelog must be backfilled
 as rows in docs/<feature>/01.5-rtvm-matrix.md; changelogs without REQ
 references (pure fixes / docs changes) are exempt.

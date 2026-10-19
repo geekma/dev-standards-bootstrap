@@ -7,7 +7,9 @@
 #   update-assertion-count.sh --check  # exit 1 if any README would change (CI/audit mode)
 #
 # NOTE: both modes execute the FULL run-tests.sh (FU-907) — unless a fresh
-# same-HEAD suite receipt exists (v3.66.0, below), which skips the embedded run.
+# same-HEAD-and-tree suite receipt exists (v3.66.0, below), which skips the
+# embedded run. Six acceptance conditions: HEAD match, tree fingerprint match,
+# zero failed, mtime freshness, valid numbers, fingerprint lib present.
 # Never run this script concurrently with a manual run-tests.sh in the same
 # workspace: a concurrent green run could overwrite the receipt mid-flight
 # (declared weakly consistent; the five acceptance conditions below still
@@ -29,6 +31,15 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # parses, matches the CURRENT HEAD, reports 0 failed and is fresh (mtime age <=
 # AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN minutes; default 30, 0 disables, invalid
 # values fall back to the default), trust its count and skip the embedded run.
+# v3.79.0 (CHG-103, REQ-1143): the trust condition gains a tree-fingerprint gate
+# — "same HEAD + same tree fingerprint + freshness window". The fingerprint is a
+# full-worktree snapshot (throwaway git index; see
+# scripts/lib-suite-tree-fingerprint.sh, the SAME recipe the emitter uses), so a
+# worktree edited after a green run is NOT trusted even at the same HEAD. A
+# receipt without the field (pre-v3.79.0 schema) or with an empty/unmatchable
+# fingerprint is treated as stale — backward-compatible in the fail-closed
+# direction (embedded run re-derives the truth; never fail-open to a wrong
+# number).
 # Anything else falls through to the legacy embedded run below — fail-open to
 # the status quo, never to a wrong number. Local gitignored file, same trust
 # level as session-started.json (no signature); the receipt is an optimization,
@@ -39,11 +50,32 @@ RECEIPT="$ROOT/.agent-state/last-suite-receipt.json"
 rc_head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
 rc_max="${AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN:-30}"
 case "$rc_max" in ''|*[!0-9]*) rc_max=30 ;; esac
-if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]]; then
+# fingerprint recipe must exist for the gate to be meaningful; absence degrades
+# to the legacy head+TTL... no — absence degrades to REJECT (REQ-1143): without
+# the recipe we cannot prove the worktree is unchanged, so the fast path is off.
+if [[ -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" ]]; then
+  source "$ROOT/scripts/lib-suite-tree-fingerprint.sh"
+fi
+if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]] && ! command -v suite_tree_fingerprint >/dev/null 2>&1; then
+  printf 'update-assertion-count: fingerprint lib missing — receipt fast path disabled, embedded full run\n' >&2
+fi
+if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]] && command -v suite_tree_fingerprint >/dev/null 2>&1; then
   r_head=$(sed -nE 's/.*"head":"([0-9a-f]{7,40})".*/\1/p' "$RECEIPT" | tail -n 1)
+  r_fp=$(sed -nE 's/.*"tree_fingerprint":"([0-9a-f]+)".*/\1/p' "$RECEIPT" | tail -n 1)
   r_pass=$(sed -nE 's/.*"passed":([0-9]+).*/\1/p' "$RECEIPT" | tail -n 1)
   r_fail=$(sed -nE 's/.*"failed":([0-9]+).*/\1/p' "$RECEIPT" | tail -n 1)
   if [[ -n "$r_head" && -n "$r_pass" && -n "$r_fail" && "$r_head" == "$rc_head" && "$r_fail" == 0 ]]; then
+    # v3.79.0 (CHG-103, REQ-1143): tree-fingerprint gate. Missing receipt field
+    # (old schema), empty current fingerprint (non-git/lib failure), or a
+    # mismatch (worktree changed since the run) all reject the receipt — the
+    # embedded run below re-derives the truth.
+    r_cur=$(suite_tree_fingerprint "$ROOT")
+    if [[ -z "$r_fp" || -z "$r_cur" ]]; then
+      printf 'update-assertion-count: receipt tree-fingerprint missing (%s) — embedded full run\n' \
+        "$([[ -z "$r_fp" ]] && echo "receipt field (pre-v3.79.0 schema)" || echo "worktree fingerprint")" >&2
+    elif [[ "$r_fp" != "$r_cur" ]]; then
+      printf 'update-assertion-count: receipt tree-fingerprint mismatch (worktree changed since the run) — embedded full run\n' >&2
+    else
     # freshness via mtime (GNU/BSD stat dual form, session-started.json precedent;
     # v3.67.0 erratum CHG-092: GNU-first — GNU stat -f %m prints '?m' rc=0, so the
     # BSD-first form left the GNU fallback unreachable on Linux and every receipt
@@ -56,13 +88,20 @@ if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]]; then
       r_age=$(( $(date +%s) - r_mtime ))
       if [[ "$r_age" -le $(( rc_max * 60 )) ]]; then
         N="$r_pass"; F="$r_fail"
-        printf 'update-assertion-count: trusting suite receipt for %.12s (passed=%s, age<=%smin); embedded full run skipped\n' "$rc_head" "$N" "$rc_max" >&2
+        printf 'update-assertion-count: trusting suite receipt for %.12s (passed=%s, tree-match, age<=%smin); embedded full run skipped\n' "$rc_head" "$N" "$rc_max" >&2
       fi
+    fi
     fi
   fi
 fi
 if [[ -z "$N" || -z "$F" ]]; then
-  run_out=$(bash "$ROOT/tests/run-tests.sh" 2>&1) || true
+  # v3.78.0（CHG-102，REQ-1136）：内嵌全跑改节级并行——收口/源层审计的内嵌整跑是纯断言语义，
+  # 节级池只改墙钟不改判定（SERIAL_CHAIN 恒串行，池先 wait 收口；CHG-095 实测 807s→227s）。
+  # 并发数按机器可调：AGENT_GUARD_SUITE_JOBS（默认 4；非数字或 <1 回落 4，`-j 1` 是合法串行请求）。
+  suite_jobs="${AGENT_GUARD_SUITE_JOBS:-4}"
+  case "$suite_jobs" in ''|*[!0-9]*) suite_jobs=4 ;; esac
+  [[ "$suite_jobs" -ge 1 ]] || suite_jobs=4
+  run_out=$(bash "$ROOT/tests/run-tests.sh" -j "$suite_jobs" 2>&1) || true
   # v3.65.0 (CHG-087, REQ-1048): run-tests now appends a constant `wall-time: Ns`
   # line AFTER the summary — take the LAST matching line instead of the last raw
   # line. Both sed anchors stay byte-identical (audit A3 shares them).

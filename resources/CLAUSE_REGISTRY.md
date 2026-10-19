@@ -14,7 +14,7 @@
   **唯一存在**的字符串（写行前必须 grep 验真 =1）；生成器按 `grep -F` 定位并解析行号，失配即 fail-closed。
 - 类型标签（封闭词表）：`L0-bugfix` `L1-standards` `L2-architecture` `L3-critical` `universal`（universal=所有类型必读）。
 - 强制级别：`硬`=违反即退回；`软`=黄灯登记可申诉。
-- 生命周期类别（MAINTAINER §5.3 四类）：`结构` `措辞` `行为` `计数`。
+- 生命周期类别（四类，口径见本段）：`结构` `措辞` `行为` `计数`。
 - 维护规则：变更新加/改标题条款时**必须同步**本表加行/改锚点（新锚点先 grep 验真），
   并跑 `generate-reading-pack.sh --verify` 绿态后方可交付；删除条款同步删行。
 
@@ -39,7 +39,7 @@
 | R15 | 防跳过红线（§2.16.6） | DEVELOPMENT_STANDARDS.md::### 2.16.6 防遗漏 | universal | 硬 | 结构 |
 | R16 | 歧义分级裁定（§2.1 规则 8） | DEVELOPMENT_STANDARDS.md::歧义分级裁定 | universal | 硬 | 行为 |
 | R17 | 四主体自查表（§2.1 规则 10） | DEVELOPMENT_STANDARDS.md::四主体自查表 | universal | 硬 | 行为 |
-| R18 | 评审/测试子代理输入契约（§2.2） | DEVELOPMENT_STANDARDS.md::输入契约 | universal | 硬 | 行为 |
+| R18 | 评审/测试子代理输入契约（§2.2） | DEVELOPMENT_STANDARDS.md::评审/测试子代理输入契约 | universal | 硬 | 行为 |
 | R19 | 会话与上下文纪律（§2.9.6 水位/换挡/事件型触发） | DEVELOPMENT_STANDARDS.md::### 2.9.6 会话与上下文纪律 | universal | 半硬（check/水位/GATE-E89 begin 硬校+豁免；活性自检软） | 行为 |
 | R20 | 遗留项闭环管理（FU，§2.12） | DEVELOPMENT_STANDARDS.md::## 2.12 遗留项闭环管理 | universal | 硬 | 结构 |
 | R21 | 项目总册回填清单（§1.3） | DEVELOPMENT_STANDARDS.md::#### 项目总册回填清单 | L1-standards | 硬 | 结构 |
@@ -85,12 +85,13 @@
 | R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 |
 | R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 |
 | R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理与增量读（v3.77.0，CHG-101，REQ-1124/1125）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 |
+| R64 | 冻结树并行派发评审/验证子代理（§2.2；前提三条=树冻结、输入契约互斥、不共写 `.agent-state`） | DEVELOPMENT_STANDARDS.md::**冻结树并行派发（REQ-1140）** | universal | 软 | 行为 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
 - 来源唯一权威：`resources/templates/agent-gate.sh` 的 `die "GATE-Exx:` 字符串（dev 份 `scripts/agent-gate` 与模板份单源同文）；语义逐码从 die 字符串提炼，不臆造。
 - 每码一行：码 / 一句话语义 / 落点（模板份函数或节名——**不写行号**，行号漂移，计数断言才稳）。
-- 计数互锁：本节 GATE-E 行数 == 模板 `die "GATE-E[0-9]+` 去重计数，由源层审计断言执法（`tests/audit-standards-src.sh`「CLAUSE_REGISTRY GATE-E rows == template die codes」）；agent-gate 新增 E 码必须同步加行，废止 E 码必须同步删行。本节只做索引，不复述门禁正文。
+- 计数互锁：本节 GATE-E 行数 == 模板 `die "GATE-E[0-9]+` 去重计数，由源层审计断言执法（`tests/audit-standards-src.sh`，源层脚本不随 Skill 下发；「CLAUSE_REGISTRY GATE-E rows == template die codes」）；agent-gate 新增 E 码必须同步加行，废止 E 码必须同步删行。本节只做索引，不复述门禁正文。
 
 | 码 | 语义 | 落点 |
 | --- | --- | --- |

@@ -1,3 +1,15 @@
+# Agent governance workflow (v3.78.0, CHG-102 / REQ-1137).
+#
+# Structure: two parallel jobs (`governance`, `verify`) plus an aggregator job
+# whose name is the required-check contract.
+#
+#   · the branch-protection required check IS the job named `agent-governance`
+#     — keep that name in branch protection; it must not be renamed or made
+#     configurable, otherwise protection silently passes while nothing is checked;
+#   · both upstream jobs run concurrently (wall-clock ≈ max, not sum);
+#   · the aggregator itself does no checkout and no work: it only reads the
+#     upstream results, so a cancelled or failed dependency still turns it red.
+#
 name: Agent governance
 
 on:
@@ -9,8 +21,8 @@ permissions:
   contents: read
 
 jobs:
-  agent-governance:
-    name: agent-governance
+  governance:
+    name: governance
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -38,6 +50,12 @@ jobs:
           fi
       - name: Verify change-governance artifacts
         run: scripts/agent-gate --stage ci --base "${{ steps.baseline.outputs.ref }}"
+
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
       - name: Run deterministic project verification
         env:
           AGENT_GUARD_VERIFY_COMMAND: ${{ vars.AGENT_GUARD_VERIFY_COMMAND }}
@@ -47,3 +65,25 @@ jobs:
             exit 1
           }
           bash -lc "$AGENT_GUARD_VERIFY_COMMAND"
+
+  # Required-check aggregator: no checkout, no work — only the verdict.
+  agent-governance:
+    name: agent-governance
+    needs: [governance, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate parallel job results
+        env:
+          GOVERNANCE_RESULT: ${{ needs.governance.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: |
+          failed=0
+          for dep in "governance=$GOVERNANCE_RESULT" "verify=$VERIFY_RESULT"; do
+            echo "$dep"
+            [[ "${dep#*=}" == "success" ]] || failed=1
+          done
+          if [[ "$failed" -ne 0 ]]; then
+            echo "agent-governance: an upstream job did not succeed (failed, cancelled or skipped); failing the required check." >&2
+            exit 1
+          fi

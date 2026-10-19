@@ -19,6 +19,15 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # (CHG-087 lesson), so the hash is taken once from a fixed anchor. Empty when
 # $ROOT is not a git repo (tarball installs) → the receipt is skipped entirely.
 SUITE_HEAD=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
+# v3.79.0 (CHG-103, REQ-1144): tree-fingerprint source. ONE recipe shared by the
+# emitter (closing receipt block below) and scripts/update-assertion-count.sh
+# (consumer); the lib degrades to an empty string on ANY failure (non-git repo,
+# git error) — an empty fingerprint only makes receipts untrusted (consumer
+# falls back to the embedded run), never wrong. Absent lib file = same empty
+# behavior (fail-closed in the "slow but correct" direction).
+if [[ -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" ]]; then
+  source "$ROOT/scripts/lib-suite-tree-fingerprint.sh"
+fi
 # 源位置回退：Skill 仓库内为 resources/templates/（原样），bootstrap --core/--guard 落地的
 # 目标仓库为 tests/audit-docs-consistency.sh 与 scripts/agent-gate——同一份 run-tests.sh
 # 必须在两种布局都可用。
@@ -2209,6 +2218,9 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   mkdir -p "$FAKE_SRC/scripts" "$FAKE_SRC/tests"
   cp "$ROOT/scripts/bootstrap.sh" "$FAKE_SRC/scripts/bootstrap.sh"
   cp "$ROOT/tests/run-tests.sh" "$FAKE_SRC/tests/run-tests.sh"
+  # v3.79.0 (CHG-103): bootstrap guard 清单含树指纹 lib——FAKE_SRC 必须同拷，
+  # 否则 install 链在 install_file 缺源时整体红（安装器清单唯一权威=bootstrap）。
+  cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$FAKE_SRC/scripts/lib-suite-tree-fingerprint.sh"
   cp "$ROOT/SKILL.md" "$FAKE_SRC/SKILL.md"
   cp -R "$ROOT/resources" "$FAKE_SRC/resources"
 
@@ -2219,7 +2231,7 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # TC-141 离线全量安装
   out=$(bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" 2>&1); rc=$?
   report "T21 install.sh --from performs a full offline install" 0 "$rc"
-  for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate .githooks/pre-commit \
+  for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate scripts/lib-suite-tree-fingerprint.sh .githooks/pre-commit \
            .agent-governance.yml tests/run-tests.sh; do
     [[ -e "$TGT/$f" ]] || { echo "T21 missing after install: $f" >&2; rc=1; }
   done
@@ -3079,8 +3091,8 @@ section_T39() {
 REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
-  # v3.77.0 (CHG-101): 63 rows — R63（调用批处理与增量读）joins the registry.
-  report "T39 registry row count" 63 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  # v3.78.0 (CHG-102): 64 rows — R64（冻结树并行派发）joins the registry.
+  report "T39 registry row count" 64 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:12"; do
@@ -3155,7 +3167,8 @@ REG40
   v40="$(bash resources/generate-reading-pack.sh L0-bugfix --verify 2>/dev/null)"; rc40=$?
   report "T40 verify green silent exit 0" "0:0" "$rc40:${#v40}"
   # 接线静态 pin（源仓）
-  report "T40 bootstrap ships generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/scripts/bootstrap.sh")"
+  # CHG-102：generator 计数 1→2（usage 护栏入口清单 + install 落点）。
+  report "T40 bootstrap ships generator" 2 "$(grep -c 'generate-reading-pack' "$ROOT/scripts/bootstrap.sh")"
   report "T40 bootstrap ships registry" 1 "$(grep -c 'resources/CLAUSE_REGISTRY.md' "$ROOT/scripts/bootstrap.sh")"
   report "T40 uninstall lists generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/templates/uninstall-standards.sh")"
   report "T40 gate exempt generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/templates/agent-gate.sh")"
@@ -3456,10 +3469,13 @@ section_T48() {
 # CHG-098: TC-1073 pins recalibrated v3.73.0→v3.74.0 (four-chain bump).
 # CHG-100: TC-1073 pins recalibrated v3.75.0→v3.76.0 (four-chain bump).
 # CHG-101: TC-1073 pins recalibrated v3.76.0→v3.77.0 (four-chain bump).
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.77.0' "$ROOT/SKILL.md")"
+# CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
+# footer labels no longer spell a version literal — a label carrying a stale
+# number was itself a drift source (renamed to "carries the current version").
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.79.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries v3.75.0" 1 "$(grep -cF '规范版本：v3.77.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries v3.75.0" 1 "$(grep -cF '当前对应规范版本：v3.77.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.79.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.79.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3700,7 +3716,8 @@ section_T50() {
   # CHG-095: tail recalibrated T56→T57 (parallel-dispatch / red-archive self-test joins).
   # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
   # CHG-100: tail recalibrated T60→T61 (验证通道方言与四态 golden 节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T62 ]] && echo 0 || echo 1)"
+  # CHG-102: tail recalibrated T62→T63 (本变更注册 T63「治理面口径 + 下发面缺口」节).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T63 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3710,9 +3727,16 @@ section_T50() {
 section_T51() {
   local r51 r51_head r51_out r51_rc r51_receipt r51_ts
   local r51_sentinel r51_has999 r51_has777 r51_same r51_same2 r51_had
+  local r51_tree fp1 fp2 fp3 r51_pre r51_post r51_mis r51_ng r51_ngfp r51_ng2
   r51=$(mktemp -d "${TMPDIR:-/tmp}/receipt-test.XXXXXX")
   mkdir -p "$r51/scripts" "$r51/tests" "$r51/.agent-state"
   cp "$ROOT/scripts/update-assertion-count.sh" "$r51/scripts/"
+  # v3.79.0 (CHG-103, REQ-1144): fixture carries the SAME fingerprint lib the
+  # consumer sources, and ignores .agent-state like the real repo — without the
+  # ignore rule the receipt file itself would be untracked content and shift
+  # the tree fingerprint (TC-1378 would false-red for the wrong reason).
+  printf '.agent-state/\n' > "$r51/.gitignore"
+  cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r51/scripts/"
   cat > "$r51/tests/run-tests.sh" <<'R51FAKE'
 #!/usr/bin/env bash
 : > "$(dirname "$0")/.embedded-ran"
@@ -3725,20 +3749,37 @@ R51FAKE
     && git -c user.email=t@t.local -c user.name=t commit -qm init >/dev/null 2>&1 )
   r51_head=$(git -C "$r51" rev-parse HEAD 2>/dev/null || true)
   r51_receipt="$r51/.agent-state/last-suite-receipt.json"
-  # _r51_seed <head> <passed> <failed>：播种收据并清哨兵
+  # v3.79.0 (CHG-103): the clean fixture tree fingerprints as HEAD^{tree} — the
+  # identity TC-1382 pins. The receipt file itself is gitignored, so seeding it
+  # does not shift the fingerprint.
+  r51_tree=$(git -C "$r51" rev-parse HEAD^{tree} 2>/dev/null || true)
+  # _r51_seed <head> <passed> <failed> [tree_fp]：播种收据并清哨兵。
+  # v3.79.0：第 4 参非空 → 新 schema（含 tree_fingerprint）；空 → 旧 5 字段 schema
+  # （TC-1381 反向兼容反证用：无指纹字段一律视为不新鲜）。
   _r51_seed() {
-    printf '{"head":"%s","passed":%s,"failed":%s,"wall_time_s":1,"generated_at":"2026-01-01T00:00:00Z"}\n' \
-      "$1" "$2" "$3" > "$r51_receipt"
+    if [[ -n "${4:-}" ]]; then
+      printf '{"head":"%s","tree_fingerprint":"%s","passed":%s,"failed":%s,"wall_time_s":1,"generated_at":"2026-01-01T00:00:00Z"}\n' \
+        "$1" "$4" "$2" "$3" > "$r51_receipt"
+    else
+      printf '{"head":"%s","passed":%s,"failed":%s,"wall_time_s":1,"generated_at":"2026-01-01T00:00:00Z"}\n' \
+        "$1" "$2" "$3" > "$r51_receipt"
+    fi
     rm -f "$r51/tests/.embedded-ran"
   }
-  _r51_run() { ( cd "$r51" && bash scripts/update-assertion-count.sh --check 2>&1 ); }
+  # _r51_run：fixture 内 UAC 调用。MAX_AGE 显式钉 30——防外层调用方 env（如
+  # UAC 强制内嵌跑 MAX_AGE=0）泄漏进 fixture 使采信门整体跳过（TC-1121/1378/
+  # 1379/1381 全依赖采信门参与判定；实测红档四连）；TC-1122d 自带显式 0 覆盖。
+  _r51_run() { ( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/update-assertion-count.sh --check 2>&1 ); }
 
   # TC-1121 采信主证：合法新鲜同 HEAD 收据 → 跳过内嵌（哨兵不在）+ N 来自收据（999）
-  _r51_seed "$r51_head" 999 0
+  # v3.79.0（CHG-103）：fixture 升新 schema（含同树指纹）；TC-1378 追加断言指纹门参与判定
+  _r51_seed "$r51_head" 999 0 "$r51_tree"
   r51_out=$(_r51_run || true)
   r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
   r51_has999=$(printf '%s\n' "$r51_out" | grep -c 'expected 999')
   report "T51 fresh same-HEAD receipt trusted, embedded run skipped (TC-1121)" 0 "$([[ "$r51_sentinel" == 0 && "$r51_has999" -ge 1 ]] && echo 0 || echo 1)"
+  r51_has999=$(printf '%s\n' "$r51_out" | grep -c 'tree-match')
+  report "T51 trust path reports tree fingerprint match (TC-1378)" 0 "$([[ "$r51_sentinel" == 0 && "$r51_has999" -ge 1 ]] && echo 0 || echo 1)"
 
   # TC-1122a head 不匹配 → 拒采（哨兵在 + expected 777）
   _r51_seed deadbeefdeadbeefdeadbeefdeadbeefdeadbeef 999 0
@@ -3770,6 +3811,80 @@ R51FAKE
   r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
   r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
   report "T51 MAX_AGE_MIN=0 disables trusting (TC-1122d)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+
+  # v3.79.0 (CHG-103, REQ-1143/1144)：树指纹语义 golden（缺口主证 = SC-1841）
+  # TC-1379 tracked 文件内容变更 → 指纹不等 → 拒采（含 mismatch 提示行）
+  # 注：改的是 tests/run-tests.sh（套件输入面）——README×2 是声明文件（消费方改写面），
+  # 已被指纹排除（TC-1383 反向承载），不可用作 tracked 变更样本。
+  _r51_seed "$r51_head" 999 0 "$r51_tree"
+  printf '# dirty\n' >> "$r51/tests/run-tests.sh"
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  r51_mis=$(printf '%s\n' "$r51_out" | grep -c 'tree-fingerprint mismatch')
+  report "T51 tracked worktree change rejects receipt (TC-1379)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 && "$r51_mis" -ge 1 ]] && echo 0 || echo 1)"
+  git -C "$r51" checkout -q -- tests/run-tests.sh 2>/dev/null || true
+
+  # TC-1380 untracked 新文件内容 → 指纹不等 → 拒采（porcelain-only 配方的盲区，本门必拒）
+  _r51_seed "$r51_head" 999 0 "$r51_tree"
+  printf 'new file\n' > "$r51/tests/untracked-extra.txt"
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 untracked new file rejects receipt (TC-1380)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+  rm -f "$r51/tests/untracked-extra.txt"
+
+  # TC-1381 旧 schema（无指纹字段）→ 拒采（反向兼容，fail-closed 方向）
+  _r51_seed "$r51_head" 999 0
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  r51_mis=$(printf '%s\n' "$r51_out" | grep -c 'tree-fingerprint missing')
+  report "T51 pre-v3.79 schema receipt rejected (TC-1381)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 && "$r51_mis" -ge 1 ]] && echo 0 || echo 1)"
+
+  # TC-1382 指纹确定性：同树两算同值，clean 树 = HEAD^{tree}
+  # （先清内嵌哨兵：上一用例的 embedded run 会在 tests/ 留 untracked 哨兵，污染树）
+  rm -f "$r51/tests/.embedded-ran"
+  fp1=$(suite_tree_fingerprint "$r51")
+  fp2=$(suite_tree_fingerprint "$r51")
+  report "T51 fingerprint deterministic, clean tree = HEAD tree (TC-1382)" 0 "$([[ -n "$fp1" && "$fp1" == "$fp2" && "$fp1" == "$r51_tree" ]] && echo 0 || echo 1)"
+
+  # TC-1383 指纹排除面：gitignored（.agent-state）不换指纹；声明文件（README×2/
+  # .audit-baseline，消费方 UAC 全跑后自行改写的输出声明面）改内容也不换指纹；
+  # 真实 index 零副作用（porcelain 在指纹调用前后一致——两个采样点都含脏态）
+  rm -f "$r51/tests/.embedded-ran"
+  printf 'noise\n' > "$r51/.agent-state/noise.txt"
+  printf 'README claims 777 golden-case assertions here.\n' > "$r51/README.md"
+  r51_pre=$(git -C "$r51" status --porcelain)
+  fp3=$(suite_tree_fingerprint "$r51")
+  r51_post=$(git -C "$r51" status --porcelain)
+  report "T51 ignored + claim files do not shift fingerprint; real index untouched (TC-1383)" 0 "$([[ "$fp3" == "$r51_tree" && -n "$r51_pre" && "$r51_pre" == "$r51_post" ]] && echo 0 || echo 1)"
+  rm -f "$r51/.agent-state/noise.txt"
+  printf 'README claims 888 golden-case assertions here.\n' > "$r51/README.md"
+
+  # TC-1384 no-git 降级：lib 输出空串（exit 0）；UAC 无 git 走既有内嵌路径
+  r51_ng=$(mktemp -d "${TMPDIR:-/tmp}/receipt-nogit.XXXXXX")
+  r51_ngfp=$(suite_tree_fingerprint "$r51_ng")
+  r51_ng2="$r51/nogit"
+  mkdir -p "$r51_ng2/scripts" "$r51_ng2/tests"
+  cp "$ROOT/scripts/update-assertion-count.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r51_ng2/scripts/"
+  cp "$r51/tests/run-tests.sh" "$r51_ng2/tests/"
+  printf 'README claims 888 golden-case assertions here.\n' > "$r51_ng2/README.md"
+  printf '这里声称 888 项 golden-case 断言。\n' > "$r51_ng2/README.zh-CN.md"
+  r51_out=$( cd "$r51_ng2" && bash scripts/update-assertion-count.sh --check 2>&1 || true )
+  r51_sentinel=$([[ -f "$r51_ng2/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 non-git repo: lib yields empty, UAC runs embedded (TC-1384)" 0 "$([[ -z "$r51_ngfp" && "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+  rm -rf "$r51_ng" "$r51_ng2"
+
+  # TC-1386 缺指纹 lib → 快路径整体关闭（fail-closed：无法证明树未变即不采信）
+  _r51_seed "$r51_head" 999 0 "$r51_tree"
+  mv "$r51/scripts/lib-suite-tree-fingerprint.sh" "$r51/scripts/lib.bak"
+  r51_out=$(_r51_run || true)
+  r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
+  r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
+  report "T51 missing fingerprint lib disables the fast path (TC-1386)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
+  mv "$r51/scripts/lib.bak" "$r51/scripts/lib-suite-tree-fingerprint.sh"
 
   # TC-1124/1125 真实仓：过滤 / rc2 运行不触收据（预播已知值 → 前后 cmp 相等 → 还原）
   r51_had=$([[ -f "$ROOT/.agent-state/last-suite-receipt.json" ]] && echo 1 || echo 0)
@@ -3806,6 +3921,12 @@ R51FAKE
   report "T51 red run deletes receipt (TC-1126c)" 1 "$r51_g3"
   report "T51 receipt stamped UTC (TC-1126d)" 1 "$r51_g4"
   report "T51 receipt block sits after wall-time (TC-1126e)" 0 "$([[ -n "$r51_w" && -n "$r51_r" && "$r51_w" -lt "$r51_r" ]] && echo 0 || echo 1)"
+  # v3.79.0 (CHG-103, REQ-1142): emitter shape pins — the receipt printf carries
+  # the tree_fingerprint field and the fingerprint is taken inside the guarded
+  # block (runtime receipt content is evidenced by the T6 full run, 05).
+  r51_mis=$(printf '%s\n' "$r51_blk" | grep -cF '"tree_fingerprint":"%s"')
+  fp1=$(grep -cF '_tree_fp=$(suite_tree_fingerprint "$ROOT")' "$ROOT/tests/run-tests.sh")
+  report "T51 receipt carries tree_fingerprint field, guarded compute (TC-1385)" 0 "$([[ "$r51_mis" -ge 1 && "$fp1" -ge 1 ]] && echo 0 || echo 1)"
   rm -rf "$r51"
 }
 
@@ -5387,8 +5508,146 @@ fi
 
 }
 
+section_T63() {
+# ------------------------------------------------ T63 CHG-102 新面 golden（v3.78.0，REQ-1129~1139）
+# 四个面合并成节的原因：都属"本变更新增的断言面"，且各自小而独立（hook 是下发面、
+# 评测面口径是行为面、UAC 形态是收口面、台账是回填面），单开四节只会摊薄 SECTIONS 可读性。
+#   ①下发 hook golden（TC-1372）：教训 = `<githooks>/` 两个 hook 是**下发面**（bootstrap
+#     --guard 复制），却长期没有 golden——模板被改动只靠安装清单行数旁证。而 hook 里的
+#     调用串正是门禁的本地入口（`--stage ci --base` 分支门、`--stage commit-msg "$1"`
+#     归属门）：漂移 = 本地静默放过，CI 才发现。锁四件事：落点 + 可执行 + 关键调用串 +
+#     与源模板逐字节一致；另加非默认根用例（安装期路径改写必须进 hook 本体）。
+#   ②评测面取样口径（TC-1358~1360）：原按源仓 `resources/**` 取样 → 目标仓面清单为空，
+#     漂移告警**恒不触发**（fail-open）。三条用例 = 装点面可漂移 / `paths.docs` 真生效
+#     （差分：改默认 docs 不翻、改 specs 才翻） / 源仓回落不回归。
+#   ③UAC 并行形态（TC-1368/1369）：`-j` 只在**收口脚本内嵌全跑**打通，套件自身默认仍
+#     串行（receipt 语义零触碰）；此处钉静态形态，行为等价由 T9 三连跑实证承载（05 证据）。
+#   ④源层台账回填（TC-1374）：P10 缺口说明 + 回填行、P09 FU-902~945 块与 FU-943 承接行。
+if [[ -f "$BOOT_SRC" ]]; then
+  t63_tpl="$ROOT/resources/templates"
+  t63_bt=$(mktemp -d)
+  bash "$BOOT_SRC" --guard "$t63_bt" >/dev/null 2>&1
+  report "T63 TC-1372 guard lands pre-push at <githooks>/ (executable)" 0 "$([[ -x "$t63_bt/.githooks/pre-push" ]] && echo 0 || echo 1)"
+  report "T63 TC-1372 guard lands commit-msg at <githooks>/ (executable)" 0 "$([[ -x "$t63_bt/.githooks/commit-msg" ]] && echo 0 || echo 1)"
+  report "T63 TC-1372 pre-push calls the strict branch gate" 1 "$(grep -cF 'agent-gate --stage ci --base' "$t63_bt/.githooks/pre-push")"
+  report "T63 TC-1372 commit-msg forwards the message file to the gate" 1 "$(grep -cF 'agent-gate --stage commit-msg "$1"' "$t63_bt/.githooks/commit-msg")"
+  report "T63 TC-1372 both hooks fail fast (set -euo pipefail)" 2 "$(grep -hcF 'set -euo pipefail' "$t63_bt/.githooks/pre-push" "$t63_bt/.githooks/commit-msg" | awk '{s+=$1} END{print s+0}')"
+  cmp -s "$t63_tpl/pre-push" "$t63_bt/.githooks/pre-push"
+  report "T63 TC-1372 installed pre-push is byte-identical to the shipped template" 0 $?
+  cmp -s "$t63_tpl/commit-msg" "$t63_bt/.githooks/commit-msg"
+  report "T63 TC-1372 installed commit-msg is byte-identical to the shipped template" 0 $?
+  # v3.79.0 (CHG-103, REQ-1144): the fingerprint lib ships WITH run-tests.sh —
+  # without it the target repo's receipt emitter degrades to empty fingerprints
+  # (fast path dead on arrival). Pin: landed at <scripts>/, executable, and
+  # byte-identical to the source-of-truth copy.
+  report "T63 TC-1388 guard lands the fingerprint lib at <scripts>/ (executable)" 0 "$([[ -x "$t63_bt/scripts/lib-suite-tree-fingerprint.sh" ]] && echo 0 || echo 1)"
+  cmp -s "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$t63_bt/scripts/lib-suite-tree-fingerprint.sh"
+  report "T63 TC-1388 installed fingerprint lib is byte-identical to the source" 0 $?
+  # 非默认 scripts 根：hook 本体必须按新根调门禁（安装期 transform，非运行期解析）
+  t63_bt2=$(mktemp -d)
+  bash "$BOOT_SRC" --guard --scripts-dir gov "$t63_bt2" >/dev/null 2>&1
+  report "T63 TC-1372 custom scripts root follows into pre-push body" 1 "$(grep -cF 'gov/agent-gate --stage ci --base' "$t63_bt2/.githooks/pre-push")"
+  report "T63 TC-1372 custom scripts root leaves no default-root call behind" 0 "$(grep -cF 'scripts/agent-gate' "$t63_bt2/.githooks/pre-push")"
+  rm -rf "$t63_bt" "$t63_bt2"
+else
+  echo "SKIP T63 hook cases: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）"
+fi
+
+# ---- ② 评测面取样口径（TC-1358~1360，含 1359b 引号化取值）--------------------
+t63_score="$ROOT/resources/templates/eval-rescore.sh"
+[[ -f "$t63_score" ]] || t63_score="$ROOT/scripts/eval-rescore"
+if [[ -f "$t63_score" ]]; then
+  # 最小目标仓布局：装点治理文本 + 评测集（case 引用存在性由 eval-cases 派生，此处直接给）
+  t63_seed() { # <dir> <docs_dir>
+    mkdir -p "$1/.agent-state" "$1/$2"
+    printf 'AGENTS.md\n' > "$1/AGENTS.md"
+    printf 'standards-v1\n' > "$1/$2/DEVELOPMENT_STANDARDS.md"
+    printf 'case_id\tsrc\tbug\tlayer\tlanding\tregression_ref\nC1\ta\tb\tc\td\tTC-1\n' > "$1/.agent-state/eval-cases.tsv"
+  }
+  t63_sha() { # <dir> <docs_dir>
+    bash "$t63_score" --cases "$1/.agent-state/eval-cases.tsv" --face "$1" --dry-run 2>/dev/null \
+      | grep -oE '"config_sha":"[^"]*"'
+  }
+  # TC-1358：装点面被改 → 漂移告警真的翻（改前这里恒不触发）
+  t63r=$(mktemp -d); t63_seed "$t63r" docs
+  bash "$t63_score" --cases "$t63r/.agent-state/eval-cases.tsv" --face "$t63r" --update-baseline >/dev/null 2>&1
+  t63_sha_a=$(t63_sha "$t63r" docs)
+  printf 'standards-v2\n' >> "$t63r/docs/DEVELOPMENT_STANDARDS.md"
+  bash "$t63_score" --cases "$t63r/.agent-state/eval-cases.tsv" --face "$t63r" >/dev/null 2>&1
+  t63_stale_rc=$?
+  report "T63 TC-1358 editing an installed docs face flips stale (rc 1)" 1 "$t63_stale_rc"
+  report "T63 TC-1358 config_sha tracks the installed face content" 1 "$([[ -n "$t63_sha_a" && "$(t63_sha "$t63r" docs)" != "$t63_sha_a" ]] && echo 1 || echo 0)"
+  rm -rf "$t63r"
+  # TC-1359：`paths.docs: specs` 必须真生效——改默认 docs 不翻，改 specs 才翻（差分断言）
+  t63r2=$(mktemp -d)
+  t63_seed "$t63r2" specs
+  mkdir -p "$t63r2/docs" && printf 'defaults-v1\n' > "$t63r2/docs/DEVELOPMENT_STANDARDS.md"
+  printf 'paths:\n  docs: specs\n' > "$t63r2/.agent-governance.yml"
+  bash "$t63_score" --cases "$t63r2/.agent-state/eval-cases.tsv" --face "$t63r2" --update-baseline >/dev/null 2>&1
+  printf 'defaults-v2\n' >> "$t63r2/docs/DEVELOPMENT_STANDARDS.md"
+  bash "$t63_score" --cases "$t63r2/.agent-state/eval-cases.tsv" --face "$t63r2" >/dev/null 2>&1
+  report "T63 TC-1359 untouched default docs root does not flip stale" 0 $?
+  printf 'specs-v2\n' >> "$t63r2/specs/DEVELOPMENT_STANDARDS.md"
+  bash "$t63_score" --cases "$t63r2/.agent-state/eval-cases.tsv" --face "$t63r2" >/dev/null 2>&1
+  report "T63 TC-1359 editing the yml-declared specs root flips stale" 1 $?
+  rm -rf "$t63r2"
+  # TC-1359b：yml 取值带引号（`docs: "specs"`）必须与裸值等价——留引号会让装点面全部落空
+  # 并静默回落源仓路径（漂移告警仍恒不触发，与 REQ-1129 修的是同一失效类）。
+  t63r2q=$(mktemp -d)
+  t63_seed "$t63r2q" specs
+  mkdir -p "$t63r2q/docs" && printf 'defaults-v1\n' > "$t63r2q/docs/DEVELOPMENT_STANDARDS.md"
+  printf 'paths:\n  docs: "specs"\n' > "$t63r2q/.agent-governance.yml"
+  bash "$t63_score" --cases "$t63r2q/.agent-state/eval-cases.tsv" --face "$t63r2q" --update-baseline >/dev/null 2>&1
+  printf 'defaults-v2\n' >> "$t63r2q/docs/DEVELOPMENT_STANDARDS.md"
+  bash "$t63_score" --cases "$t63r2q/.agent-state/eval-cases.tsv" --face "$t63r2q" >/dev/null 2>&1
+  report "T63 TC-1359b quoted docs root ignores the default docs tree" 0 $?
+  printf 'specs-v2\n' >> "$t63r2q/specs/DEVELOPMENT_STANDARDS.md"
+  bash "$t63_score" --cases "$t63r2q/.agent-state/eval-cases.tsv" --face "$t63r2q" >/dev/null 2>&1
+  report "T63 TC-1359b quoted docs root still flips stale" 1 $?
+  rm -rf "$t63r2q"
+  # TC-1360：源仓形态（只有 resources/**、无安装落点）→ 回落同名源路径，行为与变更前等价
+  t63r3=$(mktemp -d)
+  mkdir -p "$t63r3/.agent-state" "$t63r3/resources"
+  printf 'src-agents\n' > "$t63r3/resources/AGENTS.md"
+  printf 'src-standards\n' > "$t63r3/resources/DEVELOPMENT_STANDARDS.md"
+  printf 'case_id\tsrc\tbug\tlayer\tlanding\tregression_ref\nC1\ta\tb\tc\td\tTC-1\n' > "$t63r3/.agent-state/eval-cases.tsv"
+  t63_src_sha1=$(t63_sha "$t63r3" docs)
+  t63_src_sha2=$(t63_sha "$t63r3" docs)
+  report "T63 TC-1360 source-repo layout still yields a non-empty config_sha" 1 "$([[ -n "$t63_src_sha1" ]] && echo 1 || echo 0)"
+  report "T63 TC-1360 source-repo fallback is stable across runs" 1 "$([[ -n "$t63_src_sha1" && "$t63_src_sha1" == "$t63_src_sha2" ]] && echo 1 || echo 0)"
+  rm -rf "$t63r3"
+else
+  echo "SKIP T63 eval-rescore cases: eval-rescore 未安装"
+fi
+
+# ---- ③ UAC 并行形态（TC-1368/1369；静态形态，行为等价见 05 的 T9 三连跑证据）----
+t63_uac="$ROOT/scripts/update-assertion-count.sh"
+if [[ -f "$t63_uac" ]]; then
+  report "T63 TC-1368 UAC embeds the parallel suite invocation" 1 "$(grep -cF 'tests/run-tests.sh" -j "$suite_jobs"' "$t63_uac")"
+  report "T63 TC-1368 UAC defaults the pool to 4 jobs" 1 "$(grep -cF 'suite_jobs="${AGENT_GUARD_SUITE_JOBS:-4}"' "$t63_uac")"
+  report "T63 TC-1369 UAC falls back for non-numeric and <1 (pool stays sane)" 2 "$(grep -cE '"\$suite_jobs" in|"\$suite_jobs" -ge 1' "$t63_uac")"
+  report "T63 TC-1369 suite default stays serial (receipt semantics untouched)" 1 "$(grep -cE '^JOBS=1' "$ROOT/tests/run-tests.sh")"
+else
+  echo "SKIP T63 UAC cases: update-assertion-count.sh absent"
+fi
+
+# ---- ④ 源层台账回填（TC-1374）------------------------------------------------
+t63_p10="$ROOT/docs/project/P10-change-ledger.md"
+t63_p09="$ROOT/docs/project/P09-risk-register.md"
+if [[ -f "$t63_p10" && -f "$t63_p09" ]]; then
+  report "T63 TC-1374 P10 states the index gap explicitly" 2 "$(grep -c '缺口说明' "$t63_p10")"
+  report "T63 TC-1374 P10 backfills CHG rows for the gap region" 1 "$([[ "$(grep -cE '^\| (BATCH-[0-9]+|—（独立目录）) \| CHG-0(7[1-9]|8[0-9]|9[1-7]) ' "$t63_p10")" -ge 10 ]] && echo 1 || echo 0)"
+  report "T63 TC-1374 P09 registers the FU-902~945 retrospective block" 1 "$(grep -c 'FU-902~945 回溯回填' "$t63_p09")"
+  report "T63 TC-1374 P09 carries the FU-943 carry-over row" 1 "$(grep -c '^| FU-943 ' "$t63_p09")"
+  report "T63 TC-1374 P09 gap rows are labelled 未登记，非内容缺失" 3 "$(grep -c '未登记，非内容缺失' "$t63_p09")"
+else
+  echo "SKIP T63 ledger cases: docs/project 总册不在场（docs/ 本地不入库）"
+fi
+
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
@@ -5496,12 +5755,21 @@ printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant ta
 # Best-effort by design: a write failure warns and never blocks the suite (the
 # suite's own output remains the primary evidence; the receipt is an
 # optimization consumed by update-assertion-count.sh, see REQ-1050).
+# v3.79.0 (CHG-103, REQ-1142): the receipt additionally carries a
+# "tree_fingerprint" (full-worktree snapshot via a throwaway git index, see
+# scripts/lib-suite-tree-fingerprint.sh) — the trust semantics become
+# "same HEAD + same tree fingerprint + freshness window" (consumer side,
+# REQ-1143): a receipt from a different worktree state must never be trusted
+# even at the same HEAD. Empty fingerprint (non-git repo / lib failure) is
+# written as-is; the consumer treats empty/mismatched fingerprints as stale.
 if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
   if [[ "$fail" -eq 0 ]]; then
     _receipt="$ROOT/.agent-state/last-suite-receipt.json"
     mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
-    if ! printf '{"head":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
-      "$SUITE_HEAD" "$pass" "$fail" "$SECONDS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_receipt" 2>/dev/null; then
+    _tree_fp=""
+    command -v suite_tree_fingerprint >/dev/null 2>&1 && _tree_fp=$(suite_tree_fingerprint "$ROOT")
+    if ! printf '{"head":"%s","tree_fingerprint":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
+      "$SUITE_HEAD" "$_tree_fp" "$pass" "$fail" "$SECONDS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_receipt" 2>/dev/null; then
       printf 'warning: could not write suite receipt %s (non-fatal)\n' "$_receipt" >&2
     fi
   else
