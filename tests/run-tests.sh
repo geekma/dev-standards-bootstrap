@@ -5449,7 +5449,7 @@ section_T61() {
   report "T61 TC-1343b the evidence line does not refresh the 05 mtime" 0 "$([[ -n "$t61_m1" && "$t61_m1" == "$t61_m2" ]] && echo 0 || echo 1)"
 
   # ---- TC-1347 / REQ-1115/1117：两对镜像可解析（工具面零新依赖）-----------
-  bash -n "$GATE_SRC" && bash -n "$ROOT/scripts/session-gate.sh"
+  bash -n "$GATE_SRC" && bash -n "$ROOT/resources/templates/session-gate.sh"
   report "T61 TC-1347 gate + session-gate mirrors parse (bash -n)" 0 $?
 }
 
@@ -5500,8 +5500,7 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   check_output "T62 TC-1354 idle yellow wording" "YELLOW.*调用批处理" "$out"
   check_output "T62 TC-1354 report file carries 09 wording" "调用批处理.*登记 09" "$(cat .agent-state/session-gate-last.md 2>/dev/null || echo)"
   # mirror consistency (source vs template) — same-file identity
-  cmp -s "$ROOT/scripts/session-gate.sh" "$SESSION_GATE_SRC"
-  report "T62 TC-1355 session-gate source/template byte-identical" 0 $?
+  report "T62 TC-1355 session-gate source/template byte-identical" 0 "$([[ ! -f "$ROOT/scripts/session-gate.sh" ]] && echo 0 || { cmp -s "$ROOT/scripts/session-gate.sh" "$SESSION_GATE_SRC" && echo 0 || echo 2; })"
 else
   echo "SKIP T62: session-gate.sh absent — 跳过 edit/write 密度 golden cases"
 fi
@@ -5683,7 +5682,7 @@ section_T64() {
   report "T64 TC-1403 AGENTS carries the phase read-set discipline" 1 "$(grep -c '分阶段最小读集（v3.80.0' "$ROOT/resources/AGENTS.md")"
   report "T64 TC-1403 CLAUSE_REGISTRY registers R65" 1 "$(grep -c '^| R65 ' "$ROOT/resources/CLAUSE_REGISTRY.md")"
   report "T64 TC-1403 DS carries the read-set pointer line" 1 "$(grep -c '分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-  report "T64 TC-1404 gate usage names --scaffold" 1 "$(grep -c 'begin <change-id> \[--risk L0|L1|L2|L3\] \[--scaffold\]' "$ROOT/scripts/agent-gate")"
+  report "T64 TC-1404 gate usage names --scaffold" 1 "$(grep -c 'begin <change-id> \[--risk L0|L1|L2|L3\] \[--scaffold\]' "$GATE_SRC")"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.
