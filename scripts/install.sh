@@ -174,9 +174,11 @@ elif [[ -d "$skill_dir/.git" ]]; then
     fi
     git -C "$skill_dir" checkout --quiet "$opt_ref" 2>/dev/null || true
   fi
-  GIT_TERMINAL_PROMPT=0 git -C "$skill_dir" pull --ff-only --quiet 2>/dev/null \
-    || echo "install: NOTE  pull failed (offline?) — continuing with the local copy" >&2
-  echo "install: skill checkout up to date: $skill_dir"
+  if GIT_TERMINAL_PROMPT=0 git -C "$skill_dir" pull --ff-only --quiet 2>/dev/null; then
+    echo "install: skill checkout up to date: $skill_dir"
+  else
+    echo "install: NOTE  pull failed (offline?) — continuing with the local copy (possibly stale)" >&2
+  fi
 else
   if [[ -e "$skill_dir" ]]; then
     echo "install: $skill_dir exists but is not a git checkout — pass --skill-dir or --from" >&2

@@ -1395,6 +1395,32 @@ at_least "A48 golden suite defines the T63 section (CHG-102)" 1 "$ROOT/tests/run
 at_least_unique "A48 golden section T63 is registered once (CHG-102)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T63)'
 report "A48 no long-stale version literal survives in a T48 label (CHG-102)" 0 "$(grep_count "$ROOT/tests/run-tests.sh" 'carries v3.75.0')"
 
+# v3.81.0 (CHG-108): 文档-实现对账钉（TC-1409）——README 双语失真修复后的防回归面。
+# 每条锚点对应 01-spec REQ-1155 的一项修订；README 是 payload，失真即契约失真。
+report "A50 README en carries no 12-volume literal (CHG-108)" 0 "$(grep_count "$ROOT/README.md" '12-volume')"
+report "A50 README zh carries no 12-volume literal (CHG-108)" 0 "$(grep_count "$ROOT/README.zh-CN.md" '12-volume')"
+at_least "A50 README en states the 13-volume master set (CHG-108)" 1 "$ROOT/README.md" '13-volume master set'
+at_least "A50 README en positions as AI agent skill (CHG-108)" 1 "$ROOT/README.md" 'is an \*\*AI agent skill\*\*'
+at_least "A50 README zh positions as Agent 技能 (CHG-108)" 1 "$ROOT/README.zh-CN.md" '是一个 \*\*Agent 技能\*\*'
+at_least "A50 README en documents --self-update (CHG-108)" 1 "$ROOT/README.md" '--self-update'
+at_least "A50 README zh documents --self-update (CHG-108)" 1 "$ROOT/README.zh-CN.md" '--self-update'
+at_least "A50 README en has a dedicated uninstall section (CHG-108)" 1 "$ROOT/README.md" '^## Uninstalling'
+at_least "A50 README zh has a dedicated uninstall section (CHG-108)" 1 "$ROOT/README.zh-CN.md" '^## 卸载'
+at_least "A50 README en documents the Tier1 outright-delete semantics (CHG-108)" 1 "$ROOT/README.md" 'Deleted \*\*outright, even if modified\*\*'
+at_least "A50 README zh documents the Tier1 outright-delete semantics (CHG-108)" 1 "$ROOT/README.zh-CN.md" '一律直接删除，含被改动者'
+at_least "A50 README en upgrade section discloses kept semantics (CHG-108)" 1 "$ROOT/README.md" 'which are kept untouched and reported'
+at_least "A50 README zh upgrade section discloses kept semantics (CHG-108)" 1 "$ROOT/README.zh-CN.md" '原样保留并报告'
+at_least "A50 README en --as-skill requires the full link path (CHG-108)" 1 "$ROOT/README.md" 'full link path including the skill name'
+at_least "A50 README zh --as-skill requires the full link path (CHG-108)" 1 "$ROOT/README.zh-CN.md" '含 skill 名的完整链接路径'
+at_least "A50 README en CI section names both jobs (CHG-108)" 1 "$ROOT/README.md" 'AGENT_GUARD_AUDIT_SOFT=1'
+at_least "A50 README zh CI section names both jobs (CHG-108)" 1 "$ROOT/README.zh-CN.md" 'AGENT_GUARD_AUDIT_SOFT=1'
+
+# v3.81.0 (CHG-108): CI 守卫钉（TC-1407）——ci.yml 每job超时 + workflow级并发取消。
+at_least "A51 ci.yml bounds each job with timeout-minutes (CHG-108)" 2 "$ROOT/.github/workflows/ci.yml" 'timeout-minutes: 15'
+at_least "A51 ci.yml declares a concurrency group (CHG-108)" 1 "$ROOT/.github/workflows/ci.yml" '^concurrency:'
+at_least "A51 ci.yml cancels superseded runs (CHG-108)" 1 "$ROOT/.github/workflows/ci.yml" 'cancel-in-progress: true'
+at_least "A51 install.sh states staleness on pull failure (CHG-108)" 1 "$ROOT/scripts/install.sh" 'possibly stale'
+
 # v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
 # 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时
 # 本组断言红，而不是目标仓用户静默拿到串行/无指纹的下发态。

@@ -2854,8 +2854,14 @@ if [[ -f "$UNINST_SRC" ]]; then
   mkdir -p .githooks
   cp "$ROOT/resources/templates/pre-commit" .githooks/pre-commit
   printf '#!/bin/sh\necho foreign\n' > .githooks/foreign-hook
-  mkdir -p .github
-  cp "$ROOT/resources/templates/PULL_REQUEST_TEMPLATE.md" .github/PULL_REQUEST_TEMPLATE.md
+  mkdir -p .github/workflows
+  # PR template with BROKEN marker (custom content, no 门禁/agent-gate tokens) — Tier2 must keep it
+  printf 'custom pr template, user edited\n' > .github/PULL_REQUEST_TEMPLATE.md
+  # workflow template with INTACT marker — Tier2 must remove it
+  cp "$ROOT/resources/templates/github-agent-governance.yml" .github/workflows/agent-governance.yml
+  # Tier1 runtime file, deliberately MODIFIED — must be removed outright anyway
+  cp "$ROOT/resources/templates/check-standards-compliance.sh" scripts/check-standards-compliance.sh
+  printf '\n# local tampering\n' >> scripts/check-standards-compliance.sh
   git config core.hooksPath .githooks
   bash scripts/uninstall-standards --dry-run >/dev/null 2>&1
   report "T32 dry-run exits 0" 0 $?
@@ -2864,7 +2870,9 @@ if [[ -f "$UNINST_SRC" ]]; then
   report "T32 uninstall exits 0" 0 $?
   report "T32 runtime tier removed" 0 "$(test ! -e scripts/agent-gate && test ! -e scripts/uninstall-standards && test ! -d .agent-state; echo $?)"
   report "T32 marked hook removed" 0 "$(test ! -e .githooks/pre-commit; echo $?)"
-  report "T32 PR template removed by marker" 0 "$(test ! -e .github/PULL_REQUEST_TEMPLATE.md; echo $?)"
+  report "T32 marked workflow removed by marker" 0 "$(test ! -e .github/workflows/agent-governance.yml; echo $?)"
+  report "T32 modified PR template kept (marker broken)" 0 "$(test -f .github/PULL_REQUEST_TEMPLATE.md; echo $?)"
+  report "T32 modified runtime file removed outright (Tier1: check-standards-compliance.sh)" 0 "$(test ! -e scripts/check-standards-compliance.sh; echo $?)"
   report "T32 foreign hook kept" 0 "$(test -f .githooks/foreign-hook; echo $?)"
   report "T32 diverged AGENTS.md kept without --force" 0 "$(test -f AGENTS.md; echo $?)"
   report "T32 core.hooksPath unset" 0 "$(git config core.hooksPath >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -3472,10 +3480,10 @@ section_T48() {
 # CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
 # footer labels no longer spell a version literal — a label carrying a stale
 # number was itself a drift source (renamed to "carries the current version").
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.80.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.81.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.80.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.80.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.81.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.81.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.

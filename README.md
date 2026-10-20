@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.80.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.81.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -15,7 +15,7 @@
 
 </div>
 
-**In short** — `dev-standards-bootstrap` is a **Claude Code skill** (and a plain git repo, installable into any coding agent) that injects **development governance** into any repository: an `AGENTS.md` entry point every coding agent reads first, five mandatory **quality gates** (doc-first, test-first, evidence, traceability, independent verification), risk-classified **change management**, and Git/CI enforcement — installed once, kept current by the upgrade chain.
+**In short** — `dev-standards-bootstrap` is an **AI agent skill** (and a plain git repo, installable into any coding agent) that injects **development governance** into any repository: an `AGENTS.md` entry point every coding agent reads first, five mandatory **quality gates** (doc-first, test-first, evidence, traceability, independent verification), risk-classified **change management**, and Git/CI enforcement — installed once, kept current by the upgrade chain.
 
 | | |
 |---|---|
@@ -66,7 +66,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 **What this buys you:**
 
 - **Variance compression, not cleverness.** Governance does not make the model smarter — it nails down "smart but amnesiac, locally strong but globally weak, accurate once but unreproducible" with machine enforcement, memory, and independence. Without it, delivery quality is a dice roll: real samples include six consecutive fixes to the same function and a family of fabricated test-assertion values.
-- **Organizational memory is where the value concentrates.** The moment a session compacts or ends, an ungoverned agent restarts from amnesia; here, state lives in the 12-volume master set and disk artifacts.
+- **Organizational memory is where the value concentrates.** The moment a session compacts or ends, an ungoverned agent restarts from amnesia; here, state lives in the 13-volume master set and disk artifacts.
 - **The tax is measured and being cut.** The governance machinery costs ~25% of tool calls and a resident context base — and 97.5%+ of token spend is cache-read prefill from un-switched sessions. v3.38/v3.39 turned session discipline into machine enforcement (water-level gate, exploration-budget yellow light, review-input contract) targeting exactly that: **~90% attainment at a 30–50% cost reduction** — governance-grade quality at near-ungoverned cost.
 
 ## Key Features
@@ -82,7 +82,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1065 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1067 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -125,6 +125,8 @@ Open your AI coding tool in the target repository and say:
 
 That's it. The agent detects existing files (never overwrites silently — it diffs first and asks), runs the installer, wires the hooks, and reports what remains (one platform-side step, [below](#what-runs-automatically-and-what-stays-manual)). Upgrading later is the same sentence — the skill detects the version diff and upgrades.
 
+**Keeping the skill copy itself current** (routes A/B/D install a *copy or link* of this repo into your client): route A — `npx skills update geekma/dev-standards-bootstrap -g`; route B — `claude plugin update dev-standards-bootstrap@geekma-dev-standards` (marketplace-managed); route D — the symlink tracks the checkout, so `bash <skill-dir>/scripts/bootstrap.sh --self-update` updates it in place. Route C agents re-clone or `git pull` the checkout themselves. Skill-copy currency and target-repo governance upgrades are two independent halves — see [Installation & Upgrades](#installation--upgrades).
+
 **Skip skill registration entirely?** Run the [one command](#installation--upgrades) exactly as written there (no extra flag) — it installs governance straight into the repository, agent-agnostic (the `AGENTS.md` context layer is natively read by every supported tool), and auto-becomes an upgrade if the target is already governed.
 
 After either path there is nothing left to wire by hand:
@@ -144,12 +146,12 @@ curl -fsSL https://raw.githubusercontent.com/geekma/dev-standards-bootstrap/main
 ```
 
 - Default target is the current directory; pass a path as the first argument instead.
-- The skill checkout is kept at `~/.dev-standards-bootstrap/dev-standards-bootstrap` (override with `--skill-dir <path>`); an existing checkout is reused and fast-forward pulled — **local changes there are never overwritten** (the command refuses and tells you).
-- Already-governed target → automatic `--upgrade`: governance-owned files (standards, templates, scripts, hooks, workflows, tests) move to the carried version while **live records stay untouched** (`bugfix-log.md`, delivery summary, 06.5 records, your `.agent-governance.yml`). Commit the target repo first so git history preserves any customization.
+- The skill checkout is kept at `~/.dev-standards-bootstrap/dev-standards-bootstrap` (override with `--skill-dir <path>`); an existing checkout is reused and fast-forward pulled — **local changes there are never overwritten** (the command refuses and tells you). If the pull fails (e.g. offline), the command continues with the **existing local copy, which may be stale** — it says so; rerun when back online, or run `bash <skill-dir>/scripts/bootstrap.sh --self-update` to update the skill copy on its own.
+- Already-governed target → automatic `--upgrade`: governance-owned files (standards, templates, scripts, hooks, workflows, tests) move to the carried version — **except files you have modified locally, which are kept untouched and reported** (pass `--force` to overwrite them with the carried version); a dirty target work tree blocks the upgrade until committed or stashed (`--force` overrides). **Live records always stay untouched**: `bugfix-log.md`, delivery summaries, 06.5 records, your `.agent-governance.yml`, and everything under `docs/changes/**` and `docs/bugs/BUG-*/`. Commit the target repo first so git history preserves any customization.
 - Offline / pinned installs: `--from <local-checkout>`, `--repo <url>`, `--ref <branch-or-tag>`.
 - Selective layers (`--layer core|claude|ci|guard|pipeline`) and custom directory roots (`--docs-dir`, `--scripts-dir`, `--tests-dir`, `--githooks-dir`) pass through to the installer. Omit them for the full `--all` install with default roots.
 - The target should be a git repository: hook wiring (`core.hooksPath`) requires `.git/` — a bare directory gets the files but no Git-hook enforcement (CI still applies once connected).
-- Version check without side effects: `--check` compares carried / upstream / installed versions and exits 1 on drift (CI-friendly).
+- Version check without side effects: `--check` compares carried / upstream / installed versions and exits 1 on drift (CI-friendly). Update **the skill copy itself** (not the target repo) with `--self-update` — it pulls the checkout `--ff-only` and touches nothing else.
 
 ### `--as-skill` details (route D in Quick Start)
 
@@ -157,7 +159,7 @@ Route D symlinks the checkout into the client's skill directory — same [one co
 
 - `--as-skill opencode` → symlink into `~/.config/opencode/skills/`
 - `--as-skill all` → both clients
-- `--as-skill ~/.agents/skills/dev-standards-bootstrap` → any other client, destination directory given directly
+- `--as-skill ~/.agents/skills/dev-standards-bootstrap` → any other client — pass the **full link path including the skill name** (the symlink is created exactly at that path, no suffix is appended)
 
 Registration is a **symlink** to the checkout (zero copies — self-updates flow through), fail-closed (an existing non-symlink destination is never touched; `--force` only retargets a symlink or replaces an **empty** directory), mutually exclusive with `--install`/`--upgrade`/`--check`/`--layer` (a combined call is a usage error, exit 2), and independent from governing a repository — both paths compose. Reload afterwards (`/reload-skills` in Claude Code, or restart the session).
 
@@ -321,6 +323,8 @@ dev-standards-bootstrap/
 ├── README.zh-CN.md                         # Chinese documentation
 ├── LICENSE                                 # MIT License
 ├── MAINTAINER.md                           # Maintainer notes (NOT shipped with the skill): file roles / change-coupling table / the two self-tests and their order / version carriers / per-version upgrade actions
+├── CAPABILITY-COMPARISON.md                # Three-way contribution analysis (model / harness / governance) behind the Measured Impact section
+├── 能力对比分析.md                          # Chinese edition of the capability comparison
 ├── .github/
 │   └── workflows/ci.yml                    # This repo's own CI (not shipped as a template): runs both self-test suites on every PR and push to main
 ├── .claude-plugin/
@@ -329,7 +333,10 @@ dev-standards-bootstrap/
 ├── scripts/
 │   ├── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer, idempotent, conflict-safe
 │   ├── install.sh                          # One-command installer (not shipped): clone + install/upgrade in a single step
-│   └── update-assertion-count.sh           # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
+│   ├── update-assertion-count.sh           # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
+│   ├── lib-suite-tree-fingerprint.sh       # Shared library: suite tree fingerprint used by receipt keying (source-layer)
+│   ├── eval-cases                          # Eval-case derivation runner (source-layer wrapper of resources/templates/eval-cases.sh)
+│   └── eval-rescore                        # Eval rescore runner (source-layer wrapper of resources/templates/eval-rescore.sh)
 ├── screenshots/                            # README screenshots (motivation, gate blocking, artifacts, gate-5 review)
 ├── tests/
 │   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
@@ -338,7 +345,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.80.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.81.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -383,11 +390,27 @@ dev-standards-bootstrap/
         └── github-regression-to-bug.yml    # Regression loop: main-branch test failure -> six-piece defect skeleton PR (rate-limited, v3.43.0)
 ```
 
+## Uninstalling
+
+The one-step uninstaller ships with the `--guard` layer: `scripts/uninstall-standards` (added by the installer). Run `--dry-run` first to preview. It must run **inside the target git repository**; the uninstaller **removes itself** on a real (non-dry) run — to run it again, reinstall first.
+
+Removal is tiered (what gets deleted depends on what the file is):
+
+| Tier | Files | Behavior |
+|---|---|---|
+| Runtime files | gate scripts (`agent-gate`, `session-gate.sh`, `stamp-provenance.sh`, `check-standards-compliance.sh`, eval scripts, `install-hook-adapter`, `bug-autointent`, `new-change`, `generate-reading-pack.sh`), `.agent-state/`, `.dev-standards-manifest`, `.git/agent-governance` | Deleted **outright, even if modified** — they are executable machinery, and keeping a modified gate is a security risk |
+| Template files | standards docs, templates, hook templates, workflows, tests | Deleted **only when the installer marker is intact**; modified files are kept and reported |
+| Shared knowledge assets | `AGENTS.md`, `CLAUDE.md`, governance history under `docs/` (`changes/`, `bugs/`, project masters), `bugfix-log.md` | **Kept** — they contain your records; `--force` backup-moves them to `.uninstall-backup-<timestamp>/` instead of deleting |
+| Client-adapter config | `.claude/settings.json`, `.cursor` equivalents (merged hook entries), `.opencode/plugins/dev-standards-gate.js` | The generated plugin file is removed; **merged hook entries inside shared settings files are not auto-cleaned** — the uninstaller prints the manual follow-up lines to remove |
+| Never touched | `.gemini/settings.json` (never written by the installer), platform-side required checks / branch protection (GitHub-side, files cannot revoke them), `core.hooksPath` unless it points at the managed hooks dir (then unset for you) | — |
+
+Reinstall anytime with `bootstrap --core/--guard`.
+
 ## FAQ
 
-**Does it modify my code?** No. The whole package is documentation, templates, hooks and validators around your workflow. The gate *rejects* commits; it never edits files.
+**Does it modify my code?** No. The whole package is documentation, templates, hooks and validators around your workflow. The gate *rejects* commits; it never edits your source or business files. The only files it ever writes are its own governance artifacts (templates, hooks, client-adapter config such as `.claude/settings.json` or `.opencode/plugins/*.js`).
 
-**How do I uninstall it?** Run the one-step uninstaller shipped with `--guard`: `scripts/uninstall-standards` (`--dry-run` previews, `--force` also moves shared assets aside). It deletes installer runtime files outright (gate scripts, hooks path, `.agent-state`), deletes template files only when their installer marker is intact (modified files are kept and reported), and **keeps shared knowledge assets** — `AGENTS.md`, `CLAUDE.md`, the governance history under `docs/` (`changes/`, `bugs/`, project masters), and merged client-adapter settings (`.claude/` etc.) — unless `--force`, which **backup-moves** them to `.uninstall-backup-<timestamp>/` instead of deleting. `core.hooksPath` is unset for you when it points at the managed hooks dir. Reinstall anytime with `bootstrap --core/--guard`.
+**How do I uninstall it?** See [Uninstalling](#uninstalling) — the one-step uninstaller shipped with `--guard`.
 
 **Is anything sent to a server?** No. The gate, the stamper and the audit are dependency-free shell scripts that read your filesystem and git metadata. `install.sh` only clones this public repository.
 
@@ -396,6 +419,26 @@ dev-standards-bootstrap/
 **Who generated these files — can I trace it?** Every change's coding record (and, with `stamp-provenance.sh --all`, every artifact of the active change) carries a provenance block read from the running environment: author, committer, commit hash, host, platform, UTC time.
 
 **Does this work outside GitHub?** The enforcement semantics are platform-neutral (Git hooks + any CI). The four bundled workflows are GitHub Actions reference implementations; §2.17.1 defines the semantics, not the platform.
+
+## CI (this repository)
+
+This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs two jobs on every PR and push to `main`:
+
+| Job | What it does |
+|---|---|
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 569) |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1067 golden-case assertions) in throwaway git repos; bash + git only |
+
+Both jobs run with `AGENT_GUARD_AUDIT_SOFT=1`: numeric-closure checks (counts that must equal a baseline) **warn instead of blocking** (REQ-965) — the audit's structural assertions still fail the build. Each job is bounded by `timeout-minutes: 15`, and a workflow-level `concurrency` group cancels superseded runs on the same ref.
+
+Reproduce locally (no CI needed, bash + git only):
+
+```bash
+bash tests/audit-standards-src.sh   # source-layer audit
+bash tests/run-tests.sh             # golden-case suite (writes .agent-state/last-suite-receipt.json, keyed by tree fingerprint)
+```
+
+CI green is the publish gate; the platform-side required-check step is described in [What Runs Automatically](#what-runs-automatically-and-what-stays-manual).
 
 ## Contributing
 
@@ -409,7 +452,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.80.0 | **Last Updated:** 2026-10-19 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.81.0 | **Last Updated:** 2026-10-20 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

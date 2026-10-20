@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.80.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.81.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -82,7 +82,7 @@
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1065 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1067 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -125,6 +125,8 @@ claude plugin install dev-standards-bootstrap@geekma-dev-standards
 
 就这样。Agent 会检测已有文件（绝不静默覆盖——先展示 diff 再询问）、运行安装器、接好 Hook，并汇报剩余事项（仅一步平台侧配置，见[下文](#自动化与手动边界)）。以后升级还是同一句话——Skill 检测版本差后自动升级。
 
+**保持 Skill 副本自身最新**（路由 A/B/D 装的是本仓库的*副本或链接*到客户端）：路由 A——`npx skills update geekma/dev-standards-bootstrap -g`；路由 B——`claude plugin update dev-standards-bootstrap@geekma-dev-standards`（市场托管）；路由 D——symlink 跟随 checkout，`bash <skill-dir>/scripts/bootstrap.sh --self-update` 原地更新即可。路由 C 由 Agent 自己对 checkout 重克隆或 `git pull`。Skill 副本更新与目标仓治理升级是相互独立的两半——见[安装与升级](#安装与升级)。
+
 **完全不想注册 Skill？** 照[那条唯一命令](#安装与升级)原样执行（不加任何 flag）——治理体系直接装进仓库，与 Agent 无关（`AGENTS.md` 上下文层被所有支持的客户端原生读取）；目标仓已接入时自动转为升级。
 
 无论哪条路径，装完之后没有任何需要手工接线的东西：
@@ -144,12 +146,12 @@ curl -fsSL https://raw.githubusercontent.com/geekma/dev-standards-bootstrap/main
 ```
 
 - 默认目标仓是当前目录；把路径作为第一个参数传入即可指定。
-- Skill checkout 保存在 `~/.dev-standards-bootstrap/dev-standards-bootstrap`（`--skill-dir <路径>` 可覆盖）；已存在的 checkout 会被复用并 fast-forward 拉取——**其中的本地改动绝不会被覆盖**（命令会拒绝并指路）。
-- 目标仓已接入 → 自动转 `--upgrade`：治理自有文件（规范/模板/脚本/hooks/workflows/tests）升到携带版本，**live 记录不动**（`bugfix-log.md`、交付总结、06.5 记录、你的 `.agent-governance.yml`）。升级前先提交目标仓——git 历史即备份。
+- Skill checkout 保存在 `~/.dev-standards-bootstrap/dev-standards-bootstrap`（`--skill-dir <路径>` 可覆盖）；已存在的 checkout 会被复用并 fast-forward 拉取——**其中的本地改动绝不会被覆盖**（命令会拒绝并指路）。若拉取失败（如离线），命令会**沿用现有本地副本（可能已过期）并如实提示**；恢复联网后重跑，或用 `bash <skill-dir>/scripts/bootstrap.sh --self-update` 单独更新 Skill 副本。
+- 目标仓已接入 → 自动转 `--upgrade`：治理自有文件（规范/模板/脚本/hooks/workflows/tests）升到携带版本——**但你本地改过的文件会原样保留并报告**（传 `--force` 才用携带版本覆盖）；目标仓工作树脏会阻断升级，先提交或 stash（`--force` 可越）。**live 记录一律不动**：`bugfix-log.md`、交付总结、06.5 记录、你的 `.agent-governance.yml`，以及 `docs/changes/**` 与 `docs/bugs/BUG-*/` 全部内容。升级前先提交目标仓——git 历史即备份。
 - 离线/锁定版本安装：`--from <本地checkout>`、`--repo <url>`、`--ref <分支或tag>`。
 - 分层安装（`--layer core|claude|ci|guard|pipeline`）与自定义目录根（`--docs-dir`、`--scripts-dir`、`--tests-dir`、`--githooks-dir`）透传给安装器；不传即全量 `--all` + 默认根。
 - 目标仓应是 git 仓库：Hook 接线（`core.hooksPath`）依赖 `.git/`——裸目录能装文件但 Git Hook 层不生效（接入 CI 后仍有 CI 兜底）。
-- 只查版本不落盘：`--check` 三处版本比对，有漂移 exit 1（可入 CI）。
+- 只查版本不落盘：`--check` 三处版本比对，有漂移 exit 1（可入 CI）。**单独更新 Skill 副本**（不动目标仓）用 `--self-update`——对 checkout 执行 pull `--ff-only` 后退出。
 
 ### `--as-skill` 详解（快速开始路由 D）
 
@@ -157,7 +159,7 @@ curl -fsSL https://raw.githubusercontent.com/geekma/dev-standards-bootstrap/main
 
 - `--as-skill opencode` → symlink 进 `~/.config/opencode/skills/`
 - `--as-skill all` → 两个客户端都装
-- `--as-skill ~/.agents/skills/dev-standards-bootstrap` → 其他任意客户端，直接给落点目录
+- `--as-skill ~/.agents/skills/dev-standards-bootstrap` → 其他任意客户端——传**含 skill 名的完整链接路径**（symlink 精确落在该路径，不自动追加后缀）
 
 注册是**符号链接**指向 checkout（零复制——自更新即时生效）、fail-closed（已有非 symlink 落点绝不触碰；`--force` 仅 retarget symlink 或替换**空**目录）、与 `--install`/`--upgrade`/`--check`/`--layer` 互斥（同调即 usage error，exit 2），与"治理体系进仓库"两条路径独立、可组合。装完重载（Claude Code 里 `/reload-skills`，或重开会话）。
 
@@ -321,6 +323,8 @@ dev-standards-bootstrap/
 ├── README.zh-CN.md                         # 中文文档（本文件）
 ├── LICENSE                                 # MIT 许可证
 ├── MAINTAINER.md                           # 维护者须知（不随 Skill 分发）：文件角色 / 变更联动表 / 两道自测试与顺序 / 版本载体 / 逐版本升级动作
+├── CAPABILITY-COMPARISON.md                # 三方能力贡献分析（模型/Harness/治理）——Measured Impact 章节数据来源
+├── 能力对比分析.md                          # 能力对比分析中文版
 ├── .github/
 │   └── workflows/ci.yml                    # 本仓自身的 CI（非模板下发）：每次 PR 与 push main 跑两套自测试
 ├── .claude-plugin/
@@ -329,7 +333,10 @@ dev-standards-bootstrap/
 ├── scripts/
 │   ├── bootstrap.sh                        # 清单驱动安装器（不下发）：按层复制 resources/ 到目标仓，幂等、防覆盖
 │   ├── install.sh                          # 一键安装器（不下发）：克隆 + 安装/升级一步完成
-│   └── update-assertion-count.sh           # 源层专用（不下发）：再生成 README 断言计数声称 + 审计执行数基线
+│   ├── update-assertion-count.sh           # 源层专用（不下发）：再生成 README 断言计数声称 + 审计执行数基线
+│   ├── lib-suite-tree-fingerprint.sh       # 共享库：套件树指纹，收据键控用（源层）
+│   ├── eval-cases                          # 评测用例派生执行器（源层包装 resources/templates/eval-cases.sh）
+│   └── eval-rescore                        # 评测重打分执行器（源层包装 resources/templates/eval-rescore.sh）
 ├── screenshots/                            # README 截图（动机、门禁拦截、产物、门禁5评审）
 ├── tests/
 │   ├── run-tests.sh                        # 治理模板 golden case 回归套件（含门禁与安装器；复制到目标 tests/ ——目标仓自适应：不下发/未装层的用例自动跳过）
@@ -338,7 +345,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.80.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.81.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -383,11 +390,27 @@ dev-standards-bootstrap/
         └── github-regression-to-bug.yml    # 回归回路：主干测试红 -> 六件套缺陷骨架 PR（频控，v3.43.0）
 ```
 
+## 卸载
+
+随 `--guard` 层附带一键卸载器：`scripts/uninstall-standards`（安装器写入）。先跑 `--dry-run` 预览。必须在**目标 git 仓库内**运行；卸载器在真实（非 dry）运行时会**自删**——再次执行需先重装。
+
+删除按层分级（删什么取决于文件是什么）：
+
+| 层 | 文件 | 行为 |
+|---|---|---|
+| 运行时件 | gate 脚本（`agent-gate`、`session-gate.sh`、`stamp-provenance.sh`、`check-standards-compliance.sh`、eval 脚本、`install-hook-adapter`、`bug-autointent`、`new-change`、`generate-reading-pack.sh`）、`.agent-state/`、`.dev-standards-manifest`、`.git/agent-governance` | **一律直接删除，含被改动者**——它们是可执行机制，保留被改过的门禁即安全风险 |
+| 模板件 | 规范文档、模板、Hook 模板、workflows、tests | 仅**安装器标记完好时**删除；被改动的保留并报告 |
+| 共享知识资产 | `AGENTS.md`、`CLAUDE.md`、`docs/` 下治理历史（`changes/`、`bugs/`、项目总册）、`bugfix-log.md` | **默认保留**——里面有你的记录；`--force` 改为**备份移动**到 `.uninstall-backup-<时间戳>/`，而非删除 |
+| 客户端接线配置 | `.claude/settings.json`、`.cursor` 等价物（合并型 hook 条目）、`.opencode/plugins/dev-standards-gate.js` | 生成的插件文件会删除；**共享设置文件里的合并型 hook 条目不自动清理**——卸载器会打印需手工移除的后续行 |
+| 一律不触碰 | `.gemini/settings.json`（安装器从未写入）、平台侧 required check / 分支保护（GitHub 侧，文件无法撤销）、`core.hooksPath`（指向托管钩子目录时才自动解除） | — |
+
+随时可用 `bootstrap --core/--guard` 重装。
+
 ## FAQ
 
-**会改我的代码吗？** 不会。整套包是围绕你工作流的文档、模板、Hook 与校验器。门禁只会**拒绝**提交，从不编辑文件。
+**会改我的代码吗？** 不会改动你的源码与业务文件。整套包是围绕你工作流的文档、模板、Hook 与校验器。门禁只会**拒绝**提交；它唯一会写入的是治理自身的产物（模板、Hook、客户端接线配置如 `.claude/settings.json` 或 `.opencode/plugins/*.js`）。
 
-**如何卸载？** 跑随 `--guard` 附带的一键卸载器：`scripts/uninstall-standards`（`--dry-run` 预览、`--force` 连共享资产一起处理）。它**直接删除**安装器运行时件（gate 脚本、hooksPath、`.agent-state`）；模板件只在安装器标记完好时删除（被改动的保留并报告）；**共享知识资产默认保留**——`AGENTS.md`、`CLAUDE.md`、`docs/` 下的治理历史（`changes/`、`bugs/`、项目总册）与合并型客户端接线（`.claude/` 等），`--force` 也只是**备份移动**到 `.uninstall-backup-<时间戳>/`，永不 `rm`。`core.hooksPath` 指向托管钩子目录时自动解除。随时可用 `bootstrap --core/--guard` 重装。
+**如何卸载？** 见[卸载](#卸载)——随 `--guard` 附带的一键卸载器。
 
 **会把数据发到服务器吗？** 不会。门禁、溯源盖章与审计都是零依赖 shell 脚本，只读你的文件系统与 git 元数据。`install.sh` 仅克隆本公开仓库。
 
@@ -396,6 +419,26 @@ dev-standards-bootstrap/
 **这些文件是谁生成的——能回溯吗？** 每次变更的编码记录（用 `stamp-provenance.sh --all` 则是活跃变更的全部产物）都带溯源块：作者、提交者、提交哈希、主机、平台、UTC 时间，全部从运行环境读出。
 
 **GitHub 之外能用吗？** 强制语义平台无关（Git Hook + 任意 CI）。四个随包 workflow 是 GitHub Actions 参考实现；§2.17.1 定义的是语义而非平台。
+
+## CI（本仓库）
+
+本仓自身 CI（`.github/workflows/ci.yml`，非模板下发）在每次 PR 与 push 到 `main` 时跑两个 job：
+
+| Job | 职责 |
+|---|---|
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：569） |
+| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1067 条 golden-case 断言）；仅依赖 bash + git |
+
+两 job 均以 `AGENT_GUARD_AUDIT_SOFT=1` 运行：数字闭合类检查（须等于基线的计数）**只告警不阻断**（REQ-965）——审计的结构性检查仍然判红。每个 job 受 `timeout-minutes: 15` 约束；workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
+
+本地复现（无需 CI，仅 bash + git）：
+
+```bash
+bash tests/audit-standards-src.sh   # 源层审计
+bash tests/run-tests.sh             # golden case 套件（写 .agent-state/last-suite-receipt.json，按树指纹键控）
+```
+
+CI 绿是发布门；平台侧必需检查步骤见[自动化与手动边界](#自动化与手动边界)。
 
 ## 参与贡献
 
@@ -409,7 +452,7 @@ dev-standards-bootstrap/
 
 <div align="center">
 
-**规范版本：** v3.80.0 | **最后更新：** 2026-10-19 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.81.0 | **最后更新：** 2026-10-20 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 
