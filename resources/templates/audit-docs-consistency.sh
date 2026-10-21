@@ -33,6 +33,7 @@
 #      13 册在位/自证/评审成对/最新变更回填清单；功能目录（01-spec 或 01.5 信号）内出现
 #      reviews/ 即红（FU-105：评审唯一落点=变更轨 07 + 总册 reviews/，表外默认禁止）
 #   G11 UJ↔REQ 双向覆盖 / G12 五方证据（v3.67.0，§2.5 阶段 1/8）：仅 `ui_change: true`
+#   G15 来源物映射闭合（v3.84.0 CHG-111，N2）：仅 01-spec「外部来源物」声明非未命中的变更参与
 #      的变更参与——缺 UJ-xxx 或 03.6-ui-spec.md 即红（G11）；07 缺「用户可用性验收」或
 #      「建议人类走查（非阻塞）」行即红（G12）。非界面变更不参与（条件门，不追溯既往）。
 #   G13 三维对照族（v3.68.0，CHG-043，§2.5 阶段 1/2/4/7/8）：G13a 事件流切分 / G13b 数据流
@@ -151,8 +152,8 @@ awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; 
 #    引用也算成编号。实测（本仓 16 个变更目录的 01-spec.md）：
 #      · CHG-006 定义 `REQ-033`~`REQ-041`（连续 9 个），但正文引用"`REQ-024`~`REQ-032`"
 #        （依赖项/需求变更说明）→ 编号集合被撑到 24..41 → 区间内凭空多出 8 个"缺号"；
-#      · CHG-002 定义 `REQ-008`~`REQ-013`，但首行写"REQ 从 `REQ-008` 起（CHG-001 已用
-#        `REQ-001`~`REQ-007`）"→ 集合变成 {1,7,8..13} → 报 6 个"缺号"。
+#      · CHG-002 定义 `REQ-002`~`REQ-013`，但首行写"REQ 从 `REQ-002` 起（CHG-001 已用
+#        `REQ-002`~`REQ-008`）"→ 集合变成 {2,7,8..13} → 报 6 个"缺号"。
 #    定义式形状 = 行首是标题（`#`~`######`）/ 表格首列（`| `）/ 列表项（`- `），紧跟
 #    `PREFIX-N`；引用（出现在句中、第二列起）不再计入。**实测：全仓 61 个产物文件
 #    （16 REQ + 15 DES + 16 TC + 14 SC）用定义式规则误报 0 处。**
@@ -161,7 +162,7 @@ awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; 
 #    从 1 开始的整个编号空间，而 §1.2 的编号空间是**全仓全局**的：任何不始于 1 的
 #    文件都被判"1..max 全是缺号"。本仓 CHG-016 的 01-spec.md 定义 080~083 连续，
 #    却报 79 个缺号。改为 `seq "$min" "$max"`——只要求"文件自己定义的号段无空洞"，
-#    这才是"跳号"的正确语义（REQ-001 与 REQ-003 同现而缺 002 = 真跳号，仍被抓）。
+#    这才是"跳号"的正确语义（REQ-002 与 REQ-004 同现而缺 003 = 真跳号，仍被抓）。
 #
 # 两处修正缺一不可：只改 ② 仍有引用污染（CHG-006 报 8），只改 ① 仍被 1..max 判死
 # （CHG-003 定义 14..18 报 13 个缺号）。
@@ -202,8 +203,8 @@ check_seq() { # feature_dir prefix file_path label
 #
 # 【审计单元按"不变量对冻结历史的适用性"分两类，这是本文件最核心的划分】
 #
-#   · **G2 编号连续性 → 功能目录 ∪ 变更目录**。这条不变量是**时间不变**的：`REQ-001`
-#     与 `REQ-003` 同现而缺 `002`，在写下那天就是错的，今天仍是错的，与"当时规范怎么写"
+#   · **G2 编号连续性 → 功能目录 ∪ 变更目录**。这条不变量是**时间不变**的：`REQ-002`
+#     与 `REQ-004` 同现而缺 `003`，在写下那天就是错的，今天仍是错的，与"当时规范怎么写"
 #     无关。所以对两轨都成立、都该查。**这是本次修复的靶心**：旧实现只取功能目录，于是
 #     `docs/changes/<CHG>/` 布局的仓库里 G2 一条断言都不执行、也不打印任何行，一个
 #     01-spec.md 带 REQ 跳号的仓库**通过**了审计（假绿）。
@@ -652,6 +653,44 @@ if [[ "$g_ui" -gt 0 ]]; then
 else
   report "G11 UI-change UJ+03.6 sweep VACUOUS SKIP — no ui_change:true changes (did NOT run; do not read this as a pass)" ok ok
   report "G12 UI-change five-party sweep VACUOUS SKIP — no ui_change:true changes (did NOT run; do not read this as a pass)" ok ok
+fi
+
+# ---------- G15 来源物映射闭合（v3.84.0 CHG-111，REQ-1164，N2） ----------
+# 条件门：仅当变更 01-spec 声明「外部来源物」非未命中时参与。RTVM 原则在来源物段
+# 的实例化：每个来源条目必须同时有实现位（文件:行）与证据位（05 运行痕迹引用）。
+# 行级正确性归 B 层评审；本 sweep 只查闭合性（缺节/零数据行/空列）。
+g15_bad=0; g_src=0
+if [[ -d "$CHANGES" ]]; then
+  for cd_ in "$CHANGES"/*/; do
+    [[ -d "$cd_" ]] || continue
+    spec_="$cd_/01-spec.md"
+    [[ -s "$spec_" ]] || continue
+    src_=$(sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*[：:]' | head -1)
+    [[ -n "$src_" ]] || continue
+    case "$src_" in *未命中*) continue ;; esac
+    # v3.84.0 对齐 E123 闸：仅 ui_change 变更参与（非 UI 变更无 03.6，声明面由模板约束保持未命中）
+    sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
+    g_src=$((g_src+1))
+    ui_="$cd_/03.6-ui-spec.md"
+    if [[ ! -s "$ui_" ]] || ! sed 's/<!--[^>]*-->//g' "$ui_" 2>/dev/null | grep -q "来源物映射"; then
+      g15_bad=$((g15_bad+1)); echo "     G15 $(basename "$cd_") 声明外部来源物但 03.6 缺「来源物映射」节"
+      continue
+    fi
+    map_rows=$(sed 's/<!--[^>]*-->//g' "$ui_" 2>/dev/null | grep -E '^\|' | grep -vE '^\|[[:space:]]*[-:]+' | grep -v '来源物条目' | grep -v '[<>]')
+    if [[ -z "$map_rows" ]]; then
+      g15_bad=$((g15_bad+1)); echo "     G15 $(basename "$cd_") 来源物映射节零数据行（占位未回填）"
+      continue
+    fi
+    while IFS= read -r row_; do
+      cols_=$(printf '%s' "$row_" | awk -F'|' '{n=0; for(i=2;i<=NF-1;i++){gsub(/[[:space:]]/,"",$i); if($i!="")n++}; print n}')
+      [[ "$cols_" -ge 3 ]] || { g15_bad=$((g15_bad+1)); echo "     G15 $(basename "$cd_") 映射行缺实现位或证据位: $row_"; }
+    done <<< "$map_rows"
+  done
+fi
+if [[ "$g_src" -gt 0 ]]; then
+  report "G15 external-source mapping rows carry impl+evidence columns (v3.84.0)" 0 "$g15_bad"
+else
+  report "G15 source-mapping sweep VACUOUS SKIP — no 外部来源物 declarations (did NOT run; do not read this as a pass)" ok ok
 fi
 
 rm -f "$S3TMP"

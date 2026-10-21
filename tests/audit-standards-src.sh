@@ -1442,7 +1442,7 @@ at_least "A53 lib takes optional reset claims (CHG-110)" 1 "$ROOT/scripts/lib-su
 at_least "A53 lib documents the claim face (CHG-110)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'docs/changes) so doc-only edits'
 at_least "A53 gate sources the fingerprint lib (CHG-110)" 1 "$GATE_TPL" 'lib-suite-tree-fingerprint.sh'
 at_least "A53 gate fingerprints with the docs/changes claim (CHG-110)" 1 "$GATE_TPL" 'suite_tree_fingerprint "$repo_root" "docs/changes"'
-at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"3.83.0"'
+at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"3.85.0"'
 at_least "A53 receipt is rc0-only and change-bound (CHG-110)" 1 "$GATE_TPL" '"rc":0'
 at_least "A53 TTL is env-tunable with a numeric guard (CHG-110)" 1 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE_TTL'
 at_least "A53 opt-out env is honored at both read and write (CHG-110)" 2 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE:-1'
@@ -1450,7 +1450,7 @@ at_least "A53 cached run surfaces a CACHED line and evidence (CHG-110)" 1 "$GATE
 at_least "A53 non-git repos degrade to always-run (CHG-110)" 1 "$GATE_TPL" 'Non-git repos (empty fingerprint) degrade'
 at_least "A53 usage discloses the opt-out boundary (CHG-110)" 1 "$GATE_TPL" 'external mutable state set AGENT_GUARD_VERIFY_CACHE=0'
 at_least "A53 golden section T66 is defined (CHG-110)" 1 "$ROOT/tests/run-tests.sh" '^section_T66() {'
-at_least_unique "A53 golden section T66 is registered once (CHG-110)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T66)'
+at_least_unique "A53 golden section T67 is registered once (CHG-110 tail; CHG-111 joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T67)'
 at_least "A52 golden section T65 is defined (CHG-109)" 1 "$ROOT/tests/run-tests.sh" '^section_T65() {'
 at_least_unique "A52 golden section T65 is registered once (CHG-109)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T65 '
 

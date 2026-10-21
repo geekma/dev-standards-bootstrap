@@ -47,6 +47,24 @@ if [[ -n "${active:-}" && -s "$active" && -f scripts/stamp-provenance.sh ]]; the
   fi
 fi
 
+# v3.84.0 (CHG-111, REQ-1169): standalone defect batches — staged
+# docs/bugs/BATCH-*/01-diagnosis.md anchors get stamped even when no active
+# change binds them via bug_ref (previously fail-open; A21 only caught the
+# gap after the commit landed). Top-level on purpose: independence from the
+# active-change conditional above.
+staged_diag=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^docs/bugs/BATCH-[^/]+/01-diagnosis\.md$' || true)
+for bf in $staged_diag; do
+  for b in $(sed -nE 's/^##[[:space:]]+(BUG-[A-Za-z0-9._-]+).*/\1/p' "$bf" | sort -u); do
+    [[ "$b" =~ ^[A-Za-z0-9._-]+$ ]] || continue
+    if [[ -f scripts/stamp-provenance.sh ]]; then
+      scripts/stamp-provenance.sh --bug "$b" >/dev/null 2>&1 || true
+      if [[ "$(git show ":$bf" 2>/dev/null | grep -c '^<!-- provenance')" != "$(grep -c '^<!-- provenance' "$bf")" ]]; then
+        git add -- "$bf"
+      fi
+    fi
+  done
+done
+
 # v3.71.0 (CHG-046, REQ-1090): 同变更换挡硬提醒（软提醒，不阻塞 commit；硬执法在
 # agent-gate stop 的 GATE-E112）——last-delivery 指向的变更已交付且其目录无
 # handoff.md 时大声提醒收尾必须换挡（E89 盲区：同变更长会话永不重跑 begin）。

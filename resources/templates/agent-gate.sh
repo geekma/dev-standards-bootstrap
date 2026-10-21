@@ -427,7 +427,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
 
 ### 延伸发现\n\n- <!-- FILL: 无 或 发现 -->\n\n### 回滚策略\n\n- <!-- FILL: revert 面/触发条件/版本链回退 -->\n' "$id" ;;
     03-modification-plan.md)
-      printf '# %s Modification Plan\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+      printf '# %s Modification Plan\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     03.5-tasks.md)
       printf '# %s Tasks\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
     04-test-scripts.md)
@@ -1012,6 +1012,11 @@ validate_artifact_content() {
     || die "GATE-E06: $d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
   grep -qE "DES-[0-9]+" "$d/03-modification-plan.md" \
     || die "GATE-E07: $d/03-modification-plan.md has no DES- numbering (A-layer acceptance, standards §2.5)"
+  # v3.84.0 (CHG-111, REQ-1165, N4): every new write path must declare its
+  # relation to existing same-family implementations (reuse + anchor, or why
+  # different). Comment legends don't count — strip before grep (E93 lesson).
+  sed 's/<!--[^>]*-->//g' "$d/03-modification-plan.md" 2>/dev/null | grep -q "既有范式关系" \
+    || die "GATE-E122: $d/03-modification-plan.md missing 既有范式关系 section or declaration (standards §2.5 stage 3, v3.84.0 CHG-111)"
   grep -qE "TC-[0-9]+" "$d/04-test-scripts.md" \
     || die "GATE-E08: $d/04-test-scripts.md has no TC- numbering (A-layer acceptance, standards §2.5)"
   # v3.3.0 scenario inventory: business scenarios enumerated with SC-
@@ -1105,7 +1110,7 @@ warn_ux_soft() {
 # equivalent to pre-upgrade behavior. Runs on stop/staged (03.6/04 already
 # exist by then; 07 exists at stop), never at begin (design/test not yet made).
 validate_ux_conditions() {
-  local id d spec risk n e2e af
+  local id d spec risk n e2e af src_line
   # Read the active-change marker directly: active_change() dies when absent,
   # and this conditional lane must stay dormant on repos with no active change.
   af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
@@ -1133,11 +1138,26 @@ validate_ux_conditions() {
   e2e=$(grep -cE "E2E|用户旅程" "$d/04-test-scripts.md" 2>/dev/null || true)
   [[ "$e2e" -ge "$n" ]] \
     || die "GATE-E95: ui_change: true but $d/04-test-scripts.md has $e2e user-journey E2E case(s), below threshold $n (L0/L1=1, L2/L3=3 or full main flow) (standards §2.5 stage 4, v3.67.0)"
+  # v3.84.0 (CHG-111, REQ-1164, N2): external-source mapping completeness — a
+  # declared non-未命中 外部来源物 (prototype/design doc/upstream spec) obliges a
+  # per-item 来源物映射 section in 03.6 (audit G15 checks row closure).
+  src_line=$(sed 's/<!--[^>]*-->//g' "$spec" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*[：:]' | head -1 || true)
+  if [[ -n "$src_line" && ! "$src_line" =~ 未命中 ]]; then
+    sed 's/<!--[^>]*-->//g' "$d/03.6-ui-spec.md" 2>/dev/null | grep -q "来源物映射" \
+      || die "GATE-E123: $d/03.6-ui-spec.md missing 「来源物映射」 section while 01-spec declares an external source artifact (standards §2.5 stage 3, v3.84.0 CHG-111)"
+  fi
   if [[ -s "$d/07-review-report.md" ]]; then
     grep -q "用户可用性验收" "$d/07-review-report.md" \
       || die "GATE-E96: $d/07-review-report.md missing 「用户可用性验收」 signature section (standards §2.5 stage 8, v3.67.0)"
     grep -q "建议人类走查" "$d/07-review-report.md" \
       || die "GATE-E98: $d/07-review-report.md missing 「建议人类走查（非阻塞）」 line (standards §2.5 stage 8, v3.67.0)"
+    # v3.84.0 (CHG-111, REQ-1162, N1): business-reasonableness final review by an
+    # independent business subject with an OUT-OF-CHAIN evidence base (P12 +
+    # industry experience + bugfix lessons; the change's own 01-spec/03.6 are
+    # NOT admissible grounds) — the sensor that fires the existing 图纸错 lane.
+    sed 's/<!--[^>]*-->//g' "$d/07-review-report.md" 2>/dev/null | grep -q "业务合理性终审" \
+      && sed 's/<!--[^>]*-->//g' "$d/07-review-report.md" 2>/dev/null | grep -qE '业务终审主体.*(task-|ses-)' \
+      || die "GATE-E124: $d/07-review-report.md missing 「业务合理性终审」 section or 业务终审主体 signature line carrying a task-/ses- id (standards §2.5 stage 8, v3.84.0 CHG-111)"
   fi
 }
 
@@ -1690,7 +1710,7 @@ bug_p3_lightweight() { # <group-or-batch-dir> [<BUG-id>] -> 0 if channel applies
 # one id per line, reason in a trailing comment — listed groups WARN (visible,
 # counted by audit G8), unlisted groups die.
 validate_bug_groups() {
-  local group doc missing allow listed gid
+  local group doc missing allow listed gid e57_all=""
   [[ -d "$bugs_root" ]] || return 0
   allow="$bugs_root/.gate-allowlist"
   # v3.35.0 (BUG-005): sweep BOTH layouts — standalone and day-batched.
@@ -1714,7 +1734,10 @@ validate_bug_groups() {
     if [[ -n "$listed" ]]; then
       echo "agent-gate: WARN defect group $gid incomplete (allowlisted):$missing"
     else
-      die "GATE-E56: defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
+      # v3.84.0 (CHG-111): accumulate (see flat-batch note below) — one E56/E57
+      # die reports every incomplete group at once.
+      e57_all="$e57_all
+defect group $gid is missing:$missing — complete the six-piece set (standards §2.5 stage 6) or register a reason in $allow"
     fi
   done
   # v3.36.0 (BUG-006): FLAT day-batches — the six pieces live directly in
@@ -1757,10 +1780,16 @@ validate_bug_groups() {
       if [[ -n "$listed" ]]; then
         echo "agent-gate: WARN defect group $gid incomplete (allowlisted):$missing"
       else
-        die "GATE-E57: defect group $gid is missing:$missing — complete the six-piece anchor set in $batch (standards §2.5 stage 6, v3.36.0 flat form) or register a reason in $allow"
+        # v3.84.0 (CHG-111): ACCUMULATE instead of first-die — external-incident
+        # lesson (14 defects iterated 6 rounds because each run surfaced one
+        # incomplete group). Collect every incomplete group across every batch
+        # and report them all in one E57 die.
+        e57_all="$e57_all
+GATE-E57: defect group $gid is missing:$missing — complete the six-piece anchor set in $batch (standards §2.5 stage 6, v3.36.0 flat form) or register a reason in $allow"
       fi
     done
   done
+  [[ -z "$e57_all" ]] || die "GATE-E56: $e57_all"
   # v3.35.0 (BUG-005): the day-batch default is ENFORCED, mirroring the change
   # track (v3.27.0) — a defect group created TODAY outside the day batch must
   # join it. Detection uses the group's provenance block (script-written UTC
@@ -2220,7 +2249,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.83.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.85.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -2248,7 +2277,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.83.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.85.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi

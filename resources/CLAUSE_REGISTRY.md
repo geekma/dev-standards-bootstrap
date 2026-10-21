@@ -69,7 +69,7 @@
 | R45 | 用户任务 UJ 与 ui_change 声明（§2.5 阶段 1 条 8） | DEVELOPMENT_STANDARDS.md::**用户任务（`UJ-xxx`，v3.67.0）** | universal | 硬 | 结构 |
 | R46 | 禁裸主键作用户入口（§2.5 阶段 3 条 9） | DEVELOPMENT_STANDARDS.md::禁止 DB 主键 | L2-architecture | 硬 | 行为 |
 | R47 | 用户旅程 E2E 阈值（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**用户旅程 E2E（v3.67.0）** | L2-architecture | 硬 | 行为 |
-| R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节（v3.67.0）** | L2-architecture | 硬 | 结构 |
+| R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节** | L2-architecture | 硬 | 结构 |
 | R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 |
 | R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 |
 | R51 | 原始锚点与机械抽取（§2.5 阶段 1） | DEVELOPMENT_STANDARDS.md::**原始锚点与机械抽取（v3.68.0，CHG-043）** | universal | 硬 | 结构 |
@@ -77,7 +77,7 @@
 | R53 | 否定测试抽查（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**否定测试抽查（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
 | R54 | 运行时证据硬门（§2.5 阶段 7） | DEVELOPMENT_STANDARDS.md::**运行时证据硬门（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
 | R55 | 评审跑旅程与上游错误计数（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**评审跑旅程与上游错误计数（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
-| R56 | 发现处置闭环与来源维（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**发现处置（v3.74.0；逐条处置，严重或安全发现未处置即拒 E114/E115，无发现可单行声明；v3.75.0 增「来源」列——本次引入/既有存量，E117）** | universal | 硬 | 行为 |
+| R56 | 发现处置闭环与来源维（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**发现处置（v3.74.0；逐条处置，严重/安全发现未处置即拒 E114/E115，无发现可单行声明；v3.75.0 增「来源」列——本次引入/既有存量，E117）** | universal | 硬 | 行为 |
 | R57 | 评审轮次收敛与超限处置（§2.1.8） | DEVELOPMENT_STANDARDS.md::**评审收敛（v3.74.0）** | universal | 硬 | 行为 |
 | R58 | 评审质效度量的七项字段（§2.17.5；缺「来源」列时后两项输出 `null`，不臆造 0） | templates/agent-gate.sh::metrics prints one JSON object per change | universal | 软 | 计数 |
 | R59 | 事故/回归复盘「应捕获层」与补强（§2.17.2） | DEVELOPMENT_STANDARDS.md::**复盘义务（v3.75.0，CHG-099，REQ-1112）** | universal | 硬 | 行为 |
@@ -93,6 +93,12 @@
 - 来源唯一权威：`resources/templates/agent-gate.sh` 的 `die "GATE-Exx:` 字符串（dev 份 `scripts/agent-gate` 与模板份单源同文）；语义逐码从 die 字符串提炼，不臆造。
 - 每码一行：码 / 一句话语义 / 落点（模板份函数或节名——**不写行号**，行号漂移，计数断言才稳）。
 - 计数互锁：本节 GATE-E 行数 == 模板 `die "GATE-E[0-9]+` 去重计数，由源层审计断言执法（`tests/audit-standards-src.sh`，源层脚本不随 Skill 下发；「CLAUSE_REGISTRY GATE-E rows == template die codes」）；agent-gate 新增 E 码必须同步加行，废止 E 码必须同步删行。本节只做索引，不复述门禁正文。
+| R66 | 业务合理性终审（§2.5 阶段 8，N1 依据独立性，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务合理性终审（v3.84.0，CHG-111，N1 依据独立性）** | L2-architecture | 硬 | 结构 |
+| R67 | 现实质询：来源物禁作事实依据（§2.5 阶段 1，v3.84.0） | STAGE_PLAYBOOK.md::**现实质询（v3.84.0，CHG-111，REQ-1167）** | universal | 软 | 评审 |
+| R68 | 来源物映射完备性（§2.5 阶段 3 条 10，N2，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | L2-architecture | 硬 | 结构 |
+| R69 | 既有范式关系声明（§2.5 阶段 3，N4，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | universal | 硬 | 结构 |
+| R70 | 同族推演扩邻接面（§2.5 阶段 6，N3，v3.84.0） | STAGE_PLAYBOOK.md::**邻接面走查（v3.84.0，CHG-111，REQ-1166/N3）** | universal | 软 | 评审 |
+| R71 | 业务上下文装载与合理性自检（§2.2/专家卡 §0.2，N5，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务上下文装载（v3.84.0，CHG-111，N5）** | universal | 软 | 评审 |
 
 | 码 | 语义 | 落点 |
 | --- | --- | --- |
@@ -151,8 +157,7 @@
 | GATE-E53 | 缺陷组存在于多个日批次（保留一个） | agent-gate.sh::bug_group_dir() |
 | GATE-E54 | 缺陷组锚定在多个日批次（保留一个） | agent-gate.sh::bug_group_dir() |
 | GATE-E55 | 缺陷组命中多个合法布局（standalone/嵌套/扁平批） | agent-gate.sh::bug_group_dir() |
-| GATE-E56 | 独立/嵌套缺陷组六件缺件 | agent-gate.sh::validate_bug_groups() |
-| GATE-E57 | 批次缺陷组六件锚段缺件 | agent-gate.sh::validate_bug_groups() |
+| GATE-E56 | 独立/嵌套缺陷组六件缺件（v3.84.0 起累计一次报全，扁平锚点组同用本码——E57 字面并入） | agent-gate.sh::validate_bug_groups() |
 | GATE-E58 | 独立缺陷组当日执法：批已存在须并入 / 无批当日首个须建批（provenance 判日，未章跳过） | agent-gate.sh::validate_bug_groups() |
 | GATE-E59 | 09-changelog 缺「项目总册回填清单」节 | agent-gate.sh::validate_master_backfill() |
 | GATE-E60 | 回填清单缺 Pxx 总册行 | agent-gate.sh::validate_master_backfill() |
@@ -194,6 +199,9 @@
 | GATE-E111 | 基建面 diff 无 smoke_command 声明、缺窗内冒烟证据或 smoke_paths 正则非法（fail-closed）；豁免/证据限活跃变更 05，指针缺失 fail-open | agent-gate.sh::check_smoke_gate()（v3.71.0） |
 | GATE-E112 | 同会话重复交付已交付变更且无 handoff.md/换挡声明/豁免 env | agent-gate.sh::validate_delivery()（v3.71.0） |
 | GATE-E113 | TC 落点清单自动化条目指向文件不存在或无断言标记 | agent-gate.sh::validate_delivery()（v3.71.0） |
+| GATE-E122 | 03-modification-plan 缺「既有范式关系」节或未命中声明（剥注释后 grep） | agent-gate.sh::begin 产物校验（v3.84.0 CHG-111） |
+| GATE-E123 | 01-spec 声明外部来源物非未命中但 03.6 缺「来源物映射」节 | agent-gate.sh::validate_ux_conditions()（v3.84.0 CHG-111） |
+| GATE-E124 | ui_change 但 07 缺「业务合理性终审」节或缺业务终审主体 task-/ses- 签名 | agent-gate.sh::validate_ux_conditions()（v3.84.0 CHG-111） |
 | GATE-E114 | 07「发现处置」表存在未处置行（处置空/待处置）或严重·安全发现记「不处理」 | agent-gate.sh::assert_finding_disposition()（v3.74.0） |
 | GATE-E115 | 07 既无「发现处置」节（或节内无真实发现行）也无「未命中，不适用」单行声明 | agent-gate.sh::assert_finding_disposition()（v3.74.0） |
 | GATE-E116 | 评审轮次超 AGENT_GUARD_REVIEW_ROUND_LIMIT 且 07 无「已填写的超限处置行」 | agent-gate.sh::track_review_round()（v3.74.0） |

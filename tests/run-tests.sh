@@ -183,6 +183,8 @@ EOF
 - DES-001: sample design
 ## 技术选型
 备选方案对比: A vs B
+## 既有范式关系
+- **既有范式关系**：未命中（纯新增无同族实现）
 EOF
   cat > "$d/03.5-tasks.md" <<'EOF'
 # tasks
@@ -237,7 +239,7 @@ seed_entry_templates() {
     printf '## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n'; } > docs/templates/entry/00.5-communication.md
   printf '# <__CHANGE_ID__> spec%s\n- REQ-001: tbd\n' "$6" > docs/templates/entry/01-spec.md
   printf '# <__CHANGE_ID__>\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/templates/entry/02-code-impact-analysis.md
-  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n' > docs/templates/entry/03-modification-plan.md
+  printf '# <__CHANGE_ID__>\n- DES-001: tbd\n## 选型比较（备选）\n## 既有范式关系\n- **既有范式关系**：未命中（纯新增无同族实现）\n' > docs/templates/entry/03-modification-plan.md
   printf '# <__CHANGE_ID__>\n- T1: tbd（依赖: 无；里程碑: M1）\n- 评审输入: 待填%s\n' "$7" > docs/templates/entry/03.5-tasks.md
   printf '# <__CHANGE_ID__>\n- TC-001: tbd\n覆盖维度: 正常流\n- SC-001: tbd\n' > docs/templates/entry/04-test-scripts.md
 }
@@ -251,7 +253,7 @@ seed_batch_member() { # <batch_dir> <change_id>
   printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n' "$id" >> "$d/00.5-communication.md"
   printf '## %s\nREQ-910: r\n' "$id" >> "$d/01-spec.md"
   printf '## %s\n### 业务影响\n### 技术影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
-  printf '## %s\nDES-910 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
+  printf '## %s\nDES-910 备选方案对比\n- **既有范式关系**：未命中（纯新增无同族实现）\n' "$id" >> "$d/03-modification-plan.md"
   printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
   printf '## %s\nTC-910 SC-910 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
 }
@@ -353,7 +355,7 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
     printf '## %s\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n' "$id" >> "$d/00.5-communication.md"
     printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
     printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
-    printf '## %s\nDES-901 备选方案对比\n' "$id" >> "$d/03-modification-plan.md"
+    printf '## %s\nDES-901 备选方案对比\n- **既有范式关系**：未命中（纯新增无同族实现）\n' "$id" >> "$d/03-modification-plan.md"
     printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
     printf '## %s\nTC-901 SC-901 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
   done
@@ -1151,7 +1153,7 @@ printf '{"change_id":"CUSTOM-1","risk_level":"L0","spec_author":"author/a-1","im
 printf '# CUSTOM-1 沟通稿\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > changes/CUSTOM-1/00.5-communication.md
 echo "REQ-001 s" > changes/CUSTOM-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > changes/CUSTOM-1/02-code-impact-analysis.md
-printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > changes/CUSTOM-1/03-modification-plan.md
+printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n- **既有范式关系**：未命中（纯新增无同族实现）\n' > changes/CUSTOM-1/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > changes/CUSTOM-1/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > changes/CUSTOM-1/04-test-scripts.md
 scripts/agent-gate begin CUSTOM-1 >/dev/null 2>&1
@@ -1497,7 +1499,7 @@ printf '{"change_id":"CFG-1","risk_level":"L0","spec_author":"author/a-1","imple
 printf '# CFG-1 沟通稿\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > doc/changes/CFG-1/00.5-communication.md
 echo "REQ-001 s" > doc/changes/CFG-1/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > doc/changes/CFG-1/02-code-impact-analysis.md
-printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-1/03-modification-plan.md
+printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n- **既有范式关系**：未命中（纯新增无同族实现）\n' > doc/changes/CFG-1/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > doc/changes/CFG-1/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > doc/changes/CFG-1/04-test-scripts.md
 out=$(scripts/agent-gate begin CFG-1 2>&1); rc=$?
@@ -1521,7 +1523,7 @@ printf '{"change_id":"CFG-2","risk_level":"L0","spec_author":"author/a-1","imple
 printf '# CFG-2 沟通稿\n## 用户整体确认记录\n- 确认状态：已整体确认\n' > doc/changes/CFG-2/00.5-communication.md
 echo "REQ-001 s" > doc/changes/CFG-2/01-spec.md
 printf '# impact\n## 业务影响\nb\n## 风险\nr\n## 回滚策略\nok\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > doc/changes/CFG-2/02-code-impact-analysis.md
-printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n' > doc/changes/CFG-2/03-modification-plan.md
+printf 'DES-001 p\n## 技术选型\n备选方案对比: A vs B\n- **既有范式关系**：未命中（纯新增无同族实现）\n' > doc/changes/CFG-2/03-modification-plan.md
 printf '# tasks\n- T-001: x（依赖: 无；里程碑: M1）\n- 评审输入: 变更文件清单 + 产物路径 + 行号锚点\n' > doc/changes/CFG-2/03.5-tasks.md
 printf 'TC-001 t\n## 用例矩阵\n覆盖维度: 正常流\n## 业务场景清单\nSC-001 s（覆盖: TC-001）\n' > doc/changes/CFG-2/04-test-scripts.md
 out=$(scripts/agent-gate begin CFG-2 2>&1); rc=$?
@@ -3104,7 +3106,7 @@ REG_T39="$ROOT/resources/CLAUSE_REGISTRY.md"
 if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
   # v3.78.0 (CHG-102): 64 rows — R64（冻结树并行派发）joins the registry.
-  report "T39 registry row count" 65 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 71 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:12"; do
@@ -3248,7 +3250,7 @@ if [[ -s "$GATE42_SRC" && -s "$NC42_SRC" ]]; then
   printf '{"change_id":"CHG-951","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x"}\n{"change_id":"CHG-952","risk_level":"L1","spec_author":"a/x","implementation_owner":"i/x","test_owner":"t/x","review_owner":"r/x"}\n' > docs/changes/BATCH-99092501/00-governance.json
   { printf '# spec\n\n## CHG-951\n\n- REQ-901: x\n'; printf '\n## CHG-952\n\n- REQ-902: x\n'; } > docs/changes/BATCH-99092501/01-spec.md
   { printf '# impact\n\n## CHG-951\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n'; printf '\n## CHG-952\n\n## 业务影响\n## 技术影响\n## 风险\n## 回滚策略\n延伸发现：未发现\n'; } > docs/changes/BATCH-99092501/02-code-impact-analysis.md
-  { printf '# plan\n\n## CHG-951\n\n- DES-901: x\n## 技术选型\n备选: A vs B\n'; printf '\n## CHG-952\n\n- DES-902: x\n## 技术选型\n备选: A vs B\n'; } > docs/changes/BATCH-99092501/03-modification-plan.md
+  { printf '# plan\n\n## CHG-951\n\n- DES-901: x\n## 技术选型\n备选: A vs B\n- **既有范式关系**：未命中（纯新增无同族实现）\n'; printf '\n## CHG-952\n\n- DES-902: x\n## 技术选型\n备选: A vs B\n'; } > docs/changes/BATCH-99092501/03-modification-plan.md
   { printf '# tasks\n\n## CHG-951\n\n- T-901: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; printf '\n## CHG-952\n\n- T-902: x（依赖: 无；里程碑: M1）\n- 评审输入: x\n'; } > docs/changes/BATCH-99092501/03.5-tasks.md
   { printf '# tests\n\n## CHG-951\n\n- TC-901: x\n覆盖维度: 正常流\n- SC-901: x\n'; printf '\n## CHG-952\n\n- TC-902: x\n覆盖维度: 正常流\n- SC-902: x\n'; } > docs/changes/BATCH-99092501/04-test-scripts.md
   { printf '# comm\n\n## CHG-952\n\n## 影响范围\ns\n## 风险\nr\n## 候选方案与取舍\no\n## 测试思路\nt\n## 用户整体确认记录\n- 确认状态：已整体确认\n'; } > docs/changes/BATCH-99092501/00.5-communication.md
@@ -3484,10 +3486,10 @@ section_T48() {
 # CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
 # footer labels no longer spell a version literal — a label carrying a stale
 # number was itself a drift source (renamed to "carries the current version").
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.83.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.85.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.83.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.83.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.85.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.85.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3732,7 +3734,8 @@ section_T50() {
   # CHG-109: tail recalibrated T63→T65 (秒级形状探针节 joins; T64 stays mid-list
   #   per CHG-107 scaffold ordering).
   # CHG-110: tail recalibrated T65→T66 (verify 结果缓存节 joins; TC-1414).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T66 ]] && echo 0 || echo 1)"
+  # CHG-111: tail recalibrated T66→T67 (六不变量机校节 joins; TC-1424~1432).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T67 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3994,7 +3997,7 @@ report "T52 E96 rejects a review without usability sign-off" 2 $?
 printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n## 评审结论\n通过\n' > docs/changes/CHG-1000/07-review-report.md
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T52 E98 rejects the missing human-walkthrough line" 2 $?
-printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 评审结论\n通过\n' > docs/changes/CHG-1000/07-review-report.md
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 业务合理性终审\n- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）\n- **业务终审主体**：platform / glm / ses-t52a\n## 评审结论\n通过\n' > docs/changes/CHG-1000/07-review-report.md
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T52 E96+E98 pass with usability sign-off + human-walkthrough line" 0 $?
 # 隔离：ui_change 缺省/为 false 时不启用任何 UX 条件门
@@ -4258,6 +4261,9 @@ cat > docs/changes/CHG-1040/07-review-report.md <<'EOF'
 ## 用户可用性验收
 - 结论：通过（依据 03.6 与 UJ-001）
 - **建议人类走查（非阻塞）**：建议交付前真人走查一次
+## 业务合理性终审
+- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）
+- **业务终审主体**：platform / glm / ses-t53a
 - **发现处置**：未命中，不适用（T53 可用性夹具，无发现）
 - 评审主体：platform / glm-5.3-flash / ses-t53c
 EOF
@@ -4421,7 +4427,7 @@ printf '# tests\n- TC-001 用户旅程 E2E（真人入口）\n覆盖维度: 正�
 scripts/agent-gate begin CHG-1070 >/dev/null 2>&1
 printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-1070/04.5-coding-record.md
 printf '# 05 测试结果\n- UJ-001 HTTP 200 响应体 {"ok":true} @2026-10-14T00:00:00Z\n' > docs/changes/CHG-1070/05-test-results.md
-printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n- **发现处置**：未命中，不适用（T55 交付四门夹具，无发现）\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 业务合理性终审\n- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）\n- **业务终审主体**：platform / glm / ses-t55a\n- **发现处置**：未命中，不适用（T55 交付四门夹具，无发现）\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
 printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更。\n' > docs/changes/CHG-1070/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-1070/06-delivery-summary.md
 printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-1070/09-changelog.md
@@ -5811,7 +5817,7 @@ rm -f .agent-state/t66-m .agent-state/verify-receipt.json
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 first run executes and writes rc0 receipt" 1 "$([[ -e .agent-state/t66-m && -e .agent-state/verify-receipt.json ]] && echo 1 || echo 0)"
 report "T66 TC-1414 receipt binds change id" 1 "$(grep -c '"change_id":"CHG-1095"' .agent-state/verify-receipt.json)"
-report "T66 TC-1414 receipt carries gate version" 1 "$(grep -c '"gate_version":"3.83.0"' .agent-state/verify-receipt.json)"
+report "T66 TC-1414 receipt carries gate version" 1 "$(grep -c '"gate_version":"3.85.0"' .agent-state/verify-receipt.json)"
 # 命中：同键二跑不执行 vcmd
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
@@ -5838,7 +5844,7 @@ t66_sha_after=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/verify-r
 report "T66 TC-1414 receipt unchanged by failing run (rc0-only)" 1 "$([[ -n $t66_sha_before && $t66_sha_before == $t66_sha_after ]] && echo 1 || echo 0)"
 # gate 版本失配失效：篡改收据版本字面
 t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
-sed -i '' 's/"gate_version":"3.83.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"gate_version":"3.83.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json
+sed -i '' 's/"gate_version":"3.85.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"gate_version":"3.83.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 gate-version mismatch invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
@@ -5861,8 +5867,69 @@ t66_out=$(AGENT_GUARD_VERIFY_CACHE=0 AGENT_GUARD_VERIFY_COMMAND='touch .agent-st
 report "T66 TC-1414 opt-out always runs" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
 }
 
+section_T67() {
+# ------------------------------------------------ T67 六不变量机校（v3.84.0，CHG-111/REQ-1162~1170）
+# TC-1424 E122：03 缺「既有范式关系」节/声明 → begin 拒；声明行在 → 过
+new_repo
+seed_begin CHG-1110 L1 claude/s-1
+printf '# plan\n- DES-001: d\n' > docs/changes/CHG-1110/03-modification-plan.md
+scripts/agent-gate begin CHG-1110 >/dev/null 2>&1
+rc=$?
+out=$(scripts/agent-gate begin CHG-1110 2>&1 || true)
+report "T67 TC-1424 E122 rejects 03 without 既有范式关系" 2 "$rc"
+check_output "T67 TC-1424 refusal names GATE-E122" "GATE-E122" "$out"
+seed_begin CHG-1110 L1 claude/s-1
+report "T67 TC-1424 begin passes with 既有范式关系 declaration" 0 $?
+# TC-1425/1426：E123（来源物映射）/E124（业务合理性终审）三态
+new_repo
+seed_begin CHG-1111 L1 claude/s-1
+printf '# spec\n- **ui_change**：true\n- **外部来源物**：docs/proto.md\n## 用户任务\n### UJ-001\n- **入口**：记录列表\n### REQ-001\n**描述**：r\n**挂靠 UJ**：UJ-001\n' > docs/changes/CHG-1111/01-spec.md
+printf '# ui\n## 显示名↔主键映射\n- 记录显示名 → record_id\n' > docs/changes/CHG-1111/03.6-ui-spec.md
+printf '# tasks\n| 任务 | 类型 | 依赖 | 里程碑 | 说明 |\n|---|---|---|---|---|\n| T1 | UX | 无 | M1 | 设计 |\n- 评审输入: x\n' > docs/changes/CHG-1111/03.5-tasks.md
+printf '# tests\n- TC-001 用户旅程 E2E（真人入口）\n覆盖维度: 正常流\n- SC-001 用户旅程 E2E（覆盖: TC-001）\n' > docs/changes/CHG-1111/04-test-scripts.md
+git add -A
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T67 TC-1425 E123 red: declared source but 03.6 lacks 来源物映射" 1 "$(printf '%s\n' "$out" | grep -c 'GATE-E123')"
+printf '# ui\n## 显示名↔主键映射\n- 记录显示名 → record_id\n## 来源物映射\n| 来源物条目（文件+锚点） | 实现文件:行 | 实测证据（05 运行痕迹引用） | 一致性结论 |\n|---|---|---|---|\n| proto.md#list | src/a.go:10 | 05 UJ-001 快照 @2026-10-21T00:00:00Z | 一致 |\n' > docs/changes/CHG-1111/03.6-ui-spec.md
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T67 TC-1425 E123 green once mapping section exists" 0 "$(printf '%s\n' "$out" | grep -c 'GATE-E123')"
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 评审结论\n通过\n' > docs/changes/CHG-1111/07-review-report.md
+git add -A
+out=$(scripts/agent-gate --stage staged 2>&1 || true)
+report "T67 TC-1426 E124 red: 07 lacks 业务合理性终审" 1 "$(printf '%s\n' "$out" | grep -c 'GATE-E124')"
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 业务合理性终审\n- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）\n- **业务终审主体**：platform / glm / ses-t67a\n## 评审结论\n通过\n' > docs/changes/CHG-1111/07-review-report.md
+git add -A
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T67 TC-1426 staged passes with 终审 section + subject signature" 0 $?
+# TC-1427 G15：来源物映射闭合（runtime；沙箱无 STD 时 audit 秒退，落最小规范桩）
+printf '# t\n规范版本：v3.85.0\n' > docs/DEVELOPMENT_STANDARDS.md
+bash "$ROOT/tests/audit-docs-consistency.sh" > t67_audit.txt 2>&1 || true
+report "T67 TC-1427 G15 green on closed mapping rows" 0 "$(grep -c 'G15 CHG-1111' t67_audit.txt)"
+grep -vF 'proto.md#list' docs/changes/CHG-1111/03.6-ui-spec.md > t67_tmp.md && mv t67_tmp.md docs/changes/CHG-1111/03.6-ui-spec.md
+bash "$ROOT/tests/audit-docs-consistency.sh" > t67_audit2.txt 2>&1 || true
+report "T67 TC-1427 G15 red on emptied mapping row" 1 "$(grep -cE 'G15 CHG-1111 映射行缺实现位或证据位|G15 CHG-1111 来源物映射节零数据行' t67_audit2.txt)"
+rm -f t67_audit.txt t67_audit2.txt
+# TC-1428/1432：独立缺陷批 pre-commit 自动盖章 + E56/E57 一次报全
+new_repo
+cp "$STAMP_SRC" scripts/stamp-provenance.sh
+mkdir -p .githooks && cp "$ROOT/resources/templates/pre-commit" .githooks/pre-commit && chmod +x .githooks/pre-commit
+mkdir -p docs/bugs/BATCH-20260101
+printf '## BUG-900\n诊断：d\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/bugs/BATCH-20260101/01-diagnosis.md
+printf '## BUG-901\n诊断：d\n延伸发现：未发现\n历史相似检索：未命中（x）\n' >> docs/bugs/BATCH-20260101/01-diagnosis.md
+git add -A
+out=$(bash .githooks/pre-commit 2>&1 || true)
+report "T67 TC-1428 pre-commit stamps standalone bug batch anchors" 1 "$(grep -c '<!-- provenance' docs/bugs/BATCH-20260101/01-diagnosis.md)"
+report "T67 TC-1432 E56/E57 report BOTH incomplete groups in one shot" 2 "$(printf '%s\n' "$out" | grep -cE 'defect group BUG-9[0-9]+ is missing')"
+# TC-1429：同族推演行名存续（N3 不改行名防机校断链）
+report "T67 TC-1429 同族推演 row name survives in bug-diagnosis template" 1 "$(grep -c '同族推演' "$ROOT/resources/templates/bug-diagnosis.md" | awk '{print ($1>=2)?1:0}')"
+# TC-1430：A11 体积上界
+report "T67 TC-1430 DS body within A11 bound (<=167936B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 167936 ]] && echo 1 || echo 0)"
+# TC-1431：版本链字面
+report "T67 TC-1431 version literals synced to 3.85.0" 4 "$(grep -cF '3.85.0' "$ROOT/SKILL.md")"
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
