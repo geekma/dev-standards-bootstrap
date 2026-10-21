@@ -1392,7 +1392,7 @@ at_least_unique "A48 registry registers R64 (CHG-102)" "$ROOT/resources/CLAUSE_R
 at_least_unique "A48 R64 anchor resolves to a single standards line (CHG-102)" "$STD" '^> \*\*冻结树并行派发（REQ-1140）\*\*'
 at_least "A48 AGENTS carries the parallel-dispatch discipline (CHG-102)" 1 "$AGENTS" '冻结树并行派发（v3.78.0'
 at_least "A48 golden suite defines the T63 section (CHG-102)" 1 "$ROOT/tests/run-tests.sh" '^section_T63() {'
-at_least_unique "A48 golden section T63 is registered once (CHG-102)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T63)'
+at_least_unique "A48 golden section T63 is registered once (CHG-102)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T63 '
 report "A48 no long-stale version literal survives in a T48 label (CHG-102)" 0 "$(grep_count "$ROOT/tests/run-tests.sh" 'carries v3.75.0')"
 
 # v3.81.0 (CHG-108): 文档-实现对账钉（TC-1409）——README 双语失真修复后的防回归面。
@@ -1420,6 +1420,39 @@ at_least "A51 ci.yml bounds each job with timeout-minutes (CHG-108)" 2 "$ROOT/.g
 at_least "A51 ci.yml declares a concurrency group (CHG-108)" 1 "$ROOT/.github/workflows/ci.yml" '^concurrency:'
 at_least "A51 ci.yml cancels superseded runs (CHG-108)" 1 "$ROOT/.github/workflows/ci.yml" 'cancel-in-progress: true'
 at_least "A51 install.sh states staleness on pull failure (CHG-108)" 1 "$ROOT/scripts/install.sh" 'possibly stale'
+
+# v3.82.0 (CHG-109/SC-1859): 秒级形状探针 + 睡眠防护 + 遥测失联兜底钉——目标会话
+# 5 轮格式返工 ×16min verify（4 轮可避免）实证驱动的三条反馈回路缩短面。声称面 =
+# 校验面：拆分函数/探针接线/caffeinate 包裹/黄灯/自证任一被拆，本组红而非静默退化。
+at_least "A52 gate splits delivery into probe-safe front face (CHG-109)" 2 "$GATE_TPL" 'validate_delivery_shape_front'
+at_least "A52 gate splits delivery into probe-safe back face (CHG-109)" 2 "$GATE_TPL" 'validate_delivery_shape_back'
+at_least "A52 preflight wires the front shape face (CHG-109)" 1 "$GATE_TPL" 'p_run validate_delivery_shape_front'
+at_least "A52 preflight wires the back shape face (CHG-109)" 1 "$GATE_TPL" 'p_run validate_delivery_shape_back'
+at_least "A52 round-ledger write documented stop-lane-only (CHG-109)" 1 "$GATE_TPL" 'round-ledger write stays'
+at_least "A52 preflight usage discloses the widened face (CHG-109)" 1 "$GATE_TPL" 'v3.82.0 adds the delivery shape face'
+at_least "A52 verify channel wraps in caffeinate when available (CHG-109)" 1 "$GATE_TPL" 'caffeinate -dims bash -lc'
+at_least "A52 darwin missing-caffeinate warning stays loud (CHG-109)" 1 "$GATE_TPL" 'WARNING: caffeinate not found'
+at_least "A52 begin carries the telemetry-liveness backstop (CHG-109)" 2 "$GATE_TPL" 'YELLOW liveness'
+at_least "A52 hook adapter carries the post-wiring self-proof (CHG-109)" 2 "$ROOT/resources/templates/install-hook-adapter.sh" 'self-proof'
+at_least "A52 AGENTS entry step discloses the widened probe (CHG-109)" 1 "$AGENTS" 'v3.82.0 起并收 stop 侧交付形状面'
+
+# v3.83.0 (CHG-110/SC-1860): verify 结果缓存钉——保守档失效面与单实现配方的防回归面。
+# 声称面=校验面：变参/键字段/opt-out/降级任一被拆，本组红而非静默假绿。
+at_least "A53 lib takes optional reset claims (CHG-110)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'local claims=("$@")'
+at_least "A53 lib documents the claim face (CHG-110)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'docs/changes) so doc-only edits'
+at_least "A53 gate sources the fingerprint lib (CHG-110)" 1 "$GATE_TPL" 'lib-suite-tree-fingerprint.sh'
+at_least "A53 gate fingerprints with the docs/changes claim (CHG-110)" 1 "$GATE_TPL" 'suite_tree_fingerprint "$repo_root" "docs/changes"'
+at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"3.83.0"'
+at_least "A53 receipt is rc0-only and change-bound (CHG-110)" 1 "$GATE_TPL" '"rc":0'
+at_least "A53 TTL is env-tunable with a numeric guard (CHG-110)" 1 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE_TTL'
+at_least "A53 opt-out env is honored at both read and write (CHG-110)" 2 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE:-1'
+at_least "A53 cached run surfaces a CACHED line and evidence (CHG-110)" 1 "$GATE_TPL" 'CACHED (receipt match'
+at_least "A53 non-git repos degrade to always-run (CHG-110)" 1 "$GATE_TPL" 'Non-git repos (empty fingerprint) degrade'
+at_least "A53 usage discloses the opt-out boundary (CHG-110)" 1 "$GATE_TPL" 'external mutable state set AGENT_GUARD_VERIFY_CACHE=0'
+at_least "A53 golden section T66 is defined (CHG-110)" 1 "$ROOT/tests/run-tests.sh" '^section_T66() {'
+at_least_unique "A53 golden section T66 is registered once (CHG-110)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T66)'
+at_least "A52 golden section T65 is defined (CHG-109)" 1 "$ROOT/tests/run-tests.sh" '^section_T65() {'
+at_least_unique "A52 golden section T65 is registered once (CHG-109)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T65 '
 
 # v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
 # 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时

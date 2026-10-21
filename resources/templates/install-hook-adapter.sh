@@ -933,5 +933,27 @@ if [[ "$installed" -eq 0 ]]; then
   note "no config was written (static-schema conflicts need --force; see notes above)"
   exit 2
 fi
+
+# v3.82.0 (CHG-109, REQ-1160): post-wiring self-proof — a config that does not
+# carry the session-gate wiring would silently downgrade to zero telemetry and
+# no turn enforcement (live incident: adapter not loaded client-side, stats
+# all-zero for a whole session). Client-side LOADING still cannot be proven
+# from here: after the first bash call, run scripts/session-gate status —
+# YELLOW liveness means the adapter is dead (check client logs).
+for c in $targets; do
+  case "$c" in
+    claude)   sp_f=".claude/settings.json" ;;
+    opencode) sp_f=".opencode/plugins/dev-standards-gate.js" ;;
+    cursor)   sp_f=".cursor/hooks.json" ;;
+    *)        sp_f="" ;;
+  esac
+  [[ -z "$sp_f" ]] && continue
+  if [[ -f "$sp_f" ]] && grep -q "session-gate" "$sp_f"; then
+    ok "self-proof: $c wiring verified ($sp_f carries session-gate hooks)"
+  else
+    note "self-proof FAIL: $c config $sp_f missing or lacks session-gate wiring — the client will NOT load the adapter (telemetry + turn enforcement dead); check client logs; after your first bash call run scripts/session-gate status (YELLOW = adapter dead)"
+  fi
+done
+
 ok "$installed client(s) wired; session enforcement active for supported clients"
 ok ".agent-state/ is runtime state (telemetry/audit reports), NOT a governance artifact — add it to .gitignore; probe scratch .oc-xdg/ likewise (residue guard)"

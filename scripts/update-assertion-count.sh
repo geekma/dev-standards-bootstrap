@@ -121,6 +121,7 @@ for f in "$ROOT/README.md" "$ROOT/README.zh-CN.md"; do
     -e "s/[0-9]+ golden-case assertions/${N} golden-case assertions/g" \
     -e "s/[(][0-9]+ assertions/(${N} assertions/g" \
     -e "s/[0-9]+ 项 golden-case 断言/${N} 项 golden-case 断言/g" \
+    -e "s/[0-9]+ 条 golden-case 断言/${N} 条 golden-case 断言/g" \
     -e "s/[0-9]+ 项断言/${N} 项断言/g" \
     "$f" > "$tmp"
   if ! diff -q "$tmp" "$f" >/dev/null 2>&1; then

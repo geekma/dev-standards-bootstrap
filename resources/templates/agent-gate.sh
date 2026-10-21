@@ -1485,7 +1485,23 @@ stub_guard() { # file risk id
 # v3.7.0 coding record, test results, a changelog, and the v2.21.0 ReAct
 # Observation records in it (standards §2.16.2). Shared by --stage stop and
 # branch-mode CI so both enforcement lines hold the same bar. (v3.5.0)
+# v3.82.0 (CHG-109, REQ-1160): the deep check is split into two PROBE-SAFE pure
+# faces around the round-ledger write (the ONLY side effect in this lane):
+#   validate_delivery_shape_front — E47/E48/E49/stub_guard/E85
+#   validate_delivery_shape_back  — E114/E115/E117/E50/E51/E46/masters/E82/provenance
+# Stop-lane call order and every die site stay byte-identical; the preflight
+# probe (v3.82.0) reuses both faces verbatim so shape feedback is second-level.
 validate_delivery() { # change-id
+  local id="$1" d
+  d=$(change_dir "$id")
+  validate_delivery_shape_front "$id"
+  if [[ -s "$d/07-review-report.md" ]]; then
+    track_review_round "$d" "$id" "$d/07-review-report.md"
+  fi
+  validate_delivery_shape_back "$id"
+}
+
+validate_delivery_shape_front() { # change-id — probe-safe face 1 (no side effects)
   local id="$1" d
   d=$(change_dir "$id")
   # REQ-962 (v3.44.0): L0 minimal-set carve-out — 04.5/05 may be satisfied by a
@@ -1526,11 +1542,18 @@ validate_delivery() { # change-id
     grep -Eq "${sig_head}(task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)" "$d/07-review-report.md" \
       || die "GATE-E85: $d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
   fi
+}
+
+validate_delivery_shape_back() { # change-id — probe-safe face 2 (no side effects)
+  local id="$1" d
+  d=$(change_dir "$id")
   # v3.74.0 (CHG-098, REQ-1104/1105): finding disposition (E114/E115) and review
   # convergence (E116). Both are no-ops without a review report; the round
   # ledger stays fail-open when .agent-state is absent.
+  # v3.82.0 (CHG-109, REQ-1160): the round-ledger WRITE moved to the
+  # validate_delivery wrapper (stop lane only) — this face is probe-safe; the
+  # disposition assertions keep their exact stop-lane position.
   if [[ -s "$d/07-review-report.md" ]]; then
-    track_review_round "$d" "$id" "$d/07-review-report.md"
     assert_finding_disposition "$d" "$d/07-review-report.md"
     assert_finding_source "$d" "$d/07-review-report.md"
   fi
@@ -2149,9 +2172,85 @@ validate_stop() {
       die "GATE-E118: cannot finish: ${vreason}；修复示例：ci: / verification_command: \"bash tests/run-tests.sh\"（或设 AGENT_GUARD_VERIFY_COMMAND）"
     fi
   fi
-  if [[ -n "$vcmd" ]]; then
+  # v3.83.0 (CHG-110, REQ-1161, DES-1923): successful-verify receipt cache —
+  # conservative lane. Key = gate version literal + vcmd sha256 + code-tree
+  # fingerprint (suite_tree_fingerprint with docs/changes reset claim) + active
+  # change id; ONLY rc=0 is cached; TTL (AGENT_GUARD_VERIFY_CACHE_TTL, default
+  # 30 minutes) and AGENT_GUARD_VERIFY_CACHE=0 bound the false-green face.
+  # Boundary: correctness covers inputs inside the tree fingerprint only —
+  # repos whose tests read EXTERNAL mutable state must opt out (usage +
+  # CHANGELOG). Non-git repos (empty fingerprint) degrade to always-run.
+  # Bump the literal below with the version chain (single source: DS footer).
+  vc_rc_file="$repo_root/.agent-state/verify-receipt.json"
+  vc_hit=0
+  vc_fp=""
+  vc_cmd_sha=""
+  if [[ -n "$vcmd" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
+    if ! declare -F suite_tree_fingerprint >/dev/null 2>&1; then
+      # v3.83.0: the lib ships at scripts/ next to the gate (bootstrap --guard);
+      # the BASH_SOURCE fallback covers layouts where repo_root/scripts differs.
+      for vc_lib in "$repo_root/scripts/lib-suite-tree-fingerprint.sh" \
+                    "$(dirname "${BASH_SOURCE[0]}")/lib-suite-tree-fingerprint.sh"; do
+        [[ -f "$vc_lib" ]] && { # shellcheck disable=SC1090
+          source "$vc_lib"
+          break
+        }
+      done
+    fi
+    if declare -F suite_tree_fingerprint >/dev/null 2>&1; then
+      # v3.83.0 (self-defeat 教训落地)：收据自身的写入面（.agent-state 运行时态）
+      # 必须排除在指纹输入面外——否则收据刷新即改指纹，缓存永失配。与 README
+      # claim 同类：声明/运行时面 ≠ 代码输入面。
+      vc_fp=$(suite_tree_fingerprint "$repo_root" "docs/changes" ".agent-state")
+      if [[ -n "$vc_fp" ]]; then
+        if command -v shasum >/dev/null 2>&1; then
+          vc_cmd_sha=$(printf '%s' "$vcmd" | shasum -a 256 2>/dev/null | awk '{print $1}')
+        elif command -v sha256sum >/dev/null 2>&1; then
+          vc_cmd_sha=$(printf '%s' "$vcmd" | sha256sum 2>/dev/null | awk '{print $1}')
+        fi
+      fi
+    fi
+  fi
+  if [[ -n "$vcmd" && -n "$vc_cmd_sha" && -f "$vc_rc_file" ]]; then
+    vc_r_ver=$(sed -n 's/.*"gate_version":"\([^"]*\)".*/\1/p' "$vc_rc_file" | head -1)
+    vc_r_sha=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' "$vc_rc_file" | head -1)
+    vc_r_fp=$(sed -n 's/.*"fingerprint":"\([^"]*\)".*/\1/p' "$vc_rc_file" | head -1)
+    vc_r_id=$(sed -n 's/.*"change_id":"\([^"]*\)".*/\1/p' "$vc_rc_file" | head -1)
+    vc_r_rc=$(sed -n 's/.*"rc":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
+    vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
+    vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
+    case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
+    if [[ "$vc_r_ver" == "3.83.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+          && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
+       && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
+      vc_hit=1
+      vexit=0
+      echo "agent-gate: verification command CACHED (receipt match, age $(( $(date +%s) - vc_r_at ))s) — AGENT_GUARD_VERIFY_CACHE=0 forces a run"
+      vreason="${vreason:-} (cached receipt, REQ-1161)"
+      append_verify_evidence "- 通道缓存命中（REQ-1161）：键匹配（版本/命令/树指纹/变更号），年龄 $(( $(date +%s) - vc_r_at ))s；未重复执行。"
+    fi
+  fi
+  if [[ -n "$vcmd" && "$vc_hit" != "1" ]]; then
     echo "agent-gate: verification command from $vsrc: $vcmd"
-    bash -lc "$vcmd" || vexit=$?
+    # v3.82.0 (CHG-109, REQ-1160): wrap in caffeinate when available — a system
+    # sleep mid-verify masquerades as test failures (clock-leap false reds;
+    # -dims keeps display/idle/disk awake for the whole child). Non-darwin
+    # hosts without the binary run the command unchanged; darwin without it
+    # gets a loud warning instead of a silent exposure.
+    if command -v caffeinate >/dev/null 2>&1; then
+      caffeinate -dims bash -lc "$vcmd" || vexit=$?
+    else
+      if [[ "$(uname -s)" == "Darwin" ]]; then
+        echo "agent-gate: WARNING: caffeinate not found — if the machine sleeps mid-verify the run shows up as false reds (review before re-running)" >&2
+      fi
+      bash -lc "$vcmd" || vexit=$?
+    fi
+    # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
+    if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
+      mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
+      printf '{"gate_version":"3.83.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+        "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
+    fi
   fi
   # F8：会话期软执法（skipped）**不落盘**——否则每轮 idle 都用 state=skipped 覆盖
   # 上一次真实判定，`session-gate status` 将长期显示 skipped（REQ-1117 要回答的
@@ -2570,6 +2669,23 @@ case "$command" in
         die "GATE-E74: session water level ${w_turns} turns reaches the ${w_limit}-turn limit (standards §2.9.6) — handoff to a fresh session (state rebuilds from disk, §2.16.1) and re-begin there, or set AGENT_GUARD_ALLOW_OVER_WATER=1 with the justification recorded in 09「重要上下文」"
       fi
     fi
+    # v3.82.0 (CHG-109, REQ-1160): telemetry-liveness backstop (soft YELLOW,
+    # never blocks) — a fresh water file proves an active session, but tool
+    # stats that never move prove the hook adapter was not loaded client-side
+    # (live incident: stats all-zero for a whole session while the v3.63.0
+    # liveness rule sat unrun in session-gate status). begin is the mandatory
+    # waypoint, so the warning reaches the model even when the adapter is dead.
+    vstats_file="$repo_root/.agent-state/session-tool-stats.json"
+    if [[ -s "$water_file" ]]; then
+      if [[ ! -s "$vstats_file" ]]; then
+        echo "agent-gate: YELLOW liveness: session is active (water file present) but $vstats_file is missing/empty — hook adapter likely not loaded; check client logs and run scripts/session-gate status (v3.82.0, REQ-1160)"
+      else
+        vstats_mtime=$(stat -f %m "$vstats_file" 2>/dev/null || stat -c %Y "$vstats_file" 2>/dev/null || true)
+        if [[ -n "$vstats_mtime" ]] && [[ $(( $(date +%s) - vstats_mtime )) -gt 600 ]]; then
+          echo "agent-gate: YELLOW liveness: session active but tool stats not updated for >10min — hook adapter likely not loaded; check client logs and run scripts/session-gate status (v3.82.0, REQ-1160)"
+        fi
+      fi
+    fi
     # v3.63.0 (REQ-1033, DES-1822): GATE-E89 — post-delivery shift gate (hook-
     # independent; begin is the discipline session's mandatory waypoint). A
     # delivery recorded DURING this session's lifetime (started_at < delivered_at)
@@ -2714,6 +2830,9 @@ case "$command" in
     # friction ledger is never touched. Product layer only: the session-state
     # gates (E74 water / E89 shift / E75 red) and the active-change pointer
     # write are NOT part of this probe (zero side effects, zero bypass env).
+    # v3.82.0 (CHG-109, REQ-1160): the probe face widens to the stop-side
+    # delivery shape checks (validate_delivery_shape_front/back) — same die
+    # sites, still zero side effects (round ledger excluded, see below).
     id="${2:-}"
     if [[ -z "$id" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
       printf 'agent-gate: preflight requires a valid change id (FU-023 shape: start with [A-Za-z0-9], then alnum/_/-; no dots) — usage: scripts/agent-gate preflight <change-id> (exit 0 = all artifact gates clean, 1 = violations listed, 2 = usage)\n' >&2
@@ -2741,6 +2860,17 @@ case "$command" in
     p_run validate_governance_state "$id"
     p_run validate_dimensional_begin "$pf_d"
     p_run validate_project_masters
+    # v3.82.0 (CHG-109, REQ-1160): the stop-side delivery shape face joins the
+    # probe (same die sites, zero side effects — the round-ledger write stays
+    # stop-lane only, so no E116 here by design). The face activates only once
+    # the DELIVERY phase has begun (any delivery doc present): a pure begin-era
+    # probe stays clean (T56 semantics), while a half-written 07/06/06.5
+    # reports at second-level instead of the next 16-minute verify. 07 absent
+    # => the 07 faces stay no-ops exactly as at stop.
+    if [[ -e "$pf_d/09-changelog.md" || -e "$pf_d/04.5-coding-record.md" || -e "$pf_d/05-test-results.md" ]]; then
+      p_run validate_delivery_shape_front "$id"
+      p_run validate_delivery_shape_back "$id"
+    fi
     if [[ "$p_n" -eq 0 ]]; then
       echo "agent-gate: preflight: $id: all artifact gates clean"
       exit 0
@@ -2791,13 +2921,13 @@ Usage:
   scripts/agent-gate metrics
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage staged
-  scripts/agent-gate --stage stop
+  scripts/agent-gate --stage stop               # v3.83.0: successful-verify receipt cache (key = version+cmd+tree-fingerprint+change-id, TTL 30min, rc=0 only; repos whose tests read external mutable state set AGENT_GUARD_VERIFY_CACHE=0)
   scripts/agent-gate --stage ci [--base ref]
   scripts/agent-gate --stage commit-msg <message-file>
   scripts/agent-gate check-confirm <change-id>   # exit 0/1/2, read-only (v3.55.0)
   scripts/agent-gate verify-channel              # exit 0/2, read-only 通道探针 (v3.76.0)
   scripts/agent-gate check-smoke                 # exit 0/1/2, read-only (v3.71.0)
-  scripts/agent-gate preflight <change-id>       # exit 0/1/2, read-only begin-artifact probe, collects all anchor violations in one run (v3.72.0)
+  scripts/agent-gate preflight <change-id>       # exit 0/1/2, read-only probe, collects all begin- AND stop-side shape anchors in one run (v3.72.0; v3.82.0 adds the delivery shape face E85/E114/E115/E117/E46, round ledger excluded)
 
 begin requires eight non-empty artifacts under the change root:
 00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,

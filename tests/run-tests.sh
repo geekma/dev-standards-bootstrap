@@ -99,6 +99,10 @@ new_repo() {
   seed_project_masters
   cp "$GATE_SRC" scripts/agent-gate
   chmod +x scripts/agent-gate
+  # CHG-110 (REQ-1161): the fingerprint lib ships alongside the gate in real
+  # installs (bootstrap --guard) — the sandbox mirrors that layout so T66's
+  # receipt cache engages (target-repo-realistic, not a test-only favor).
+  cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/
   # v3.63.0 (CHG-083, REQ-1033): GATE-E89 needs session-started.json to judge
   # "delivery happened during THIS session's lifetime". Each new_repo models a
   # FRESH session: started_at is written 1H IN THE PAST so any fixture delivery
@@ -3480,10 +3484,10 @@ section_T48() {
 # CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
 # footer labels no longer spell a version literal — a label carrying a stale
 # number was itself a drift source (renamed to "carries the current version").
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.81.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.83.0' "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.81.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.81.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.83.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.83.0' "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3725,7 +3729,10 @@ section_T50() {
   # CHG-096: tail recalibrated T57→T58 (telemetry discipline self-test joins).
   # CHG-100: tail recalibrated T60→T61 (验证通道方言与四态 golden 节 joins).
   # CHG-102: tail recalibrated T62→T63 (本变更注册 T63「治理面口径 + 下发面缺口」节).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T63 ]] && echo 0 || echo 1)"
+  # CHG-109: tail recalibrated T63→T65 (秒级形状探针节 joins; T64 stays mid-list
+  #   per CHG-107 scaffold ordering).
+  # CHG-110: tail recalibrated T65→T66 (verify 结果缓存节 joins; TC-1414).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T66 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -5693,8 +5700,169 @@ section_T64() {
   report "T64 TC-1404 gate usage names --scaffold" 1 "$(grep -c 'begin <change-id> \[--risk L0|L1|L2|L3\] \[--scaffold\]' "$GATE_SRC")"
 }
 
+section_T65() {
+# ------------------------------------------------ T65 preflight 交付形状探针 + verify 睡眠防护 + 遥测失联兜底（v3.82.0，CHG-109/REQ-1160）
+# TC↔REQ 映射：TC-1411→REQ-1160（preflight 收齐 stop 侧交付形状锚、零副作用），
+# TC-1412→REQ-1160（verify 通道 caffeinate 包裹），TC-1413→REQ-1160（begin 遥测失联黄灯）。
+# 实证驱动：目标会话 5 轮格式返工 ×16min verify（4 轮可避免）——形状反馈必须秒级；
+# 睡眠假红（clock leap）与 hook 失联（stats 全 0 无人核查）同批闭环（no-leftover）。
+# 设计约束：validate_delivery 拆 front/back 纯函数，die 站点逐字搬运（T30/T41 钉不动）；
+# 探针零副作用 = track_review_round 留在 stop lane（E116 不进探针面，用户裁定）。
+export AGENT_GUARD_REVIEW_ROUND_LIMIT=99 AGENT_GUARD_ALLOW_NO_SHIFT=1 AGENT_GUARD_ALLOW_OVER_RED=1 AGENT_GUARD_ALLOW_OVER_WATER=1
+new_repo
+seed_artifacts CHG-1092 L0 claude/s-1
+scripts/agent-gate begin CHG-1092 >/dev/null 2>&1
+seed_t53_delivery CHG-1092
+t65_07() { { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat; } > docs/changes/CHG-1092/07-review-report.md; }
+# TC-1411 负面：畸形 07（无独立署名 + 无发现处置节）→ 探针单跑收齐 E85+E115
+t65_07 <<'EOF'
+# review
+## 评审结论
+通过
+EOF
+t65_out=$(scripts/agent-gate preflight CHG-1092 2>&1)
+report "T65 TC-1411 probe reds on malformed 07" 1 "$(printf '%s\n' "$t65_out" | grep -q 'GATE-E' && echo 1 || echo 0)"
+report "T65 TC-1411 E85 collected" 1 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E85')"
+report "T65 TC-1411 E115 collected" 1 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E115')"
+report "T65 TC-1411 E116 absent from probe (round ledger excluded)" 0 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E116')"
+# 零副作用：探针不写轮次台账
+t65_r1=$([[ -f .agent-state/review-rounds.tsv ]] && wc -c < .agent-state/review-rounds.tsv || printf 0)
+scripts/agent-gate preflight CHG-1092 >/dev/null 2>&1
+t65_r2=$([[ -f .agent-state/review-rounds.tsv ]] && wc -c < .agent-state/review-rounds.tsv || printf 0)
+report "T65 TC-1411 probe writes no round ledger" 0 "$([[ "$t65_r1" == "$t65_r2" ]] && echo 0 || echo 1)"
+# E117（来源列乱值）与 E114（严重行未处置）同跑收齐
+t65_07 <<'EOF'
+# review
+- 评审主体：claude / s-1 / ses-t65
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 | 来源 |
+|---|---|---|---|---|---|
+| F1 | 边界缺失 | 严重 | | 补测 | 乱值 |
+- **评审轮次**：1
+## 评审结论
+通过
+EOF
+t65_out=$(scripts/agent-gate preflight CHG-1092 2>&1)
+report "T65 TC-1411 E117 collected on unlawful provenance value" 1 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E117')"
+report "T65 TC-1411 E114 collected on undisposed severe row" 1 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E114')"
+# 正面：干净 07 与缺 07 均全绿（缺 07 = no-op，begin 期探针不受扰）
+t65_07 <<'EOF'
+# review
+- 评审主体：claude / s-1 / ses-t65
+## 发现处置
+| 编号 | 发现 | 严重度 | 处置 | 证据/理由 | 来源 |
+|---|---|---|---|---|---|
+| F1 | 边界缺失 | 严重 | 已修复 | 补测并复跑全绿 | 本次引入 |
+- **评审轮次**：1
+## 评审结论
+通过
+EOF
+report "T65 TC-1411 clean 07 probes green" 0 "$(scripts/agent-gate preflight CHG-1092 >/dev/null 2>&1; echo $?)"
+rm docs/changes/CHG-1092/07-review-report.md
+report "T65 TC-1411 absent 07 probes green (no-op)" 0 "$(scripts/agent-gate preflight CHG-1092 >/dev/null 2>&1; echo $?)"
+# TC-1412：verify 通道经 caffeinate 包裹（stub 调用标记证明 wrap 路径真实发生——
+# 评审 F2：仅断言 marker 存在证明不了 wrap，直跑同样建文件）
+mkdir -p .oc-t65bin
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> .agent-state/t65-caf-calls\nwhile [ $# -gt 0 ] && [ "${1#-}" != "$1" ]; do shift; done\nexec "$@"\n' > .oc-t65bin/caffeinate
+chmod +x .oc-t65bin/caffeinate
+rm -f .agent-state/t65-ran .agent-state/t65-caf-calls
+# stop 的深检门 working_code_changed 需要一个 code face（T60 同款 src 夹具）；
+# 纯 docs 夹具会静默短路 verify 通道（REQ-1160 探针语义不受此影响——探针不查会话态）
+mkdir -p src && echo y > src/t65.js
+t65_stop_out=$(PATH="$PWD/.oc-t65bin:$PATH" AGENT_GUARD_VERIFY_COMMAND='touch .agent-state/t65-ran' scripts/agent-gate --stage stop 2>&1)
+report "T65 TC-1412 verify runs wrapped via caffeinate stub" 1 "$([[ -e .agent-state/t65-ran ]] && echo 1 || echo 0)"
+report "T65 TC-1412 stub call log carries -dims (wrap proof)" 1 "$(grep -c -- '-dims' .agent-state/t65-caf-calls 2>/dev/null || printf 0)"
+rm -rf .oc-t65bin .agent-state/t65-caf-calls
+# TC-1413：begin 遥测失联黄灯（软）——water 新鲜 + stats 缺失 → 黄灯；stats 新鲜 → 静默。
+# 新 id 走完整 begin（E86 已由夹具豁免放行；E72 不触发——八件套无 09）。
+seed_artifacts CHG-1093 L0 claude/s-1
+seed_artifacts CHG-1094 L0 claude/s-1
+printf '{"turns":1,"bash":0,"grep":0,"other":0,"total":1,"updated_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-water.json
+rm -f .agent-state/session-tool-stats.json
+t65_out=$(scripts/agent-gate begin CHG-1093 2>&1)
+report "T65 TC-1413 begin warns YELLOW when stats missing" 1 "$(printf '%s\n' "$t65_out" | grep -c 'YELLOW liveness')"
+printf '{"turns":1,"bash":0,"grep":0,"other":0,"total":1,"updated_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/session-tool-stats.json
+t65_out=$(scripts/agent-gate begin CHG-1094 2>&1)
+report "T65 TC-1413 fresh stats stays silent" 0 "$(printf '%s\n' "$t65_out" | grep -c 'YELLOW liveness')"
+# 评审 F3：mtime 过期分支——stats 内容在但 mtime 老于 10min → 黄灯
+touch -t 202001010000 .agent-state/session-tool-stats.json
+t65_out=$(scripts/agent-gate begin CHG-1093 2>&1)
+report "T65 TC-1413 stale-mtime stats warns YELLOW" 1 "$(printf '%s\n' "$t65_out" | grep -c 'YELLOW liveness')"
+rm -f .agent-state/session-water.json .agent-state/session-tool-stats.json
+}
+
+section_T66() {
+# ------------------------------------------------ T66 verify 结果缓存（v3.83.0，CHG-110/REQ-1161，DES-1923）
+# TC↔REQ：TC-1414→REQ-1161（缓存命中/失效矩阵）。实证驱动：格式返工期间代码零变化
+# 仍 4 次重跑 16min 全量（≈66min 可避免）。保守档（用户裁定）：只缓存 rc=0、键含
+# gate 版本+vcmd sha+树指纹（docs/changes claim 排除）+变更号、TTL 30min、env 退出。
+# 边界：外部状态依赖测试仓须 opt-out（CHANGELOG/usage 明示）；非 git 仓指纹空=降级直跑。
+export AGENT_GUARD_REVIEW_ROUND_LIMIT=99 AGENT_GUARD_ALLOW_NO_SHIFT=1 AGENT_GUARD_ALLOW_OVER_RED=1 AGENT_GUARD_ALLOW_OVER_WATER=1
+new_repo
+seed_artifacts CHG-1095 L0 claude/s-1
+scripts/agent-gate begin CHG-1095 >/dev/null 2>&1
+seed_t53_delivery CHG-1095
+mkdir -p src && echo hi > src/t66.js
+git add -A >/dev/null 2>&1 && git commit -qm init   # 树指纹需 HEAD；纯 docs 夹具仍缺 code face
+echo y > src/t66b.js
+t66_stop() { AGENT_GUARD_VERIFY_COMMAND="$1" scripts/agent-gate --stage stop 2>&1; }
+# 命中基线：首跑执行并写 rc=0 收据
+rm -f .agent-state/t66-m .agent-state/verify-receipt.json
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 first run executes and writes rc0 receipt" 1 "$([[ -e .agent-state/t66-m && -e .agent-state/verify-receipt.json ]] && echo 1 || echo 0)"
+report "T66 TC-1414 receipt binds change id" 1 "$(grep -c '"change_id":"CHG-1095"' .agent-state/verify-receipt.json)"
+report "T66 TC-1414 receipt carries gate version" 1 "$(grep -c '"gate_version":"3.83.0"' .agent-state/verify-receipt.json)"
+# 命中：同键二跑不执行 vcmd
+rm -f .agent-state/t66-m
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 same-key second run skips execution (cached)" 0 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+report "T66 TC-1414 cached line surfaces" 1 "$(printf '%s\n' "$t66_out" | grep -c 'CACHED (receipt match')"
+# docs/changes 改动不失效（claim 排除面）
+printf 'x\n' >> docs/changes/CHG-1095/06-delivery-summary.md
+rm -f .agent-state/t66-m
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 docs/changes edit does not invalidate" 0 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+# src 改动即失效
+echo z >> src/t66b.js
+rm -f .agent-state/t66-m
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 src edit invalidates (re-runs)" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+# rc≠0 不写收据：评审 M1——失败跑前记录收据 vcmd_sha，失败跑后断言 sha 未变
+# （对「只缓存 rc=0」不变式有区分力；原 grep 't66-f' 恒 0 无失败区分力）
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+t66_sha_before=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/verify-receipt.json | head -1)
+rm -f .agent-state/t66-f
+t66_out=$(t66_stop 'touch .agent-state/t66-f; false')
+report "T66 TC-1414 failing verify dies E64" 1 "$(printf '%s\n' "$t66_out" | grep -c 'GATE-E64')"
+t66_sha_after=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/verify-receipt.json | head -1)
+report "T66 TC-1414 receipt unchanged by failing run (rc0-only)" 1 "$([[ -n $t66_sha_before && $t66_sha_before == $t66_sha_after ]] && echo 1 || echo 0)"
+# gate 版本失配失效：篡改收据版本字面
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+sed -i '' 's/"gate_version":"3.83.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"gate_version":"3.83.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json
+rm -f .agent-state/t66-m
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 gate-version mismatch invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+# TTL 失效：篡改 finished_at 为远古
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+sed -i '' 's/"finished_at":[0-9]*/"finished_at":1000/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"finished_at":[0-9]*/"finished_at":1000/' .agent-state/verify-receipt.json
+rm -f .agent-state/t66-m
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 TTL expiry invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+# 变更号失配失效
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+sed -i '' 's/"change_id":"CHG-1095"/"change_id":"CHG-OTHER"/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"change_id":"CHG-1095"/"change_id":"CHG-OTHER"/' .agent-state/verify-receipt.json
+rm -f .agent-state/t66-m
+t66_out=$(t66_stop 'touch .agent-state/t66-m')
+report "T66 TC-1414 change-id mismatch invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+# opt-out：AGENT_GUARD_VERIFY_CACHE=0 恒真跑
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+rm -f .agent-state/t66-m
+t66_out=$(AGENT_GUARD_VERIFY_CACHE=0 AGENT_GUARD_VERIFY_COMMAND='touch .agent-state/t66-m' scripts/agent-gate --stage stop 2>&1)
+report "T66 TC-1414 opt-out always runs" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
