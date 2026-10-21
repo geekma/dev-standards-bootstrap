@@ -81,7 +81,13 @@ fi
 [[ -d "$change_root" ]] || mkdir -p "$change_root"
 
 fill() { # <src> -> stdout with placeholders replaced
-  sed -e "s/__CHANGE_ID__/$id/g" -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" "$1"
+  local cuid
+  case "$id" in
+    CHG-[0-9]*) cuid="CHG-$(date -u +%Y%m%d)-${id#CHG-}" ;;
+    *) cuid="$id-$(date -u +%Y%m%d)" ;;
+  esac
+  sed -e "s/__CHANGE_ID__/$id/g" -e "s/__CHANGE_UID__/$cuid/g" \
+      -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" "$1"
 }
 
 # 沟通先行门两段式（v3.52.0 §2.17.2d）：wave1 = 入口三件；wave2 = 确认后五件

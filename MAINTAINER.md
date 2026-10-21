@@ -71,6 +71,7 @@
 ## 3. 两道自测试（零依赖：bash 3.2+ / grep / awk / diff / git）
 
 ```bash
+bash scripts/selfcheck.sh          # v3.86.0：单一入口（版本载体 + 源层审计 + 私有台账审计 + 评测派生校验）
 bash tests/run-tests.sh            # 通用层：golden cases，断言 agent-gate 的退出码与输出
 bash tests/audit-standards-src.sh  # 源层：版本链 / 关键词落点 / §3↔§4 同源 / 树↔磁盘 …
 ```

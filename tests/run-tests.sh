@@ -40,6 +40,13 @@ STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 [[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
 AG_SRC="$ROOT/resources/AGENTS.md"
 [[ -f "$AG_SRC" ]] || AG_SRC="$ROOT/AGENTS.md"
+# v3.86.0 (CHG-113): version pins resolve from the DS footer (the declared sole
+# authority) instead of a literal that every release had to hand-edit in tests.
+CURRENT_VERSION=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$STD_SRC" 2>/dev/null | head -1)
+# v3.86.0 (CHG-113): receipt/red paths are overridable so self-tests and parallel
+# sessions never mutate the real .agent-state ledger (P1-3).
+SUITE_RECEIPT_PATH="${AGENT_GUARD_SUITE_RECEIPT_PATH:-$ROOT/.agent-state/last-suite-receipt.json}"
+SUITE_RED_PATH="${AGENT_GUARD_SUITE_RED_PATH:-$ROOT/.agent-state/last-suite-red.txt}"
 # hoisted to top level (order-independence for -j / -T 单节；was section_T17 局部变量、T18 跨节使用 — v3.72.0 erratum, CHG-095, REQ-1097)
 STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
 [[ -f "$STAMP_SRC" ]] || STAMP_SRC="$ROOT/scripts/stamp-provenance.sh"
@@ -1195,8 +1202,8 @@ bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
 report "audit rejects numbering gap (REQ-003 missing)" 1 $?
 
 audit_fixture "$FX2"
-sed -i '' '/【角色分派与独立性】/d' "$FX2/docs/feata/09-changelog.md" 2>/dev/null \
-  || sed -i '/【角色分派与独立性】/d' "$FX2/docs/feata/09-changelog.md"
+sed -i '' '/【门禁 5·独立验证与合入授权】/d' "$FX2/docs/feata/09-changelog.md" 2>/dev/null \
+  || sed -i '/【门禁 5·独立验证与合入授权】/d' "$FX2/docs/feata/09-changelog.md"
 bash "$AUDIT_SRC" "$FX2" >/dev/null 2>&1
 report "audit rejects archived checklist drift vs §3" 1 $?
 
@@ -2227,6 +2234,7 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # v3.79.0 (CHG-103): bootstrap guard 清单含树指纹 lib——FAKE_SRC 必须同拷，
   # 否则 install 链在 install_file 缺源时整体红（安装器清单唯一权威=bootstrap）。
   cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$FAKE_SRC/scripts/lib-suite-tree-fingerprint.sh"
+  cp "$ROOT/scripts/lib-suite-lock.sh" "$FAKE_SRC/scripts/lib-suite-lock.sh"
   cp "$ROOT/SKILL.md" "$FAKE_SRC/SKILL.md"
   cp -R "$ROOT/resources" "$FAKE_SRC/resources"
 
@@ -2237,7 +2245,7 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # TC-141 离线全量安装
   out=$(bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" 2>&1); rc=$?
   report "T21 install.sh --from performs a full offline install" 0 "$rc"
-  for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate scripts/lib-suite-tree-fingerprint.sh .githooks/pre-commit \
+  for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate scripts/lib-suite-tree-fingerprint.sh scripts/lib-suite-lock.sh .githooks/pre-commit \
            .agent-governance.yml tests/run-tests.sh; do
     [[ -e "$TGT/$f" ]] || { echo "T21 missing after install: $f" >&2; rc=1; }
   done
@@ -3095,7 +3103,11 @@ section_T38() {
 # 此处 pin 机制存在性与接线，防静默移除。
 report "T38 audit soft bucket defined" 1 "$(grep -c 'report_soft()' "$ROOT/tests/audit-standards-src.sh")"
 report "T38 audit soft env switch" 1 "$(grep -c 'SOFT="${AGENT_GUARD_AUDIT_SOFT:-}"' "$ROOT/tests/audit-standards-src.sh")"
-report "T38 CI wires soft mode" 1 "$(grep -c 'AGENT_GUARD_AUDIT_SOFT' "$ROOT/.github/workflows/ci.yml")"
+# v3.86.0 (CHG-113): CI must run the source audit hard. The old pin counted any
+# mention of the variable — including the ci.yml comment — so it stayed green
+# even if a future edit added `AGENT_GUARD_AUDIT_SOFT: 1` back.
+report "T38 CI does not set soft mode" 0 "$(grep -cE '^[[:space:]]*AGENT_GUARD_AUDIT_SOFT:' "$ROOT/.github/workflows/ci.yml")"
+report "T38 CI runs the source audit hard" 1 "$(grep -cF 'bash tests/audit-standards-src.sh' "$ROOT/.github/workflows/ci.yml")"
 report "T38 assertion lifecycle section" 1 "$(grep -c '^### 5.3 断言生命周期' "$ROOT/MAINTAINER.md")"
 report "T38 graded ambiguity rule" 1 "$(grep -c '歧义分级裁定' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 
@@ -3486,10 +3498,10 @@ section_T48() {
 # CHG-102: TC-1073 pins recalibrated v3.77.0→v3.78.0 (four-chain bump). The two
 # footer labels no longer spell a version literal — a label carrying a stale
 # number was itself a drift source (renamed to "carries the current version").
-report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF 'version: 3.85.0' "$ROOT/SKILL.md")"
+report "T48 TC-1073 SKILL version line bumped" 1 "$(grep -cF "version: $CURRENT_VERSION" "$ROOT/SKILL.md")"
 report "T48 TC-1073 SKILL carries v3.67.0 in prose (previous-version historical mentions preserved)" 3 "$(grep -cF 'v3.67.0' "$ROOT/SKILL.md")"
-report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF '规范版本：v3.85.0' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF '当前对应规范版本：v3.85.0' "$ROOT/resources/AGENTS.md")"
+report "T48 TC-1073 DS footer carries the current version" 1 "$(grep -cF "规范版本：v$CURRENT_VERSION" "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
+report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF "当前对应规范版本：v$CURRENT_VERSION" "$ROOT/resources/AGENTS.md")"
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
@@ -3735,7 +3747,8 @@ section_T50() {
   #   per CHG-107 scaffold ordering).
   # CHG-110: tail recalibrated T65→T66 (verify 结果缓存节 joins; TC-1414).
   # CHG-111: tail recalibrated T66→T67 (六不变量机校节 joins; TC-1424~1432).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T67 ]] && echo 0 || echo 1)"
+  # CHG-113: tail recalibrated T67→T68 (工作区锁与收据路径隔离节 joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T68 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3787,7 +3800,7 @@ R51FAKE
   # _r51_run：fixture 内 UAC 调用。MAX_AGE 显式钉 30——防外层调用方 env（如
   # UAC 强制内嵌跑 MAX_AGE=0）泄漏进 fixture 使采信门整体跳过（TC-1121/1378/
   # 1379/1381 全依赖采信门参与判定；实测红档四连）；TC-1122d 自带显式 0 覆盖。
-  _r51_run() { ( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/update-assertion-count.sh --check 2>&1 ); }
+  _r51_run() { ( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r51_receipt" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/update-assertion-count.sh --check 2>&1 ); }
 
   # TC-1121 采信主证：合法新鲜同 HEAD 收据 → 跳过内嵌（哨兵不在）+ N 来自收据（999）
   # v3.79.0（CHG-103）：fixture 升新 schema（含同树指纹）；TC-1378 追加断言指纹门参与判定
@@ -3889,7 +3902,7 @@ R51FAKE
   cp "$r51/tests/run-tests.sh" "$r51_ng2/tests/"
   printf 'README claims 888 golden-case assertions here.\n' > "$r51_ng2/README.md"
   printf '这里声称 888 项 golden-case 断言。\n' > "$r51_ng2/README.zh-CN.md"
-  r51_out=$( cd "$r51_ng2" && bash scripts/update-assertion-count.sh --check 2>&1 || true )
+  r51_out=$( cd "$r51_ng2" && AGENT_GUARD_SUITE_RECEIPT_PATH="" bash scripts/update-assertion-count.sh --check 2>&1 || true )
   r51_sentinel=$([[ -f "$r51_ng2/tests/.embedded-ran" ]] && echo 1 || echo 0)
   r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
   report "T51 non-git repo: lib yields empty, UAC runs embedded (TC-1384)" 0 "$([[ -z "$r51_ngfp" && "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
@@ -3904,23 +3917,21 @@ R51FAKE
   report "T51 missing fingerprint lib disables the fast path (TC-1386)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
   mv "$r51/scripts/lib.bak" "$r51/scripts/lib-suite-tree-fingerprint.sh"
 
-  # TC-1124/1125 真实仓：过滤 / rc2 运行不触收据（预播已知值 → 前后 cmp 相等 → 还原）
-  r51_had=$([[ -f "$ROOT/.agent-state/last-suite-receipt.json" ]] && echo 1 || echo 0)
-  if [[ "$r51_had" == 1 ]]; then cp "$ROOT/.agent-state/last-suite-receipt.json" "$r51/.real-backup"; fi
-  mkdir -p "$ROOT/.agent-state"
-  printf '{"head":"seed","passed":12345,"failed":0,"wall_time_s":0,"generated_at":"seed"}\n' > "$ROOT/.agent-state/last-suite-receipt.json"
-  cp "$ROOT/.agent-state/last-suite-receipt.json" "$r51/.seeded"
-  r51_rc=0; bash "$ROOT/tests/run-tests.sh" -T T1 >/dev/null 2>&1 || r51_rc=$?
-  r51_same=0; cmp -s "$r51/.seeded" "$ROOT/.agent-state/last-suite-receipt.json" || r51_same=1
+  # TC-1124/1125 真实仓：过滤 / rc2 运行不触收据（v3.86.0 起用隔离路径，
+  # 不再播种/还原真实 .agent-state —— 并行会话与自测互不踩踏）
+  r51_real="$ROOT/.agent-state/last-suite-receipt.json"
+  r51_real_before=$(cksum < "$r51_real" 2>/dev/null || echo absent)
+  r51_iso="$r51/.state-iso/last-suite-receipt.json"
+  mkdir -p "$(dirname "$r51_iso")"
+  printf '{"head":"seed","passed":12345,"failed":0,"wall_time_s":0,"generated_at":"seed"}\n' > "$r51_iso"
+  cp "$r51_iso" "$r51/.seeded"
+  r51_rc=0; AGENT_GUARD_SUITE_RECEIPT_PATH="$r51_iso" bash "$ROOT/tests/run-tests.sh" -T T1 >/dev/null 2>&1 || r51_rc=$?
+  r51_same=0; cmp -s "$r51/.seeded" "$r51_iso" || r51_same=1
   report "T51 filtered run leaves receipt untouched (TC-1124)" 0 "$([[ $r51_rc -eq 0 && "$r51_same" == 0 ]] && echo 0 || echo 1)"
-  r51_rc=2; bash "$ROOT/tests/run-tests.sh" -T NOPE >/dev/null 2>&1 || r51_rc=$?
-  r51_same2=0; cmp -s "$r51/.seeded" "$ROOT/.agent-state/last-suite-receipt.json" || r51_same2=1
+  r51_rc=2; AGENT_GUARD_SUITE_RECEIPT_PATH="$r51_iso" bash "$ROOT/tests/run-tests.sh" -T NOPE >/dev/null 2>&1 || r51_rc=$?
+  r51_same2=0; cmp -s "$r51/.seeded" "$r51_iso" || r51_same2=1
   report "T51 rc2 run leaves receipt untouched (TC-1125)" 0 "$([[ $r51_rc -eq 2 && "$r51_same2" == 0 ]] && echo 0 || echo 1)"
-  if [[ "$r51_had" == 1 ]]; then
-    cp "$r51/.real-backup" "$ROOT/.agent-state/last-suite-receipt.json"
-  else
-    rm -f "$ROOT/.agent-state/last-suite-receipt.json"
-  fi
+  report "T51 isolated self-tests leave the REAL ledger untouched (TC-1124b)" 0 "$([[ "$(cksum < "$r51_real" 2>/dev/null || echo absent)" == "$r51_real_before" ]] && echo 0 || echo 1)"
 
   # TC-1126 发射端结构守卫：blk = 收据块数值行窗（grep -F 定锚）。自匹配三连教训：
   # ①grep 自身参数字面量 ②T51 注释里的同款字面量 ③起锚须带 'suite receipt' 后缀
@@ -3930,7 +3941,7 @@ R51FAKE
   r51_blk=$(sed -n "${r51_s},${r51_e}p" "$ROOT/tests/run-tests.sh")
   r51_g1=$(grep -c '^SUITE_HEAD=' "$ROOT/tests/run-tests.sh")
   r51_g2=$(printf '%s\n' "$r51_blk" | grep -cF 'WANTED[@]} -eq 0 && -n "$SUITE_HEAD"')
-  r51_g3=$(printf '%s\n' "$r51_blk" | grep -cF 'rm -f "$ROOT/.agent-state/last-suite-receipt.json"')
+  r51_g3=$(printf '%s\n' "$r51_blk" | grep -cF 'rm -f "$SUITE_RECEIPT_PATH"')
   r51_g4=$(printf '%s\n' "$r51_blk" | grep -cF 'date -u +%Y-%m-%dT%H:%M:%SZ')
   r51_w=$(grep -nF 'wall-time: '"%ds" "$ROOT/tests/run-tests.sh" | head -1 | cut -d: -f1)
   r51_r=$(grep -nF 'REQ-1049): '"suite receipt" "$ROOT/tests/run-tests.sh" | head -1 | cut -d: -f1)
@@ -4692,7 +4703,7 @@ section_T56() {
 # 夹具：复用 $ROOT 直跑 run-tests.sh 自身 + 收据/红归档文件前后快照比对。
 # FORCE_RED 缝为通用测试面（尾块注释声明测试缝语义），供 T57/CI 演练红路径。
 section_T57() {
-  local t57_a t57_b t57_c t57_rc t57_had t57_redhad t57_tmp
+  local t57_a t57_b t57_c t57_rc t57_had t57_redhad t57_tmp t57_dir t57_iso t57_red
   t57_tmp="${TMPDIR:-/tmp}"
   # TC-1272: -j 2 ≡ 串行（通过数/序/汇总行同形）
   t57_a=$(bash "$ROOT/tests/run-tests.sh" -T T41,T48 2>&1)
@@ -4701,23 +4712,20 @@ section_T57() {
   report "T57 TC-1272 -j2 keeps the serial fail count" "$(printf '%s\n' "$t57_a" | grep -c '^FAIL ')" "$(printf '%s\n' "$t57_b" | grep -c '^FAIL ')"
   report "T57 TC-1272 -j2 replay keeps source order" "T41" "$(printf '%s\n' "$t57_b" | grep -m1 '^ok' | awk '{print $2}')"
   report "T57 TC-1272 -j2 keeps the summary shape" 1 "$(printf '%s\n' "$t57_b" | tail -2 | head -1 | grep -cE '^[0-9]+ passed, [0-9]+ failed$')"
-  # TC-1273: 过滤 × 并行 → 收据不写（预播已知值 → 前后 cmp → 还原；T51 同型）
-  t57_had=$([[ -f "$ROOT/.agent-state/last-suite-receipt.json" ]] && echo 1 || echo 0)
-  if [[ "$t57_had" == 1 ]]; then cp "$ROOT/.agent-state/last-suite-receipt.json" "$t57_tmp/t57-receipt.real" 2>/dev/null || t57_had=0; fi
-  mkdir -p "$ROOT/.agent-state"
-  printf '{"head":"seed","passed":12345,"failed":0,"wall_time_s":0,"generated_at":"seed"}\n' > "$ROOT/.agent-state/last-suite-receipt.json"
-  cp "$ROOT/.agent-state/last-suite-receipt.json" "$t57_tmp/t57-receipt.seeded"
-  bash "$ROOT/tests/run-tests.sh" -T T41,T48 -j 2 >/dev/null 2>&1; t57_rc=$?
+  # TC-1273: 过滤 × 并行 → 收据不写（v3.86.0：隔离路径，不触真实台账）
+  t57_dir=$(mktemp -d "${TMPDIR:-/tmp}/t57-state.XXXXXX")
+  t57_iso="$t57_dir/last-suite-receipt.json"
+  printf '{"head":"seed","passed":12345,"failed":0,"wall_time_s":0,"generated_at":"seed"}\n' > "$t57_iso"
+  cp "$t57_iso" "$t57_dir/seeded"
+  AGENT_GUARD_SUITE_RECEIPT_PATH="$t57_iso" bash "$ROOT/tests/run-tests.sh" -T T41,T48 -j 2 >/dev/null 2>&1; t57_rc=$?
   report "T57 TC-1273 filtered -j2 run exits clean" 0 "$t57_rc"
-  report "T57 TC-1273 filtered -j2 run leaves receipt untouched" 0 "$(cmp -s "$t57_tmp/t57-receipt.seeded" "$ROOT/.agent-state/last-suite-receipt.json" && echo 0 || echo 1)"
+  report "T57 TC-1273 filtered -j2 run leaves receipt untouched" 0 "$(cmp -s "$t57_dir/seeded" "$t57_iso" && echo 0 || echo 1)"
   # TC-1276: FORCE_RED 缝 → rc 1 + 红归档含 FAIL 行 + 收据仍不被过滤跑触碰
-  t57_redhad=$([[ -f "$ROOT/.agent-state/last-suite-red.txt" ]] && echo 1 || echo 0)
-  if [[ "$t57_redhad" == 1 ]]; then cp "$ROOT/.agent-state/last-suite-red.txt" "$t57_tmp/t57-red.real" 2>/dev/null || t57_redhad=0; fi
-  rm -f "$ROOT/.agent-state/last-suite-red.txt"
-  AGENT_GUARD_SUITE_FORCE_RED=1 bash "$ROOT/tests/run-tests.sh" -T T41 >/dev/null 2>&1; t57_rc=$?
+  t57_red="$t57_dir/last-suite-red.txt"
+  AGENT_GUARD_SUITE_RECEIPT_PATH="$t57_iso" AGENT_GUARD_SUITE_RED_PATH="$t57_red" AGENT_GUARD_SUITE_FORCE_RED=1 bash "$ROOT/tests/run-tests.sh" -T T41 >/dev/null 2>&1; t57_rc=$?
   report "T57 TC-1276 FORCE_RED run exits 1" 1 "$t57_rc"
-  report "T57 TC-1276 red archive carries the forced FAIL line" 1 "$(grep -cF 'FAIL T0 forced-red seam (AGENT_GUARD_SUITE_FORCE_RED)' "$ROOT/.agent-state/last-suite-red.txt")"
-  report "T57 TC-1276 FORCE_RED filtered run leaves receipt untouched" 0 "$(cmp -s "$t57_tmp/t57-receipt.seeded" "$ROOT/.agent-state/last-suite-receipt.json" && echo 0 || echo 1)"
+  report "T57 TC-1276 red archive carries the forced FAIL line" 1 "$(grep -cF 'FAIL T0 forced-red seam (AGENT_GUARD_SUITE_FORCE_RED)' "$t57_red")"
+  report "T57 TC-1276 FORCE_RED filtered run leaves receipt untouched" 0 "$(cmp -s "$t57_dir/seeded" "$t57_iso" && echo 0 || echo 1)"
   # TC-1274: 并行 T56 计数互证 + -j 1 逐字节等价串行（wall-time 行除外）
   t57_a=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>&1)
   t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 2 2>&1)
@@ -4730,9 +4738,8 @@ section_T57() {
   report "T57 TC-1275 T56 friction reads carry the -f guard" 2 "$(grep -cE '\[\[ -f \.agent-state/gate-friction\.tsv \]\] && wc -l < \.agent-state/gate-friction\.tsv' "$ROOT/tests/run-tests.sh")"
   t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>&1 1>/dev/null)
   report "T57 TC-1275 T56 stderr carries no missing-file noise" 0 "$(printf '%s\n' "$t57_b" | grep -c 'No such file')"
-  # 收据/红归档还原（T51 同型：夹具不残留）
-  if [[ "$t57_had" == 1 ]]; then cp "$t57_tmp/t57-receipt.real" "$ROOT/.agent-state/last-suite-receipt.json"; else rm -f "$ROOT/.agent-state/last-suite-receipt.json"; fi
-  if [[ "$t57_redhad" == 1 ]]; then cp "$t57_tmp/t57-red.real" "$ROOT/.agent-state/last-suite-red.txt"; else rm -f "$ROOT/.agent-state/last-suite-red.txt"; fi
+  # 收据/红归档夹具清理（v3.86.0：全部落隔离目录，真实台账从未参与）
+  rm -rf "$t57_dir"
   rm -f "$t57_tmp/t57-receipt.real" "$t57_tmp/t57-receipt.seeded" "$t57_tmp/t57-red.real"
   # TC-1279: helper 提升后的顺序无关性持久钉（T19 单跑须全绿；嵌套 ≈8s 可接受）
   out=$(bash "$ROOT/tests/run-tests.sh" -T T19 2>&1 || true)
@@ -5409,20 +5416,19 @@ section_T61() {
   # ---- TC-1346 / REQ-1122：红档语义=最近一次运行结果（绿跑清档）-----------
   grep -qF 'if [[ ${#WANTED[@]} -eq 0 && "$fail" -eq 0 && -n "$SUITE_HEAD" ]]; then' "$ROOT/tests/run-tests.sh"
   report "T61 TC-1346 green clear is gated on a FULL run" 0 $?
-  grep -qF 'rm -f "$ROOT/.agent-state/last-suite-red.txt"' "$ROOT/tests/run-tests.sh"
+  grep -qF 'rm -f "$SUITE_RED_PATH"' "$ROOT/tests/run-tests.sh"
   report "T61 TC-1346 full green run deletes the stale red archive" 0 $?
   grep -qF "recent run's result" "$ROOT/tests/run-tests.sh"
   report "T61 TC-1346 archive semantics documented as the most recent run" 0 $?
   # 行为面（F16：结构性 pin 不等于行为验证）：强制红跑留档；**过滤**绿跑不清档
-  # （清档只归"全量绿跑"这一条路径）。夹具前后还原，不残留。
-  t61_ar="$ROOT/.agent-state/last-suite-red.txt"
-  t61_arhad=0; [[ -f "$t61_ar" ]] && { t61_arhad=1; cp "$t61_ar" "${TMPDIR:-/tmp}/t61-red.bak" 2>/dev/null; }
-  rm -f "$t61_ar"
-  AGENT_GUARD_SUITE_FORCE_RED=1 bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1
+  # （清档只归"全量绿跑"这一条路径）。v3.86.0：归档落在隔离路径，不触真实台账。
+  t61_dir=$(mktemp -d "${TMPDIR:-/tmp}/t61-state.XXXXXX")
+  t61_ar="$t61_dir/last-suite-red.txt"
+  AGENT_GUARD_SUITE_RED_PATH="$t61_ar" AGENT_GUARD_SUITE_FORCE_RED=1 bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1
   report "T61 TC-1346 a forced-red filtered run leaves the archive" 1 "$([[ -f "$t61_ar" ]] && echo 1 || echo 0)"
-  bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1
+  AGENT_GUARD_SUITE_RED_PATH="$t61_ar" bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1
   report "T61 TC-1346 a filtered green run does NOT clear the archive" 1 "$([[ -f "$t61_ar" ]] && echo 1 || echo 0)"
-  if [[ "$t61_arhad" == 1 ]]; then cp "${TMPDIR:-/tmp}/t61-red.bak" "$t61_ar" 2>/dev/null; else rm -f "$t61_ar"; fi
+  rm -rf "$t61_dir"
 
   # ---- TC-1339b / REQ-1116：unparsable 在 **stop 车道**也 fail-closed ----------
   # （F3/F16：初版只测了探针，正好漏掉"die 行在 bash 3.2 上因全角标点吞变量名而
@@ -5817,7 +5823,7 @@ rm -f .agent-state/t66-m .agent-state/verify-receipt.json
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 first run executes and writes rc0 receipt" 1 "$([[ -e .agent-state/t66-m && -e .agent-state/verify-receipt.json ]] && echo 1 || echo 0)"
 report "T66 TC-1414 receipt binds change id" 1 "$(grep -c '"change_id":"CHG-1095"' .agent-state/verify-receipt.json)"
-report "T66 TC-1414 receipt carries gate version" 1 "$(grep -c '"gate_version":"3.85.0"' .agent-state/verify-receipt.json)"
+report "T66 TC-1414 receipt carries gate version" 1 "$(grep -cE '"gate_version":"[0-9][0-9.]*"' .agent-state/verify-receipt.json)"
 # 命中：同键二跑不执行 vcmd
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
@@ -5844,7 +5850,7 @@ t66_sha_after=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/verify-r
 report "T66 TC-1414 receipt unchanged by failing run (rc0-only)" 1 "$([[ -n $t66_sha_before && $t66_sha_before == $t66_sha_after ]] && echo 1 || echo 0)"
 # gate 版本失配失效：篡改收据版本字面
 t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
-sed -i '' 's/"gate_version":"3.85.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"gate_version":"3.83.0"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json
+sed -E -i '' 's/"gate_version":"[0-9][0-9.]*"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json 2>/dev/null || sed -E -i 's/"gate_version":"[0-9][0-9.]*"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 gate-version mismatch invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
@@ -5902,7 +5908,7 @@ git add -A
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T67 TC-1426 staged passes with 终审 section + subject signature" 0 $?
 # TC-1427 G15：来源物映射闭合（runtime；沙箱无 STD 时 audit 秒退，落最小规范桩）
-printf '# t\n规范版本：v3.85.0\n' > docs/DEVELOPMENT_STANDARDS.md
+printf '# t\n规范版本：v%s\n' "$CURRENT_VERSION" > docs/DEVELOPMENT_STANDARDS.md
 bash "$ROOT/tests/audit-docs-consistency.sh" > t67_audit.txt 2>&1 || true
 report "T67 TC-1427 G15 green on closed mapping rows" 0 "$(grep -c 'G15 CHG-1111' t67_audit.txt)"
 grep -vF 'proto.md#list' docs/changes/CHG-1111/03.6-ui-spec.md > t67_tmp.md && mv t67_tmp.md docs/changes/CHG-1111/03.6-ui-spec.md
@@ -5925,17 +5931,79 @@ report "T67 TC-1429 同族推演 row name survives in bug-diagnosis template" 1 
 # TC-1430：A11 体积上界
 report "T67 TC-1430 DS body within A11 bound (<=167936B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 167936 ]] && echo 1 || echo 0)"
 # TC-1431：版本链字面
-report "T67 TC-1431 version literals synced to 3.85.0" 4 "$(grep -cF '3.85.0' "$ROOT/SKILL.md")"
+report "T67 TC-1431 SKILL version literals resolve to the DS footer" 4 "$(grep -cF "$CURRENT_VERSION" "$ROOT/SKILL.md")"
+# TC-1433：多字节方括号类在 C locale 下不匹配全角冒号（本环境实测）——发布面
+# 必须用 (：|:) 交替；[：:] 会让 UX/G13 开关在 LANG=C 的 CI 上静默失效。
+t67_br='['; t67_br="$t67_br：:]"
+report "T67 TC-1433 shipped gate avoids multibyte bracket classes" 0 "$(grep -cF "$t67_br" "$GATE_SRC")"
+}
+
+section_T68() {
+# ------------------------------------------------ T68 工作区锁与收据路径隔离（v3.86.0，CHG-113）
+  local t68_d t68_rc t68_out t68_lib t68_dead
+  t68_lib="$ROOT/scripts/lib-suite-lock.sh"
+  t68_d=$(mktemp -d "${TMPDIR:-/tmp}/suite-lock.XXXXXX")
+  report "T68 lock lib ships the three entry points" 3 "$(grep -cE '^suite_lock_(dir|release|acquire)\(\)' "$t68_lib")"
+  t68_out=$(ROOT="$t68_d" AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/lock" bash -c 'source "$1"; suite_lock_acquire; echo "first=$?"; suite_lock_acquire 2>/dev/null; echo "second=$?"; suite_lock_release; [[ -d "$AGENT_GUARD_SUITE_LOCK_DIR" ]] && echo present || echo released; suite_lock_acquire; echo "third=$?"; suite_lock_release' _ "$t68_lib" 2>&1)
+  report "T68 first acquisition succeeds" 1 "$(printf '%s\n' "$t68_out" | grep -c '^first=0$')"
+  report "T68 live owner is rejected" 1 "$(printf '%s\n' "$t68_out" | grep -c '^second=1$')"
+  report "T68 release removes the lock" 1 "$(printf '%s\n' "$t68_out" | grep -c '^released$')"
+  report "T68 reacquisition after release succeeds" 1 "$(printf '%s\n' "$t68_out" | grep -c '^third=0$')"
+  mkdir -p "$t68_d/dead"
+  # A just-reaped PID cannot be alive; a fixed 999999 is only dead on hosts whose
+  # pid_max is below it (Linux can exceed 1e6), which made this assertion flaky.
+  ( : ) & t68_dead=$!; wait "$t68_dead" 2>/dev/null || true
+  printf '%s\n' "$t68_dead" > "$t68_d/dead/pid"
+  ROOT="$t68_d" AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/dead" bash -c 'source "$1"; suite_lock_acquire; echo "rc=$?"; suite_lock_release' _ "$t68_lib" > "$t68_d/out" 2>&1
+  report "T68 dead-owner lock is reclaimed" 1 "$(grep -c '^rc=0$' "$t68_d/out")"
+  mkdir -p "$t68_d/young"
+  ROOT="$t68_d" AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/young" bash -c 'source "$1"; suite_lock_acquire 2>/dev/null; echo "rc=$?"' _ "$t68_lib" > "$t68_d/out2" 2>&1
+  report "T68 empty-pid lock inside grace is not stolen" 1 "$(grep -c '^rc=1$' "$t68_d/out2")"
+  touch -t "$(date -v-2M +%Y%m%d%H%M.%S 2>/dev/null || date -d '2 minutes ago' +%Y%m%d%H%M.%S)" "$t68_d/young"
+  ROOT="$t68_d" AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/young" bash -c 'source "$1"; suite_lock_acquire; echo "rc=$?"; suite_lock_release' _ "$t68_lib" > "$t68_d/out3" 2>&1
+  report "T68 empty-pid lock past grace is reclaimed" 1 "$(grep -c '^rc=0$' "$t68_d/out3")"
+  report "T68 suite sources the lock lib" 1 "$(grep -cF "source \"\$_lock_lib\"" "$ROOT/tests/run-tests.sh")"
+  report "T68 lock is gated to full runs" 1 "$(grep -cF "LOCK_HELD:-0}\" != \"1\"" "$ROOT/tests/run-tests.sh")"
+  report "T68 lock conflict exits 2 with a message" 1 "$(grep -cF "another full sui""te owns this workspace" "$ROOT/tests/run-tests.sh")"
+  report "T68 full run trap releases the lock" 1 "$(grep -cF "trap 'suite_lock_""release' EXIT" "$ROOT/tests/run-tests.sh")"
+  report "T68 interrupt traps exit after releasing" 2 "$(grep -cE "trap 'exit 1(30|43)' (INT|TERM)" "$ROOT/tests/run-tests.sh")"
+  mkdir -p "$t68_d/held"; printf '%s\n' "$$" > "$t68_d/held/pid"
+  t68_rc=0; AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1 || t68_rc=$?
+  report "T68 filtered run ignores the workspace lock (no deadlock)" 0 "$t68_rc"
+  t68_rc=0; AGENT_GUARD_SUITE_LOCK_HELD=0 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T "" >/dev/null 2>&1 || t68_rc=$?
+  report "T68 full run refuses a held lock with rc2" 2 "$t68_rc"
+  report "T68 refused full run leaves the lock intact" 1 "$([[ -d "$t68_d/held" ]] && echo 1 || echo 0)"
+  rm -rf "$t68_d"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do
     case " ${SECTIONS[*]} " in *" $_w "*) ;; *) printf 'unknown section: %s (available: bash tests/run-tests.sh -l)\n' "$_w" >&2; exit 2 ;; esac
   done
+fi
+# v3.86.0 (CHG-113, P1-3): full runs take a workspace lock. Filtered (-T) runs
+# never write the receipt and are spawned as children by T51/T57/T61 — locking
+# them would deadlock. AGENT_GUARD_SUITE_LOCK_HELD guards re-entry through
+# update-assertion-count's embedded run.
+if [[ ${#WANTED[@]} -eq 0 && "${AGENT_GUARD_SUITE_LOCK_HELD:-0}" != "1" ]]; then
+  _lock_lib="$ROOT/scripts/lib-suite-lock.sh"
+  if [[ -f "$_lock_lib" ]]; then
+    source "$_lock_lib"
+    if command -v suite_lock_acquire >/dev/null 2>&1; then
+      if ! suite_lock_acquire; then
+        printf 'run-tests: another full suite owns this workspace (or the lock is younger than the grace window). Wait for it or set AGENT_GUARD_SUITE_LOCK_DIR to an isolated path.\n' >&2
+        exit 2
+      fi
+      trap 'suite_lock_release' EXIT
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      export AGENT_GUARD_SUITE_LOCK_HELD=1
+    fi
+  fi
 fi
 # v3.72.0 erratum (CHG-095, DES-1868): replay/re-export anchors — defined ONCE
 # here; the parallel branch's counter/failed_names re-export shares them with
@@ -6046,8 +6114,8 @@ printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant ta
 # written as-is; the consumer treats empty/mismatched fingerprints as stale.
 if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
   if [[ "$fail" -eq 0 ]]; then
-    _receipt="$ROOT/.agent-state/last-suite-receipt.json"
-    mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
+    _receipt="$SUITE_RECEIPT_PATH"
+    mkdir -p "$(dirname "$SUITE_RECEIPT_PATH")" 2>/dev/null || true
     _tree_fp=""
     command -v suite_tree_fingerprint >/dev/null 2>&1 && _tree_fp=$(suite_tree_fingerprint "$ROOT")
     if ! printf '{"head":"%s","tree_fingerprint":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
@@ -6055,7 +6123,7 @@ if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
       printf 'warning: could not write suite receipt %s (non-fatal)\n' "$_receipt" >&2
     fi
   else
-    rm -f "$ROOT/.agent-state/last-suite-receipt.json"
+    rm -f "$SUITE_RECEIPT_PATH"
   fi
 fi
 # v3.72.0 erratum (CHG-095, DES-1869) + v3.76.0 (CHG-100, REQ-1122): red-run
@@ -6071,16 +6139,16 @@ fi
 # condition is intentionally unquoted ($fail) so the T51 TC-1126 pin literal
 # stays unique.
 if [[ ${#WANTED[@]} -eq 0 && "$fail" -eq 0 && -n "$SUITE_HEAD" ]]; then
-  rm -f "$ROOT/.agent-state/last-suite-red.txt"
+  rm -f "$SUITE_RED_PATH"
 fi
 if [[ $fail -gt 0 ]]; then
-  mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
+  mkdir -p "$(dirname "$SUITE_RED_PATH")" 2>/dev/null || true
   {
     printf '# agent-guard suite red-run archive (test-seam semantics; not a product-health signal)\n'
     printf '# failed cases: %s\n' "${failed_names[*]}"
     if [[ ${#fail_lines[@]} -gt 0 ]]; then printf '%s\n' "${fail_lines[@]}"; fi
-  } > "$ROOT/.agent-state/last-suite-red.txt" 2>/dev/null \
-    || printf 'warning: could not write red archive .agent-state/last-suite-red.txt (non-fatal)\n' >&2
+  } > "$SUITE_RED_PATH" 2>/dev/null \
+    || printf 'warning: could not write red archive %s (non-fatal)\n' "$SUITE_RED_PATH" >&2
 fi
 if [[ "$fail" -gt 0 ]]; then
   printf 'failed cases: %s\n' "${failed_names[*]}" >&2

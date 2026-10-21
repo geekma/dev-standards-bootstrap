@@ -1,0 +1,12 @@
+# Source-layer legacy alias registry (v3.86.0, CHG-113). NOT shipped with the Skill.
+# Format: <short-id>\t<change_uid>\t<what the instance was>
+# Short CHG ids were reused across batches before date-qualified UIDs existed. History
+# is append-only, so the collision is resolved by aliases rather than renumbering.
+CHG-043	CHG-20260922-043	2026-09-22 batch: public comparison docs (v3.39.0)
+CHG-043	CHG-20261012-043	independent: G13/G14 three-dimensional cross-check (v3.68.0)
+CHG-044	CHG-20260922-044	2026-09-22 batch: pre-commit provenance stamp (v3.40.0)
+CHG-044	CHG-20261013-044	independent: G14e element parity (v3.69.0)
+CHG-045	CHG-20260922-045	2026-09-22 batch: P3 lightweight defect channel (v3.40.0)
+CHG-045	CHG-20261013-045	independent: shape extraction + entry templates (v3.70.0)
+CHG-046	CHG-20260922-046	2026-09-22 batch: red-light blocks new changes (v3.40.0)
+CHG-046	CHG-20261014-046	independent: delivery four-gate family (v3.71.0)

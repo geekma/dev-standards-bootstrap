@@ -410,14 +410,18 @@ next_id() { # <prefix> -> <prefix>-<max+1>
 }
 
 scaffold_body() { # <doc> <id> <risk> <placement>
-  local doc="$1" id="$2" risk="$3" placement="$4"
+  local doc="$1" id="$2" risk="$3" placement="$4" cuid
+  case "$id" in
+    CHG-[0-9]*) cuid="CHG-$(date -u +%Y%m%d)-${id#CHG-}" ;;
+    *) cuid="$id-$(date -u +%Y%m%d)" ;;
+  esac
   case "$doc" in
     00-intent.md)
       printf '# %s Intent\n\n- **目录落位**：%s\n- **来源**：<!-- FILL: 一句话来源（用户裁定/事故/评审发现） -->\n- **范围**：① <!-- FILL: 改动面 1 --> ② <!-- FILL: 改动面 2 -->\n- **不做**：<!-- FILL: 显式排除项 -->\n\n### 预期结果\n\n- <!-- FILL: 可验收结果（与 04 的 TC 对应） -->\n\n### 开放问题\n\n- <!-- FILL: 无 或 开放问题清单 -->\n' "$id" "$placement" ;;
     00.5-communication.md)
       printf '# %s Communication（00.5）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
     00-governance.json)
-      printf '{"change_id": "%s", "risk_level": "%s", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$risk" ;;
+      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
     01-spec.md)
       printf '# %s Spec\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     02-code-impact-analysis.md)
@@ -594,7 +598,7 @@ is_code_path() {
   # 第一次 commit 即死锁——鸡生蛋）。它们由 §2.17.4 golden-case 回归背书。
   # v3.17.0：**新增治理脚本必须同步加进本清单**——stamp-provenance.sh 漏加时，
   # 全新安装后的第一次 commit 会被判为"源码变更"而拦下（T15 D5 用例实测暴露）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -620,7 +624,7 @@ ui_change_true() { # <spec-file> -> 0 when the spec declares ui_change: true
   # are stripped first; the value is anchored right after the colon and must
   # end at a word boundary.
   sed 's/<!--[^>]*-->//g' "$1" 2>/dev/null \
-    | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))'
+    | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*(：|:)[[:space:]]*`?true`?([[:space:]]|$|）|\))'
 }
 
 # v3.68.0 (CHG-043): declaration bullet parser for the G13/G14 lane switches —
@@ -629,8 +633,8 @@ ui_change_true() { # <spec-file> -> 0 when the spec declares ui_change: true
 spec_decl() { # <spec-file> <key> -> declared value or "" (lane disarmed)
   local v
   v=$(sed 's/<!--[^>]*-->//g' "$1" 2>/dev/null \
-    | grep -m1 -E "^[[:space:]]*[-*][[:space:]]*\*\*$2\*\*[：:]" \
-    | sed -E "s/^[[:space:]]*[-*][[:space:]]*\*\*$2\*\*[：:][[:space:]]*//" \
+    | grep -m1 -E "^[[:space:]]*[-*][[:space:]]*\*\*$2\*\*(：|:)" \
+    | sed -E "s/^[[:space:]]*[-*][[:space:]]*\*\*$2\*\*(：|:)[[:space:]]*//" \
     | tr -d '`' || true)
   case "$v" in 未命中*|未声明*|"") printf '' ;; *) printf '%s' "$v" ;; esac
 }
@@ -1141,7 +1145,7 @@ validate_ux_conditions() {
   # v3.84.0 (CHG-111, REQ-1164, N2): external-source mapping completeness — a
   # declared non-未命中 外部来源物 (prototype/design doc/upstream spec) obliges a
   # per-item 来源物映射 section in 03.6 (audit G15 checks row closure).
-  src_line=$(sed 's/<!--[^>]*-->//g' "$spec" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*[：:]' | head -1 || true)
+  src_line=$(sed 's/<!--[^>]*-->//g' "$spec" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*(：|:)' | head -1 || true)
   if [[ -n "$src_line" && ! "$src_line" =~ 未命中 ]]; then
     sed 's/<!--[^>]*-->//g' "$d/03.6-ui-spec.md" 2>/dev/null | grep -q "来源物映射" \
       || die "GATE-E123: $d/03.6-ui-spec.md missing 「来源物映射」 section while 01-spec declares an external source artifact (standards §2.5 stage 3, v3.84.0 CHG-111)"
@@ -2249,7 +2253,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.85.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.86.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -2277,7 +2281,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.85.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.86.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi

@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.85.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.86.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -69,6 +69,10 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 - **Organizational memory is where the value concentrates.** The moment a session compacts or ends, an ungoverned agent restarts from amnesia; here, state lives in the 13-volume master set and disk artifacts.
 - **The tax is measured and being cut.** The governance machinery costs ~25% of tool calls and a resident context base — and 97.5%+ of token spend is cache-read prefill from un-switched sessions. v3.38/v3.39 turned session discipline into machine enforcement (water-level gate, exploration-budget yellow light, review-input contract) targeting exactly that: **~90% attainment at a 30–50% cost reduction** — governance-grade quality at near-ungoverned cost.
 
+**Evidence boundary.** The table is an analyst-coded contribution analysis over 11 sessions (session DB cross-checked against git history), not a controlled trial; the paired-config figure is an estimate derived from that comparison, and the ~90% / 30–50% figures are the v3.38–v3.39 design target rather than a measured outcome. Read them as directional evidence, not as a benchmark.
+
+**Data boundary.** Telemetry is local-only. Hooks and adapters append JSON/TSV under `.agent-state/` (`session-water.json`, `session-tool-stats.json`, `gate-friction.tsv`), and `agent-gate metrics` derives its JSON Lines from local git history. No telemetry client, endpoint, or upload path ships with this skill; nothing leaves the machine unless you commit or copy it yourself.
+
 ## Key Features
 
 | Feature | Description |
@@ -82,7 +86,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1108 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1127 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -149,6 +153,8 @@ curl -fsSL https://raw.githubusercontent.com/geekma/dev-standards-bootstrap/main
 - The skill checkout is kept at `~/.dev-standards-bootstrap/dev-standards-bootstrap` (override with `--skill-dir <path>`); an existing checkout is reused and fast-forward pulled — **local changes there are never overwritten** (the command refuses and tells you). If the pull fails (e.g. offline), the command continues with the **existing local copy, which may be stale** — it says so; rerun when back online, or run `bash <skill-dir>/scripts/bootstrap.sh --self-update` to update the skill copy on its own.
 - Already-governed target → automatic `--upgrade`: governance-owned files (standards, templates, scripts, hooks, workflows, tests) move to the carried version — **except files you have modified locally, which are kept untouched and reported** (pass `--force` to overwrite them with the carried version); a dirty target work tree blocks the upgrade until committed or stashed (`--force` overrides). **Live records always stay untouched**: `bugfix-log.md`, delivery summaries, 06.5 records, your `.agent-governance.yml`, and everything under `docs/changes/**` and `docs/bugs/BUG-*/`. Commit the target repo first so git history preserves any customization.
 - Offline / pinned installs: `--from <local-checkout>`, `--repo <url>`, `--ref <branch-or-tag>`.
+- **Platforms**: macOS and Linux with bash 3.2+ (the shipped gate targets stock macOS `/bin/bash 3.2`); native Windows is **not supported** — use WSL. Git Bash/MSYS is unverified, not a compatibility claim.
+- **Supply chain**: the `curl | bash` form executes whatever is at `main` *at that moment*. When you need a fixed input, pin it — `curl -fsSL …/vX.Y.Z/scripts/install.sh | bash -s -- . --ref vX.Y.Z`, or clone the repo, inspect it, and run `scripts/bootstrap.sh` locally. The trust anchors are the git tag/commit and the reviewed checkout; this project publishes **no** checksums or signed artifacts, so do not treat any such file as authentic.
 - Selective layers (`--layer core|claude|ci|guard|pipeline`) and custom directory roots (`--docs-dir`, `--scripts-dir`, `--tests-dir`, `--githooks-dir`) pass through to the installer. Omit them for the full `--all` install with default roots.
 - The target should be a git repository: hook wiring (`core.hooksPath`) requires `.git/` — a bare directory gets the files but no Git-hook enforcement (CI still applies once connected).
 - Version check without side effects: `--check` compares carried / upstream / installed versions and exits 1 on drift (CI-friendly). Update **the skill copy itself** (not the target repo) with `--self-update` — it pulls the checkout `--ff-only` and touches nothing else.
@@ -253,7 +259,7 @@ Any change that fails any gate is **blocked from merge to main**.
 <p align="center">
   <img src="screenshots/change-artifacts-full-lifecycle.png" alt="One change's artifact chain: 01-spec.md through 09-changelog.md" width="520">
   <br>
-  <sub>One change's full artifact chain, <code>01-spec.md</code> → <code>09-changelog.md</code>. Every stage ends by committing a version-controlled artifact; the next stage begins by reading it — the commit chain itself is the audit trail.</sub>
+  <sub>One change's full artifact chain, <code>01-spec.md</code> → <code>09-changelog.md</code>. Every stage ends by committing a version-controlled artifact; the next stage begins by reading it — in target repositories that keep the ledger in-tree, the commit chain itself is the audit trail. In this source repository the private ledger (<code>docs/**</code>) is intentionally gitignored (CHG-017), so source-side claims are traced to tagged versions, not to commits of the ledger.</sub>
 </p>
 
 <p align="center">
@@ -307,14 +313,24 @@ Any change that fails any gate is **blocked from merge to main**.
 
 ## Governance Details
 
-- **Execution-side token discipline (v3.24.0/v3.25.0)**: the shipped `AGENTS.md` carries an **8-rule** "Agent execution resource discipline" section (piped filtering / single-pass grep / locate-then-window reads / exploration delegated to read-only subagents / no-match ≠ pass / parallel batch writes / targeted verification / stateful mock isolation); §2.9.6 session-context discipline (one topic per session, handoff beyond 50 turns or on topic switch); §2.5 minimal-expression artifact shapes with a ≤40-line soft cap — targeting cache_read (= context level × turns).
+- **Execution-side token discipline (v3.24.0/v3.25.0; recalibrated to 15 rules in this version)**: the shipped `AGENTS.md` carries a **15-rule** "Agent execution resource discipline" section (piped filtering / single-pass grep / locate-then-window reads / delegated exploration / no-match ≠ pass / parallel batches / targeted verification / stateful mock isolation / no parallel integration tests / long-task waiting / environment-attribution resume / call batching / tail-incremental reads / frozen-tree parallel dispatch / phased minimal read set); §2.9.6 session-context discipline (one topic per session, handoff beyond 50 turns or on topic switch); §2.5 minimal-expression artifact shapes with a ≤40-line soft cap — targeting cache_read (= context level × turns). **Read-set rule**: DS is never read in full; read it in phases per discipline 15 (this version removes the old rule 1 vs rule 15 contradiction).
 - **Same-day change batches (v3.18.0; defaulted in v3.24.0; sequence clarified in v3.61.2)**: the **first L0/L1** change (or defect) of the day creates `<docs>/changes/BATCH-YYYYMMDD/` immediately; later same-day L0/L1 changes join it via section anchors instead of opening their own directories. Only the directory is relaxed — artifact filenames are unchanged, bundled changes are told apart by a `## <change-id>` section anchor, and the batch's change set is read from the authoritative roster in `00-governance.json` (never inferred from headings). The risk ceiling is not relaxed: **L2/L3 must live in their own directory**, and the gate refuses an L2/L3 record found inside a batch (per the governance roster).
 - **Defect groups join daily batches by default (v3.35.0, flat since v3.36.0)**: the first same-day defect creates one flat `docs/bugs/BATCH-YYYYMMDD/` directory and later same-day defects join it — six files named exactly as before, told apart by `## BUG-xxx` section anchors, same-day appends land in the same files (per-defect subdirectories remain a legal legacy form). The append-only `docs/bugfix-log.md` index (one dated row per bug) stays the day-level retrieval layer, and a defect's change-track entry (`BUG-*`) may still join a change batch like any other change.
 - **Methodology selection (M0–M3)**: `docs/METHODOLOGY.md` is the sole authority for which methodologies are allowed at which level; `docs/methodologies/development.md`, `docs/methodologies/data-structures.md`, `docs/methodologies/state-trigger-audit.md`, `docs/methodologies/expert-capabilities.md` and `docs/methodologies/project-masters.md` carry the per-item engineering rationale (SOLID/DRY applicability, weak-typing ban, implicit state/trigger-link three-way traversal, expert theory toolboxes). `docs/STAGE_PLAYBOOK.md` carries the operational detail migrated from DS §2.5 / §2.16.6 (clause authority stays in DS, v3.61.0).
 - **Self-evolution**: skills derived from this one (declaring `derived_from: dev-standards-bootstrap`) live and evolve independently, and every installer/upgrade write path skips them; `--force` does not override that. `bash scripts/bootstrap.sh --derived-report` lists them.
-- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / G10 deprecation-marker sweep — a deprecation marker must carry its replaced-by version pointer (v3.41.0) / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
+- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity + globally unique change UID / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / G10 deprecation-marker sweep — a deprecation marker must carry its replaced-by version pointer (v3.41.0) / G11 UJ↔REQ coverage / G12 five-party evidence / G13 three-dimensional cross-check / G14 source cross-check / G15 source-artifact mapping closure / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
 
 ## Repository Structure
+
+**Three surfaces — keep them distinct (CHG-113).** A file being public does not make it part of the shipped capability, and a file being useful to maintainers does not make it installable:
+
+| Surface | Paths (representative) | Reaches a target repo? |
+|---|---|---|
+| **A. Public capability** | `SKILL.md`, `resources/**`, `.claude-plugin/**`, installer entrypoints `scripts/bootstrap.sh` / `scripts/install.sh`; `tests/run-tests.sh` and `scripts/lib-suite-*.sh` are installed by `--guard` | Yes — copied or consumed by the installers |
+| **B. Source-public, not shipped** | this README pair, `MAINTAINER.md`, `CAPABILITY-COMPARISON.md`, `能力对比分析.md`, `screenshots/**`, `tests/audit-standards-src.sh`, `tests/audit-docs-consistency.sh` (source-layout mirror; the shipped copy is `resources/templates/audit-docs-consistency.sh`), `scripts/update-assertion-count.sh`, `scripts/release.sh`, `scripts/selfcheck.sh`, `scripts/setup-branch-protection.sh`, `.github/**`, and the `scripts/agent-gate` / `scripts/session-gate.sh` source-layout mirrors | No — maintainer and CI only |
+| **C. Repository-private (gitignored)** | `docs/**` (CHG-017: the private change/bug ledger), `.agent-state/**`, `.claude/`, `.opencode/`, local working mirrors | Never |
+
+Claims in this README are backed by surface A behavior and surface B evidence; surface C contains project-specific material and is not part of the product contract.
 
 ```
 dev-standards-bootstrap/
@@ -334,18 +350,23 @@ dev-standards-bootstrap/
 │   ├── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer, idempotent, conflict-safe
 │   ├── install.sh                          # One-command installer (not shipped): clone + install/upgrade in a single step
 │   ├── update-assertion-count.sh           # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
-│   ├── lib-suite-tree-fingerprint.sh       # Shared library: suite tree fingerprint used by receipt keying (source-layer)
-│   ├── eval-cases                          # Eval-case derivation runner (source-layer wrapper of resources/templates/eval-cases.sh)
-│   └── eval-rescore                        # Eval rescore runner (source-layer wrapper of resources/templates/eval-rescore.sh)
+│   ├── release.sh                          # Source-layer only (NOT shipped): release carrier check / mechanical version bump / local annotated tag; never generates the CHANGELOG prose
+│   ├── selfcheck.sh                        # Source-layer only (NOT shipped): single dogfood entry — release carriers, source audit (embeds a full suite run), private-ledger audit, eval cases
+│   ├── setup-branch-protection.sh          # Source-layer only (NOT shipped): prints the gh api payload for the required check (dry run); `--apply` mutates the remote
+│   ├── lib-suite-tree-fingerprint.sh       # Shared library: suite tree fingerprint used by receipt keying (installed with tests/run-tests.sh by --guard)
+│   ├── lib-suite-lock.sh                   # Shared library: workspace suite lock — one full run at a time, dead-owner reclaim (installed by --guard)
+│   ├── eval-cases                          # Eval-case derivation runner (experimental; source-layer wrapper of resources/templates/eval-cases.sh)
+│   └── eval-rescore                        # Eval rescore runner (experimental; source-layer wrapper of resources/templates/eval-rescore.sh)
 ├── screenshots/                            # README screenshots (motivation, gate blocking, artifacts, gate-5 review)
 ├── tests/
 │   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
+│   ├── audit-docs-consistency.sh           # Source-layout mirror of resources/templates/audit-docs-consistency.sh (the shipped copy); run against this repo's private ledger by CI
 │   ├── audit-standards-src.sh              # Source-layer only (NOT shipped): audits the standards text itself - version chain / keyword matrix / checklist uniqueness / numbering / tautology-proof greps
 │   └── .audit-baseline                     # Source-layer only (NOT shipped): committed baseline of the audit's executed-assertion count (assertion A10 fails on drift)
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.85.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.86.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -381,8 +402,8 @@ dev-standards-bootstrap/
         ├── session-gate.sh                  # Session-time enforcement: start = audit red-light + defect-signal interactive options, idle = gate stop equivalent
         ├── bug-autointent.sh               # Defect discovery entry: signal -> full six-piece skeleton + fingerprint rate-limit (v3.43.0)
         ├── generate-reading-pack.sh        # Reading-pack generator: clause registry -> type-filtered slice, anchors fail-closed (v3.46.0)
-        ├── eval-cases.sh                   # Eval-asset derived view: defect groups -> reproducible eval cases (runtime-only, v3.75.0)
-        ├── eval-rescore.sh                 # Eval rescore: coverage ratio + receipt bound to governance-face hash, drift => re-baseline (v3.75.0)
+        ├── eval-cases.sh                   # Eval-asset derived view: defect groups -> reproducible eval cases (experimental, runtime-only, v3.75.0)
+        ├── eval-rescore.sh                 # Eval rescore: coverage ratio + receipt bound to governance-face hash, drift => re-baseline (experimental, v3.75.0)
         ├── github-reviewer-rescore.yml     # Reviewer rescore loop: daily + governance-face push, drift alerts (v3.75.0)
         ├── github-agent-governance.yml     # Required-check workflow template
         ├── github-artifact-pipeline.yml    # Artifact pipeline: spec merged -> 02/03/03.5/04 skeletons PR; changelog merged -> release checklist issue
@@ -422,14 +443,15 @@ Reinstall anytime with `bootstrap --core/--guard`.
 
 ## CI (this repository)
 
-This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs two jobs on every PR and push to `main`:
+This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs two real jobs plus an aggregate required-check gate on every PR and push to `main`:
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 595) |
-| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1108 golden-case assertions) in throwaway git repos; bash + git only |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 613) |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1127 golden-case assertions) in throwaway git repos; bash + git only |
+| **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
-Both jobs run with `AGENT_GUARD_AUDIT_SOFT=1`: numeric-closure checks (counts that must equal a baseline) **warn instead of blocking** (REQ-965) — the audit's structural assertions still fail the build. Each job is bounded by `timeout-minutes: 15`, and a workflow-level `concurrency` group cancels superseded runs on the same ref.
+**Since CHG-113 there is no soft mode and no double run in CI**: golden-case runs once with `-j 4` and uploads `.agent-state/last-suite-receipt.json`; source-audit downloads that same-HEAD/same-tree receipt and runs A3/A3c/A10 as **hard** gates (no `AGENT_GUARD_AUDIT_SOFT`), eliminating the second full suite inside CI. golden-case also enforces a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`) so a regression fails loudly instead of drifting into the 15-minute job timeout. Each job is bounded by `timeout-minutes: 15`, and a workflow-level `concurrency` group cancels superseded runs on the same ref.
 
 Reproduce locally (no CI needed, bash + git only):
 
@@ -439,6 +461,15 @@ bash tests/run-tests.sh             # golden-case suite (writes .agent-state/las
 ```
 
 CI green is the publish gate; the platform-side required-check step is described in [What Runs Automatically](#what-runs-automatically-and-what-stays-manual).
+
+**Branch protection is a one-time admin action, not something CI can self-apply.** The required context is `agent-governance`. Preview the exact payload, then apply it with an admin token:
+
+```bash
+bash scripts/setup-branch-protection.sh --repo <owner>/<repo>          # dry run (default)
+bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # mutates the remote
+```
+
+The script never stores credentials; `--apply` delegates to your authenticated `gh` CLI. Applying it is deliberately left to a maintainer.
 
 ## Contributing
 
@@ -452,7 +483,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.85.0 | **Last Updated:** 2026-10-21 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.86.0 | **Last Updated:** 2026-10-21 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

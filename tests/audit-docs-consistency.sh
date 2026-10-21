@@ -97,8 +97,18 @@ cfg_path() { # key default
 }
 DOCS_DIR="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
 DOCS="$ROOT/$DOCS_DIR"
-STD="$DOCS/DEVELOPMENT_STANDARDS.md"
+STD="${AGENT_GUARD_STD_FILE:-$DOCS/DEVELOPMENT_STANDARDS.md}"
 AGENTS="$ROOT/AGENTS.md"
+# 源仓模式（v3.86.0）：本仓的规范正文只以 resources/ 形式发布，docs/ 是 gitignore 的
+# 私有台账且没有 DEVELOPMENT_STANDARDS.md。旧逻辑因此整脚本 SKIP——源仓自己的台账
+# 审计从未执行过（假绿）。规范缺失而 resources/ 副本在位时，用发布副本做法，并把
+# AGENTS 切到随版本维护的模板副本（根 AGENTS.md 是刻意保留的指针，不含版本页脚）。
+if [[ ! -f "$STD" && -f "$ROOT/resources/DEVELOPMENT_STANDARDS.md" ]]; then
+  STD="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
+  if ! grep -q '规范版本：v' "$AGENTS" 2>/dev/null; then
+    AGENTS="$ROOT/resources/AGENTS.md"
+  fi
+fi
 BFLOG="$DOCS/bugfix-log.md"
 # 变更根（v3.18.0 批次审计用）：默认 = <docs>/changes，与门禁同一套解析规则。
 CHANGE_DIR="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
@@ -157,6 +167,9 @@ awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; 
 #    定义式形状 = 行首是标题（`#`~`######`）/ 表格首列（`| `）/ 列表项（`- `），紧跟
 #    `PREFIX-N`；引用（出现在句中、第二列起）不再计入。**实测：全仓 61 个产物文件
 #    （16 REQ + 15 DES + 16 TC + 14 SC）用定义式规则误报 0 处。**
+#    **v3.86.0 移除"裸行首编号"形态**：段首 `CHG-046 遗留…` 是引用句，不是定义；
+#    旧正则把它当定义，令 CHG-093 的 09 凭空出现 46..93 的 47 个"缺号"（源仓实测）。
+#    变更定义的唯一合法形状是标题（`### CHG-xxx`），裸行首一律按引用处理。
 #
 # ② **区间基线是文件自身的 min，不是 1**。旧实现 `seq 1 "$max"` 假定被审文件独占
 #    从 1 开始的整个编号空间，而 §1.2 的编号空间是**全仓全局**的：任何不始于 1 的
@@ -167,7 +180,23 @@ awk '/^## 3\. 变更执行全流程检查清单/{w=1} w && /^```markdown$/{f=1; 
 # 两处修正缺一不可：只改 ② 仍有引用污染（CHG-006 报 8），只改 ① 仍被 1..max 判死
 # （CHG-003 定义 14..18 报 13 个缺号）。
 DEF_RE() { # <prefix> -> 定义式编号行的正则
-  printf '^#{1,6}[[:space:]]*%s-[0-9]+|^\\|[[:space:]]*`?%s-[0-9]+`?[[:space:]]*\\||^-[[:space:]]*`?%s-[0-9]+|^%s-[0-9]+' "$1" "$1" "$1" "$1"
+  printf '^#{1,6}[[:space:]]*%s-[0-9]+|^\\|[[:space:]]*`?%s-[0-9]+`?[[:space:]]*\\||^-[[:space:]]*`?%s-[0-9]+' "$1" "$1" "$1"
+}
+
+# G2 历史豁免（v3.86.0）：编号不变量是时间不变的，但**已冻结台账**里存在两类
+# 无法回填的事实——(a) 编号空间全局分配留下的未使用号（§1.2 视之为跳号，但补号
+# 等于伪造历史）；(b) 台账表格/“既有”清单被定义式启发式误读为定义。两类都只能
+# 显式登记，不能改历史。豁免写 `<change_root>/.gate-allowlist`：
+#   G2 <目录名> <前缀> <理由>
+# 登记项仍逐条打印（allowlisted legacy），不静默吞掉；未登记即照常红。
+g2_allowed() { # <dir> <prefix>
+  local wl
+  for wl in "$CHANGES/.gate-allowlist" "$DOCS/.gate-allowlist"; do
+    [[ -f "$wl" ]] || continue
+    awk -v d="$(basename "$1")" -v p="$2" \
+      '$1=="G2" && $2==d && $3==p {found=1} END{exit !found}' "$wl" && return 0
+  done
+  return 1
 }
 
 check_seq() { # feature_dir prefix file_path label
@@ -181,6 +210,11 @@ check_seq() { # feature_dir prefix file_path label
   if [[ "$max" -le 9999 ]]; then
     missing=$(printf '%s\n' "$nums" \
       | awk -v mn="$min" -v mx="$max" '{a[$1+0]=1} END{n=0; for(i=mn;i<=mx;i++) if(!(i in a)) n++; print n}')
+    if [[ "$missing" -gt 0 ]] && g2_allowed "$dir" "$prefix"; then
+      echo "     G2 allowlisted legacy: $(basename "$dir") $prefix — ${min}..${max} has $missing gap(s)"
+      report "$label allowlisted legacy (counted, not hidden)" ok ok
+      return
+    fi
     report "$label continuous ${min}..${max} (no gaps)" 0 "$missing"
   else
     report "$label continuity (max=${max} skip)" ok ok
@@ -263,6 +297,40 @@ else
     [[ -f "$d/06.5-deployment-config.md" ]] && check_seq "$d" "DB" "$d/06.5-deployment-config.md" "G2 DB numbering in $fname"
     [[ -f "$d/06-delivery-summary.md" ]] && check_seq "$d" "FU" "$d/06-delivery-summary.md" "G2 FU numbering in $fname"
   done <<< "$audit_dirs"
+fi
+
+# G2b 变更身份全局唯一（v3.86.0，CHG-113）：短号 CHG-NNN 允许在历史批次/独立目录
+# 出现“同号不同变更”的既有事实（源仓 CHG-043~046 实测），但 §1.2 的“不重号”语义
+# 要求每个**变更实例**有唯一身份。新变更在 00-governance.json 声明日期限定的
+# change_uid；历史实例由别名表登记（一行：短号<TAB>change_uid<TAB>说明）。两条断言：
+#   ① 非空 change_uid 不得重复；② 短号若在多份治理记录中出现，别名表必须给出 ≥2 个
+#      不同 change_uid（只登记一个 = 没解释清哪个是哪个，仍红）。
+# 目标仓无重号时两条均自然通过；别名表是源层可选文件（不随 Skill 下发）。
+if [[ -d "$CHANGES" ]]; then
+  g2_uid_rows=$(find "$CHANGES" -name '00-governance.json' -type f -exec \
+    grep -hoE '"change_uid"[[:space:]]*:[[:space:]]*"[^"]+"' {} \; 2>/dev/null \
+    | sed -E 's/.*"([^"]+)"$/\1/' || true)
+  g2_uid_dup=$(printf '%s\n' "$g2_uid_rows" | grep -v '^$' | sort | uniq -d | wc -l | tr -d ' ')
+  report "G2b change_uid values are globally unique (v3.86.0)" 0 "$g2_uid_dup"
+  g2_id_rows=$(find "$CHANGES" -name '00-governance.json' -type f -exec \
+    grep -hoE '"change_id"[[:space:]]*:[[:space:]]*"CHG-[0-9]+"' {} \; 2>/dev/null \
+    | sed -E 's/.*"(CHG-[0-9]+)"$/\1/' || true)
+  g2_id_dups=$(printf '%s\n' "$g2_id_rows" | grep -v '^$' | sort | uniq -d || true)
+  g2_alias_bad=0
+  if [[ -n "$g2_id_dups" ]]; then
+    g2_alias="${AGENT_GUARD_CHANGE_ID_ALIASES:-$ROOT/tests/change-id-aliases.tsv}"
+    while IFS= read -r dup_id; do
+      [[ -n "$dup_id" ]] || continue
+      n_alias=0
+      [[ -f "$g2_alias" ]] && n_alias=$(awk -F'\t' -v id="$dup_id" '$1==id && $2!="" {print $2}' "$g2_alias" | sort -u | wc -l | tr -d ' ')
+      if [[ "$n_alias" -lt 2 ]]; then
+        g2_alias_bad=$((g2_alias_bad+1)); echo "     G2b short id reused without a two-entry alias: $dup_id (found $n_alias)"
+      fi
+    done <<< "$g2_id_dups"
+  fi
+  report "G2b reused short ids carry a two-entry alias (v3.86.0)" 0 "$g2_alias_bad"
+else
+  report "G2b VACUOUS SKIP — no change root, so G2b did NOT run" ok ok
 fi
 
 # G3/G5/G6 的空转声明（与 G2 分开声明：两组的覆盖面不同，合并成一句会让操作者
@@ -371,6 +439,9 @@ else
     # 权威名单：只从治理记录取变更号（见文件头 v3.19.0 修正说明）。
     ids=$(grep -oE '"change_id"[[:space:]]*:[[:space:]]*"[A-Za-z0-9._-]+"' "$gov" 2>/dev/null \
       | sed -E 's/.*"([A-Za-z0-9._-]+)"$/\1/' | sort -u || true)
+    # v3.86.0：批次自身的容器记录（change_id == 批次目录名）不是批次成员，不要求
+    # 在 00-intent 有 `## BATCH-...` 锚点（历史批次 BATCH-20260921 实测假红）。
+    ids=$(printf '%s\n' "$ids" | grep -vx "$bname" || true)
     anchors=$(sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' \
       "$bd"/*.md 2>/dev/null | sort -u || true)
     # a) 管线入口按变更分节（只查 00-intent.md，不查全部 *.md —— 后者会把
@@ -409,9 +480,33 @@ if [[ -f "$BFLOG" ]]; then
   report "G4 stale numeric placeholder absent" 0 "$(grep -cE '^### BUG-0+1：<一句话现象标题>' "$BFLOG" 2>/dev/null || true)"
   # v3.48.0（CHG-058）：历史相似字段增量执法——最新一条 BUG 登记须含「历史相似」行
   # （沿用/推翻裁决或"未命中（检索词）"）；存量条目不追（升级零回填义务，§2.14）；无登记=空转绿。
+  # v3.86.0：最新 = **登记日期最大**的条目，不是文件第一条。源仓实测日志顺序违反
+  # "新条目置顶"（BUG-904 2026-09-25 位于文件末尾），按首条判定会误指 BUG-005。
+  # 日期取块内首个 YYYY-MM-DD（标题或「日期」字段）；全无日期时回退文件首条。
   g4_hist=0
   if grep -q '^### BUG-' "$BFLOG" 2>/dev/null; then
-    awk '/^### BUG-/{if(found)exit; found=1} found{print}' "$BFLOG" | grep -q '历史相似' && g4_hist=1
+    g4_tmp=$(mktemp)
+    awk '
+      /^### BUG-/ {
+        if (id != "") print date "\t" seq "\t" id "\t" hist
+        id=$2; date=""; hist=""; seq++
+        if (match($0, /20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) date=substr($0, RSTART, RLENGTH)
+        next
+      }
+      id != "" && hist == "" && /历史相似/ { hist="1" }
+      id != "" && date == "" {
+        if (match($0, /20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) date=substr($0, RSTART, RLENGTH)
+      }
+      END { if (id != "") print date "\t" seq "\t" id "\t" hist }
+    ' "$BFLOG" > "$g4_tmp"
+    g4_hist=$(awk -F'\t' '
+      $1 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ && $1 > best { best=$1; h=$4; got=1 }
+      END { if (got) print (h=="1"?1:0); else print "NODATE" }
+    ' "$g4_tmp")
+    if [[ "$g4_hist" == "NODATE" ]]; then
+      g4_hist=$(awk -F'\t' 'NR==1 {print ($4=="1"?1:0)}' "$g4_tmp")
+    fi
+    rm -f "$g4_tmp"
   fi
   report "G4 newest BUG entry carries history-similarity field (incremental)" 1 "$g4_hist"
   # 两个方向都必须遍历**全树** changelog，而不只是功能目录：变更轨的 09-changelog
@@ -499,7 +594,8 @@ fi
 vge() { awk -v a="$1" -v b="$2" 'BEGIN{split(a,x,".");split(b,y,".");for(i=1;i<=3;i++){x[i]+=0;y[i]+=0;if(x[i]>y[i])exit 0;if(x[i]<y[i])exit 1}exit 0}'; }
 
 if [[ -d "$CHANGES" ]]; then
-  partial=0; era=0
+  partial=0; era=0; allow20=0
+  wl20="$CHANGES/.gate-allowlist"
   for cd_ in "$CHANGES"/*/; do
     [[ -d "$cd_" ]] || continue
     total=0; have=0
@@ -509,25 +605,48 @@ if [[ -d "$CHANGES" ]]; then
       grep -q '^<!-- provenance$' "$pf_" 2>/dev/null && have=$((have+1))
     done
     [[ "$total" -eq 0 ]] && continue
-    if [[ "$have" -gt 0 && "$have" -lt "$total" ]]; then
+    std_v=$(tr -d '\n' < "$cd_/00-governance.json" 2>/dev/null | sed -nE 's/.*"standard_version"[[:space:]]*:[[:space:]]*"v?([0-9.]+)".*/\1/p' | head -1)
+    part_here=0; era_here=0
+    [[ "$have" -gt 0 && "$have" -lt "$total" ]] && part_here=1
+    [[ -n "$std_v" ]] && vge "$std_v" "3.26.0" && [[ "$have" -lt "$total" ]] && era_here=1
+    [[ "$part_here" -eq 1 || "$era_here" -eq 1 ]] || continue
+    # 历史豁免（v3.86.0）：冻结目录的盖章半途无法回填（§2.15 硬性规则 4）。登记形状：
+    #   A20 <目录名> <理由>
+    # 登记项仍点名打印并计数，不静默吞掉。
+    listed20=""
+    [[ -f "$wl20" ]] && listed20=$(awk -v id="$(basename "$cd_")" '$1=="A20" && $2==id' "$wl20" 2>/dev/null || true)
+    if [[ -n "$listed20" ]]; then
+      allow20=$((allow20+1)); echo "     A20 allowlisted legacy: $(basename "$cd_") — $have/$total stamped (理由已登记)"
+      continue
+    fi
+    if [[ "$part_here" -eq 1 ]]; then
       partial=$((partial+1)); echo "     A20 partial stamping: $(basename "$cd_") — $have/$total stamped"
     fi
-    std_v=$(tr -d '\n' < "$cd_/00-governance.json" 2>/dev/null | sed -nE 's/.*"standard_version"[[:space:]]*:[[:space:]]*"v?([0-9.]+)".*/\1/p' | head -1)
-    if [[ -n "$std_v" ]] && vge "$std_v" "3.26.0" && [[ "$have" -lt "$total" ]]; then
+    if [[ "$era_here" -eq 1 ]]; then
       era=$((era+1)); echo "     A20 v3.26+ change not fully stamped: $(basename "$cd_") (std $std_v) — $have/$total"
     fi
   done
   report "A20 change-dir stamping complete once started (no half-stamped dirs)" 0 "$partial"
   report "A20 v3.26.0+ change dirs fully stamped" 0 "$era"
+  report "A20 allowlisted legacy dirs (counted, not hidden)" "$allow20" "$allow20"
 else
   report "A20 VACUOUS SKIP — no change root, so A20 did NOT run (do NOT read this as a pass)" ok ok
 fi
 
 if [[ -d "$BUGS" ]]; then
-  unprov=0
+  unprov=0; allow21=0
   # v3.35.0 (BUG-005): both layouts — standalone and day-batched groups.
   for g in "$BUGS"/BUG-*/ "$BUGS"/BATCH-*/BUG-*/; do
     [[ -d "$g" ]] || continue
+    gid=$(basename "$g")
+    # 历史豁免（v3.86.0）：与 G8 共用 docs/bugs/.gate-allowlist（一行一 id）。
+    # v3.28.0 之前建组、且已冻结的旧组不补章（补写=伪造当时真值）；登记后仍点名。
+    listed21=""
+    [[ -f "$ALLOW" ]] && listed21=$(grep -vE '^[[:space:]]*(#|$)' "$ALLOW" 2>/dev/null | awk '{print $1}' | grep -Fx "$gid" || true)
+    if [[ -n "$listed21" ]]; then
+      allow21=$((allow21+1)); echo "     A21 allowlisted legacy: $gid — pre-v3.28 group, provenance not backfilled"
+      continue
+    fi
     for pf_ in "$g"*.md; do
       [[ -f "$pf_" ]] || continue
       grep -q '^<!-- provenance$' "$pf_" 2>/dev/null || { unprov=$((unprov+1)); echo "     A21 unstamped: $pf_"; }
@@ -543,6 +662,7 @@ if [[ -d "$BUGS" ]]; then
     done
   done
   report "A21 bug doc groups carry provenance (stamp --bug)" 0 "$unprov"
+  report "A21 allowlisted legacy groups (counted, not hidden)" "$allow21" "$allow21"
 else
   report "A21 VACUOUS SKIP — no $BUGS_DIR/ directory" ok ok
 fi
@@ -635,7 +755,7 @@ if [[ -d "$CHANGES" ]]; then
     [[ -d "$cd_" ]] || continue
     spec_="$cd_/01-spec.md"
     [[ -s "$spec_" ]] || continue
-    sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
+    sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*(：|:)[[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
     g_ui=$((g_ui+1))
     if ! grep -qE 'UJ-[0-9A-Za-z]+' "$spec_" 2>/dev/null || [[ ! -s "$cd_/03.6-ui-spec.md" ]]; then
       g11_bad=$((g11_bad+1)); echo "     G11 $(basename "$cd_") ui_change:true 但缺 UJ-xxx 或 03.6-ui-spec.md"
@@ -665,11 +785,11 @@ if [[ -d "$CHANGES" ]]; then
     [[ -d "$cd_" ]] || continue
     spec_="$cd_/01-spec.md"
     [[ -s "$spec_" ]] || continue
-    src_=$(sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*[：:]' | head -1)
+    src_=$(sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*(：|:)' | head -1)
     [[ -n "$src_" ]] || continue
     case "$src_" in *未命中*) continue ;; esac
     # v3.84.0 对齐 E123 闸：仅 ui_change 变更参与（非 UI 变更无 03.6，声明面由模板约束保持未命中）
-    sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*[：:][[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
+    sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*(：|:)[[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
     g_src=$((g_src+1))
     ui_="$cd_/03.6-ui-spec.md"
     if [[ ! -s "$ui_" ]] || ! sed 's/<!--[^>]*-->//g' "$ui_" 2>/dev/null | grep -q "来源物映射"; then

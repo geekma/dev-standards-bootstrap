@@ -46,7 +46,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # the suite's own output stays the primary evidence.
 N=""
 F=""
-RECEIPT="$ROOT/.agent-state/last-suite-receipt.json"
+RECEIPT="${AGENT_GUARD_SUITE_RECEIPT_PATH:-$ROOT/.agent-state/last-suite-receipt.json}"
 rc_head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
 rc_max="${AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN:-30}"
 case "$rc_max" in ''|*[!0-9]*) rc_max=30 ;; esac
@@ -161,6 +161,30 @@ elif [[ -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
       echo "updated tests/.audit-baseline -> $(cat "$AUDIT_BASELINE")"
     fi
   fi
+fi
+# The README API table also pins the audit's executed count in the
+# `(assertions: N)` / `（断言：N）` form (audit A54b). Sync it from the baseline
+# so a baseline bump can never leave a stale documented number.
+if [[ -f "$AUDIT_BASELINE" ]]; then
+  audit_n=$(tr -d '[:space:]' < "$AUDIT_BASELINE")
+  for f in "$ROOT/README.md" "$ROOT/README.zh-CN.md"; do
+    tmp=$(mktemp)
+    sed -E \
+      -e "s/\(assertions: [0-9]+\)/(assertions: ${audit_n})/g" \
+      -e "s/（断言：[0-9]+）/（断言：${audit_n}）/g" \
+      "$f" > "$tmp"
+    if ! diff -q "$tmp" "$f" >/dev/null 2>&1; then
+      if [[ "$check" -eq 1 ]]; then
+        echo "drift: $f audit assertion count is stale (expected ${audit_n}); run scripts/update-assertion-count.sh" >&2
+        status=1
+      else
+        mv "$tmp" "$f"
+        echo "updated $(basename "$f") audit count -> ${audit_n}"
+        continue
+      fi
+    fi
+    rm -f "$tmp"
+  done
 fi
 
 if [[ "$check" -eq 1 && "$status" -eq 0 ]]; then

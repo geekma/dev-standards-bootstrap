@@ -13,24 +13,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  source-audit:
-    name: Source-layer audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - name: Run source-layer audit
-        env:
-          AGENT_GUARD_AUDIT_SOFT: '1'   # REQ-965: numeric-closure assertions warn, not block, in CI
-        run: bash tests/audit-standards-src.sh
-
   golden-case:
     name: Golden-case self-tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # v3.86.0 (CHG-113): parallel section pool; measured 807s -> 227s (CHG-095).
+      AGENT_GUARD_SUITE_JOBS: '4'
+      # Wall-time guard: a regression back toward the 15-minute job cap fails loudly
+      # instead of silently timing out. Local runs are unaffected.
+      AGENT_GUARD_CI_WALL_BUDGET_S: '600'
     steps:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: Run golden-case suite
-        run: bash tests/run-tests.sh
+        run: |
+          start=$SECONDS
+          rc=0
+          bash tests/run-tests.sh -j "$AGENT_GUARD_SUITE_JOBS" || rc=$?
+          elapsed=$((SECONDS - start))
+          echo "suite wall-time: ${elapsed}s (budget ${AGENT_GUARD_CI_WALL_BUDGET_S}s)"
+          if [ "$elapsed" -gt "$AGENT_GUARD_CI_WALL_BUDGET_S" ]; then
+            echo "::error::golden-case suite exceeded the ${AGENT_GUARD_CI_WALL_BUDGET_S}s CI wall budget (${elapsed}s)"
+            exit 1
+          fi
+          exit "$rc"
+      - name: Upload suite receipt
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-receipt
+          path: .agent-state/last-suite-receipt.json
+          if-no-files-found: error
+          retention-days: 1
+
+  source-audit:
+    name: Source-layer audit
+    needs: golden-case
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      # v3.86.0 (CHG-113): consume the receipt from the suite job. A3/A3c/A10 are
+      # now HARD gates (no AGENT_GUARD_AUDIT_SOFT): the fresh checkout reuses the
+      # same-HEAD/same-tree receipt instead of re-running the full assertion set.
+      - name: Download suite receipt
+        uses: actions/download-artifact@v4
+        with:
+          name: suite-receipt
+          path: .agent-state
+      - name: Validate release carriers
+        run: bash scripts/release.sh check
+      - name: Run source-layer audit
+        run: bash tests/audit-standards-src.sh
+
+  # Stable required-check context for branch protection (scripts/setup-branch-protection.sh
+  # defaults to this name). It must fail whenever either real job fails.
+  agent-governance:
+    name: agent-governance
+    needs: [golden-case, source-audit]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Both governance jobs must succeed
+        run: |
+          echo "golden-case: ${{ needs.golden-case.result }}"
+          echo "source-audit: ${{ needs.source-audit.result }}"
+          [[ "${{ needs.golden-case.result }}" == "success" && "${{ needs.source-audit.result }}" == "success" ]]

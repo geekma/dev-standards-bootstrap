@@ -56,7 +56,8 @@ Flags (layers; default --core when none given):
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
                <github>/workflows/agent-governance.yml,
                .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4),
-               <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0)
+               <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0),
+               <scripts>/lib-suite-lock.sh (全量套件工作区锁 lib, 随 run-tests.sh 同包, v3.86.0)
   --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml,
                regression-to-bug.yml
   --all        以上全部
@@ -738,6 +739,8 @@ run_layer() {
       # 半失效）。声明文件排除清单（README×2/tests/.audit-baseline）为源仓收口工具
       # 改写面；目标仓无这些面时 reset pathspec 宽容放行（rc=0），配方原样可用。
       install_file - "$SCRIPTS_DIR/lib-suite-tree-fingerprint.sh" scripts/lib-suite-tree-fingerprint.sh 755
+      # v3.86.0 (CHG-113): full-run workspace lock (receipt/red path isolation).
+      install_file - "$SCRIPTS_DIR/lib-suite-lock.sh" scripts/lib-suite-lock.sh 755
       ;;
     pipeline)
       install_file - ".github/workflows/artifact-pipeline.yml" resources/templates/github-artifact-pipeline.yml

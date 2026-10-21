@@ -478,26 +478,24 @@ done
 REPO_BFLOG="$ROOT/docs/bugfix-log.md"
 REPO_CHANGES="$ROOT/docs/changes"
 REPO_BUGS="$ROOT/docs/bugs"
+# v3.86.0 (CHG-113): docs/ is gitignored by source-repo decree (CHG-017), so a fresh
+# CI checkout has no private ledger. Treat that as an explicit SKIP, not a soft pass:
+# the old SOFT bucket made A6a/b/c warn forever and leaked into A3/A10, which hid real
+# numeric drift. Local runs (docs/ present) and target repos stay hard.
+A6_DOCS_ABSENT=0; [[ -d "$ROOT/docs" ]] || A6_DOCS_ABSENT=1
 
 # A6a bugfix-log.md 存在且含真实 BUG 条目（非占位模板）
 # v3.56.1：A6 族断言依赖 docs/ 磁盘态，而源仓裁定 docs/* 忽略（CHG-017/FU-032，
 # .gitignore:37 注释）→ CI checkout 永远缺这些文件，A6a/b/c 结构性必红——并入
 # REQ-965 soft 桶（CI 降警，本地恒硬），与 A3/A3c/A10 同款。
-if [[ -f "$REPO_BFLOG" ]]; then
+if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
+  report "A6a SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+elif [[ -f "$REPO_BFLOG" ]]; then
   bug_count=$(grep -cE '^### BUG-[0-9]' "$REPO_BFLOG" || true)
-  if [[ -n "$SOFT" ]]; then
-    report_soft "A6a repo bugfix-log has real BUG entries (not placeholder; CI soft)" 1 \
-      "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
-  else
-    report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
-      "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
-  fi
+  report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
+    "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
 else
-  if [[ -n "$SOFT" ]]; then
-    report_soft "A6a repo bugfix-log exists (CI soft)" 1 0
-  else
-    report "A6a repo bugfix-log exists" 1 0
-  fi
+  report "A6a repo bugfix-log exists" 1 0
 fi
 
 # A6b docs/changes/ 下每个 CHG 目录至少含 00-intent.md（门禁 1 最低要求）
@@ -510,8 +508,8 @@ if [[ -n "$chg_dirs" ]]; then
 else
   chg_missing_intent=1
 fi
-if [[ -n "$SOFT" ]]; then
-  report_soft "A6b every CHG dir has 00-intent.md (gate 1 minimum; CI soft)" 0 "$chg_missing_intent"
+if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
+  report "A6b SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
 else
   report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
 fi
@@ -538,7 +536,10 @@ chg_nums=$( { basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/n
   | grep -oE '[0-9]+'; } \
   | awk '{printf "%d\n", $1}' | sort -nu)
 a6c_ran=0
-if [[ -n "$chg_nums" ]]; then
+if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
+  report "A6c SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  a6c_ran=1
+elif [[ -n "$chg_nums" ]]; then
   chg_prev=0
   chg_gap=0
   for n in $chg_nums; do
@@ -548,18 +549,10 @@ if [[ -n "$chg_nums" ]]; then
     fi
     chg_prev=$n
   done
-  if [[ -n "$SOFT" ]]; then
-    report_soft "A6c CHG numbering continuous (no gaps; CI soft)" 0 "$chg_gap"
-  else
-    report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
-  fi
+  report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
   a6c_ran=1
 else
-  if [[ -n "$SOFT" ]]; then
-    report_soft "A6c CHG numbering continuous (no gaps; CI soft)" 1 0
-  else
-    report "A6c CHG numbering continuous (no gaps)" 1 0
-  fi
+  report "A6c CHG numbering continuous (no gaps)" 1 0
   a6c_ran=1
 fi
 # BUG-004 放大器守卫：A10 基线只记**断言总数**、不记**断言名** → 任一断言被"整块
@@ -979,6 +972,19 @@ report "A22 golden suite pins that in-prose refs do not widen the span" 1 "$(a17
 report "A22 changelog carries the v3.21.0 entry" 1 "$(a17_at_least_1 "$(grep -c 'v3.21.0' "$ROOT/resources/STANDARDS_CHANGELOG.md" || true)")"
 at_least "A22 MAINTAINER documents the audit-unit scoping" 1 "$ROOT/MAINTAINER.md" 'g36_dirs'
 
+# A22b 源仓台账审计不再空转 / 历史红灯可见（v3.86.0，CHG-113）——防三类反向回退：
+#   ① 删除源仓模式回退 → 源仓没有 docs/DEVELOPMENT_STANDARDS.md 时整脚本 SKIP，
+#      私有台账的 G4/G7/A20/A21 再次从未执行（假绿）；
+#   ② "最新 BUG"退回文件首条 → 日志顺序一旦违反"新条目置顶"（源仓 BUG-904 实测），
+#      历史相似字段判错的条目；
+#   ③ 历史豁免退回静默跳过 → 存量台账的冻结事实（半途盖章/旧组无 provenance/
+#      并行变更占号）被隐藏，操作者看不到哪些条目被豁免、为什么。
+report "A22b source repo audits against shipped standards (no blanket SKIP)" 1 "$(grep -cF 'AGENT_GUARD_STD_FILE' "$AUDIT_TPL" || true)"
+report "A22b source mode falls back to resources/AGENTS.md pointer target" 1 "$(grep -cF 'resources/AGENTS.md' "$AUDIT_TPL" || true)"
+at_least "A22b G4 newest BUG is selected by registration date" 1 "$AUDIT_TPL" 'NODATE'
+at_least "A22b legacy allowlists stay visible in output" 1 "$AUDIT_TPL" 'allowlisted legacy'
+report "A22b G7 excludes the batch container record from members" 1 "$(grep -cF 'grep -vx "$bname"' "$AUDIT_TPL" || true)"
+
 # A23 一键安装器 + 溯源全量盖章形态锚点（v3.22.0）——防三类反向回退：
 #   ① install.sh 退化成自含安装逻辑（复制 bootstrap 清单）→ 双权威源必然漂移
 #      （SKILL.md 步骤 3 的既有教训）；必须保持"薄委托"形态；
@@ -1339,7 +1345,7 @@ at_least_unique "A47 yml template declares the dialect block once (CHG-100)" "$Y
 at_least_unique "A47 registry indexes the new gate code (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E118 '
 at_least_unique "A47 registry registers the new clause row (CHG-100)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R62 '
 at_least_unique "A47 golden section T62 is registered once (CHG-101)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T62 '
-at_least "A47 suite clears the red archive on a full green run (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'rm -f "\$ROOT/\.agent-state/last-suite-red\.txt"'
+at_least "A47 suite clears the red archive on a full green run (CHG-100)" 1 "$ROOT/tests/run-tests.sh" 'rm -f "\$SUITE_RED_PATH"'
 at_least "A47 channel probe is exposed as a read-only subcommand (CHG-100)" 1 "$GATE_TPL" 'verify-channel)'
 # 整改面（独立评审 F1~F15）：新不变量各自钉一行，防回退。
 at_least_unique "A47 channel evidence writer is defined once (CHG-100)" "$GATE_TPL" '^append_verify_evidence() {'
@@ -1412,8 +1418,8 @@ at_least "A50 README en upgrade section discloses kept semantics (CHG-108)" 1 "$
 at_least "A50 README zh upgrade section discloses kept semantics (CHG-108)" 1 "$ROOT/README.zh-CN.md" '原样保留并报告'
 at_least "A50 README en --as-skill requires the full link path (CHG-108)" 1 "$ROOT/README.md" 'full link path including the skill name'
 at_least "A50 README zh --as-skill requires the full link path (CHG-108)" 1 "$ROOT/README.zh-CN.md" '含 skill 名的完整链接路径'
-at_least "A50 README en CI section names both jobs (CHG-108)" 1 "$ROOT/README.md" 'AGENT_GUARD_AUDIT_SOFT=1'
-at_least "A50 README zh CI section names both jobs (CHG-108)" 1 "$ROOT/README.zh-CN.md" 'AGENT_GUARD_AUDIT_SOFT=1'
+at_least "A50 README en CI section names both jobs (CHG-108)" 1 "$ROOT/README.md" 'no soft mode and no double run'
+at_least "A50 README zh CI section names both jobs (CHG-108)" 1 "$ROOT/README.zh-CN.md" '不再软门、不再双跑'
 
 # v3.81.0 (CHG-108): CI 守卫钉（TC-1407）——ci.yml 每job超时 + workflow级并发取消。
 at_least "A51 ci.yml bounds each job with timeout-minutes (CHG-108)" 2 "$ROOT/.github/workflows/ci.yml" 'timeout-minutes: 15'
@@ -1442,7 +1448,7 @@ at_least "A53 lib takes optional reset claims (CHG-110)" 1 "$ROOT/scripts/lib-su
 at_least "A53 lib documents the claim face (CHG-110)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'docs/changes) so doc-only edits'
 at_least "A53 gate sources the fingerprint lib (CHG-110)" 1 "$GATE_TPL" 'lib-suite-tree-fingerprint.sh'
 at_least "A53 gate fingerprints with the docs/changes claim (CHG-110)" 1 "$GATE_TPL" 'suite_tree_fingerprint "$repo_root" "docs/changes"'
-at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"3.85.0"'
+at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"[0-9][0-9.]*"'
 at_least "A53 receipt is rc0-only and change-bound (CHG-110)" 1 "$GATE_TPL" '"rc":0'
 at_least "A53 TTL is env-tunable with a numeric guard (CHG-110)" 1 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE_TTL'
 at_least "A53 opt-out env is honored at both read and write (CHG-110)" 2 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE:-1'
@@ -1450,9 +1456,29 @@ at_least "A53 cached run surfaces a CACHED line and evidence (CHG-110)" 1 "$GATE
 at_least "A53 non-git repos degrade to always-run (CHG-110)" 1 "$GATE_TPL" 'Non-git repos (empty fingerprint) degrade'
 at_least "A53 usage discloses the opt-out boundary (CHG-110)" 1 "$GATE_TPL" 'external mutable state set AGENT_GUARD_VERIFY_CACHE=0'
 at_least "A53 golden section T66 is defined (CHG-110)" 1 "$ROOT/tests/run-tests.sh" '^section_T66() {'
-at_least_unique "A53 golden section T67 is registered once (CHG-110 tail; CHG-111 joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T67)'
+at_least_unique "A53 golden section T67 is registered once (CHG-110 tail; CHG-111 joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T67 '
+at_least_unique "A53 golden section T68 is registered once (CHG-113 lock joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T68)'
 at_least "A52 golden section T65 is defined (CHG-109)" 1 "$ROOT/tests/run-tests.sh" '^section_T65() {'
 at_least_unique "A52 golden section T65 is registered once (CHG-109)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T65 '
+
+# A54 读集一致性（v3.86.0，CHG-113）：AGENTS 规则 1 曾要求“完整读取 DS”，规则 15
+# 又要求“永不整读”——两版并存的直接矛盾会让 Agent 二选一而无法判定合规，且标题
+# 计数“十四条”与实际 15 条漂移。声称面=校验面：矛盾句/计数任一回潮，本组红。
+a54_rule_count=$(awk '/^## Agent 执行资源纪律/{f=1;next} f&&/^## /{exit} f&&/^[0-9]+\. /{n++} END{print n+0}' "$AGENTS")
+report "A54 AGENTS discipline heading count matches numbered items (CHG-113)" 15 "$a54_rule_count"
+report "A54 AGENTS carries no full-read directive (CHG-113)" 0 "$(grep -cF '__完整读取__' "$AGENTS" 2>/dev/null || true)"
+report "A54 AGENTS states the never-read-full rule (CHG-113)" 1 "$(grep -cF '禁止整读全文' "$AGENTS" 2>/dev/null || true)"
+report "A54 README zh states 15 rules (CHG-113)" 1 "$(grep -cF '十五条' "$RM_ZH" 2>/dev/null || true)"
+report "A54 README en states 15 rules (CHG-113)" 1 "$(grep -cF '**15-rule**' "$RM_EN" 2>/dev/null || true)"
+
+# A54b 源审计计数的声称面（v3.86.0，CHG-113）：A3 的计数正则刻意不匹配
+# "assertions: N" 后置形态（FU-009 已知残余），于是 README 里的源审计执行数
+# 长期无人看守（实测 595 vs 基线 612）。这里把两语 README 的数字与基线互锁。
+a54b_base=$(tr -d '[:space:]' < "$ROOT/tests/.audit-baseline" 2>/dev/null || true)
+a54b_en=$(grep -oE '\(assertions: [0-9]+\)' "$RM_EN" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
+a54b_zh=$(grep -oE '（断言：[0-9]+）' "$RM_ZH" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
+report "A54b README source-audit counts match the baseline (CHG-113)" 2 \
+  "$([[ -n "$a54b_base" && "$a54b_en" == "$a54b_base" && "$a54b_zh" == "$a54b_base" ]] && echo 2 || echo 0)"
 
 # v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
 # 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时
@@ -1463,6 +1489,12 @@ at_least "A48 bootstrap usage exposes the fingerprint lib (CHG-103)" 1 "$ROOT/sc
 at_least "A48 AGENTS carries the call-batching discipline (CHG-101)" 1 "$AGENTS" '调用批处理（v3.77.0'
 at_least "A48 AGENTS carries the tail-incremental-read discipline (CHG-101)" 1 "$AGENTS" '尾部增量读（v3.77.0'
 report "A48 fingerprint lib ships and sources cleanly" 1 "$(bash -c 'source scripts/lib-suite-tree-fingerprint.sh 2>/dev/null && command -v suite_tree_fingerprint >/dev/null 2>&1 && echo 1 || echo 0')"
+at_least "A48 bootstrap ships the suite-lock lib (CHG-113)" 1 "$ROOT/scripts/bootstrap.sh" 'lib-suite-lock\.sh'
+report "A48 suite-lock lib sources cleanly" 1 "$(bash -c 'ROOT=$PWD; source scripts/lib-suite-lock.sh 2>/dev/null && command -v suite_lock_acquire >/dev/null 2>&1 && echo 1 || echo 0')"
+report "A48 run-tests honors the receipt path override (CHG-113)" 1 "$([[ $(grep -cF 'AGENT_GUARD_SUITE_RECEIPT_PATH' "$ROOT/tests/run-tests.sh") -ge 1 ]] && echo 1 || echo 0)"
+report "A48 update-assertion-count honors the receipt path override (CHG-113)" 1 "$(grep -cF 'AGENT_GUARD_SUITE_RECEIPT_PATH' "$ROOT/scripts/update-assertion-count.sh")"
+report "A48 source dogfood entry ships and parses (CHG-113)" 1 "$([[ -f "$ROOT/scripts/selfcheck.sh" ]] && bash -n "$ROOT/scripts/selfcheck.sh" 2>/dev/null && echo 1 || echo 0)"
+report "A48 branch-protection helper defaults to dry-run (CHG-113)" 1 "$([[ -f "$ROOT/scripts/setup-branch-protection.sh" ]] && grep -qF 'dry run: no remote change' "$ROOT/scripts/setup-branch-protection.sh" && echo 1 || echo 0)"
 
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层
