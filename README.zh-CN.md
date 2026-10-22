@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.86.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.87.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -87,7 +87,7 @@
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
 | **发布完整性 + 证据复用** | 单一版本权威（`scripts/release.sh check\|bump`）校验全部载体、只重写声明位点；CI 只跑一次全量套件并上传树指纹收据，硬审计复用同一收据；工作区套件锁同一时刻只允许一次全量运行并回收死锁主 |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1127 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1282 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -328,7 +328,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | 层 | 路径（代表） | 会进入目标仓吗？ |
 |---|---|---|
 | **A. 公共能力** | `SKILL.md`、`resources/**`、`.claude-plugin/**`、安装入口 `scripts/bootstrap.sh` / `scripts/install.sh`；`tests/run-tests.sh` 与 `scripts/lib-suite-*.sh` 由 `--guard` 随包安装 | 会——被安装器复制或消费 |
-| **B. 源仓公开、不下发** | 本 README 双语文档、`MAINTAINER.md`、`CAPABILITY-COMPARISON.md`、`能力对比分析.md`、`screenshots/**`、`tests/audit-standards-src.sh`、`tests/audit-docs-consistency.sh`（源仓布局镜像；下发副本是 `resources/templates/audit-docs-consistency.sh`）、`scripts/update-assertion-count.sh`、`scripts/release.sh`、`scripts/selfcheck.sh`、`scripts/setup-branch-protection.sh`、`.github/**`，以及源仓布局用的 `scripts/agent-gate` / `scripts/session-gate.sh` 镜像 | 不会——仅供维护者与 CI |
+| **B. 源仓公开、不下发** | 本 README 双语文档、`MAINTAINER.md`、`CAPABILITY-COMPARISON.md`、`能力对比分析.md`、`screenshots/**`、`tests/audit-standards-src.sh`、`tests/audit-docs-consistency.sh`（源仓布局镜像；下发副本是 `resources/templates/audit-docs-consistency.sh`）、`scripts/update-assertion-count.sh`、`scripts/release.sh`、`scripts/selfcheck.sh`、`scripts/setup-branch-protection.sh`、CHG-115 验证工具链（`scripts/facts.sh`、`scripts/verify-all.sh`、`scripts/pre-review-check.sh`、`scripts/mutation-check.sh`、`scripts/ci-summary.sh`、`scripts/batch-metrics.sh` 与共享的 `scripts/lib-source-facts.sh`）、`.github/**`，以及源仓布局用的 `scripts/agent-gate` / `scripts/session-gate.sh` 镜像 | 不会——仅供维护者与 CI |
 | **C. 仓库私有（gitignored）** | `docs/**`（CHG-017：私有变更/缺陷台账）、`.agent-state/**`、`.claude/`、`.opencode/`、本地工作镜像 | 从不 |
 
 本 README 的结论由 A 层行为与 B 层证据支撑；C 层是项目专属材料，不属于产品契约。
@@ -343,7 +343,7 @@ dev-standards-bootstrap/
 ├── CAPABILITY-COMPARISON.md                # 三方能力贡献分析（模型/Harness/治理）——Measured Impact 章节数据来源
 ├── 能力对比分析.md                          # 能力对比分析中文版
 ├── .github/
-│   └── workflows/ci.yml                    # 本仓自身的 CI（非模板下发）：每次 PR 与 push main 跑两套自测试
+│   └── workflows/ci.yml                    # 本仓自身的 CI（非模板下发）：每次 PR 与 push main 各跑一遍两套自测试，并把入库套件基线与本次运行收据硬对齐
 ├── .claude-plugin/
 │   ├── plugin.json                         # Claude Code 插件清单——本仓库即插件（根级 SKILL.md 被发现）
 │   └── marketplace.json                    # 市场条目：claude plugin marketplace add geekma/dev-standards-bootstrap
@@ -352,7 +352,14 @@ dev-standards-bootstrap/
 │   ├── install.sh                          # 一键安装器（不下发）：克隆 + 安装/升级一步完成
 │   ├── update-assertion-count.sh           # 源层专用（不下发）：再生成 README 断言计数声称 + 审计执行数基线
 │   ├── release.sh                          # 源层专用（不下发）：发布载体核对 / 机械升版 / 本地附注 tag；不生成 CHANGELOG 正文
-│   ├── selfcheck.sh                        # 源层专用（不下发）：单一 dogfood 入口——发布载体、源码审计（内嵌全量套件）、私有台账审计、评测用例
+│   ├── selfcheck.sh                        # 源层专用（不下发）：单一 dogfood 入口——委托 verify-all（载体/台账/审计/套件）+ 评测用例
+│   ├── facts.sh                            # 源层专用（不下发）：一次只读 JSON 快照（HEAD、版本、基线、套件收据新鲜度）——<1s，绝不跑套件
+│   ├── verify-all.sh                       # 源层专用（不下发）：单串验证入口（发布载体 → 私有台账 → 源码审计 → golden 套件 → 基线硬门），失败全收集，新鲜同树收据直接复用
+│   ├── pre-review-check.sh                 # 源层专用（不下发）：把"可评审"里可机检的那一半检查完（FILL 残留、确认行、执行证据、责任人独立、溯源戳、计数一致）
+│   ├── mutation-check.sh                   # 源层专用（不下发）：检查器自证——四类固定变异必须让快检查器变红，且只发生在一次性副本里
+│   ├── ci-summary.sh                       # 源层专用（不下发）：渲染 CI 运行汇总，并把 tests/.suite-baseline 与收据 passed 数硬对齐
+│   ├── batch-metrics.sh                    # 源层专用（不下发）：每批次成本台账（轮次 / 编辑 / 轮询 / 整跑 / 墙钟）落到 .agent-state
+│   ├── lib-source-facts.sh                 # 源层专用（不下发）：上述六个工具共用的只读事实助手
 │   ├── setup-branch-protection.sh          # 源层专用（不下发）：打印必需检查的 gh api 载荷（默认 dry-run）；`--apply` 才改远端
 │   ├── lib-suite-tree-fingerprint.sh       # 共享库：套件树指纹，收据键控用（由 --guard 随 tests/run-tests.sh 安装）
 │   ├── lib-suite-lock.sh                   # 共享库：工作区套件锁——同一时刻只允许一次全量运行，死锁主可回收（随 --guard 安装）
@@ -363,11 +370,12 @@ dev-standards-bootstrap/
 │   ├── run-tests.sh                        # 治理模板 golden case 回归套件（含门禁与安装器；复制到目标 tests/ ——目标仓自适应：不下发/未装层的用例自动跳过）
 │   ├── audit-docs-consistency.sh           # resources/templates/audit-docs-consistency.sh（下发副本）的源仓布局镜像；CI 用它审计本仓私有台账
 │   ├── audit-standards-src.sh              # 源层专用（不下发）：审计规范文本自身——版本链 / 关键词矩阵 / 清单唯一性 / 编号 / 防恒真 grep
+│   ├── .suite-baseline                     # 源层专用（不下发）：上一次真实绿跑 golden 套件的入库计数——A3、双 README 与 CI 硬门都拿它比对
 │   └── .audit-baseline                     # 源层专用（不下发）：审计执行断言数的入库基线（断言 A10 对漂移判红）
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.86.1（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.87.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -448,15 +456,19 @@ dev-standards-bootstrap/
 
 | Job | 职责 |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：620） |
-| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1127 条 golden-case 断言）；仅依赖 bash + git |
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：640） |
+| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1282 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
-**CHG-113 起 CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍并上传 `.agent-state/last-suite-receipt.json`；source-audit 通过 artifact 取回同 HEAD/同树指纹的收据，A3/A3c/A10 据此做**硬校验**（不再设 `AGENT_GUARD_AUDIT_SOFT`），省掉 CI 内的第二次全量套件。golden-case 另设 600s 墙钟预算（`AGENT_GUARD_CI_WALL_BUDGET_S`），超过即显式失败，避免拖到 job 上限才超时。**两个真实 job 受 `timeout-minutes: 15` 约束，聚合门 `agent-governance` 为 5 分钟。** 工作区套件锁（`lib-suite-lock.sh`，随 `--guard` 下发）同一时刻只允许一次全量运行并回收死锁主；收据/红档路径可用 `AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH` 覆盖，自测不会污染真实台账。workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
+**CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍（600s 墙钟预算 `AGENT_GUARD_CI_WALL_BUDGET_S`，超过即显式失败，不会拖到 job 上限才超时），并上传 `.agent-state/last-suite-receipt.json` 供人工取证；source-audit **不再消费该 artifact**——A3/A3c/A10 直接读**已提交的基线**做硬校验（不再设 `AGENT_GUARD_AUDIT_SOFT`），因此它对套件 job 没有任何依赖，可与之并行。**两个真实 job 受 `timeout-minutes: 15` 约束，聚合门 `agent-governance` 为 5 分钟。** 工作区套件锁（`lib-suite-lock.sh`，随 `--guard` 下发）同一时刻只允许一次全量运行并回收死锁主；收据/红档路径可用 `AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH` 覆盖，自测不会污染真实台账。workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
 
-本地复现（无需 CI，仅 bash + git）：
+**CHG-115 起，一个数字的运行期真值只有一个落点。** `tests/.suite-baseline` 是上一次真实绿跑计数的入库件，源层审计（A3）、双 README 与 CI 硬门都拿它比对——源层审计因此回到 ~15s 的读/比路径，不再因为一份陈旧收据意外跑 300s 整套（这个数的机器真值是 `.agent-state/verify-receipt.json` 里 `audit` 步的 duration_s，不是这句话）。CI 那一次全量跑之后由 `scripts/ci-summary.sh --check` 收尾：基线与收据 passed 数不一致即 job 失败（一个没人跑过的数字再也不能安静地写在文档里），并把本次运行渲染进 job 汇总。本地复现（无需 CI，仅 bash + git）：
 
 ```bash
+bash scripts/facts.sh            # 一次只读 JSON 快照：HEAD、版本、基线、收据新鲜度（<1s）
+bash scripts/verify-all.sh       # 单串入口：载体 → 私有台账 → 源层审计 → 套件 → 基线硬门；失败全收集
+bash scripts/pre-review-check.sh # 这次变更可评审吗？（产物形状、执行证据、责任人独立、溯源戳、计数）
+bash scripts/mutation-check.sh   # 快检查器真会变红吗？（只在一次性副本里变异）
 bash tests/audit-standards-src.sh   # 源层审计
 bash tests/run-tests.sh             # golden case 套件（写 .agent-state/last-suite-receipt.json，按树指纹键控）
 ```
@@ -484,7 +496,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v3.86.1 | **最后更新：** 2026-10-21 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.87.0 | **最后更新：** 2026-10-21 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

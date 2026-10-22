@@ -48,7 +48,7 @@
 | `scripts/bootstrap.sh` 复制清单 | `SKILL.md` 步骤 3–4 + `--help` 文本 |
 | `scripts/install.sh` 的行为/参数 | 双 README「安装与升级/Installation & Upgrades」+ `SKILL.md` 步骤 3 的一句话路径 + golden T21；**改安装语义先改 bootstrap，install.sh 保持薄委托** |
 | `CHANGELOG.md` | 每次发布（版本链变更）追加一个版本段；规范条款细节只链接 `STANDARDS_CHANGELOG.md`，不复制 |
-| 断言增删 | `scripts/update-assertion-count.sh` → 再跑审计（A3 声称数 / A10 执行数基线）。**`tests/.audit-baseline` 只由生成器写，禁手工改**；顺序坑见 §4。**收口取证顺序（v3.65.0/CHG-087）**：update-assertion-count 内嵌整跑 suite（FU-907 红拒校验）→ 编码后直接跑它即同时拿绿 + 计数回填，免独立整跑一轮。**同 HEAD 二次收口免重跑（收据，v3.66.0/CHG-088）**：绿全跑落地 `.agent-state/last-suite-receipt.json`，生成器/audit 按 HEAD+新鲜窗采信秒级完成；红套件即删收据，回落现状内嵌跑 |
+| 断言增删 | `scripts/update-assertion-count.sh` → 再跑审计（A3 声称数 / A10 执行数基线）。**`tests/.audit-baseline` 与 `tests/.suite-baseline` 只由生成器写，禁手工改**；顺序坑见 §4。**收口取证顺序（v3.65.0/CHG-087 → 改于 v3.87.0/CHG-115）**：写模式的生成器才是唯一会（必要时）内嵌整跑套件的角色（FU-907 红拒校验）；**源审计 A3 不再整跑**，改 `--check --from-baseline` 纯读入库基线。**运行期真值只有一处**：CI（或本地 `verify-all.sh --fresh`）那一次全量跑，跑完由 `scripts/ci-summary.sh --check` 把基线与收据 `passed` 硬对齐；红套件即删收据，回落内嵌跑。同 HEAD 二次收口仍免重跑：新鲜同树收据（`sf_receipt_fresh`：同 HEAD + 同树指纹 + `failed=0` + mtime ≤ `AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN`，默认 30min）被生成器与 `--require-receipt` 共享采信 |
 | 新增 / 删除测试套件 | `.github/workflows/ci.yml` 的 job 清单（仓库自己的 CI 必须覆盖全部套件）+ `MAINTAINER.md` §3 的命令清单 + 双 README 树（套件若属源层工具须标明不下发） |
 | 双 README 目录树 | 磁盘实际文件（审计有树↔磁盘断言） |
 | 新增 `resources/templates/**` 文件 | 双 README 树（树↔磁盘断言）+ `scripts/bootstrap.sh` 复制清单 + 若脚本被模板引用则补 `transform_src` 路径替换规则 |
@@ -71,15 +71,34 @@
 ## 3. 两道自测试（零依赖：bash 3.2+ / grep / awk / diff / git）
 
 ```bash
-bash scripts/selfcheck.sh          # v3.86.0：单一入口（版本载体 + 源层审计 + 私有台账审计 + 评测派生校验）
+bash scripts/selfcheck.sh          # v3.87.0：单一入口 = 委托 verify-all（载体 → 私有台账 → 源层审计 → 套件）+ 评测派生校验；参数透传（--fresh / --skip-suite …）
 bash tests/run-tests.sh            # 通用层：golden cases，断言 agent-gate 的退出码与输出
 bash tests/audit-standards-src.sh  # 源层：版本链 / 关键词落点 / §3↔§4 同源 / 树↔磁盘 …
 ```
 
 - **改脚本 → 必须先跑通 `run-tests.sh`**（§2.17.4 硬性要求）。
 - **改规范正文 / 模板 / README → 必须先跑通 `audit-standards-src.sh`**。
-- **两 suite 本地必须串行跑**（FU-907）：audit 经 `update-assertion-count.sh --check` 内嵌整跑 `run-tests.sh`，并发会共写工作区 `.agent-state` 互踩（v3.66.0 收据落地后并发面放宽为弱一致——收据可能被并发绿跑覆盖，五条件仍拦异 HEAD/过期，串行仍是唯一强保证）；CI 双 job 为独立 VM 不受影响。
+- **CHG-115 起源层审计不再内嵌整跑**：A3 消费 `tests/.suite-baseline`（上一次真实绿跑计数的入库件），纯读/比，A3 改造当时实测 9.0s；本批 A56 边界段一度付到 ≈20s（受跟踪面措辞扫描 + 夹具实跑），R4 删去载荷专用措辞环后收口实跑 15s——这个数的机器真值是 verify 收据 `audit` 步的 duration_s，不要把任何复述当常量。旧写法（`update-assertion-count.sh --check`）会在同树收据过期（30min TTL）时隐式跑整套——620 条断言的审计曾因此付 300.984s（占墙钟 97.2%）。**运行期真值只有一个落点**：CI 的那一次全量跑，跑完由 `scripts/ci-summary.sh --check` 把基线与收据 `passed` 硬对齐；本地基线过期就会在 CI 响亮地红。本地同理：`bash scripts/verify-all.sh --fresh` 是唯一会跑整套的入口。
+- **两道自测试并行是安全的**（v3.87.0）：audit 侧不再有隐式整跑，工作区锁（`lib-suite-lock.sh`）只约束"同一工作区同时只有一次全量套件"；`-T` 过滤跑不取锁（子用例靠它）。收据/红档/verify 产物路径全部可 `AGENT_GUARD_*` 覆盖，自测不污染真实台账。**CI 侧同样并行**：`source-audit` 已去掉 `needs: golden-case`（它只读入库基线，对套件运行无依赖），串行那一头曾是白等的 4 分钟，而且套件一红就完全不报审计发现。
 - `run-tests.sh` 是**双布局自适应**的：在 Skill 仓库内跑全量；被 `--guard` 复制到目标仓库后，源路径自动回退、Skill 仓库专属用例（T11 安装器、T14b 安装器路径用例、依赖未装层的 T10/T12）自动 SKIP。
+
+### 3.0 源层验证工具链（v3.87.0，CHG-115；全部**不下发**）
+
+这六个工具 + 一个共享库是 B 面（源仓公开、不随 Skill 分发）。判据：**目标仓装完 Skill 看不见它们**，所以它们不进 `scripts/bootstrap.sh` 清单、不进 payload 模板字段，且 `run-tests.sh` 的 T69~T73b 在缺失时自动 SKIP（A56 钉这四件事同时成立）。
+
+| 工具 | 一句话职责 | 常用调用 |
+|---|---|---|
+| `scripts/facts.sh` | 一次只读 JSON 快照：HEAD/分支/DS 版本/树指纹/脏文件/两个基线/套件收据新鲜度。**绝不跑套件**，实测 <1s | `bash scripts/facts.sh`；`--write` 落 `.agent-state/facts.json`（覆写：`AGENT_GUARD_FACTS_PATH`）；`--root DIR` 看别的检出 |
+| `scripts/verify-all.sh` | 单串验证入口：release → ledger → audit → suite → **gate**（`ci-summary.sh --check`，把「入库基线 == 本次收据」这道 CI 头号硬门也在本地跑上），**失败全收集**（前面红不短路后面）；新鲜同树收据直接复用，`--fresh` 强制真跑；产 `.agent-state/verify-receipt.json` + 每步日志 | `bash scripts/verify-all.sh`；逐步跳过 `--skip-release` / `--skip-ledger` / `--skip-audit` / `--skip-suite` / `--skip-gate`（记为 `skip`，绝不算 pass）；`--jobs N`（别名 `-j N`，与它转发的套件同拼写）；落点覆写 `AGENT_GUARD_VERIFY_RECEIPT_PATH` / `AGENT_GUARD_VERIFY_LOG_DIR`；测试缝 `AGENT_GUARD_VERIFY_{RELEASE,LEDGER,AUDIT,SUITE,GATE}_CMD` |
+| `scripts/pre-review-check.sh` | 把"可评审"里能机检的一半检查完：16 产物在位非空、FILL 残留、00.5 确认行、05 执行证据、责任人独立、07 署名与结论、溯源戳、载体一致、README 计数 vs 基线、`ls -d` 空 glob 陷阱。**只读** | `bash scripts/pre-review-check.sh [--change CHG-N] [--strict]`；`--strict` 把 warning 升成失败 |
+| `scripts/mutation-check.sh` | 检查器自证：四类固定变异（DS 版本 / gate 版本 / 基线缺失 / README 计数）必须让对应快检查器变红；只在一次性副本里动手，前后对**全部 git 可见路径**（受跟踪 ∪ 未跟踪未忽略）做内容哈希比对，证明活树没变（含新增/删除），control 前后必须绿 | `bash scripts/mutation-check.sh`；`--list` / `--only NAME` |
+| `scripts/ci-summary.sh` | CI 唯一真值面的两件事：`--check` 硬门（收据在位、failed=0、HEAD 对齐、**收据树指纹 == 当前树指纹**、`passed == tests/.suite-baseline`）+ 把运行渲染成 job 汇总（含"私有台账不推送也不在此校验"的口径声明与收据树指纹）。指纹判定与 `sf_receipt_fresh` 同一条规则，避免出现"复用面拒绝、CI 门接受"的两种信任。退出码：`--check` 是门（0/1/2=用法），默认渲染只报告恒 0——问题以 `Baseline/provenance problems: N` 出现在汇总里，而不是在写汇总之前把渲染步骤判红 | `bash scripts/ci-summary.sh --check` |
+| `scripts/batch-metrics.sh` | 每批次成本台账：产物完整度（含 `handoff.md`，16 件）、两个基线、收据计数/墙钟、轮次/编辑/**轮询**/整跑次数、verify 总状态。TSV 为权威，JSON 每次由 TSV 重生成（两者不可能不一致）；值里的引号/反斜杠转义后再写，台账引用不会撑坏镜像。**verify 状态只读顶层 `status`（`sf_verify_status`）**——verify 收据的每个 step 也带同名字段，通用读取器取最后一个匹配会把「audit 红」的批次记成 `pass` | `bash scripts/batch-metrics.sh record [--batch ID]`；`report [--limit N]`；覆写 `AGENT_GUARD_BATCH_METRICS_PATH`（JSON，TSV 随之 `%json→%tsv`）或 `AGENT_GUARD_BATCH_METRICS_TSV_PATH`（只改 TSV） |
+| `scripts/lib-source-facts.sh` | 上述工具的共享只读助手（JSON 读写、收据新鲜度 `sf_receipt_fresh`、基线解析）。**函数库，无顶层副作用** | 由工具 `source`，不直接调用 |
+
+- **收据复用规则只有一份实现**：`sf_receipt_fresh`（同 HEAD + 同树指纹 + `failed=0` + mtime 新鲜度窗口）。`verify-all.sh` 与 `update-assertion-count.sh --check --require-receipt` 共享它（A56 末钉「verify-all shares the generator receipt-reuse rule」）——两处各写一份就会漂移，而漂移的表现是"某入口偷偷多跑 5 分钟"。
+- `--require-receipt` 是**手动 fail-closed 开关**：无新鲜收据即 rc2，绝不退化成隐式整跑。给任何新入口选证据源时，优先级恒为：入库基线 → 新鲜收据 → 显式要求调用方自己跑。
+- 版本载体、门面对称、基线数字这三类一致性由 `release.sh check` + A 组断言 + CI 硬门分担，**不要在新工具里再造第四份判定**。
 
 ### 3.1 第三道：把门禁指向**本仓自己的真实产物**（dogfooding，改门禁后必做）
 
@@ -108,16 +127,22 @@ bash scripts/agent-gate metrics     # 每条记录的风险等级都该读出来
 ## 4. 断言数生成器
 
 ```bash
-bash scripts/update-assertion-count.sh          # 实跑 run-tests.sh 取运行期实出数并改写双 README
-bash scripts/update-assertion-count.sh --check  # 只检查，漂移即 exit 1（CI/审计模式）
+bash scripts/update-assertion-count.sh                    # 写模式：必要时实跑套件取运行期实出数，同步双 README + tests/.suite-baseline
+bash scripts/update-assertion-count.sh --check             # 只检查，漂移即 exit 1（绝不写文件）
+bash scripts/update-assertion-count.sh --check --from-baseline
+                                                          # 读入库基线判定（源审计 A3 用这条）；绝不跑套件
+bash scripts/update-assertion-count.sh --check --require-receipt
+                                                          # 只允许新鲜同树收据作证据；无收据即 exit 2，绝不退化成隐式整跑
 ```
 
-它管**两件事**，且顺序有讲究：
+它管**三件事**，且顺序有讲究：
 
 1. **README 声称数** ← `run-tests.sh` **实际运行的通过数**（`N passed`；CHG-019 复核后改为运行期口径——静态调用点计数漏计同链双调用 `grep … && report … || report …` 与循环站点，曾致 281↔284、288↔291 两代 3 格漂移）。红套件拒同步（exit 2）。
-2. **`tests/.audit-baseline` 执行数基线** ← 由**上一次审计运行**写出的 `${TMPDIR:-/tmp}/audit-executed-count`（闭 FU-022）。
+2. **`tests/.suite-baseline`（v3.87.0/CHG-115）** ← 同一份运行期实出数；写模式与 README 一起同步，所以"入库基线"永远是最近一次真实绿跑的声明。**`--from-baseline` / `--require-receipt` 两种快模式绝不写文件**：基线缺失/非数字、两模式同时给出、`--require-receipt` 无新鲜收据，一律 exit 2（fail-closed，宁可拒绝也不隐式跑 5 分钟）。注意 `--from-baseline` 只声明"声称面与入库基线一致"，**不证明基线新鲜**——新鲜度由 CI 那一次真跑 + `ci-summary.sh --check` 兜（本地同理：`verify-all.sh`）。
+3. **`tests/.audit-baseline` 执行数基线** ← 由**上一次审计运行**写出的 `${TMPDIR:-/tmp}/audit-executed-count`（闭 FU-022）。
+4. **gate（`verify-all` 第五步，v3.87.0/CHG-115 R4）** ← 第 1~2 项同步完才有意义：改动断言数后第一次 `--fresh` 跑，本步**必然转红**（"收据条数 ≠ 入库基线条数"就是它要喊的内容），随后跑生成器同步、再跑 `verify-all`（收据复用，不重跑整套）转绿。红在这里不是故障，是"去同步"的指令。
 
-> ⚠️ **顺序坑**：第 2 项读的是审计的**运行产物**。所以正确顺序是
+> ⚠️ **顺序坑**：第 3 项读的是审计的**运行产物**。所以正确顺序是
 > **先跑 `audit-standards-src.sh`，再跑 `update-assertion-count.sh`**。
 > 反了的话基线会同步到上一轮的旧值，审计继续报 A10 不匹配——这不是脚本坏了，是顺序反了。
 

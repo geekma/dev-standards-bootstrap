@@ -736,7 +736,7 @@ run_layer() {
       install_file - "$TESTS_DIR/run-tests.sh" tests/run-tests.sh 755
       # v3.79.0 (CHG-103, REQ-1144): 树指纹 lib 随 run-tests.sh 同包下发——run-tests.sh
       # 收据块 source "$ROOT/scripts/lib-…"，缺文件 = 收据指纹恒空（降级安全但 emitter
-      # 半失效）。声明文件排除清单（README×2/tests/.audit-baseline）为源仓收口工具
+      # 半失效）。声明文件排除清单（README×2/tests/.audit-baseline/tests/.suite-baseline）为源仓收口工具
       # 改写面；目标仓无这些面时 reset pathspec 宽容放行（rc=0），配方原样可用。
       install_file - "$SCRIPTS_DIR/lib-suite-tree-fingerprint.sh" scripts/lib-suite-tree-fingerprint.sh 755
       # v3.86.0 (CHG-113): full-run workspace lock (receipt/red path isolation).

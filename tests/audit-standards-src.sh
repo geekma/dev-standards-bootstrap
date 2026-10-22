@@ -401,9 +401,23 @@ report "A2 code-extension list identical in gate and compliance.sh" "$gate_ext" 
 #    须不命中：'见 §2.17.4 防恒真断言'（版本号尾数）/ 'G6 executed no assertion'（标识符尾数）
 #    已知残余缺口（不阻断，登记 FU-009）：'assertions: 125'（数字在关键词之后）不命中。
 claims=$(grep -ohE '(^|[^0-9A-Za-z.])[0-9]+[^0-9]{0,20}(assertions?|项断言|項斷言|断言)' "$RM_EN" "$RM_ZH" | grep -oE '[0-9]+' | sort -u | tr '\n' ',')
+# v3.87.0 (CHG-115, REQ-1184/1185): A3 consumes the committed suite baseline
+# (tests/.suite-baseline) instead of asking the generator to re-derive a count.
+# The old `--check` call fell through to a full run-tests.sh whenever the
+# same-tree receipt was stale (30-min TTL): the 620-assertion audit spent
+# 300.984s/97.2% of its wall time inside this one line. --from-baseline is a
+# pure read/compare path; runtime truth is validated by CI's single full run
+# (baseline == receipt.passed). Generator stderr is captured separately and
+# surfaced on failure — the old 2>&1 silently swallowed the "embedded full
+# run" notice, which is why the slowdown looked unexplained.
 GEN="$ROOT/scripts/update-assertion-count.sh"
 gen_rc=0
-gen_out=$(bash "$GEN" --check 2>&1) || gen_rc=$?
+gen_err=$(mktemp "${TMPDIR:-/tmp}/audit-a3.XXXXXX")
+gen_out=$(bash "$GEN" --check --from-baseline 2>"$gen_err") || gen_rc=$?
+if [[ "$gen_rc" -ne 0 && -s "$gen_err" ]]; then
+  sed 's/^/A3 generator: /' "$gen_err" >&2
+fi
+rm -f "$gen_err"
 gen_n=$(printf '%s\n' "$gen_out" | sed -nE 's/^assertion claims in sync with run-tests \(([0-9]+)\)$/\1/p')
 report "A3 README assertion-count claims are a single consistent number" 1 "$(printf '%s' "$claims" | grep -c '^[0-9]*,$')"
 if [[ -n "$SOFT" ]]; then
@@ -1457,7 +1471,7 @@ at_least "A53 non-git repos degrade to always-run (CHG-110)" 1 "$GATE_TPL" 'Non-
 at_least "A53 usage discloses the opt-out boundary (CHG-110)" 1 "$GATE_TPL" 'external mutable state set AGENT_GUARD_VERIFY_CACHE=0'
 at_least "A53 golden section T66 is defined (CHG-110)" 1 "$ROOT/tests/run-tests.sh" '^section_T66() {'
 at_least_unique "A53 golden section T67 is registered once (CHG-110 tail; CHG-111 joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T67 '
-at_least_unique "A53 golden section T68 is registered once (CHG-113 lock joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T68)'
+at_least_unique "A53 golden section T68 is registered once (CHG-113 lock joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T68 '
 at_least "A52 golden section T65 is defined (CHG-109)" 1 "$ROOT/tests/run-tests.sh" '^section_T65() {'
 at_least_unique "A52 golden section T65 is registered once (CHG-109)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.*T65 '
 
@@ -1521,6 +1535,230 @@ report "A55 entry/09 template carries the ten-item Bug backfill checklist (CHG-1
 # Two intentional occurrences: the 逐字归档 invariant bullet and the 项目总册回填清单 body.
 report "A55 DS section4 states the P00-P12 thirteen-row rule (CHG-114)" 2 \
   "$(printf '%s\n' "$a55_s4" | grep -cF 'P00–P12 十三行' || true)"
+
+# A56 套件基线 + 源层工具链 + 公开/私有边界（v3.87.0，CHG-115，REQ-1184~1193）：
+# 本批改的是"谁在什么时候跑全量套件"和"哪些能力属于下发载荷"。十四类钉：
+#   ① 七个源层工具在位且可解析；② 每个工具声明 source-layer 边界；③ bootstrap 清单
+#   不含任何一个（源层工具一旦被复制进目标仓就成了公开能力）；④ tests/.suite-baseline
+#   存在、纯数字、不被忽略，且两份基线与七个工具一律受跟踪（提交式证据：CI 全新检出读得到才算）；
+#   ⑤ A3 走 --from-baseline、不再有裸
+#   --check 回退；⑥ 生成器两种快速模式都在（基线消费 + 收据强制 fail-closed）；
+#   ⑦ 变异目录固定四类；⑧ T69~T73b 六节注册、各自带源层缺失 SKIP 分支，且断言排在
+#   SKIP 分支之后（目标仓只拿到 run-tests.sh，守卫前置的断言会让下发的套件变红）；
+#   ⑨ CI 有基线硬门与汇总步，且 source-audit 不再排在套件后面；⑩ 双 README 的 B 面列出四个入口工具；
+#   ⑪ 私有执行纪律（PD-1~PD-5）落在 .opencode/ 且 ⑫ 从不出现在受跟踪面上
+#   （⑫ 的扫描集含未跟踪新文件——未 add 的改动一提交就成了载荷；除机器锚点外还扫
+#   中文措辞本身，覆盖受跟踪全集而不只是载荷，因为源层文件同样受跟踪）；
+#   ⑬ .opencode/ 目录本身不受跟踪；⑭ 套件收据复用规则被 verify-all 与生成器共享。
+a56_self="$ROOT/tests/audit-standards-src.sh"
+a56_suite="$ROOT/tests/run-tests.sh"
+a56_gen="$ROOT/scripts/update-assertion-count.sh"
+a56_ci="$ROOT/.github/workflows/ci.yml"
+a56_tools="lib-source-facts.sh facts.sh verify-all.sh pre-review-check.sh mutation-check.sh ci-summary.sh batch-metrics.sh"
+a56_missing=0
+for a56_t in $a56_tools; do
+  [[ -f "$ROOT/scripts/$a56_t" ]] || { echo "A56: missing source tool scripts/$a56_t" >&2; a56_missing=$(( a56_missing + 1 )); continue; }
+  bash -n "$ROOT/scripts/$a56_t" 2>/dev/null || { echo "A56: scripts/$a56_t does not parse" >&2; a56_missing=$(( a56_missing + 1 )); }
+done
+report "A56 the seven source-layer tools exist and parse (CHG-115)" 0 "$a56_missing"
+
+a56_hdr=0
+for a56_t in $a56_tools; do
+  grep -qF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/$a56_t" 2>/dev/null \
+    || { echo "A56: scripts/$a56_t lacks the source-layer boundary header" >&2; a56_hdr=$(( a56_hdr + 1 )); }
+done
+report "A56 every source tool declares the source-layer boundary (CHG-115)" 0 "$a56_hdr"
+
+a56_ship=0
+for a56_t in $a56_tools; do
+  grep -qF "$a56_t" "$ROOT/scripts/bootstrap.sh" \
+    && { echo "A56: bootstrap.sh would ship the source-only tool $a56_t" >&2; a56_ship=$(( a56_ship + 1 )); }
+done
+report "A56 bootstrap payload list excludes every source-only tool (CHG-115)" 0 "$a56_ship"
+
+a56_base_num=""
+[[ -f "$ROOT/tests/.suite-baseline" ]] && a56_base_num=$(tr -d '[:space:]' < "$ROOT/tests/.suite-baseline")
+a56_base_ok=0
+case "$a56_base_num" in ''|*[!0-9]*) ;; *) a56_base_ok=1 ;; esac
+git -C "$ROOT" check-ignore -q tests/.suite-baseline 2>/dev/null && a56_base_ok=0
+report "A56 tests/.suite-baseline is numeric and never git-ignored (CHG-115)" 1 "$a56_base_ok"
+
+# Review round 1 finding: "not ignored" is not "committed". The baseline is the
+# submitted evidence CI reads, so it must be in the index; the same holds for the
+# audit baseline and the seven source tools a fresh checkout needs to exist.
+a56_untracked=0
+for a56_t in tests/.suite-baseline tests/.audit-baseline; do
+  git -C "$ROOT" ls-files --error-unmatch "$a56_t" >/dev/null 2>&1 \
+    || { echo "A56: $a56_t is not tracked — CI on a fresh checkout cannot read it" >&2; a56_untracked=$(( a56_untracked + 1 )); }
+done
+for a56_t in $a56_tools; do
+  git -C "$ROOT" ls-files --error-unmatch "scripts/$a56_t" >/dev/null 2>&1 \
+    || { echo "A56: scripts/$a56_t is not tracked" >&2; a56_untracked=$(( a56_untracked + 1 )); }
+done
+report "A56 both count baselines and all seven source tools are tracked (CHG-115)" 0 "$a56_untracked"
+
+report "A56 A3 consumes the baseline and keeps no bare --check fallback (CHG-115)" 1 \
+  "$([[ $(grep -cF -- '--check --from-baseline' "$a56_self") -ge 1 ]] && [[ $(grep -cF "\"\$GEN\" --check 2>&1" "$a56_self") -eq 0 ]] && echo 1 || echo 0)"
+
+a56_genmodes=0
+grep -qF -- '--from-baseline' "$a56_gen" && a56_genmodes=$(( a56_genmodes + 1 ))
+grep -qF -- '--require-receipt' "$a56_gen" && a56_genmodes=$(( a56_genmodes + 1 ))
+report "A56 the generator carries both fast evidence modes (CHG-115)" 2 "$a56_genmodes"
+
+# Review round 1, R3: the generator must not keep a second receipt-trust
+# implementation — it delegates to sf_receipt_fresh and parses no JSON itself.
+a56_delegate=0
+grep -qF "lib-source-facts.sh" "$a56_gen" || a56_delegate=$(( a56_delegate + 1 ))
+grep -qF "sf_receipt_fresh" "$a56_gen" || a56_delegate=$(( a56_delegate + 1 ))
+grep -qE "s/\.\*"passed"" "$a56_gen" && a56_delegate=$(( a56_delegate + 1 ))
+report "A56 the generator delegates receipt trust to the single implementation (CHG-115)" 0 "$a56_delegate"
+
+# One baseline-number parser (v3.87.0 R4, finding #9). sf_baseline_num is the
+# recipe; a second `tr -d` + digit case is how the empty-string hole reopens.
+# Scope: the read-only consumers and CI. The generator keeps its own pre-lib
+# validation at update-assertion-count.sh:89 — it runs before the optional
+# `source lib-source-facts.sh` (line ~106) and must print the raw content it
+# rejected, which sf_baseline_num (empty on any failure) cannot.
+a56_parse_bad=0
+# The four tools that actually read a count baseline themselves. Naming them beats
+# the earlier "does the file mention the baseline path" heuristic: verify-all only
+# forwards to ci-summary and facts.sh delegates to this very lib, so the heuristic
+# certified the wrong files — it went red on a header comment the first time the
+# gate step's documentation mentioned the path (v3.87.0 R4, self-caught).
+for a56_f in mutation-check.sh ci-summary.sh batch-metrics.sh pre-review-check.sh; do
+  grep -qF 'sf_baseline_num' "$ROOT/scripts/$a56_f" \
+    || { echo "A56: scripts/$a56_f reads a count baseline without sf_baseline_num" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
+  grep -qF "tr -d '[:space:]' <" "$ROOT/scripts/$a56_f" \
+    && { echo "A56: scripts/$a56_f still parses a baseline by hand" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
+done
+grep -qF 'sf_baseline_num' "$a56_ci" \
+  || { echo "A56: CI re-implements the baseline number parse instead of sourcing the lib" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
+report "A56 the count baselines are parsed by one recipe everywhere (CHG-115)" 0 "$a56_parse_bad"
+
+report "A56 mutation-check pins the four fixed mutations (CHG-115)" 1 \
+  "$(grep -cE 'NAMES=\(version-drift gate-version-drift baseline-missing readme-count-drift\)' "$ROOT/scripts/mutation-check.sh")"
+
+a56_secs="T69 T70 T71 T72 T73 T73b"
+a56_sec_bad=0
+for a56_s in $a56_secs; do
+  grep -qE "^section_${a56_s}\(\)" "$a56_suite" \
+    || { echo "A56: run-tests.sh lacks section $a56_s" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); continue; }
+  grep -qE "SKIP ${a56_s}:" "$a56_suite" \
+    || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
+done
+report "A56 run-tests sections T69~T73b exist and skip when the tools are absent (CHG-115)" 0 "$a56_sec_bad"
+at_least_unique "A56 golden section T73b closes the SECTIONS registry (CHG-115 tail)" "$a56_suite" '^SECTIONS=.* T73b)'
+
+# The SKIP string alone is a vacuous pin: a section can put its first assertions
+# above the guard and still print the string. In a target-repo layout (only
+# tests/run-tests.sh ships) those assertions then fail and the shipped suite is
+# red — so pin the order: guard line must precede the first report line.
+a56_order_bad=0
+for a56_s in $a56_secs; do
+  a56_guard_ln=$(awk -v s="$a56_s" 'index($0, "section_" s "() ") == 1 {insec=1; next} /^section_/ && insec {exit} insec && index($0, "SKIP " s ":") {print NR; exit}' "$a56_suite")
+  a56_first_ln=$(awk -v s="$a56_s" 'index($0, "section_" s "() ") == 1 {insec=1; next} /^section_/ && insec {exit} insec && index($0, "report \"" s " ") {print NR; exit}' "$a56_suite")
+  if [[ -z "$a56_guard_ln" || -z "$a56_first_ln" || "$a56_guard_ln" -gt "$a56_first_ln" ]]; then
+    echo "A56: section $a56_s asserts before its source-only SKIP guard (guard=${a56_guard_ln:-none} first_report=${a56_first_ln:-none})" >&2
+    a56_order_bad=$(( a56_order_bad + 1 ))
+  fi
+done
+report "A56 every CHG-115 suite section gates behind its SKIP branch (CHG-115 target-repo green)" 0 "$a56_order_bad"
+
+a56_ci_bad=0
+grep -qF 'ci-summary.sh --check' "$a56_ci" || { echo "A56: CI has no ci-summary hard gate" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+grep -qF 'tests/.suite-baseline' "$a56_ci" || { echo "A56: CI does not reference the committed suite baseline" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+# Job-block-scoped pins. A whole-file grep is the wrong shape here: `if: always()`
+# legitimately appears twice (the run summary step and the aggregate job), so a
+# file-level pin passes no matter which one gets deleted — and a `needs:` written
+# as a flow list or with a trailing comment escapes an exact-line regex and the
+# reverse pin stops firing in silence. Slice per job block instead.
+a56_ci_job_block() { # job name -> that job's yaml lines
+  awk -v jn="$1" '/^jobs:[[:space:]]*$/{injobs=1;next}
+    injobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/{inblock=($0 ~ ("^  " jn ":[[:space:]]*$"))}
+    injobs && inblock{print}' "$a56_ci"
+}
+a56_job_src=$(a56_ci_job_block source-audit)
+a56_job_gold=$(a56_ci_job_block golden-case)
+a56_job_agg=$(a56_ci_job_block agent-governance)
+[[ -n "$a56_job_src" && -n "$a56_job_gold" && -n "$a56_job_agg" ]] \
+  || { echo "A56: ci.yml is missing a golden-case / source-audit / agent-governance job block" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+# The audit reads committed baselines, so it must not wait for the suite job:
+# serialized, source-audit burned ~4 min of nothing and printed no findings at
+# all whenever the suite was red.
+printf '%s\n' "$a56_job_src" | grep -qE '^[[:space:]]+needs:' \
+  && { echo "A56: source-audit waits on a job again (it only reads committed baselines)" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+# Without if: always() the aggregate is SKIPPED whenever a job fails, so the
+# branch-protection check disappears instead of going red.
+printf '%s\n' "$a56_job_agg" | grep -qE '^[[:space:]]+if:[[:space:]]+always\(\)[[:space:]]*$' \
+  || { echo "A56: the agent-governance aggregate lost its if: always() (a red job would hide the required check)" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+# Both real jobs must be visible to the aggregate, or it is green on half the CI.
+a56_needs=$(printf '%s\n' "$a56_job_agg" | grep -E '^[[:space:]]+needs:')
+printf '%s\n' "$a56_needs" | grep -qF 'golden-case' \
+  && printf '%s\n' "$a56_needs" | grep -qF 'source-audit' \
+  || { echo "A56: the aggregate needs-list does not cover both golden-case and source-audit" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+# The run summary must survive a red suite, otherwise CI loses the very receipt
+# the baseline gate just refused to trust.
+printf '%s\n' "$a56_job_gold" | grep -A1 -- '- name: Golden-case run summary' | grep -qE 'if:[[:space:]]+always\(\)' \
+  || { echo "A56: the ci-summary render step is not if: always() (no summary on a failed run)" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
+report "A56 CI carries the baseline gate, a parallel audit job and an un-skippable aggregate/summary (CHG-115)" 0 "$a56_ci_bad"
+
+a56_doc_bad=0
+for a56_t in facts.sh verify-all.sh pre-review-check.sh mutation-check.sh; do
+  for a56_f in "$RM_EN" "$RM_ZH"; do
+    grep -qF "$a56_t" "$a56_f" || { echo "A56: $(basename "$a56_f") does not document scripts/$a56_t" >&2; a56_doc_bad=$(( a56_doc_bad + 1 )); }
+  done
+done
+report "A56 both READMEs document the four source-layer entry tools (CHG-115)" 0 "$a56_doc_bad"
+
+a56_priv_tags="PD-1 PD-2 PD-3 PD-4 PD-5"
+a56_priv_file="$ROOT/.opencode/AGENTS.md"
+if [[ -f "$a56_priv_file" ]]; then
+  a56_priv_bad=0
+  for a56_p in $a56_priv_tags; do
+    grep -qF "$a56_p" "$a56_priv_file" || { echo "A56: private discipline $a56_p is missing from .opencode/AGENTS.md" >&2; a56_priv_bad=$(( a56_priv_bad + 1 )); }
+  done
+  report "A56 the five private execution disciplines are on disk (CHG-115)" 0 "$a56_priv_bad"
+else
+  report "A56 private disciplines are a local-only file (absent here = a clean clone, nothing to check) (CHG-115)" 1 1
+fi
+# The discipline tags are assembled from parts: a literal copy of a tag inside
+# this tracked file would otherwise match itself and report a phantom leak.
+a56_leak=0
+# Untracked-but-not-ignored files are part of the tracked face the moment they
+# are committed, so a commit-less working tree must not be scanned as "clean".
+a56_tracked=$( { git -C "$ROOT" ls-files 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+for a56_pair in "1:no-polling" "2:read-output" "3:subagent-cap" "4:prompt-cache" "5:split-batches"; do
+  a56_tag="PD-${a56_pair%%:*} ${a56_pair##*:}"
+  while IFS= read -r a56_f; do
+    [[ -f "$ROOT/$a56_f" ]] || continue
+    grep -qF -- "$a56_tag" "$ROOT/$a56_f" && { echo "A56: private discipline leaked into the tracked face: $a56_f" >&2; a56_leak=$(( a56_leak + 1 )); }
+  done <<< "$a56_tracked"
+done
+report "A56 private execution disciplines never reach the tracked/public face (CHG-115)" 0 "$a56_leak"
+
+# One wording ring, not two. The original R1 guard scanned only the shipped
+# payload with 4 tokens, and R3 added a whole-tracked-face sweep with 12 tokens.
+# The payload set is a filtered subset of the tracked set and its 4 tokens are a
+# subset of the sweep's 12, so the first ring could never fail without the second
+# failing first — it only cost ~10s of grep per audit run (v3.87.0 R4, finding #8).
+#
+# The tag loop above needs an exact "PD-N <english name>" adjacency, so Chinese
+# wording reaching a source-only tracked face (MAINTAINER, a tool header, CI)
+# slips past it — that is what the sweep below closes.
+a56_sweep_files=$(printf '%s\n' "$a56_tracked" | grep -v '^tests/audit-standards-src\.sh$')
+a56_word_bad=0
+for a56_w in "禁轮询" "子代理上限" "缓存布局" "拆批" "执行成本纪律" "读与输出" "私有执行纪律" "no-polling" "read-output" "subagent-cap" "split-batches" "prompt-cache"; do
+  while IFS= read -r a56_f; do
+    [[ -f "$ROOT/$a56_f" ]] || continue
+    grep -qF -- "$a56_w" "$ROOT/$a56_f" && { echo "A56: private session-cost wording reached the tracked face: $a56_f" >&2; a56_word_bad=$(( a56_word_bad + 1 )); }
+  done <<< "$a56_sweep_files"
+done
+report "A56 private session-cost wording reaches no tracked face at all (CHG-115)" 0 "$a56_word_bad"
+report "A56 the private workspace .opencode/ stays untracked (CHG-115)" 0 \
+  "$(git -C "$ROOT" ls-files .opencode 2>/dev/null | wc -l | tr -d ' ')"
+
+report "A56 verify-all shares the generator receipt-reuse rule (CHG-115)" 1 \
+  "$(grep -qF 'sf_receipt_fresh' "$ROOT/scripts/verify-all.sh" && grep -qF 'sf_receipt_fresh' "$ROOT/scripts/lib-source-facts.sh" && echo 1 || echo 0)"
 
 # v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
 # 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时

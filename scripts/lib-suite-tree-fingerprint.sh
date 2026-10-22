@@ -19,7 +19,7 @@
 # value is deterministic and stable across no-op re-computes.
 #
 # Claim-file exclusion (v3.79.0, live-incident-driven): the upstream assertion
-# sync tool REWRITES README.md / README.zh-CN.md / tests/.audit-baseline AFTER
+# sync tool REWRITES README.md / README.zh-CN.md / tests/.audit-baseline / tests/.suite-baseline AFTER
 # the green run it consumes (count sync). Those files are the suite's OUTPUT
 # claims, not suite inputs — including them would shift the fingerprint on every
 # sync and permanently defeat the fast path this receipt exists for. The `git
@@ -50,9 +50,9 @@ suite_tree_fingerprint() {
          git read-tree HEAD 2>/dev/null || exit 1
          git add -A -- 2>/dev/null || exit 1
          if (( ${#claims[@]} )); then
-           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline "${claims[@]}" 2>/dev/null || true
+           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline tests/.suite-baseline "${claims[@]}" 2>/dev/null || true
          else
-           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline 2>/dev/null || true
+           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline tests/.suite-baseline 2>/dev/null || true
          fi
          git write-tree 2>/dev/null || exit 1 ) || {
     rm -rf "$tmpdir" 2>/dev/null || true

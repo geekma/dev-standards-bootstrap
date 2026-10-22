@@ -5,14 +5,25 @@
 #
 #   update-assertion-count.sh          # rewrite READMEs to the real count
 #   update-assertion-count.sh --check  # exit 1 if any README would change (CI/audit mode)
+#   update-assertion-count.sh --check --from-baseline
+#                                      # read tests/.suite-baseline; NEVER run the suite
+#   update-assertion-count.sh --check --require-receipt
+#                                      # require a fresh same-tree receipt; NEVER run the suite
 #
-# NOTE: both modes execute the FULL run-tests.sh (FU-907) — unless a fresh
-# same-HEAD-and-tree suite receipt exists (v3.66.0, below), which skips the
-# embedded run. Six acceptance conditions: HEAD match, tree fingerprint match,
-# zero failed, mtime freshness, valid numbers, fingerprint lib present.
+# Evidence sources, in priority order: `--from-baseline` (committed evidence;
+# source audit A3 uses this), a fresh same-HEAD/same-tree green receipt
+# (v3.66.0/v3.79.0), then the embedded FULL run-tests.sh (FU-907). The default
+# write mode updates README claims AND tests/.suite-baseline, so the committed
+# baseline always tracks the last real green run (or its same-tree receipt).
+# Scope of each source: `--from-baseline` proves the *claim face* equals the
+# committed number; it does not prove that number is current. Runtime truth is
+# produced only by a real full run — CI's single run plus `ci-summary.sh --check`,
+# or locally `verify-all.sh` (which runs or reuses a same-tree receipt).
+# Six receipt acceptance conditions: HEAD match, tree fingerprint match, zero
+# failed, mtime freshness, valid numbers, fingerprint lib present.
 # Never run this script concurrently with a manual run-tests.sh in the same
 # workspace: a concurrent green run could overwrite the receipt mid-flight
-# (declared weakly consistent; the five acceptance conditions below still
+# (declared weakly consistent; the six acceptance conditions below still
 # reject stale / other-HEAD receipts, and the embedded-run fallback is intact).
 #
 # Source-layer only (NOT shipped with the Skill): READMEs live in this repo.
@@ -21,6 +32,25 @@
 # every claim site generated. Zero deps: bash + grep + sed + diff.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+check=0
+from_baseline=0
+require_receipt=0
+for arg in "$@"; do
+  case "$arg" in
+    --check) check=1 ;;
+    --from-baseline) from_baseline=1 ;;
+    --require-receipt) require_receipt=1 ;;
+    -h|--help)
+      awk 'NR>1 && /^#/{sub(/^# ?/,"");print;next} NR>1{exit}' "$0"
+      exit 0 ;;
+    *) echo "update-assertion-count: unknown argument '$arg' (supported: --check --from-baseline --require-receipt)" >&2; exit 2 ;;
+  esac
+done
+if [[ "$from_baseline" -eq 1 && "$require_receipt" -eq 1 ]]; then
+  echo "update-assertion-count: --from-baseline and --require-receipt are mutually exclusive evidence sources" >&2
+  exit 2
+fi
+SUITE_BASELINE="$ROOT/tests/.suite-baseline"
 # N is the RUNTIME passed count — the number a user actually sees. Static
 # call-site counting undercounts by construction: same-line conditional chains
 # (`grep … && report … || report …`) anchor nowhere at line start (0 sites for
@@ -47,54 +77,67 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 N=""
 F=""
 RECEIPT="${AGENT_GUARD_SUITE_RECEIPT_PATH:-$ROOT/.agent-state/last-suite-receipt.json}"
+# --from-baseline: the committed suite baseline is the evidence. Never touch the
+# receipt or the suite here — A3 (source audit) depends on this being a pure
+# read/compare path, so a stale receipt can no longer turn an 8s audit into a
+# 5-minute suite run (CHG-115, REQ-1184/1185).
+if [[ "$from_baseline" -eq 1 ]]; then
+  if [[ ! -f "$SUITE_BASELINE" ]]; then
+    echo "update-assertion-count: --from-baseline requires $SUITE_BASELINE (run a green suite + this script first)" >&2
+    exit 2
+  fi
+  N=$(tr -d '[:space:]' < "$SUITE_BASELINE")
+  case "$N" in
+    ''|*[!0-9]*)
+      echo "update-assertion-count: $SUITE_BASELINE must contain one decimal number (got '${N}')" >&2
+      exit 2 ;;
+  esac
+  F=0
+fi
 rc_head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
 rc_max="${AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN:-30}"
 case "$rc_max" in ''|*[!0-9]*) rc_max=30 ;; esac
-# fingerprint recipe must exist for the gate to be meaningful; absence degrades
-# to the legacy head+TTL... no — absence degrades to REJECT (REQ-1143): without
-# the recipe we cannot prove the worktree is unchanged, so the fast path is off.
-if [[ -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" ]]; then
-  source "$ROOT/scripts/lib-suite-tree-fingerprint.sh"
+rc_fallback="embedded full run"
+[[ "$require_receipt" -eq 1 ]] && rc_fallback="--require-receipt will fail closed"
+# v3.87.0 (CHG-115, REQ-1185): the receipt-trust decision has exactly one
+# implementation — sf_receipt_fresh (head + tree fingerprint + failed=0 + TTL).
+# Absence of the lib means absence of the fast path (REJECT, REQ-1143): without
+# the recipe we cannot prove the worktree is unchanged.
+if [[ -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+  source "$ROOT/scripts/lib-source-facts.sh"
 fi
-if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]] && ! command -v suite_tree_fingerprint >/dev/null 2>&1; then
-  printf 'update-assertion-count: fingerprint lib missing — receipt fast path disabled, embedded full run\n' >&2
-fi
-if [[ -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]] && command -v suite_tree_fingerprint >/dev/null 2>&1; then
-  r_head=$(sed -nE 's/.*"head":"([0-9a-f]{7,40})".*/\1/p' "$RECEIPT" | tail -n 1)
-  r_fp=$(sed -nE 's/.*"tree_fingerprint":"([0-9a-f]+)".*/\1/p' "$RECEIPT" | tail -n 1)
-  r_pass=$(sed -nE 's/.*"passed":([0-9]+).*/\1/p' "$RECEIPT" | tail -n 1)
-  r_fail=$(sed -nE 's/.*"failed":([0-9]+).*/\1/p' "$RECEIPT" | tail -n 1)
-  if [[ -n "$r_head" && -n "$r_pass" && -n "$r_fail" && "$r_head" == "$rc_head" && "$r_fail" == 0 ]]; then
-    # v3.79.0 (CHG-103, REQ-1143): tree-fingerprint gate. Missing receipt field
-    # (old schema), empty current fingerprint (non-git/lib failure), or a
-    # mismatch (worktree changed since the run) all reject the receipt — the
-    # embedded run below re-derives the truth.
-    r_cur=$(suite_tree_fingerprint "$ROOT")
-    if [[ -z "$r_fp" || -z "$r_cur" ]]; then
-      printf 'update-assertion-count: receipt tree-fingerprint missing (%s) — embedded full run\n' \
-        "$([[ -z "$r_fp" ]] && echo "receipt field (pre-v3.79.0 schema or lib absent at emit)" || echo "worktree fingerprint")" >&2
-    elif [[ "$r_fp" != "$r_cur" ]]; then
-      printf 'update-assertion-count: receipt tree-fingerprint mismatch (worktree changed since the run) — embedded full run\n' >&2
-    else
-    # freshness via mtime (GNU/BSD stat dual form, session-started.json precedent;
-    # v3.67.0 erratum CHG-092: GNU-first — GNU stat -f %m prints '?m' rc=0, so the
-    # BSD-first form left the GNU fallback unreachable on Linux and every receipt
-    # was rejected as stale);
-    # negative age (future mtime / clock skew) is treated as fresh — the emitter
-    # never writes future stamps and this is a local-trust optimization.
-    r_mtime=$(stat -c %Y "$RECEIPT" 2>/dev/null || stat -f %m "$RECEIPT" 2>/dev/null || true)
-    case "$r_mtime" in ''|*[!0-9]*) r_mtime="" ;; esac
-    if [[ -n "$r_mtime" ]]; then
-      r_age=$(( $(date +%s) - r_mtime ))
-      if [[ "$r_age" -le $(( rc_max * 60 )) ]]; then
-        N="$r_pass"; F="$r_fail"
+if [[ -z "$N" && -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]]; then
+  if ! command -v sf_receipt_fresh >/dev/null 2>&1; then
+    printf 'update-assertion-count: fingerprint lib missing — receipt fast path disabled, %s\n' "$rc_fallback" >&2
+  else
+    rc_cur=$(sf_tree_fingerprint "$ROOT")
+    if sf_receipt_fresh "$ROOT" "$rc_cur"; then
+      r_pass=$(sf_read_json_num "$RECEIPT" passed)
+      case "$r_pass" in ''|*[!0-9]*) r_pass="" ;; esac
+      if [[ -n "$r_pass" ]]; then
+        N="$r_pass"; F=0
         printf 'update-assertion-count: trusting suite receipt for %.12s (passed=%s, tree-match, age<=%smin); embedded full run skipped\n' "$rc_head" "$N" "$rc_max" >&2
       fi
-    fi
+    else
+      # Diagnostics only — the accept/reject decision is sf_receipt_fresh's alone.
+      r_fp=$(sf_read_json_str "$RECEIPT" tree_fingerprint)
+      if [[ -z "$r_fp" || -z "$rc_cur" ]]; then
+        printf 'update-assertion-count: receipt tree-fingerprint missing (%s) — %s\n' \
+          "$([[ -z "$r_fp" ]] && echo "receipt field (pre-v3.79.0 schema or lib absent at emit)" || echo "worktree fingerprint")" \
+          "$rc_fallback" >&2
+      else
+        printf 'update-assertion-count: receipt tree-fingerprint mismatch (worktree changed since the run) — %s\n' "$rc_fallback" >&2
+      fi
     fi
   fi
 fi
 if [[ -z "$N" || -z "$F" ]]; then
+  # --require-receipt is the manual fail-closed switch: no fresh evidence means
+  # "run the suite yourself (or verify-all --fresh)", never an implicit rerun.
+  if [[ "$require_receipt" -eq 1 ]]; then
+    echo "update-assertion-count: --require-receipt found no fresh same-HEAD/same-tree green suite receipt at $RECEIPT (run tests/run-tests.sh or scripts/verify-all.sh --fresh first)" >&2
+    exit 2
+  fi
   # v3.78.0（CHG-102，REQ-1136）：内嵌全跑改节级并行——收口/源层审计的内嵌整跑是纯断言语义，
   # 节级池只改墙钟不改判定（SERIAL_CHAIN 恒串行，池先 wait 收口；CHG-095 实测 807s→227s）。
   # 并发数按机器可调：AGENT_GUARD_SUITE_JOBS（默认 4；非数字或 <1 回落 4，`-j 1` 是合法串行请求）。
@@ -110,9 +153,24 @@ if [[ -z "$N" || -z "$F" ]]; then
 fi
 [[ -n "$N" && -n "$F" ]] || { echo "cannot determine assertion count from run-tests output: ${run_out:-<empty>}" >&2; exit 2; }
 [[ "$F" == 0 ]] || { echo "run-tests reported ${F} failed — refusing to sync claims off a red suite" >&2; exit 2; }
-check=0
-[[ "${1:-}" == "--check" ]] && check=1
 status=0
+# The committed baseline tracks the same evidence the README claims use. Write
+# mode updates it; --check reports drift only when the file already exists (a
+# pre-baseline repo/fixture keeps its legacy behavior; A3 uses --from-baseline,
+# which fails closed on a missing file instead). CHG-115, REQ-1184.
+if [[ "$from_baseline" -eq 0 ]]; then
+  baseline_cur=""
+  [[ -f "$SUITE_BASELINE" ]] && baseline_cur=$(tr -d '[:space:]' < "$SUITE_BASELINE")
+  if [[ "$baseline_cur" != "$N" ]]; then
+    if [[ "$check" -eq 1 && -f "$SUITE_BASELINE" ]]; then
+      echo "drift: tests/.suite-baseline is ${baseline_cur:-missing} (expected ${N}); run scripts/update-assertion-count.sh" >&2
+      status=1
+    elif [[ "$check" -eq 0 ]]; then
+      printf '%s\n' "$N" > "$SUITE_BASELINE"
+      echo "updated tests/.suite-baseline -> ${N}"
+    fi
+  fi
+fi
 for f in "$ROOT/README.md" "$ROOT/README.zh-CN.md"; do
   tmp=$(mktemp)
   # Four claim shapes, each anchored to an assertion keyword (never version

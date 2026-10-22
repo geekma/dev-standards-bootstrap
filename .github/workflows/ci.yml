@@ -27,6 +27,15 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+      # v3.87.0 (CHG-115, REQ-1184/1191): the committed baseline is what A3 and both
+      # READMEs consume, so a missing/non-numeric one must fail before the suite pays
+      # four minutes, not after.
+      - name: Suite baseline is committed
+        run: |
+          source scripts/lib-source-facts.sh
+          n=$(sf_baseline_num tests/.suite-baseline)
+          [ -n "$n" ] || { echo "::error::tests/.suite-baseline is missing or non-numeric"; exit 1; }
+          echo "committed suite baseline: $n"
       - name: Run golden-case suite
         run: |
           start=$SECONDS
@@ -39,6 +48,14 @@ jobs:
             exit 1
           fi
           exit "$rc"
+      # v3.87.0 (CHG-115, REQ-1191): this run is the only place runtime truth is
+      # produced, so it is also the place the baseline is hard-checked against the
+      # receipt, and the receipt/baselines are rendered into the job summary.
+      - name: Baseline vs receipt hard gate
+        run: bash scripts/ci-summary.sh --check
+      - name: Golden-case run summary
+        if: always()
+        run: bash scripts/ci-summary.sh
       - name: Upload suite receipt
         if: success()
         uses: actions/upload-artifact@v4
@@ -50,19 +67,19 @@ jobs:
 
   source-audit:
     name: Source-layer audit
-    needs: golden-case
+    # v3.87.0 (CHG-115): no `needs: golden-case`. The audit reads the COMMITTED
+    # baselines only, so it has no dependency on the suite run and can go in
+    # parallel — the aggregate job still fails if either one fails. Serialized,
+    # this job waited ~4 min for nothing and, worse, reported no audit findings
+    # at all whenever the suite was red.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
-      # v3.86.0 (CHG-113): consume the receipt from the suite job. A3/A3c/A10 are
-      # now HARD gates (no AGENT_GUARD_AUDIT_SOFT): the fresh checkout reuses the
-      # same-HEAD/same-tree receipt instead of re-running the full assertion set.
-      - name: Download suite receipt
-        uses: actions/download-artifact@v4
-        with:
-          name: suite-receipt
-          path: .agent-state
+      # A3/A3c/A10 consume the COMMITTED baselines (tests/.suite-baseline /
+      # tests/.audit-baseline) — hard gates, no AGENT_GUARD_AUDIT_SOFT. The receipt
+      # artifact below is kept for human forensics only; the run-time truth gate is
+      # the golden-case job's ci-summary --check.
       - name: Validate release carriers
         run: bash scripts/release.sh check
       - name: Run source-layer audit

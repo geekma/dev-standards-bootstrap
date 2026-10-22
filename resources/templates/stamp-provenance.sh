@@ -90,7 +90,7 @@ case "${1:-}" in
   --check)   mode=check; shift ;;
   --all)     stamp_all=true; shift ;;
   --trace)   stamp_trace=true; shift ;;
-  --bug)     stamp_bug=true; bug_id="${2:-}"; shift 2 ;;
+  --bug)     stamp_bug=true; bug_id="${2:-}"; shift 2 2>/dev/null || shift $# ;;
   "")        usage >&2; exit 2 ;;
 esac
 

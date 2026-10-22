@@ -28,9 +28,9 @@ checks="agent-governance"
 apply=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --repo) repo="${2:-}"; shift 2 ;;
-    --branch) branch="${2:-}"; shift 2 ;;
-    --check) checks="${2:-}"; shift 2 ;;
+    --repo) repo="${2:-}"; shift 2 2>/dev/null || shift $# ;;
+    --branch) branch="${2:-}"; shift 2 2>/dev/null || shift $# ;;
+    --check) checks="${2:-}"; shift 2 2>/dev/null || shift $# ;;
     --apply) apply=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "setup-branch-protection: unknown argument: $1" >&2; usage >&2; exit 2 ;;
