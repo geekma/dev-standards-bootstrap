@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.86.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.86.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -80,12 +80,13 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **5 Quality Gates + Two-Layer Acceptance** | Doc-First, Test-First, Evidence, Traceability, Independent Verification — non-bypassable; every stage passes machine-verifiable A-layer markers plus independent-role B-layer judgment (§2.5) |
 | **Risk Classification × Role Independence** | L0–L3 matrix drives independence: separate execution entities, L2/L3 distinct platform/model vendors, L3 needs human Release Owner approval (§0.5) |
 | **Stage-Gated Expert Review (9 experts, §2.2)** | Business/Industry/Tech/Architecture/PM/Security/Performance/Test/Acceptance experts as refined subjects of existing roles; PMP-aligned per-stage review matrix, context-grounding contract (a template review without project evidence is rejected), session-cost guardrails |
-| **RTVM Traceability + One Change, One Document Set (一次变更一组文档)** | REQ→DES→TASK→TC full-chain matrix; every change opens a fresh `docs/changes/<new-id>/` group meeting the **eight-category** minimum (§1.1), every defect a fresh six-file bug group |
+| **RTVM Traceability + One Change, One Document Set (一次变更一组文档)** | REQ→DES→TASK→TC full-chain matrix; every change opens a fresh `docs/changes/<new-id>/` group meeting the **eight-category** minimum (§1.1) and carries a date-qualified globally unique `change_uid` (§1.2, G2b); every defect a fresh six-file bug group |
 | **10-Stage Lifecycle + AI Anti-Skip Rules** | ReAct (Thought→Action→Observation) on every step; anti-skip rules ban summary-style "done", silent downgrades, premature completion (§2.16) |
 | **Test Coverage Standard (11 dimensions)** | Per-dimension design or explicit N/A; branch coverage ≥60% (L2+); LLM eval-set regression; **business-scenario coverage ≥80%** (SC-xxx, L3 ≥90%) |
 | **Methodology Selection Layer (M0–M3)** | `METHODOLOGY.md` answers "which methodologies are allowed / forbidden"; `methodologies/` provide per-item engineering rationale (weak-typing ban, LLM I/O schema separation, state-trigger-audit) |
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
+| **Release Integrity + Evidence Reuse** | One version authority (`scripts/release.sh check\|bump`) verifies every carrier and rewrites only declared sites; CI runs the full suite once, uploads a tree-keyed receipt, and reuses it for hard audit gates; a workspace suite lock admits one full run at a time and reclaims dead owners |
 | **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1127 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
@@ -366,7 +367,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.86.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.86.1 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -447,11 +448,11 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 613) |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 620) |
 | **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1127 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
-**Since CHG-113 there is no soft mode and no double run in CI**: golden-case runs once with `-j 4` and uploads `.agent-state/last-suite-receipt.json`; source-audit downloads that same-HEAD/same-tree receipt and runs A3/A3c/A10 as **hard** gates (no `AGENT_GUARD_AUDIT_SOFT`), eliminating the second full suite inside CI. golden-case also enforces a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`) so a regression fails loudly instead of drifting into the 15-minute job timeout. Each job is bounded by `timeout-minutes: 15`, and a workflow-level `concurrency` group cancels superseded runs on the same ref.
+**Since CHG-113 there is no soft mode and no double run in CI**: golden-case runs once with `-j 4` and uploads `.agent-state/last-suite-receipt.json`; source-audit downloads that same-HEAD/same-tree receipt and runs A3/A3c/A10 as **hard** gates (no `AGENT_GUARD_AUDIT_SOFT`), eliminating the second full suite inside CI. golden-case also enforces a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`) so a regression fails loudly instead of drifting into the job timeout. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
 
 Reproduce locally (no CI needed, bash + git only):
 
@@ -483,7 +484,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.86.0 | **Last Updated:** 2026-10-21 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.86.1 | **Last Updated:** 2026-10-21 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

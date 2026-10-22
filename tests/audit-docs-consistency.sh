@@ -691,7 +691,7 @@ if [[ -d "$PROJECT_DIR" ]]; then
   report "G9 project masters review records paired" 0 "$grev"
   # 最新变更 09 含回填清单节（仅在仓库已有变更目录时核；按 mtime 取最新）。
   g9_ledger=0
-  latest_chg=$(ls -1dt "$CHANGES"/*/ 2>/dev/null | while read -r cd2; do [[ -s "$cd2/09-changelog.md" ]] && printf '%s\n' "$cd2"; done | grep -E '/(CHG|BUG|BATCH)-[0-9]+$' | head -1)
+  latest_chg=$(ls -1dt "$CHANGES"/*/ 2>/dev/null | while read -r cd2; do cd2=${cd2%/}; [[ -s "$cd2/09-changelog.md" ]] && printf '%s\n' "$cd2"; done | grep -E '/(CHG|BUG|BATCH)-[0-9]+$' | head -1)
   if [[ -n "$latest_chg" ]]; then
     grep -q "项目总册回填清单" "$latest_chg/09-changelog.md" || g9_ledger=1
     report "G9 latest change carries 项目总册回填清单 ($(basename "$latest_chg"))" 0 "$g9_ledger"

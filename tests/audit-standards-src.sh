@@ -282,8 +282,8 @@ at_least "2.17 dual-root convention present" 1 "$STD" '产物目录双轨约定'
 report "mainline starts with 00 files+begin" 1 "$(grep_count "$STD" '先落 00-intent.md / 00-governance.json / 00.5-communication.md（§2.17，变更目录）')"
 
 # ---------- bugfix 双登记 9+1 项对齐（R-A 轮；v3.6.0 缺陷文档组 + v3.7.0 矩阵/配置/任务拆分项） ----------
-chg_backfill=$(awk '/^#### Bug 修复回填清单/,/^#### [^B]/' "$STD" | grep -cE '^- \[ \]')
-report "CHG backfill checklist == 10 items (log 9 + log itself)" 10 "$chg_backfill"
+chg_backfill=$(awk '/^#### Bug 修复回填清单/,/^#### [^B]/' "$STD" | grep -cE '^[[:space:]]*[-*][[:space:]]+\[[ x]\]')
+report "DS section4 carries no Bug backfill copy (single source in entry/09)" 0 "$chg_backfill"
 log_line=$(grep -E '^- \[ \] 01-spec' "$BFLOG" | head -1)
 log_items=$(printf '%s' "$log_line" | grep -oE '\[ \]' | wc -l | tr -d ' ')
 report "log-side backfill checklist == 9 items" 9 "$log_items"
@@ -1479,6 +1479,48 @@ a54b_en=$(grep -oE '\(assertions: [0-9]+\)' "$RM_EN" 2>/dev/null | grep -oE '[0-
 a54b_zh=$(grep -oE '（断言：[0-9]+）' "$RM_ZH" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
 report "A54b README source-audit counts match the baseline (CHG-113)" 2 \
   "$([[ -n "$a54b_base" && "$a54b_en" == "$a54b_base" && "$a54b_zh" == "$a54b_base" ]] && echo 2 || echo 0)"
+
+# A55 DS §4 ↔ entry/09 单一形状权威（v3.86.1，CHG-114）：§4 曾内嵌 9,224 B 的
+# 09 模板副本，与模板双维护；压缩后 §4 只留节名与机校口径。七条断言钉住防回潮：
+#   ① §4 抽取非空；② §4 不得再出现任意缩进/样式的代码围栏（```/~~~）或任何勾选行
+#      副本（P 行/Bug 行，[ ] 或 [x]；`-`/`*` 均可）；③ §4 必须点名
+#   模板为唯一形状权威；④ §4 与模板均含十四节规范标题且逐字一致（名单钉）；
+#   ⑤ 模板 P00–P12 十三行且顺序固定；⑥ 模板 Bug 十项；⑦ DS §4 十三行口径不得回退到 P00–P11。
+a55_s4=$(awk '/^## 4\. Changelog/{w=1} /^## 5\. /{exit} w{print}' "$STD")
+a55_tpl="$ROOT/resources/templates/entry/09-changelog.md"
+report "A55 DS section4 extraction non-empty (CHG-114)" 1 "$([[ -n "$a55_s4" ]] && echo 1 || echo 0)"
+report "A55 DS section4 carries no inline changelog template copy (CHG-114)" 0 \
+  "$(( $(printf '%s\n' "$a55_s4" | grep -cE '^[[:space:]]*(```|~~~)' || true) + $(printf '%s\n' "$a55_s4" | grep -cE '^[[:space:]]*[-*][[:space:]]+\[[ x]\]' || true) ))"
+report "A55 DS section4 names entry/09-changelog.md as the sole shape authority (CHG-114)" 1 \
+  "$(printf '%s\n' "$a55_s4" | grep -cF '形状唯一权威 = `entry/09-changelog.md` 模板' || true)"
+a55_expect_heads=$(printf '%s\n' \
+  '#### 追踪矩阵映射 (Traceability)' \
+  '#### 现象' \
+  '#### 分析' \
+  '#### 根因' \
+  '#### 方案' \
+  '#### 测试脚本与结论' \
+  '#### 项目总册回填清单（每次 CHG 必填，§1.3）' \
+  '#### Bug 修复回填清单（Bug 修复类必填，§2.5 阶段 6；非缺陷类删除）' \
+  '#### 角色签署与独立性（门禁 5）' \
+  '#### 执行记录（ReAct，§2.16.2 铁律）' \
+  '#### 变更执行检查清单（§3 归档落点；唯一权威在 §3）' \
+  '#### 未动项' \
+  '#### 重要上下文' \
+  '#### 发布与回滚记录（进入发布时必填，§2.7）' | sort)
+a55_ds_heads=$(printf '%s\n' "$a55_s4" | grep '^#### ' | sed 's/[[:space:]]*$//' | sort)
+a55_tpl_heads=$(grep '^#### ' "$a55_tpl" | sed 's/[[:space:]]*$//' | sort)
+report "A55 DS section4 and entry/09 carry the fourteen canonical section headings (CHG-114)" 1 \
+  "$([[ "$a55_ds_heads" == "$a55_expect_heads" && "$a55_tpl_heads" == "$a55_expect_heads" ]] && echo 1 || echo 0)"
+a55_row_seq=$(sed -nE 's/^- \[ \] (P[0-9]{2}) .*/\1/p' "$a55_tpl" | tr '\n' ' ')
+a55_expect_row_seq='P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12 '
+report "A55 entry/09 template carries P00-P12 in order (13 master rows) (CHG-114)" 13 \
+  "$([[ "$a55_row_seq" == "$a55_expect_row_seq" ]] && echo 13 || echo 0)"
+report "A55 entry/09 template carries the ten-item Bug backfill checklist (CHG-114)" 10 \
+  "$(awk '/^#### Bug 修复回填清单/,/^#### [^B]/' "$a55_tpl" | grep -cE '^- \[ \]' || true)"
+# Two intentional occurrences: the 逐字归档 invariant bullet and the 项目总册回填清单 body.
+report "A55 DS section4 states the P00-P12 thirteen-row rule (CHG-114)" 2 \
+  "$(printf '%s\n' "$a55_s4" | grep -cF 'P00–P12 十三行' || true)"
 
 # v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
 # 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时

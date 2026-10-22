@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.86.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.86.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -80,12 +80,13 @@
 | **五道门禁 + 两层验收** | 文档先行 / 测试先行 / 证据闭环 / 追踪矩阵 / 独立验证——不可绕过；每阶段过机器可验的 A 层标记 + 独立角色 B 层判定（§2.5） |
 | **风险分级 × 角色独立性** | L0–L3 矩阵驱动独立性：独立执行主体，L2/L3 要求不同平台/模型厂商，L3 强制人类 Release Owner 授权（§0.5） |
 | **分阶段专家评审（9 专家，§2.2）** | 业务/行业/技术/架构/项目管理/安全/性能/测试/整体验收专家，作为既有角色的细分执行主体；PMP 对齐的分阶段评审矩阵 + 上下文贴近契约（无项目证据的模板泛评一律退回）+ 会话成本护栏 |
-| **RTVM 追踪矩阵 + 一次变更一组文档** | REQ→DES→TASK→TC 全链路矩阵；每次变更新开 `docs/changes/<新变更号>/` 文档组（满足**八类最低文档集**，§1.1）；每个缺陷新开六件套 |
+| **RTVM 追踪矩阵 + 一次变更一组文档** | REQ→DES→TASK→TC 全链路矩阵；每次变更新开 `docs/changes/<新变更号>/` 文档组（满足**八类最低文档集**，§1.1），并携带日期限定的全局唯一 `change_uid`（§1.2，G2b）；每个缺陷新开六件套 |
 | **10 阶段生命周期 + AI 防跳过规则** | 每步 ReAct（Thought→Action→Observation）；禁止总结式"已完成"、静默降级、提前标完成（§2.16） |
 | **测试覆盖标准（11 维度）** | 逐维设计或显式"不适用"；分支覆盖率 ≥60%（L2+）；LLM 评估集回归；**业务场景覆盖率 ≥80%**（SC-xxx，L3 ≥90%） |
 | **方法论选型层（M0–M3）** | `METHODOLOGY.md` 回答"哪些方法论允许/禁止"；`methodologies/` 提供逐条工程依据（弱类型禁令、LLM I/O 契约分离、状态触发链路审计） |
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
+| **发布完整性 + 证据复用** | 单一版本权威（`scripts/release.sh check\|bump`）校验全部载体、只重写声明位点；CI 只跑一次全量套件并上传树指纹收据，硬审计复用同一收据；工作区套件锁同一时刻只允许一次全量运行并回收死锁主 |
 | **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1127 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
@@ -366,7 +367,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.86.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.86.1（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -447,11 +448,11 @@ dev-standards-bootstrap/
 
 | Job | 职责 |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：613） |
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：620） |
 | **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1127 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
-**CHG-113 起 CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍并上传 `.agent-state/last-suite-receipt.json`；source-audit 通过 artifact 取回同 HEAD/同树指纹的收据，A3/A3c/A10 据此做**硬校验**（不再设 `AGENT_GUARD_AUDIT_SOFT`），省掉 CI 内的第二次全量套件。golden-case 另设 600s 墙钟预算（`AGENT_GUARD_CI_WALL_BUDGET_S`），超过即显式失败，避免拖到 15 分钟 job 上限才超时。每个 job 受 `timeout-minutes: 15` 约束；workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
+**CHG-113 起 CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍并上传 `.agent-state/last-suite-receipt.json`；source-audit 通过 artifact 取回同 HEAD/同树指纹的收据，A3/A3c/A10 据此做**硬校验**（不再设 `AGENT_GUARD_AUDIT_SOFT`），省掉 CI 内的第二次全量套件。golden-case 另设 600s 墙钟预算（`AGENT_GUARD_CI_WALL_BUDGET_S`），超过即显式失败，避免拖到 job 上限才超时。**两个真实 job 受 `timeout-minutes: 15` 约束，聚合门 `agent-governance` 为 5 分钟。** 工作区套件锁（`lib-suite-lock.sh`，随 `--guard` 下发）同一时刻只允许一次全量运行并回收死锁主；收据/红档路径可用 `AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH` 覆盖，自测不会污染真实台账。workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
 
 本地复现（无需 CI，仅 bash + git）：
 
@@ -483,7 +484,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v3.86.0 | **最后更新：** 2026-10-21 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.86.1 | **最后更新：** 2026-10-21 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 
