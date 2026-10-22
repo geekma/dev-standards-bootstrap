@@ -397,6 +397,8 @@ stamp_all() { # <change-dir> — inline provenance for every artifact md（T5 st
 # -l|--list       print all section keys, one per line
 LIST_ONLY=0
 JOBS=1
+AUTO=0
+AUTO_BASE=""
 WANTED=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -406,10 +408,18 @@ while [[ $# -gt 0 ]]; do
       # infinite hang in the file that ships with bootstrap --guard. Note the
       # operand may legitimately be empty: `-T ""` is a FULL run (T68 pins that a
       # full run refuses a held workspace lock with rc2), so only a missing
-      # operand is a usage error.
-      [[ $# -ge 2 ]] || { printf 'invalid -T value: section list required (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list])\n' >&2; exit 2; }
-      if [[ -n "$2" ]]; then IFS=',' read -r -a WANTED <<< "$2"; fi
+      # operand is a usage error. v3.88.0 (CHG-116, REQ-1197): the operand may
+      # also be `auto` — changeset-driven section selection (see AUTO_RESOLVE
+      # below); it is intercepted here and never reaches the section lookup.
+      [[ $# -ge 2 ]] || { printf 'invalid -T value: section list required (usage: tests/run-tests.sh [-T sec[,sec|auto]] [-j N] [--base ref] [-l|--list])\n' >&2; exit 2; }
+      if [[ "$2" == "auto" ]]; then AUTO=1; else [[ -n "$2" ]] && IFS=',' read -r -a WANTED <<< "$2"; fi
       shift 2 ;;
+    --base)
+      # v3.88.0 (CHG-116, REQ-1197): diff base for -T auto (default HEAD, i.e.
+      # the uncommitted working tree). Trailing-no-value dies rc2 like every
+      # other option in this file (CHG-115 R4 arity family).
+      [[ $# -ge 2 && -n "$2" ]] || { printf 'invalid --base value: ref required\n' >&2; exit 2; }
+      AUTO_BASE="$2"; shift 2 ;;
     -j)
       # v3.72.0 erratum (CHG-095, DES-1868): N must be a positive integer;
       # 1 keeps the serial dispatcher, N>=2 enables the section-level pool.
@@ -3756,7 +3766,7 @@ section_T50() {
   # CHG-110: tail recalibrated T65→T66 (verify 结果缓存节 joins; TC-1414).
   # CHG-111: tail recalibrated T66→T67 (六不变量机校节 joins; TC-1424~1432).
   # CHG-113: tail recalibrated T67→T68; CHG-115: T68→T73b (基线/事实/编排/前置/变异/汇总六节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T73b ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T76 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3961,7 +3971,7 @@ R51FAKE
   report "T51 emitter caches HEAD in prelude (TC-1126a)" 1 "$r51_g1"
   report "T51 receipt write guarded to full runs (TC-1126b)" 1 "$r51_g2"
   report "T51 red run deletes receipt (TC-1126c)" 1 "$r51_g3"
-  report "T51 receipt stamped UTC (TC-1126d)" 1 "$r51_g4"
+  report "T51 receipt stamped UTC (TC-1126d)" 1 "$([[ $r51_g4 -ge 1 ]] && echo 1 || echo 0)"
   report "T51 receipt block sits after wall-time (TC-1126e)" 0 "$([[ -n "$r51_w" && -n "$r51_r" && "$r51_w" -lt "$r51_r" ]] && echo 0 || echo 1)"
   # v3.79.0 (CHG-103, REQ-1142): emitter shape pins — the receipt printf carries
   # the tree_fingerprint field and the fingerprint is taken inside the guarded
@@ -6241,7 +6251,7 @@ R71FAKE
     r71_c_sui="printf 'suite\\n' >> $r71_order"
     r71_c_gat="printf 'gate\\n' >> $r71_order"
     _r71_run() { ( cd "$r71/repo" && AGENT_GUARD_VERIFY_RECEIPT_PATH="$r71_rec" AGENT_GUARD_VERIFY_LOG_DIR="$r71_logs" AGENT_GUARD_SUITE_RECEIPT_PATH="$r71_srecv" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 AGENT_GUARD_VERIFY_RELEASE_CMD="$r71_c_rel" AGENT_GUARD_VERIFY_LEDGER_CMD="$r71_c_led" AGENT_GUARD_VERIFY_AUDIT_CMD="$r71_c_aud" AGENT_GUARD_VERIFY_SUITE_CMD="$r71_c_sui" AGENT_GUARD_VERIFY_GATE_CMD="$r71_c_gat" bash scripts/verify-all.sh "$@" 2>&1 ); }
-    _r71_seed() { printf '{"head":"%s","tree_fingerprint":"%s","passed":%s,"failed":0,"wall_time_s":123,"generated_at":"now"}\n' "$1" "$2" "$3" > "$r71_srecv"; }
+    _r71_seed() { printf '{"kind":"full","head":"%s","tree_fingerprint":"%s","passed":%s,"failed":0,"wall_time_s":123,"generated_at":"now"}\n' "$1" "$2" "$3" > "$r71_srecv"; }
     rm -f "$r71_order" "$r71_srecv" "$r71_rec"; rm -rf "$r71_logs"
 
     r71_rc=0; r71_out=$(_r71_run) || r71_rc=$?
@@ -6538,7 +6548,7 @@ section_T73b() {
     # matched while ci-summary ignored the field (v3.87.0 R4, review finding #7).
     r73b_tree=$(bash -c 'source "$1/scripts/lib-source-facts.sh"; sf_tree_fingerprint "$1"' _ "$r73b/repo" 2>/dev/null || true)
     r73b_rec="$r73b/repo/.agent-state/last-suite-receipt.json"
-    _r73b_seed() { printf '{"head":"%s","tree_fingerprint":"%s","passed":%s,"failed":%s,"wall_time_s":210,"generated_at":"now"}\n' "$1" "$2" "$3" "$4" > "$r73b_rec"; }
+    _r73b_seed() { printf '{"kind":"full","head":"%s","tree_fingerprint":"%s","passed":%s,"failed":%s,"wall_time_s":210,"generated_at":"now"}\n' "$1" "$2" "$3" "$4" > "$r73b_rec"; }
     _r73b_ci() { ( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/ci-summary.sh "$@" 2>&1 ); }
     _r73b_bm() { ( cd "$r73b/repo" && AGENT_GUARD_BATCH_METRICS_PATH="$r73b/repo/.agent-state/bm.json" AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/batch-metrics.sh "$@" 2>&1 ); }
 
@@ -6633,6 +6643,26 @@ section_T73b() {
     report "T73b TC-1464 a missing verify receipt is ledgered as none" 0 \
       "$([[ $(_r73b_vfield) == none ]] && echo 0 || echo 1)"
 
+    # v3.88.0 (CHG-116, REQ-1198): only a full run may pose as full authority.
+    # kind is the machine boundary — a partial (auto) receipt and a pre-v3.88
+    # legacy receipt without any kind both fail closed; kind:"full" keeps the
+    # pre-existing green path so the boundary adds no false reds.
+    printf '{"kind":"partial","head":"%s","tree_fingerprint":"%s","sections":"T50 T70","passed":1000,"failed":0,"wall_time_s":9,"generated_at":"now"}\n' "$r73b_head" "$r73b_tree" > "$r73b_rec"
+    r73b_rc=0; r73b_out=$(_r73b_ci --check) || r73b_rc=$?
+    report "T73b TC-1480 a partial receipt is not full authority (rc1)" 1 "$r73b_rc"
+    report "T73b TC-1480 the finding says partial receipts are rejected" 1 \
+      "$(printf '%s\n' "$r73b_out" | grep -c 'not full authority')"
+    printf '{"head":"%s","tree_fingerprint":"%s","passed":1000,"failed":0,"wall_time_s":210,"generated_at":"now"}\n' "$r73b_head" "$r73b_tree" > "$r73b_rec"
+    r73b_rc=0; r73b_out=$(_r73b_ci --check) || r73b_rc=$?
+    report "T73b TC-1481 a legacy receipt without a kind field fails closed" 1 "$r73b_rc"
+    report "T73b TC-1481 the finding names the missing kind" 1 \
+      "$(printf '%s\n' "$r73b_out" | grep -c 'kind')"
+    _r73b_seed "$r73b_head" "$r73b_tree" 1000 0
+    r73b_rc=0; _r73b_ci --check >/dev/null 2>&1 || r73b_rc=$?
+    report "T73b TC-1482 a kind:full receipt keeps the green path" 0 "$r73b_rc"
+    report "T73b TC-1472 the A56 leak ring grew to 14 tokens and six discipline tags" 1 \
+      "$([[ $(sed -n 's/^for a56_w in //p' "$ROOT/tests/audit-standards-src.sh" | grep -o '"' | wc -l | tr -d ' ') == 28 && $(grep -oE 'PD-[0-9]' "$ROOT/tests/audit-standards-src.sh" | sort -u | wc -l | tr -d ' ') == 6 ]] && echo 1 || echo 0)"
+
     report "T73b TC-1462 both evidence tools declare the source-layer boundary" 2 \
       "$( { grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/ci-summary.sh"; grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/batch-metrics.sh"; } | awk '{s+=$1} END{print s}')"
     report "T73b TC-1462 bootstrap ships neither the CI summarizer nor the metrics ledger" 0 \
@@ -6643,8 +6673,156 @@ section_T73b() {
   fi
 }
 
+section_T74() {
+# ------------------------------------------------ T74 pre-review 声称链对账（v3.88.0，CHG-116，REQ-1194）
+# F5/N6 两母题的机检化：机器面（run-tests report 行的 TC 号）与声称面（04 映射表+落点清单+01.5
+# 矩阵）双向差集必红；01.5 的 file:line（token）锚点逐条实测行内容。对账对象在 gitignored
+# docs/，本节只在本地 pre-review 存在——CI 的 not-checked-here 边界不变。
+  local r74 r74_rc r74_out r74_art f
+  if [[ ! -f "$ROOT/scripts/pre-review-check.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+    echo "SKIP T74: pre-review-check.sh / lib-source-facts.sh absent (source-layer tools do not ship)"
+  else
+    r74=$(mktemp -d "${TMPDIR:-/tmp}/claims.XXXXXX")
+    mkdir -p "$r74/repo/scripts" "$r74/repo/tests" "$r74/repo/.agent-state"
+    cp "$ROOT/scripts/pre-review-check.sh" "$ROOT/scripts/lib-source-facts.sh" "$r74/repo/scripts/"
+    printf '.agent-state/\n' > "$r74/repo/.gitignore"
+    printf 'README (1000 golden-case assertions) (assertions: 500)\n' > "$r74/repo/README.md"
+    printf '这里声称 1000 项 golden-case 断言（断言：500）。\n' > "$r74/repo/README.zh-CN.md"
+    printf '1000\n' > "$r74/repo/tests/.suite-baseline"
+    printf '500\n' > "$r74/repo/tests/.audit-baseline"
+    # synthetic machine face: two report TC ids the claims face must mirror
+    printf '# runner\nreport "T1 TC-1466 alpha" 0 0\nreport "T1 TC-1467 beta" 0 0\n' > "$r74/repo/tests/run-tests.sh"
+    # anchor target: token lives on line 3
+    printf '# tool\n# line two\n采集入口 here\n' > "$r74/repo/scripts/tool.sh"
+    r74_art="$r74/repo/docs/changes/BATCH-20990102"
+    mkdir -p "$r74_art"
+    for f in 00-intent.md 00.5-communication.md 01-spec.md 01.5-rtvm-matrix.md 02-code-impact-analysis.md \
+             03-modification-plan.md 03.5-tasks.md 04-test-scripts.md 04.5-coding-record.md 05-test-results.md \
+             06-delivery-summary.md 06.5-deployment-config.md 07-review-report.md 09-changelog.md handoff.md; do
+      printf '# %s\n\n正文。\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->\n' "$f" > "$r74_art/$f"
+    done
+    printf '{"change_id": "CHG-9002", "risk_level": "L1", "spec_author": "alice", "implementation_owner": "bob", "test_owner": "carol", "review_owner": "dave"}\n' > "$r74_art/00-governance.json"
+    printf -- '- 确认状态：已确认\n' >> "$r74_art/00.5-communication.md"
+    printf '套件：1127 passed, 0 failed\n' >> "$r74_art/05-test-results.md"
+    printf '评审人：dave\n评审结论：通过\n' >> "$r74_art/07-review-report.md"
+    printf 'TC-1466 TC-1467 两条用例，落点节 T1。\n- TC-1466 → 节 T1\n- TC-1467 → 节 T1\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->' > "$r74_art/04-test-scripts.md"
+    printf '矩阵：TC-1466/TC-1467；锚点 `scripts/tool.sh:3`（采集入口）。\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->' > "$r74_art/01.5-rtvm-matrix.md"
+    ( cd "$r74/repo" && git init -q >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
+      && git -c user.email=t@t.local -c user.name=t commit -qm seed >/dev/null 2>&1 )
+    _r74_run() { ( cd "$r74/repo" && bash scripts/pre-review-check.sh 2>&1 ); }
+    r74_rc=0; r74_out=$(_r74_run) || r74_rc=$?
+    report "T74 TC-1466 an aligned claims chain passes" 0 "$r74_rc"
+    report "T74 TC-1466 the claims line reports the verified id count" 1 \
+      "$(printf '%s\n' "$r74_out" | grep -c 'claims chain: 2 machine TC ids')"
+    report "T74 TC-1469 the green run verifies the 01.5 anchor" 1 \
+      "$(printf '%s\n' "$r74_out" | grep -c 'claims chain:.*1 anchors')"
+    # machine face grew, docs did not (F5 family: TC-1465 incident)
+    printf '# runner\nreport "T1 TC-1466 alpha" 0 0\nreport "T1 TC-1467 beta" 0 0\nreport "T1 TC-1468 gamma" 0 0\n' > "$r74/repo/tests/run-tests.sh"
+    r74_rc=0; r74_out=$(_r74_run) || r74_rc=$?
+    report "T74 TC-1467 an unregistered TC fails and is named" 1 "$r74_rc"
+    report "T74 TC-1467 the finding says unregistered and names the id" 1 \
+      "$(printf '%s\n' "$r74_out" | grep -cE 'unregistered TC.*TC-1468')"
+    # docs claim a TC no report line produces
+    printf 'TC-1466 TC-1467 TC-9999 三条用例。\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->' > "$r74_art/04-test-scripts.md"
+    printf '# runner\nreport "T1 TC-1466 alpha" 0 0\nreport "T1 TC-1467 beta" 0 0\n' > "$r74/repo/tests/run-tests.sh"
+    r74_rc=0; r74_out=$(_r74_run) || r74_rc=$?
+    report "T74 TC-1468 a phantom TC fails and is named" 1 "$r74_rc"
+    report "T74 TC-1468 the finding says phantom and names the id" 1 \
+      "$(printf '%s\n' "$r74_out" | grep -cE 'phantom TC.*TC-9999')"
+    # anchor freshness: token moved away from the pinned line
+    printf '矩阵：TC-1466/TC-1467；锚点 `scripts/tool.sh:3`（采集入口）。\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->' > "$r74_art/01.5-rtvm-matrix.md"
+    printf 'TC-1466 TC-1467 两条用例。\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->' > "$r74_art/04-test-scripts.md"
+    printf '# tool\n# moved\n# down\n# three\n采集入口 here\n' > "$r74/repo/scripts/tool.sh"
+    r74_rc=0; r74_out=$(_r74_run) || r74_rc=$?
+    report "T74 TC-1470 a drifted anchor fails and names file:line" 1 "$r74_rc"
+    report "T74 TC-1470 the finding names the drifted anchor" 1 \
+      "$(printf '%s\n' "$r74_out" | grep -c 'tool.sh:3.（采集入口）')"
+    # dangling: the anchored file is gone
+    printf '# tool\n# line two\n采集入口 here\n' > "$r74/repo/scripts/tool.sh"
+    rm "$r74/repo/scripts/tool.sh"
+    r74_rc=0; r74_out=$(_r74_run) || r74_rc=$?
+    report "T74 TC-1471 a dangling anchor file fails and is named" 1 "$r74_rc"
+    report "T74 TC-1471 the finding says dangling" 1 \
+      "$(printf '%s\n' "$r74_out" | grep -c 'dangling')"
+    rm -rf "$r74"
+  fi
+}
+
+section_T75() {
+# ------------------------------------------------ T75 -T auto 裁剪 + 部分收据隔离（v3.88.0，CHG-116，REQ-1197/1198）
+# 映射是优化、不是正确性依赖：无映射命中 / runner 自改一律回落全量。partial 收据只落
+# last-suite-partial.json（kind:"partial"），权威路径 last-suite-receipt.json 永不被部分运行触碰。
+  local r75 r75_rc r75_out r75_rec r75_part
+  if [[ ! -f "$ROOT/scripts/facts.sh" ]]; then
+    echo "SKIP T75: -T auto maps source-layer tools (source repo only)"
+  else
+    r75=$(mktemp -d "${TMPDIR:-/tmp}/auto.XXXXXX")
+    r75_rec="$r75/last-suite-receipt.json"
+    r75_part="$r75/last-suite-partial.json"
+    # resolution-only seam: decide without executing sections
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="scripts/facts.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+      bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+    report "T75 TC-1476 auto maps a changed tool to its sections plus the registry pin" 1 \
+      "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: T50 T70')"
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="scripts/setup-branch-protection.sh,scripts/facts.sh" \
+      AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+    report "T75 TC-1477 an unmapped changed file falls back to FULL" 1 \
+      "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: FULL')"
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="tests/run-tests.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+      bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+    report "T75 TC-1479 a runner self-edit always resolves to FULL" 1 \
+      "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: FULL')"
+    # real partial run (T50+T70 are seconds): the authority path must stay untouched
+    r75_rc=0
+    AGENT_GUARD_SUITE_AUTO_DIFF="scripts/facts.sh" AGENT_GUARD_SUITE_RECEIPT_PATH="$r75_rec" \
+      AGENT_GUARD_SUITE_PARTIAL_PATH="$r75_part" AGENT_GUARD_SESSION_STATS_PATH="$r75/stats.json" \
+      bash "$ROOT/tests/run-tests.sh" -T auto -j 2 >/dev/null 2>&1 || r75_rc=$?
+    report "T75 TC-1476 a mapped auto run is green and writes a partial receipt" 0 "$r75_rc"
+    report "T75 TC-1476 the partial receipt carries kind:partial" 1 \
+      "$(grep -c '"kind":"partial"' "$r75_part" 2>/dev/null)"
+    report "T75 TC-1478 the authority receipt path is never touched by a partial run" 0 \
+      "$([[ ! -e "$r75_rec" ]] && echo 0 || echo 1)"
+    rm -rf "$r75"
+  fi
+}
+
+section_T76() {
+# ------------------------------------------------ T76 套件自记 full_suite（v3.88.0，CHG-116，REQ-1196）
+# 全量运行才是一次"套件购买"：full_suite 只在全量路径 +1（-T 部分 run 与 verify-all 复用都不算）。
+# 计数器本体用 FAKE_FULL seam 实跑（真实全跑在收口权威一次时自证——05 引 stats 增量）；门控
+# 本身用真实 -T 不加 seam 钉（TC-1474），A57 另钉条件行结构。
+  local r76 r76_rc r76_out r76_stats r76_after
+  if [[ ! -f "$ROOT/scripts/facts.sh" ]]; then
+    echo "SKIP T76: session stats self-counting ships with the runner's tools (source repo only)"
+  else
+    r76=$(mktemp -d "${TMPDIR:-/tmp}/stats.XXXXXX")
+    r76_stats="$r76/stats.json"
+    printf '{"turns":3,"full_suite":4,"edits":1,"sleep_polls":0}\n' > "$r76_stats"
+    r76_rc=0
+    AGENT_GUARD_SESSION_STATS_PATH="$r76_stats" AGENT_GUARD_SUITE_FAKE_FULL=1 \
+      AGENT_GUARD_SUITE_RECEIPT_PATH="$r76/rec.json" bash "$ROOT/tests/run-tests.sh" -T T50 >/dev/null 2>&1 || r76_rc=$?
+    r76_after=$(sed -n 's/.*"full_suite":\([0-9]*\).*/\1/p' "$r76_stats" | tail -1)
+    report "T76 TC-1473 a full run increments full_suite and preserves sibling keys" 0 \
+      "$([[ $r76_rc -eq 0 && $r76_after == 5 && $(grep -c '"turns":3' "$r76_stats") -eq 1 ]] && echo 0 || echo 1)"
+    r76_rc=0
+    AGENT_GUARD_SESSION_STATS_PATH="$r76_stats" \
+      AGENT_GUARD_SUITE_RECEIPT_PATH="$r76/rec.json" bash "$ROOT/tests/run-tests.sh" -T T50 >/dev/null 2>&1 || r76_rc=$?
+    r76_after=$(sed -n 's/.*"full_suite":\([0-9]*\).*/\1/p' "$r76_stats" | tail -1)
+    report "T76 TC-1474 a filtered run never touches the counter (real gating)" 0 \
+      "$([[ $r76_rc -eq 0 && $r76_after == 5 ]] && echo 0 || echo 1)"
+    r76_rc=0
+    mkdir -p "$r76/ro" && chmod 555 "$r76/ro"
+    AGENT_GUARD_SESSION_STATS_PATH="$r76/ro/stats.json" AGENT_GUARD_SUITE_FAKE_FULL=1 \
+      AGENT_GUARD_SUITE_RECEIPT_PATH="$r76/rec.json" bash "$ROOT/tests/run-tests.sh" -T T50 >"$r76/out.log" 2>&1 || r76_rc=$?
+    chmod 755 "$r76/ro"
+    report "T76 TC-1475 a stats write failure warns but never blocks the suite" 0 \
+      "$([[ $r76_rc -eq 0 && $(grep -c 'non-fatal' "$r76/out.log") -ge 1 ]] && echo 0 || echo 1)"
+    rm -rf "$r76"
+  fi
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
@@ -6652,6 +6830,67 @@ if [[ ${#WANTED[@]} -gt 0 ]]; then
     case " ${SECTIONS[*]} " in *" $_w "*) ;; *) printf 'unknown section: %s (available: bash tests/run-tests.sh -l)\n' "$_w" >&2; exit 2 ;; esac
   done
 fi
+# v3.88.0 (CHG-116, REQ-1197): -T auto — changeset-driven section selection.
+# Resolution is a pure decision phase, printable and observable through the
+# AGENT_GUARD_SUITE_AUTO_DIFF (file list) and AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY
+# (print decision, exit) test seams. The safety default is FULL: any file the
+# table cannot map, or the runner editing itself, must never shrink the run —
+# the mapping is an optimization, never a correctness dependency. Partial
+# results are quarantined to .agent-state/last-suite-partial.json with
+# kind:"partial" (REQ-1198): only a full run may write last-suite-receipt.json,
+# and ci-summary --check rejects anything else.
+_auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back to FULL)
+  case "$1" in
+    scripts/lib-source-facts.sh)       printf 'T69 T70 T71 T72 T73b' ;;
+    scripts/facts.sh)                  printf 'T70' ;;
+    scripts/verify-all.sh)             printf 'T71' ;;
+    scripts/pre-review-check.sh)       printf 'T72 T74' ;;
+    scripts/mutation-check.sh)         printf 'T73' ;;
+    scripts/ci-summary.sh)             printf 'T73b T75' ;;
+    scripts/batch-metrics.sh)          printf 'T73b' ;;
+    scripts/update-assertion-count.sh) printf 'T69' ;;
+    tests/audit-standards-src.sh)      printf 'T69' ;;
+    tests/.suite-baseline|tests/.audit-baseline) printf 'T51' ;;
+    README.md|README.zh-CN.md)         printf 'T51' ;;
+    .github/*)                         printf 'T73b' ;;
+    *) return 1 ;;
+  esac
+}
+if [[ "$AUTO" -eq 1 ]]; then
+  _auto_files=()
+  if [[ -n "${AGENT_GUARD_SUITE_AUTO_DIFF:-}" ]]; then
+    IFS=',' read -r -a _auto_files <<< "$AGENT_GUARD_SUITE_AUTO_DIFF"
+  else
+    while IFS= read -r _f; do [[ -n "$_f" ]] && _auto_files+=("$_f"); done \
+      < <(git -C "$ROOT" diff --name-only ${AUTO_BASE:+"$AUTO_BASE"} HEAD 2>/dev/null)
+  fi
+  if [[ ${#_auto_files[@]} -eq 0 ]]; then
+    printf 'auto: no tracked changes vs %s — nothing to verify\n' "${AUTO_BASE:-HEAD}"
+    exit 0
+  fi
+  _auto_full=""
+  _auto_secs=""
+  for _f in "${_auto_files[@]}"; do
+    if [[ "$_f" == "tests/run-tests.sh" ]]; then _auto_full="runner self-edit ($_f)"; break; fi
+    if _m=$(_auto_map "$_f"); then _auto_secs="$_auto_secs $_m"; else _auto_full="unmapped changed file: $_f"; break; fi
+  done
+  if [[ -z "$_auto_full" ]]; then
+    _auto_secs="$_auto_secs T50"   # registry tail pin always runs (REQ-1197)
+    WANTED=()
+    for _s in "${SECTIONS[@]}"; do case " $_auto_secs " in *" $_s "*) WANTED+=("$_s") ;; esac; done
+    printf 'auto: %d changed file(s) -> sections:%s\n' "${#_auto_files[@]}" "$(printf ' %s' "${WANTED[@]}")"
+    if [[ "${AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY:-0}" == "1" ]]; then printf 'auto-resolve-only:%s\n' "$(printf ' %s' "${WANTED[@]}")"; exit 0; fi
+  else
+    printf 'auto: falling back to FULL run (%s)\n' "$_auto_full"
+    WANTED=()
+    if [[ "${AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY:-0}" == "1" ]]; then printf 'auto-resolve-only: FULL\n'; exit 0; fi
+  fi
+fi
+# v3.88.0 (CHG-116): test seams must not leak into nested runner invocations —
+# T50 spawns filtered children that would otherwise inherit FAKE_FULL and count
+# as suite purchases. Capture early, strip from the children's environment.
+_fake_full="${AGENT_GUARD_SUITE_FAKE_FULL:-0}"
+unset AGENT_GUARD_SUITE_FAKE_FULL 2>/dev/null || true
 # v3.86.0 (CHG-113, P1-3): full runs take a workspace lock. Filtered (-T) runs
 # never write the receipt and are spawned as children by T51/T57/T61 — locking
 # them would deadlock. AGENT_GUARD_SUITE_LOCK_HELD guards re-entry through
@@ -6785,12 +7024,55 @@ if [[ ${#WANTED[@]} -eq 0 && -n "$SUITE_HEAD" ]]; then
     mkdir -p "$(dirname "$SUITE_RECEIPT_PATH")" 2>/dev/null || true
     _tree_fp=""
     command -v suite_tree_fingerprint >/dev/null 2>&1 && _tree_fp=$(suite_tree_fingerprint "$ROOT")
-    if ! printf '{"head":"%s","tree_fingerprint":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
+    # v3.88.0 (CHG-116, REQ-1198): the receipt carries kind:"full" — consumers
+    # (ci-summary --check) reject receipts without it, so a pre-v3.88 legacy
+    # receipt or a quarantined partial receipt can never pose as full authority.
+    if ! printf '{"kind":"full","head":"%s","tree_fingerprint":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
       "$SUITE_HEAD" "$_tree_fp" "$pass" "$fail" "$SECONDS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_receipt" 2>/dev/null; then
       printf 'warning: could not write suite receipt %s (non-fatal)\n' "$_receipt" >&2
     fi
   else
     rm -f "$SUITE_RECEIPT_PATH"
+  fi
+fi
+# v3.88.0 (CHG-116, REQ-1197): auto partial runs quarantine their receipt to a
+# SEPARATE file — last-suite-receipt.json is only ever written by a full run,
+# so no consumer can mistake a subset result for full authority. Symmetric with
+# the full receipt: green writes, red deletes. Best-effort, same as above.
+if [[ "$AUTO" -eq 1 && ${#WANTED[@]} -gt 0 && -n "$SUITE_HEAD" ]]; then
+  _partial="${AGENT_GUARD_SUITE_PARTIAL_PATH:-$ROOT/.agent-state/last-suite-partial.json}"
+  if [[ "$fail" -eq 0 ]]; then
+    mkdir -p "$(dirname "$_partial")" 2>/dev/null || true
+    _tree_fp=""
+    command -v suite_tree_fingerprint >/dev/null 2>&1 && _tree_fp=$(suite_tree_fingerprint "$ROOT")
+    if ! printf '{"kind":"partial","head":"%s","tree_fingerprint":"%s","sections":"%s","passed":%d,"failed":%d,"wall_time_s":%d,"generated_at":"%s"}\n' \
+      "$SUITE_HEAD" "$_tree_fp" "${WANTED[*]}" "$pass" "$fail" "$SECONDS" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_partial" 2>/dev/null; then
+      printf 'warning: could not write partial receipt %s (non-fatal)\n' "$_partial" >&2
+    fi
+  else
+    rm -f "$_partial"
+  fi
+fi
+# v3.88.0 (CHG-116, REQ-1196): every FULL run self-records full_suite +1 in the
+# session stats (gitignored .agent-state; path overridable for tests). Filtered
+# runs (including -T auto partials) never count — they are not a suite purchase
+# — and neither does a verify-all receipt reuse (no runner invocation at all).
+# Best-effort by design: a write failure warns and never changes the verdict.
+if [[ ${#WANTED[@]} -eq 0 || "$_fake_full" == "1" ]]; then
+  _stats="${AGENT_GUARD_SESSION_STATS_PATH:-$ROOT/.agent-state/session-tool-stats.json}"
+  mkdir -p "$(dirname "$_stats")" 2>/dev/null || true
+  _sf_n=0
+  [[ -s "$_stats" ]] && _sf_n=$(sed -n 's/.*"full_suite":\([0-9]*\).*/\1/p' "$_stats" | tail -1)
+  case "$_sf_n" in ''|*[!0-9]*) _sf_n=0 ;; esac
+  _sf_tmp="${_stats}.$$"
+  if [[ -s "$_stats" ]] && grep -q '"full_suite"' "$_stats" 2>/dev/null; then
+    sed "s/\"full_suite\":[0-9]*/\"full_suite\":$((_sf_n + 1))/" "$_stats" > "$_sf_tmp" 2>/dev/null \
+      && mv -f "$_sf_tmp" "$_stats" \
+      || { rm -f "$_sf_tmp"; printf 'warning: could not update full_suite in %s (non-fatal)\n' "$_stats" >&2; }
+  else
+    printf '{"full_suite":%d}\n' $((_sf_n + 1)) > "$_sf_tmp" 2>/dev/null \
+      && mv -f "$_sf_tmp" "$_stats" \
+      || { rm -f "$_sf_tmp"; printf 'warning: could not create %s (non-fatal)\n' "$_stats" >&2; }
   fi
 fi
 # v3.72.0 erratum (CHG-095, DES-1869) + v3.76.0 (CHG-100, REQ-1122): red-run

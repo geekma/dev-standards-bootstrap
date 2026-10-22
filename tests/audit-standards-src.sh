@@ -1638,7 +1638,7 @@ report "A56 the count baselines are parsed by one recipe everywhere (CHG-115)" 0
 report "A56 mutation-check pins the four fixed mutations (CHG-115)" 1 \
   "$(grep -cE 'NAMES=\(version-drift gate-version-drift baseline-missing readme-count-drift\)' "$ROOT/scripts/mutation-check.sh")"
 
-a56_secs="T69 T70 T71 T72 T73 T73b"
+a56_secs="T69 T70 T71 T72 T73 T73b T74 T75 T76"
 a56_sec_bad=0
 for a56_s in $a56_secs; do
   grep -qE "^section_${a56_s}\(\)" "$a56_suite" \
@@ -1646,8 +1646,8 @@ for a56_s in $a56_secs; do
   grep -qE "SKIP ${a56_s}:" "$a56_suite" \
     || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
 done
-report "A56 run-tests sections T69~T73b exist and skip when the tools are absent (CHG-115)" 0 "$a56_sec_bad"
-at_least_unique "A56 golden section T73b closes the SECTIONS registry (CHG-115 tail)" "$a56_suite" '^SECTIONS=.* T73b)'
+report "A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)" 0 "$a56_sec_bad"
+at_least_unique "A56 golden section T76 closes the SECTIONS registry (CHG-116 tail)" "$a56_suite" '^SECTIONS=.* T76)'
 
 # The SKIP string alone is a vacuous pin: a section can put its first assertions
 # above the guard and still print the string. In a target-repo layout (only
@@ -1710,14 +1710,14 @@ for a56_t in facts.sh verify-all.sh pre-review-check.sh mutation-check.sh; do
 done
 report "A56 both READMEs document the four source-layer entry tools (CHG-115)" 0 "$a56_doc_bad"
 
-a56_priv_tags="PD-1 PD-2 PD-3 PD-4 PD-5"
+a56_priv_tags="PD-1 PD-2 PD-3 PD-4 PD-5 PD-6"
 a56_priv_file="$ROOT/.opencode/AGENTS.md"
 if [[ -f "$a56_priv_file" ]]; then
   a56_priv_bad=0
   for a56_p in $a56_priv_tags; do
     grep -qF "$a56_p" "$a56_priv_file" || { echo "A56: private discipline $a56_p is missing from .opencode/AGENTS.md" >&2; a56_priv_bad=$(( a56_priv_bad + 1 )); }
   done
-  report "A56 the five private execution disciplines are on disk (CHG-115)" 0 "$a56_priv_bad"
+  report "A56 the six private execution disciplines are on disk (CHG-115/116)" 0 "$a56_priv_bad"
 else
   report "A56 private disciplines are a local-only file (absent here = a clean clone, nothing to check) (CHG-115)" 1 1
 fi
@@ -1727,7 +1727,7 @@ a56_leak=0
 # Untracked-but-not-ignored files are part of the tracked face the moment they
 # are committed, so a commit-less working tree must not be scanned as "clean".
 a56_tracked=$( { git -C "$ROOT" ls-files 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
-for a56_pair in "1:no-polling" "2:read-output" "3:subagent-cap" "4:prompt-cache" "5:split-batches"; do
+for a56_pair in "1:no-polling" "2:read-output" "3:subagent-cap" "4:prompt-cache" "5:split-batches" "6:receipt-buy"; do
   a56_tag="PD-${a56_pair%%:*} ${a56_pair##*:}"
   while IFS= read -r a56_f; do
     [[ -f "$ROOT/$a56_f" ]] || continue
@@ -1747,7 +1747,7 @@ report "A56 private execution disciplines never reach the tracked/public face (C
 # slips past it — that is what the sweep below closes.
 a56_sweep_files=$(printf '%s\n' "$a56_tracked" | grep -v '^tests/audit-standards-src\.sh$')
 a56_word_bad=0
-for a56_w in "禁轮询" "子代理上限" "缓存布局" "拆批" "执行成本纪律" "读与输出" "私有执行纪律" "no-polling" "read-output" "subagent-cap" "split-batches" "prompt-cache"; do
+for a56_w in "禁轮询" "子代理上限" "缓存布局" "拆批" "执行成本纪律" "读与输出" "私有执行纪律" "no-polling" "read-output" "subagent-cap" "split-batches" "prompt-cache" "收据购买批量化" "receipt-buy"; do
   while IFS= read -r a56_f; do
     [[ -f "$ROOT/$a56_f" ]] || continue
     grep -qF -- "$a56_w" "$ROOT/$a56_f" && { echo "A56: private session-cost wording reached the tracked face: $a56_f" >&2; a56_word_bad=$(( a56_word_bad + 1 )); }
@@ -1756,6 +1756,28 @@ done
 report "A56 private session-cost wording reaches no tracked face at all (CHG-115)" 0 "$a56_word_bad"
 report "A56 the private workspace .opencode/ stays untracked (CHG-115)" 0 \
   "$(git -C "$ROOT" ls-files .opencode 2>/dev/null | wc -l | tr -d ' ')"
+
+# --- A57 (v3.88.0, CHG-116, REQ-1197/1198): -T auto authority boundaries ---
+# The mapping is an optimization, never a correctness dependency: the pins below
+# keep the authority path (kind:"full" receipt, full-run gating), the partial
+# quarantine (separate file, kind:"partial"), the consumer-side rejection
+# (ci-summary --check) and the mapping table itself honest. A lying table must
+# degrade to FULL, never to a silently smaller run.
+a57_bad=0
+grep -qF '"kind":"full"' "$a56_suite" || { echo "A57: full receipt writer lacks kind:full" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'last-suite-partial.json' "$a56_suite" || { echo "A57: partial quarantine path absent from the runner" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF '"kind":"partial"' "$a56_suite" || { echo "A57: partial receipt writer lacks kind:partial" >&2; a57_bad=$((a57_bad+1)); }
+grep -qE '\[\[ \$\{#WANTED\[@\]\} -eq 0' "$a56_suite" || { echo "A57: full-run gating condition missing from the runner" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'AGENT_GUARD_SUITE_FAKE_FULL' "$a56_suite" || { echo "A57: self-count test seam absent from the runner" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'not full authority' "$ROOT/scripts/ci-summary.sh" || { echo "A57: ci-summary does not reject partial receipts" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'no kind field' "$ROOT/scripts/ci-summary.sh" || { echo "A57: ci-summary does not reject legacy (kind-less) receipts" >&2; a57_bad=$((a57_bad+1)); }
+a57_secs_line=$(grep -oE '^SECTIONS=\(.*\)' "$a56_suite")
+for a57_s in $(grep -oE "printf 'T[0-9a-z ]*'" "$a56_suite" | grep -oE 'T[0-9a-z]+' | sort -u); do
+  case "$a57_secs_line" in *" $a57_s)"*|*" $a57_s "*) ;; *) echo "A57: auto map references unregistered section $a57_s" >&2; a57_bad=$((a57_bad+1)); ;; esac
+done
+grep -qF '_auto_secs="$_auto_secs T50"' "$a56_suite" || { echo "A57: auto union does not always include the T50 registry pin" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'runner self-edit' "$a56_suite" || { echo "A57: runner self-edit full-fallback rule missing" >&2; a57_bad=$((a57_bad+1)); }
+report "A57 -T auto keeps partial receipts quarantined and the mapping honest (CHG-116)" 0 "$a57_bad"
 
 report "A56 verify-all shares the generator receipt-reuse rule (CHG-115)" 1 \
   "$(grep -qF 'sf_receipt_fresh' "$ROOT/scripts/verify-all.sh" && grep -qF 'sf_receipt_fresh' "$ROOT/scripts/lib-source-facts.sh" && echo 1 || echo 0)"

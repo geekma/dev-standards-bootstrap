@@ -68,6 +68,16 @@ if [ -z "$BASELINE" ]; then problem "tests/.suite-baseline missing or non-numeri
 if [ ! -f "$RECEIPT" ]; then
   problem "no suite receipt at $RECEIPT — the golden-case job must run tests/run-tests.sh once and emit it"
 else
+  # v3.88.0 (CHG-116, REQ-1198): only a full run may pose as full authority.
+  # The receipt kind is the machine boundary — a partial receipt quarantined by
+  # -T auto (kind:"partial") and a pre-v3.88 legacy receipt without any kind
+  # both fail closed BEFORE any number comparison; kind:"full" is the only
+  # value that reaches the baseline check below.
+  case "$(grep -o '"kind":"[a-z]*"' "$RECEIPT" | head -1)" in
+    '"kind":"full"') : ;;
+    '"kind":"partial"') problem "suite receipt is kind:partial — a partial receipt is not full authority (run the full suite)" ;;
+    *) problem "suite receipt has no kind field (pre-v3.88 legacy receipt) — rerun the suite" ;;
+  esac
   [ "$R_FAIL" = "0" ] || problem "suite receipt reports failed=${R_FAIL:-?} (expected 0)"
   # Same trust rule as the reuse path (v3.87.0 R4, review finding #7): HEAD alone
   # does not pin the inputs — a same-HEAD receipt from a dirty/other tree would

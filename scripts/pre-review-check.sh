@@ -193,6 +193,59 @@ else
   ok "changed shell files carry no trailing-slash ls -d empty-glob trap"
 fi
 
+# --- claims chain (v3.88.0, CHG-116, REQ-1194) ---
+# Docs claims must equal the machine face in BOTH directions: a TC the runner
+# reports but no doc registers (the TC-1465 incident) is as bad as a TC the
+# docs claim with no report line behind it. Scoping: machine ids at or above
+# the claims face's minimum must all be registered — smaller ids belong to
+# older batches' docs (T50/T51 still report TC-1120-era pins); phantom checks
+# need no range. 01.5 anchors of the form `file:line（token）` are verified
+# against the live file — a moved line or a dangling file is exactly the N6
+# drift family. Objects live in gitignored docs/, so this check exists only
+# here (CI's not-checked-here boundary stays).
+if [ -n "$CHANGE_DIR" ] && [ -f "$ROOT/tests/run-tests.sh" ]; then
+  _m_tc=$(grep -oE '^ *report "[^"]*"' "$ROOT/tests/run-tests.sh" | grep -oE 'TC-[0-9]+' | sort -u | tr '\n' ' ')
+  _c_tc=$(cat "$CHANGE_DIR/04-test-scripts.md" "$CHANGE_DIR/01.5-rtvm-matrix.md" 2>/dev/null | grep -ohE 'TC-[0-9]+' | sort -u | tr '\n' ' ')
+  _c_min=$(printf '%s' "$_c_tc" | tr ' ' '\n' | sed -n 's/TC-//p' | sort -n | head -1)
+  _unreg=""
+  for _t in $_m_tc; do
+    _n=${_t#TC-}
+    case "$_n" in ''|*[!0-9]*) continue ;; esac
+    [ -n "$_c_min" ] && [ "$_n" -lt "$_c_min" ] && continue
+    case " $_c_tc " in *" $_t "*) ;; *) _unreg="$_unreg $_t" ;; esac
+  done
+  [ -z "$_unreg" ] || bad "claims chain: unregistered TC (reported by run-tests, absent from 04/01.5):$_unreg"
+  _phantom=""
+  for _t in $_c_tc; do case " $_m_tc " in *" $_t "*) ;; *) _phantom="$_phantom $_t" ;; esac; done
+  [ -z "$_phantom" ] || bad "claims chain: phantom TC (in 04/01.5, no report line):$_phantom"
+  _anc_bad=""
+  _anc_n=0
+  # N4 family (CHG-115 R1): a for-loop over $(grep) word-splits on the spaces
+  # inside tokens like（`--from-baseline` 解析）— iterate lines instead.
+  while IFS= read -r _a; do
+    [ -n "$_a" ] || continue
+    _anc_n=$(( _anc_n + 1 ))
+    _af="${_a%%:*}"
+    _rest="${_a#*:}"
+    _ln="${_rest%%（*}"
+    _ln="${_ln%\`}"   # 01.5 writes `file:line`（token）— the closing backtick sits between the line number and （
+    _tk="${_rest#*（}"
+    _tk="${_tk%）}"
+    _tk="${_tk//\`/}"   # markdown code spans are formatting, not token content
+    if [ ! -f "$ROOT/$_af" ]; then
+      _anc_bad="$_anc_bad $_a(dangling)"
+    elif ! sed -n "${_ln}p" "$ROOT/$_af" 2>/dev/null | grep -qF "$_tk"; then
+      _anc_bad="$_anc_bad $_a"
+    fi
+  done < <(grep -ohE '[A-Za-z0-9_./-]+:[0-9]+`?（[^）]+）' "$CHANGE_DIR/01.5-rtvm-matrix.md" 2>/dev/null)
+  [ -z "$_anc_bad" ] || bad "claims chain: anchor drift/dangling:$_anc_bad"
+  if [ -z "$_unreg" ] && [ -z "$_phantom" ] && [ -z "$_anc_bad" ]; then
+    ok "claims chain: $(printf '%s' "$_m_tc" | wc -w | tr -d ' ') machine TC ids, $_c_min+ registered, $_anc_n anchors verified"
+  fi
+elif [ -n "$CHANGE_DIR" ]; then
+  warn "claims chain skipped: no tests/run-tests.sh in this repo"
+fi
+
 # --- source audit (optional) ---
 if [ "$SKIP_AUDIT" -eq 1 ]; then
   note "source audit (--skip-audit)"
