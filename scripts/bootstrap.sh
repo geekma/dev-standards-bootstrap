@@ -904,15 +904,46 @@ auto_wire_guard() {
   fi
   # 3) verification command autodetect: replace the placeholder only; user
   #    customizations are never touched. Env var keeps highest priority at runtime.
-  local yml="$target/.agent-governance.yml" detected=""
+  local yml="$target/.agent-governance.yml" detected="" detect_kind="" detect_warn=""
+  # B0-1 (2026-10-25): a detected command is only written when the repo actually
+  # HAS tests. Two real cases made this necessary:
+  #   · `mvn test` on a 22-module repo with zero src/test/java files compiles for
+  #     minutes and proves nothing (observed in a real target repo);
+  #   · `npm test` is very often the `npm init` placeholder that exits 1.
+  # Writing either is worse than writing nothing: "looks configured, runs nothing"
+  # is exactly the false-green the four-state channel was built to prevent.
+  _has_real_tests() { # <kind> -> 0 yes / 1 no
+    case "$1" in
+      mvn)  [ -n "$(find "$target" -maxdepth 6 -path '*/src/test/*' -name '*.java' -print -quit 2>/dev/null)" ] ;;
+      npm)  if grep -qE '"test"[[:space:]]*:[[:space:]]*"echo [^"]*no test specified' "$target/package.json" 2>/dev/null; then
+              return 1
+            fi
+            [ -n "$(find "$target" -maxdepth 5 \( -name '*.test.js' -o -name '*.spec.js' -o -name '*.test.ts' -o -name '*.spec.ts' -o -name '*.test.jsx' -o -name '*.test.tsx' \) -print -quit 2>/dev/null)" ] ;;
+      make) ! grep -qE 'run-tests\.sh|audit-docs-consistency' "$target/Makefile" 2>/dev/null ;;
+      go)   [ -n "$(find "$target" -maxdepth 6 -name '*_test.go' -print -quit 2>/dev/null)" ] ;;
+      py)   [ -n "$(find "$target" -maxdepth 5 \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit 2>/dev/null)" ] ;;
+      *)    return 0 ;;
+    esac
+  }
   if [[ -f "$yml" ]] && grep -q '<replace-with-project-test-command>' "$yml"; then
-    if [[ -f "$target/package.json" ]] && grep -q '"test"[[:space:]]*:' "$target/package.json"; then detected="npm test"
-    elif [[ -f "$target/Makefile" ]] && grep -qE '^test[[:space:]]*:' "$target/Makefile"; then detected="make test"
-    elif [[ -f "$target/pom.xml" ]]; then detected="mvn test"
-    elif [[ -f "$target/go.mod" ]]; then detected="go test ./..."
-    elif [[ -f "$target/pyproject.toml" || -f "$target/pytest.ini" ]]; then detected="pytest -q"
-    elif [[ -f "$target/Cargo.toml" ]]; then detected="cargo test"
+    if [[ -f "$target/package.json" ]] && grep -q '"test"[[:space:]]*:' "$target/package.json"; then detected="npm test"; detect_kind=npm
+    elif [[ -f "$target/Makefile" ]] && grep -qE '^test[[:space:]]*:' "$target/Makefile"; then detected="make test"; detect_kind=make
+    elif [[ -f "$target/pom.xml" ]]; then detected="mvn test"; detect_kind=mvn
+    elif [[ -f "$target/go.mod" ]]; then detected="go test ./..."; detect_kind=go
+    elif [[ -f "$target/pyproject.toml" || -f "$target/pytest.ini" ]]; then detected="pytest -q"; detect_kind=py
+    elif [[ -f "$target/Cargo.toml" ]]; then detected="cargo test"; detect_kind=cargo
     fi
+    if [[ -n "$detected" ]] && ! _has_real_tests "$detect_kind"; then
+      detect_warn="detected '$detected' but found no real test files — placeholder kept (a command that runs nothing is worse than none)"
+      detected=""
+    fi
+    # Defence in depth: a governance self-test is never a verification command.
+    # It proves the gate works, not the product — and it is 25 minutes of noise.
+    case "$detected" in
+      *run-tests.sh*|*audit-docs-consistency*|*agent-gate*)
+        detect_warn="detected '$detected' points at a GOVERNANCE self-test, not project tests — placeholder kept"
+        detected="" ;;
+    esac
     if [[ -n "$detected" ]]; then
       tmpf=$(mktemp 2>/dev/null) || tmpf=""
       if [[ -n "$tmpf" ]]; then
@@ -926,7 +957,12 @@ auto_wire_guard() {
         grep -q '<replace-with-project-test-command>' "$yml" && echo "NOTE         placeholder replacement FAILED — set ci.verification_command manually" >&2
       fi
     else
-      echo "NOTE         could not detect a test command — set ci.verification_command in .agent-governance.yml (or AGENT_GUARD_VERIFY_COMMAND)" >&2
+      if [[ -n "$detect_warn" ]]; then
+        echo "WARN         $detect_warn" >&2
+        echo "NOTE         set ci.verification_command only to a command that runs REAL project tests; a governance self-test (tests/run-tests.sh, tests/audit-*.sh) proves the gate works, not the product" >&2
+      else
+        echo "NOTE         could not detect a test command — set ci.verification_command in .agent-governance.yml (or AGENT_GUARD_VERIFY_COMMAND)" >&2
+      fi
     fi
   fi
   # 5) v3.76.0 (CHG-100, REQ-1120): 验证通道提示——本轮写入/重写了

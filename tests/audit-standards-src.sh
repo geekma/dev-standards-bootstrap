@@ -78,8 +78,32 @@ report_soft() { # name expected actual
   fi
 }
 
-grep_count() { # file pattern -> count（basic grep）
+# CHG-119: **保持 BRE**（不改方言）。实测：把本 helper 整体切到 ERE 会改变
+# `^| GATE-E117 ` 这类「行首或字面」的交替语义（BRE 计数 1 → ERE 计数 227），
+# 波及 22 条 at_least_unique 结构性 pin —— 改一处 helper、毁一族断言。
+# 因此改为**逐条按需**改写：只把「依赖 GNU BRE 扩展（`\|` / `\(`）」的那几条
+# 换成跨实现一致的写法（ERE 交替 / -F 固定串），其余 250+ 条调用语义零变化。
+grep_count() { # file pattern -> count（basic grep = BRE）
   grep -c -- "$2" "$1" 2>/dev/null || true
+}
+
+# CHG-119: 字面串计数（-F）。当 pattern 的意图是**字面文本**（含 | [ ] 等正则元字符）
+# 时，正则表达它是脆弱的：ERE 里 | 是交替、[ 需写成 [[]、字面竖线需写成 [[|]]，
+# 而 [[|]] 在 BSD grep 的字符类解析里有歧义 → 同一 pattern 在不同实现下行为不同。
+# -F 固定串匹配零方言歧义，三类 grep 行为完全一致。
+grep_count_f() { # file literal -> count（fixed string）
+  grep -cF -- "$2" "$1" 2>/dev/null || true
+}
+
+at_least_f() { # name min file literal（固定串；语义见 grep_count_f）
+  local name="$1" min="$2" file="$3" literal="$4"
+  local c
+  c=$(grep_count_f "$file" "$literal")
+  if [[ "$c" -ge "$min" ]]; then
+    report "$name" ok ok
+  else
+    report "$name" ">=${min}" "$c"
+  fi
 }
 
 # 至少出现一次（关键词落点矩阵用；出现多处于语义无害）
@@ -87,6 +111,23 @@ at_least() { # name min file pattern
   local name="$1" min="$2" file="$3" pattern="$4"
   local c
   c=$(grep_count "$file" "$pattern")
+  if [[ "$c" -ge "$min" ]]; then
+    report "$name" ok ok
+  else
+    report "$name" ">=${min}" "$c"
+  fi
+}
+
+# CHG-119: ERE 版「至少出现一次」。**只给确实依赖 GNU BRE 扩展的断言用**——
+# BRE 的交替 `\|` 与分组 `\(` 在 busybox/toybox 下不被支持（当字面竖线 → 计数恒 0
+# → 假红）；ERE 的 `|` 与 `()` 是 POSIX 语法，三类 grep（GNU / BSD / toybox）行为一致。
+# 反面教训：不要把 grep_count 整体切到 ERE —— 那会改变 `^| GATE-E117 ` 这类
+# 「行首或字面」交替的语义（BRE 计数 1 → ERE 计数 227），一次改 helper 会毁 22 条
+# at_least_unique 结构性 pin。故采用逐条按需改写。
+at_least_e() { # name min file pattern（POSIX ERE）
+  local name="$1" min="$2" file="$3" pattern="$4"
+  local c
+  c=$(grep -cE -- "$pattern" "$file" 2>/dev/null || true)
   if [[ "$c" -ge "$min" ]]; then
     report "$name" ok ok
   else
@@ -706,7 +747,9 @@ at_least "A30 seven-element history field" 1 "$STD" '历史检索命中的 BUG/C
 # A31 枚举面 pin（CHG-058/REQ-978）：G 组清单于双语 README+SKILL 在册（G10 同步漏更复发防线，A29 同族）+ bugfix-log 模板历史相似字段
 at_least "A31 G10 enumerated in EN README" 1 "$ROOT/README.md" 'G10'
 at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
-at_least "A31 audit-group enumeration in SKILL (G1-G14)" 1 "$ROOT/SKILL.md" 'G1–G14'
+# CHG-118: pin 随实现更新——audit 实际已是 G1–G16（G15/G16 于 v3.84.0/v3.89.0 加入），
+# 旧 pin 'G1–G14' 是过期字面量，会在 SKILL 如实更新时误判为回退。
+at_least "A31 audit-group enumeration in SKILL (G1-G16)" 1 "$ROOT/SKILL.md" 'G1–G16'
 at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bugfix-log.md" '历史相似'
 
 # A32 版本载体全链清单条款（CHG-061 / REQ-984，对等减法=§2.16.5 标准升级行退役合并）
@@ -1053,7 +1096,7 @@ at_least "A25 standards pins the flat anchor form" 1 "$STD" '## <BUG-xxx>'
 report "A25 gate resolves defect groups across both layouts" 1 "$(a17_at_least_1 "$(grep -c 'bug_group_dir' "$GATE_TPL" || true)")"
 report "A25 gate sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$GATE_TPL" || true)")"
 report "A25 gate sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c 'anchored in more than one day batch' "$GATE_TPL" || true)")"
-report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'must join it into the day batch\|move it into the day batch' "$GATE_TPL" || true)")"
+report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -cE 'must join it into the day batch|move it into the day batch' "$GATE_TPL" || true)")"
 report "A25 gate begin checks the thirteen masters" 1 "$(a17_at_least_1 "$(grep -c 'validate_project_masters' "$GATE_TPL" || true)")"
 report "A25 gate stop checks the master backfill rows" 1 "$(a17_at_least_1 "$(grep -c 'validate_master_backfill' "$GATE_TPL" || true)")"
 report "A25 stamper resolves batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'defect group not found' "$STAMP_TPL" || true)")"
@@ -1304,7 +1347,7 @@ at_least "A46 rescore workflow calls the local script (CHG-099)" 1 "$ROOT/resour
 at_least "A46 gate carries the provenance gate (E117, CHG-099)" 1 "$GATE_TPL" 'GATE-E117'
 at_least "A46 gate soft-passes legacy 07 shapes (CHG-099)" 1 "$GATE_TPL" '发现处置表缺「来源」列'
 at_least "A46 gate counts finding provenance (CHG-099)" 1 "$GATE_TPL" 'finding_source_counts'
-at_least "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$GATE_TPL" 'findings_introduced\|findings_pre_existing'
+at_least_e "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$GATE_TPL" 'findings_introduced|findings_pre_existing'
 # v3.75.0 (CHG-099, 收尾整改 C-1)：pin 必须钉**真表头行**而非「本次引入|既有存量」字面——
 # 后者在模板的条件注释里本就出现，删掉真表头行后仍 ≥1 → 恒真断言（独立验证子代理 M2 变异未变红）。
 # 注意 `grep_count` 走 **BRE**（基础 grep）：`\|` 在 BRE 是**交替**不是字面管道——实测
@@ -1318,11 +1361,11 @@ at_least "A46 standards body carries the provenance column (CHG-099)" 1 "$STD" '
 at_least "A46 AGENTS carries the per-repo review-focus block (CHG-099)" 1 "$ROOT/resources/AGENTS.md" '本仓评审要点'
 at_least "A46 AGENTS block forbids a second authority (CHG-099)" 1 "$ROOT/resources/AGENTS.md" '禁止\*\*另建按仓评审文件'
 at_least "A46 registry indexes the new gate code (CHG-099)" 1 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E117 '
-at_least "A46 registry registers the new clauses (CHG-099)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R\(59\|60\|61\) '
-at_least "A46 bootstrap guard installs the eval layer (CHG-099)" 3 "$ROOT/scripts/bootstrap.sh" 'eval-cases\|eval-rescore\|github-reviewer-rescore'
+at_least_e "A46 registry registers the new clauses (CHG-099)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^[|] R(59|60|61) '
+at_least_e "A46 bootstrap guard installs the eval layer (CHG-099)" 3 "$ROOT/scripts/bootstrap.sh" 'eval-cases|eval-rescore|github-reviewer-rescore'
 # v3.75.0 收尾整改（独立评审 F-3）：安装侧三处 install_file 后的**卸载侧互锁**——既有 A26/A27
 # 先例要求 Tier 覆盖；漏卸会留下孤儿 workflow（每日 schedule 调已删脚本）。两条 pin 钉住三件。
-at_least "A46 uninstall removes the eval runtime scripts (CHG-099)" 2 "$ROOT/resources/templates/uninstall-standards.sh" 'eval-cases\|eval-rescore'
+at_least_e "A46 uninstall removes the eval runtime scripts (CHG-099)" 2 "$ROOT/resources/templates/uninstall-standards.sh" 'eval-cases|eval-rescore'
 at_least "A46 uninstall removes the rescore workflow (CHG-099)" 1 "$ROOT/resources/templates/uninstall-standards.sh" 'github-reviewer-rescore.yml'
 at_least "A46 SKILL names the eval layer (CHG-099)" 1 "$ROOT/SKILL.md" 'eval-cases'
 at_least "A46 README (EN) names the eval layer (CHG-099)" 1 "$ROOT/README.md" 'eval-cases'
@@ -1403,14 +1446,14 @@ report "A48 gate help no longer claims the 12-master range (CHG-102)" 0 "$(grep_
 at_least "A48 gate help names the 13-master range (CHG-102)" 1 "$GATE_TPL" 'P00\.\.P12'
 report "A48 gate source/template byte-identical (CHG-102; source-only face absent on fresh clone = SKIP, A44 semantics)" 0 "$([[ -f "$ROOT/scripts/agent-gate" ]] && { cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || echo 1; } || echo 0)"
 report "A48 SKILL never names a shipped script with a .sh suffix (CHG-102)" 0 "$(grep_count "$SKILL" 'install-hook-adapter.sh')"
-at_least "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent\|generate-reading-pack.sh'
+at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent|generate-reading-pack.sh'
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
 report "A48 standards body did not grow past the v3.80.0 ratchet (CHG-107; growth requires explicit recalibration)" 1 "$([[ "$std_bytes" -le 167933 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
-at_least "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'begin <change-id> \[--risk L0\|L1\|L2\|L3\] \[--scaffold\]'
+at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
 at_least "A49 AGENTS carries the phase read-set discipline (CHG-107)" 1 "$AGENTS" '分阶段最小读集（v3.80.0'
 at_least_unique "A49 registry registers R65 (CHG-107)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R65 '
 at_least_unique "A49 DS carries the read-set pointer (CHG-107)" "$STD" '分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）'
@@ -1812,7 +1855,7 @@ for a43_f in "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$ROOT/resources/STAGE_P
   a43_n=$(grep -cE 'label\[for\]|hx-trigger|\[contenteditable\]|origin: <文件名>|data-action' "$a43_f" 2>/dev/null || true)
   [[ "$a43_n" -eq 0 ]] || { a43_bad=1; echo "A43 layering: $a43_f carries tool-vocabulary fingerprints ($a43_n hits)" >&2; }
 done
-a43_ptr=$(grep -c 'behavior-extract.sh` 头注释\|behavior-extract.sh 头注释' "$ROOT/resources/STAGE_PLAYBOOK.md" 2>/dev/null || true)
+a43_ptr=$(grep -cE 'behavior-extract.sh` 头注释|behavior-extract.sh 头注释' "$ROOT/resources/STAGE_PLAYBOOK.md" 2>/dev/null || true)
 [[ "$a43_ptr" -ge 1 ]] || { a43_bad=1; echo "A43 layering: playbook lacks the single-source pointer" >&2; }
 report "A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)" 0 "$a43_bad"
 

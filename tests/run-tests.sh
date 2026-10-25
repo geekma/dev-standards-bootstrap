@@ -6795,6 +6795,17 @@ section_T75() {
       AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
     report "T75 TC-1477 an unmapped changed file falls back to FULL" 1 \
       "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: FULL')"
+    # TC-1496/1497 (2026-10-25 wiring): two gaps the old 12-entry table left open —
+    # docs/artifacts dragged a 25-minute FULL run in, and the standards body itself
+    # was unmapped. Both are pure selection logic (resolve-only, no execution).
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="docs/changes/CHG-001/05-test-results.md,MAINTAINER.md" \
+      AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+    report "T75 TC-1496 suite-irrelevant files resolve to NONE (no suite)" 1 \
+      "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: NONE')"
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="resources/DEVELOPMENT_STANDARDS.md" \
+      AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+    report "T75 TC-1497 the standards body maps to its sections (registry pin in source order)" 1 \
+      "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only:.*T48 T50 T55')"
     r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="tests/run-tests.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
       bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
     report "T75 TC-1479 a runner self-edit always resolves to FULL" 1 \
@@ -7162,7 +7173,7 @@ fi
 # results are quarantined to .agent-state/last-suite-partial.json with
 # kind:"partial" (REQ-1198): only a full run may write last-suite-receipt.json,
 # and ci-summary --check rejects anything else.
-_auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back to FULL)
+_auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back to FULL); rc2 = suite-irrelevant (no-op)
   case "$1" in
     scripts/lib-source-facts.sh)       printf 'T69 T70 T71 T72 T73b' ;;
     scripts/facts.sh)                  printf 'T70' ;;
@@ -7172,10 +7183,24 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     scripts/ci-summary.sh)             printf 'T73b T75' ;;
     scripts/batch-metrics.sh)          printf 'T73b' ;;
     scripts/update-assertion-count.sh) printf 'T69' ;;
+    scripts/bootstrap.sh)              printf 'T11 T14 T15 T21 T40 T42 T49 T63 T70 T71 T72 T73 T73b' ;;
     tests/audit-standards-src.sh)      printf 'T69' ;;
     tests/.suite-baseline|tests/.audit-baseline) printf 'T51' ;;
     README.md|README.zh-CN.md)         printf 'T51' ;;
     .github/*)                         printf 'T73b' ;;
+    resources/DEVELOPMENT_STANDARDS.md) printf 'T11 T14 T15 T20 T21 T31 T38 T40 T43 T48 T55 T63 T64 T67' ;;
+    resources/AGENTS.md)               printf 'T40 T43 T48 T55 T63 T64' ;;
+    resources/STANDARDS_CHANGELOG.md)  printf 'T15 T40 T48' ;;
+    SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
+    resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
+    resources/templates/session-gate.sh)            printf 'T24 T26 T29 T49 T78' ;;
+    resources/templates/stamp-provenance.sh)        printf 'T16 T17 T17b' ;;
+    resources/templates/install-hook-adapter.sh)    printf 'T49' ;;
+    resources/templates/*.md)          printf 'T7b T18c T18d T43 T46' ;;
+    resources/templates/agent-governance.yml|resources/templates/github-*.yml) printf 'T73b' ;;
+    docs/*)                            return 2 ;;  # 变更产物/评审记录：不影响治理工具，无需套件
+    MAINTAINER.md)                     return 2 ;;
+    .agent-state/*|.workbuddy-ai/*)    return 2 ;;
     *) return 1 ;;
   esac
 }
@@ -7193,10 +7218,24 @@ if [[ "$AUTO" -eq 1 ]]; then
   fi
   _auto_full=""
   _auto_secs=""
+  _auto_skip_n=0
   for _f in "${_auto_files[@]}"; do
     if [[ "$_f" == "tests/run-tests.sh" ]]; then _auto_full="runner self-edit ($_f)"; break; fi
-    if _m=$(_auto_map "$_f"); then _auto_secs="$_auto_secs $_m"; else _auto_full="unmapped changed file: $_f"; break; fi
+    _m=$(_auto_map "$_f") && _rc=0 || _rc=$?
+    case "$_rc" in
+      0) _auto_secs="$_auto_secs $_m" ;;
+      2) _auto_skip_n=$(( _auto_skip_n + 1 )) ;;   # suite-irrelevant: docs/artifacts never move the gate
+      *) _auto_full="unmapped changed file: $_f"; break ;;
+    esac
   done
+  # All changed files are suite-irrelevant: there is nothing to verify. Exiting 0 here
+  # is the honest answer — running the suite would prove nothing about these files.
+  if [[ -z "$_auto_full" && -z "${_auto_secs// /}" ]]; then
+    printf 'auto: %d changed file(s) — no suite-relevant changes (%d suite-irrelevant)\n' \
+      "${#_auto_files[@]}" "$_auto_skip_n"
+    [[ "${AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY:-0}" == "1" ]] && printf 'auto-resolve-only: NONE\n'
+    exit 0
+  fi
   if [[ -z "$_auto_full" ]]; then
     _auto_secs="$_auto_secs T50"   # registry tail pin always runs (REQ-1197)
     WANTED=()
