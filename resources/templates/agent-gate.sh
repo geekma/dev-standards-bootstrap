@@ -4,14 +4,34 @@
 # agent's natural-language claim that a check has run.
 set -euo pipefail
 
+# CHG-121 (batch 0): the friction ledger used to carry only (code, timestamp).
+# 1037 such rows cannot be attributed to any change, so "is this friction
+# concentrated in E86/E122?" was unanswerable. Extra columns are APPENDED, so
+# the metrics aggregation (`awk -F'\t' '{c[$1]++}'`) and the `^GATE-E` row pins
+# keep working byte-for-byte.
+friction_cid() { # current change id, "-" when unknown
+  local c="" f
+  [[ -n "${AGENT_GUARD_CHANGE:-}" ]] && { printf '%s' "$AGENT_GUARD_CHANGE"; return 0; }
+  f=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$f" && -f "$f" ]] && c=$(head -n 1 "$f" 2>/dev/null || true)
+  printf '%s' "${c:--}"
+}
+friction_sanitize() { # <text> -> one TSV-safe cell (no tabs/newlines, <=160 chars)
+  printf '%s' "$1" | tr '\t\n\r' '   ' | cut -c1-160
+}
+friction_append() { # <code> <kind: DIE|BYPASS> <reason>
+  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$(friction_cid)" "$2" "$(friction_sanitize "$3")" \
+    >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+}
+
 die() {
   echo "agent-gate: $*" >&2
   # v3.43.0 (REQ-960): gate 摩擦事件账（append-only TSV，metrics 侧聚合）。
   # fail-open：缺 .agent-state 或写失败不影响拒绝语义；TSV 而非 JSON——bash 零依赖。
   local _code="${1%%:*}" _re='^GATE-E[0-9]+$'
   if [[ -d ".agent-state" && "$_code" =~ $_re ]]; then
-    printf '%s\t%s\n' "$_code" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-      >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+    friction_append "$_code" DIE "$*"
   fi
   exit 2
 }
@@ -662,8 +682,7 @@ validate_unaccounted_changes() { # <staged|worktree>
   unaccounted_exempt && return 0
   if [[ "${AGENT_GUARD_ALLOW_UNACCOUNTED:-}" == "1" ]]; then
     echo "agent-gate: WARN — AGENT_GUARD_ALLOW_UNACCOUNTED=1 bypassed the unaccounted source-change check; the justification is owed to 09「重要上下文」(standards §2.17.2b, v3.89.0 CHG-117)" >&2
-    printf 'GATE-E125BYPASS\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-      >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+    friction_append "GATE-E125BYPASS" BYPASS "AGENT_GUARD_ALLOW_UNACCOUNTED=1"
     return 0
   fi
   die "GATE-E125: source-path changes with no active change and no same-day defect batch ($mode face: $(printf '%s' "$hits" | head -3 | tr '\n' ' ')...) — standards §2.17.2b signal ③, three options: ① open the change (scripts/agent-gate begin <change-id> / new-change scaffold), ② bind the defect batch (bug-autointent / same-day <bugs_root>/BATCH-<UTCday>/ anchors), ③ skip only with AGENT_GUARD_ALLOW_UNACCOUNTED=1 recorded in 09「重要上下文」 (v3.89.0 CHG-117)"
@@ -1148,8 +1167,7 @@ required_docs_present() { # <id> [entry]
       # explicit bypass (§2.17.2d) — v3.60.0: append to the friction ledger so
       # bypass use is visible to metrics/review, not silent; 09 justification
       # duty stays (standards §2.17.2d).
-      printf 'GATE-E83BYPASS\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-        >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+      friction_append "GATE-E83BYPASS" BYPASS "AGENT_GUARD_ALLOW_UNCONFIRMED=1"
       continue
     fi
     [[ -s "$d/$doc" ]] || die "GATE-E03: missing required artifact: $d/$doc"
@@ -1402,6 +1420,28 @@ validate_governance_state() {
   d=$(change_dir "$id")
   file="$d/00-governance.json"
   [[ -s "$file" ]] || die "GATE-E24: missing required artifact: $file"
+  # CHG-121 (batch 0): structural validation. 12/12 batch rosters failed an
+  # external json.load (bare concatenated objects); the internal reader tolerates
+  # that shape, so the breakage stayed invisible. Brace/quote parity plus a
+  # read-back per declared id turns it into a loud refusal.
+  local _opens _closes _quotes _gid _bad=""
+  _opens=$(tr -cd '{' < "$file" 2>/dev/null | wc -c | tr -d ' ')
+  _closes=$(tr -cd '}' < "$file" 2>/dev/null | wc -c | tr -d ' ')
+  _quotes=$(tr -cd '"' < "$file" 2>/dev/null | wc -c | tr -d ' ')
+  if [[ "$_opens" -ne "$_closes" ]] || (( _quotes % 2 != 0 )); then
+    die "GATE-E126: $file is not structurally valid (braces ${_opens}/${_closes}, quotes ${_quotes}) — repair the record file before begin (batch 0, CHG-121)"
+  fi
+  # The observed 12/12 failure shape: sibling objects concatenated on ONE line
+  # (`"..."}{"..."`) — not valid JSON for any external reader. A comma-separated
+  # array (`},{`) and the documented one-object-per-line batch style both pass.
+  if grep -qE '\}[[:space:]]*\{' "$file" 2>/dev/null; then
+    die "GATE-E126: $file concatenates JSON objects on one line ('}{' without a comma) — write one object per line or a proper array (batch 0, CHG-121)"
+  fi
+  while IFS= read -r _gid; do
+    [[ -n "$_gid" ]] || continue
+    [[ -n "$(gov_record "$file" "$_gid")" ]] || _bad+=" $_gid"
+  done < <(gov_ids "$file")
+  [[ -z "$_bad" ]] || die "GATE-E126: $file declares change_id(s)$_bad that cannot be read back as records — truncated/overlapping JSON (batch 0, CHG-121)"
   # A dedicated <CHG>/ directory holds one record; a batch holds one line per
   # bundled change. Scope to THIS change's line so a sibling's risk/owners can
   # never satisfy our checks (or be misread as ours).

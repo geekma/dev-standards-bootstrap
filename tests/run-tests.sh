@@ -2188,6 +2188,16 @@ new_repo
 seed_begin CHG-842 L1 claude/s-1
 report "T19 one-line records still begin (no regression)" 0 $?
 
+# ⑥ 结构校验（CHG-121，batch 0）：同一行拼接的 JSON 对象必须被 E126 拒绝。
+#    实测 12/12 个批次台账外部 json.load 失败，正是这个形状；内部读取器容忍它，
+#    所以坏台账一直静默存在。
+new_repo
+seed_artifacts CHG-843 L1 claude/s-1
+printf '{"change_id": "CHG-843", "risk_level": "L1", "spec_author":"a/b/c","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x"}{"change_id": "CHG-844", "risk_level": "L1"}\n' > docs/changes/CHG-843/00-governance.json
+out=$(scripts/agent-gate begin CHG-843 2>&1); rc=$?
+report "T19 E126 refuses same-line concatenated governance records (CHG-121)" 2 "$rc"
+check_output "T19 E126 names the invalid shape (CHG-121)" "GATE-E126" "$out"
+
 }
 section_T20() {
 # ------------------------------------------------ T20 审计单元识别与"空转显式声明"（v3.21.0）
@@ -3074,6 +3084,10 @@ if [[ -f "$GATE_T36" ]]; then
   report "T36 friction code is GATE-E format" 1 "$(grep -cE '^GATE-E[0-9]+' .agent-state/gate-friction.tsv)"
   out36=$(bash scripts/agent-gate metrics 2>/dev/null | grep -c 'friction_code' || true)
   report "T36 metrics aggregates friction" 1 "$out36"
+  # CHG-121 (batch 0): attribution columns — a 2-column ledger could not say
+  # which change caused the friction.
+  report "T36 friction row carries 5 columns (CHG-121)" 5 "$(awk -F'\t' 'NR==1{print NF}' .agent-state/gate-friction.tsv)"
+  report "T36 friction row records the event kind (CHG-121)" 1 "$(awk -F'\t' 'NR==1 && $4=="DIE"{c++} END{print c+0}' .agent-state/gate-friction.tsv)"
 else
   echo "SKIP T36: agent-gate absent — 跳过摩擦 metrics golden cases"
 fi

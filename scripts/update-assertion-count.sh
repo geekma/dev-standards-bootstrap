@@ -220,6 +220,27 @@ elif [[ -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
     fi
   fi
 fi
+# --- audit assertion-NAME set baseline (CHG-121, batch 0) ---
+# A total-only baseline silently accepts "a whole block never executed but the
+# count matched" (BUG-004). The audit writes every executed assertion name;
+# this syncs the sorted set. Drift (names added/dropped without re-sync) → red.
+AUDIT_ASSERTIONS="$ROOT/tests/.audit-assertions"
+AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names"
+if [[ -f "$AUDIT_NAMES_LAST" ]]; then
+  tmp_names=$(mktemp)
+  sort -u "$AUDIT_NAMES_LAST" > "$tmp_names" 2>/dev/null || true
+  if [[ -f "$AUDIT_ASSERTIONS" ]] && diff -q "$tmp_names" "$AUDIT_ASSERTIONS" >/dev/null 2>&1; then
+    rm -f "$tmp_names"
+  elif [[ "$check" -eq 1 ]]; then
+    echo "drift: tests/.audit-assertions does not match the executed assertion names; run scripts/update-assertion-count.sh" >&2
+    status=1
+    rm -f "$tmp_names"
+  else
+    mv "$tmp_names" "$AUDIT_ASSERTIONS"
+    echo "updated tests/.audit-assertions -> $(wc -l < "$AUDIT_ASSERTIONS" | tr -d ' ') names"
+  fi
+fi
+
 # The README API table also pins the audit's executed count in the
 # `(assertions: N)` / `（断言：N）` form (audit A54b). Sync it from the baseline
 # so a baseline bump can never leave a stale documented number.

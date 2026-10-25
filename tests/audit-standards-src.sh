@@ -43,6 +43,18 @@ fail=0
 warn=0
 failed_names=()
 
+# CHG-121 (batch 0): assertion-NAME set baseline. A total-only baseline cannot
+# tell "152 passed" from "a whole block never executed but the count matched"
+# (BUG-004). Every executed assertion appends its name; A10b compares the set.
+# Two files on purpose: the run-scoped file is filled while the audit executes,
+# the last-complete file is REPLACED only at the end. A3 (early in the run) asks
+# the generator to compare names — reading a half-filled run file would report
+# drift against a complete baseline on every single run.
+AUDIT_NAMES_RUN="${TMPDIR:-/tmp}/audit-run-names.$$"
+AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names"
+: > "$AUDIT_NAMES_RUN" 2>/dev/null || true
+AUDIT_ASSERTIONS_BASELINE="$ROOT/tests/.audit-assertions"
+
 # REQ-965 (v3.45.0): soft bucket — CI mode (AGENT_GUARD_AUDIT_SOFT=1) routes the
 # numeric-closure assertions (A3 count / A3c sync / A10 baseline) here: a miss
 # prints `warn`, never increments `fail`, and stays out of the A10 denominator.
@@ -52,6 +64,7 @@ SOFT="${AGENT_GUARD_AUDIT_SOFT:-}"
 
 report() { # name expected actual
   local name="$1" expected="$2" actual="$3"
+  printf '%s\n' "$name" >> "$AUDIT_NAMES_RUN" 2>/dev/null || true
   if [[ "$expected" == "$actual" ]]; then
     pass=$(( pass + 1 ))
     printf 'ok   %s\n' "$name"
@@ -68,6 +81,7 @@ report() { # name expected actual
 # soft threshold — the warn path masked this at v3.58.0 delivery).
 report_soft() { # name expected actual
   local name="$1" expected="$2" actual="$3"
+  printf '%s\n' "$name" >> "$AUDIT_NAMES_RUN" 2>/dev/null || true
   if [[ "$expected" == "$actual" ]]; then
     pass=$(( pass + 1 ))
     soft_pass=$(( soft_pass + 1 ))
@@ -1861,6 +1875,20 @@ a43_ptr=$(grep -cE 'behavior-extract.sh` 头注释|behavior-extract.sh 头注释
 [[ "$a43_ptr" -ge 1 ]] || { a43_bad=1; echo "A43 layering: playbook lacks the single-source pointer" >&2; }
 report "A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)" 0 "$a43_bad"
 
+# ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
+# 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`
+# （93 处假绿的同型根因）。只有「断言名集合」相等才能证明该跑的都跑了。
+# 位置必须在**全部断言执行完之后、A10 之前**（放前面会与后续断言的集合差 200 条）。
+# A10/A10b 自身的名字排除在比较之外（A10 在本块之后才执行）。
+if [[ -f "$AUDIT_ASSERTIONS_BASELINE" ]]; then
+  a10b_cur=$(grep -vE '^A10b? ' "$AUDIT_NAMES_RUN" 2>/dev/null | sort -u || true)
+  a10b_exp=$(grep -vE '^A10b? ' "$AUDIT_ASSERTIONS_BASELINE" 2>/dev/null | sort -u || true)
+  a10b_d=$(comm -3 <(printf '%s\n' "$a10b_cur") <(printf '%s\n' "$a10b_exp") 2>/dev/null | wc -l | tr -d ' ')
+  report "A10b audit assertion-name set matches baseline (CHG-121)" 0 "$a10b_d"
+else
+  report "A10b audit assertion-name baseline exists (CHG-121; run update-assertion-count.sh)" 1 0
+fi
+
 if [[ -f "$AUDIT_BASELINE" ]]; then
   expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')
   # soft (CI) mode: numeric drift warns instead of blocking; warn stays out of
@@ -1881,6 +1909,9 @@ fi
 # runtime executed total (the old pre-report write recorded N-1 → 静态基线恒比
 # 运行时少一，正是 audit-baseline 差一的根因).
 printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
+# Only a COMPLETED run replaces the name set the generator compares against.
+sort -u "$AUDIT_NAMES_RUN" > "$AUDIT_NAMES_LAST.$$" 2>/dev/null && mv "$AUDIT_NAMES_LAST.$$" "$AUDIT_NAMES_LAST" 2>/dev/null || true
+rm -f "$AUDIT_NAMES_RUN" 2>/dev/null || true
 
 echo
 echo "$pass passed, $fail failed"
