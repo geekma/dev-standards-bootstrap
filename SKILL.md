@@ -76,17 +76,16 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 会话内执法
 
-执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start`：跑 `tests/audit-docs-consistency.sh --only-fail` 亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle`：跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter` 按客户端自适应生成，`--detect` 打印矩阵。**opencode 适配为四段式（v3.64.0，CHG-084）**：①探测 runtime 清单与版本（PATH CLI + Desktop 内置 CLI，`--version` 各自落盘）→ ②实时检索官方插件文档定契约（来源 URL 记入生成物契约头，不做版本→形状静态映射）→ ③生成形状候选 → ④**逐 runtime 沙箱真加载探测 + session-gate 功能标记仲裁，装毕对最终文件复验**——客户端自身 `failed to load plugin` 行 + 功能标记是唯一裁决，形状永不写死；无法确证契约即 fail-closed 拒装（ADAPTER-E11/E12），同机多 runtime 契约互斥时以主用 runtime 择形并显式告警（E13）。硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
+执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start` 跑审计亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle` 跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter` 按客户端自适应生成，`--detect` 打印矩阵。**适配器契约（探测→文档→候选→真加载验证、失败码 ADAPTER-E11/E12/E13、opencode dual-active 形状）的唯一权威是 `resources/templates/install-hook-adapter` 头注释**；硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
 
 ## 变更批次（同日合并）
 
 **同一天**的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/`（v3.24.0 默认化）：
 
-- **只有目录被放宽，产物文件名一字不改**——仍是 15 件同名文件；同批变更用 `## <变更号>` 小节锚点分开。**L2/L3 不得入批**（削弱逐变更证据边界，门禁按记录逐条拒绝）。
-- **解析顺序**：独立 `<docs>/changes/<变更号>/`（永远优先）→ `AGENT_GUARD_CHANGE_DIR` → 含该锚点的 `BATCH-*/`。
-- **变更集合一律从权威名单读**（`00-governance.json` 的 `change_id`），**不从 `## <标题>` 反推**（v3.19.0 实测：反推会造幽灵变更、拒整批）；**批次小节标题一律写 `## <变更号>`**。
-- **治理记录格式无关**（v3.20.0）：`00-governance.json` 任意合法 JSON 写法等价（单行/多行/格式化皆可），读取器先压平再按顶层对象切分；记录须**扁平**（L3 三个 `release_authorized_*` 为扁平字符串字段）。
-- **闭环判定细一档**：共享 `09-changelog.md` 下"文件存在"≠"本变更已关闭"，改判本变更自己的锚点小节是否存在；`metrics` 每变更一行；审计 G7 逐批次核对（记录 ⊆ 锚点、风险 ∈ {L0,L1}、跨批次唯一）。
+- **只有目录被放宽**，产物文件名一字不改；同批变更用 `## <变更号>` 小节锚点分开；**L2/L3 不得入批**（门禁按治理记录逐条拒绝）。
+- **解析顺序与变更集合口径**（独立目录优先 → `AGENT_GUARD_CHANGE_DIR` → 批次；集合从 `00-governance.json` 的 `change_id` 读，**不从标题反推**）**唯一权威 = DS §1.1**。
+- **闭环判定**（"文件存在"≠"本变更已关闭"，改为本变更自己的锚点小节；`metrics` 每变更一行；记录 ⊆ 锚点、风险 ∈ {L0,L1}、跨批次唯一）**唯一权威 = 审计 G7**。
+- **治理记录格式无关**（任意合法 JSON 写法等价；读取器先压平再按顶层对象切分；记录须扁平）**唯一权威 = DS §1.1 与 `governance-state.json` 模板**。
 
 ## 治理自测怎么跑
 

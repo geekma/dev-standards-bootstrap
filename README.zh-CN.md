@@ -315,12 +315,12 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 ## 治理细节
 
-- **执行侧 token 纪律（v3.24.0/v3.25.0；本版校准为 15 条）**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**十五条**（管道过滤/一次拉全/先定位后小窗/勘探下放/无匹配≠通过/并行批量/定向验证/有状态 mock 隔离/禁并行集成测试/长任务等待/环境归因续跑/调用批处理/尾部增量读/冻结树并行派发/分阶段最小读集）；规范 §2.9.6 会话与上下文纪律（单会话单主题，>50 轮或主题切换即 handoff）；§2.5 产物最小表达形态 + 单产物 ≤40 行软上限——目标：压 cache_read（= 上下文水位 × 轮数）。**读集口径**：DS 永不整读，按纪律 15 分阶段定点读（本版消除规则 1 与规则 15 的旧矛盾）。
+- **执行侧 token 纪律**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**十五条**，另有规范 §2.9.6 会话与上下文纪律、§2.5 产物最小表达形态（单产物 ≤40 行软上限）——目标：压 cache_read（= 上下文水位 × 轮数）。**规则正文、编号与读集口径的唯一权威 = 随包 `AGENTS.md` 该节**；本 README 刻意不复述。
 - **同日变更批次（v3.18.0；v3.24.0 默认化；v3.61.2 时序澄清）**：当天**首个 L0/L1** 变更/缺陷**即建** `<docs>/changes/BATCH-YYYYMMDD/`，后续同日变更/缺陷以锚段小节并入，而不是各建一个。放宽的只有目录——产物文件名一字不改，同批变更用 `## <变更号>` 小节锚点区分，批次变更集合从 `00-governance.json` 的权威名单读取（绝不从标题反推）。风险上限不放宽：**L2/L3 必须独立目录**，门禁按治理记录拒绝批次内的 L2/L3（以 `00-governance.json` 名单为准）。
 - **缺陷六件套默认按天入批（v3.35.0；v3.36.0 扁平化）**：当天首个缺陷即建扁平 `docs/bugs/BATCH-YYYYMMDD/`、后续同日缺陷并入——六件套文件名一字不改，用 `## BUG-xxx` 小节锚点区分，当天的追加/回填落在同一套文件里（逐缺陷子目录为历史合法形态，存量不回改）；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）保持天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
 - **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md`、`docs/methodologies/expert-capabilities.md` 与 `docs/methodologies/project-masters.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱）。`docs/STAGE_PLAYBOOK.md` 承载自 DS §2.5/§2.16.6 迁移的操作性细则（条款权威仍在 DS，v3.61.0）。
 - **自进化**：从本 Skill 派生（声明 `derived_from: dev-standards-bootstrap`）的 Skill 独立演进，安装/升级的每条写入路径都会跳过它们；`--force` 也不越过。`bash scripts/bootstrap.sh --derived-report` 可列出派生清单。
-- **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 + 变更 UID 全局唯一 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽 / G8 缺陷六件套存在性 / G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截 / G10 废弃条款 sweep——废止标记须带被替代版本指向（v3.41.0） / G11 UJ↔REQ 覆盖 / G12 五方证据 / G13 三维对照 / G14 源对照 / G15 来源物映射闭合 / G16 未入账改动检测——本地工作树源码面无账（无活跃变更、无当日缺陷组）即 FAIL 点名（§2.17.2b 信号③；干净/非 git 树显式 VACUOUS SKIP 防假绿）/ A 组盖章互证）可在 CI 或本地运行；失败项即回填清单。
+- **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh` 运行 **G1–G16** 不变量组 + A 组盖章互证（逐组定义以脚本头注释为唯一权威，人类索引 = `resources/AGENTS.md` 锚点表），可在 CI 或本地运行；失败项即回填清单。本 README 不再逐组展开。
 
 ## 仓库结构
 
@@ -457,7 +457,7 @@ dev-standards-bootstrap/
 
 | Job | 职责 |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：641） |
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：642） |
 | **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1379 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 

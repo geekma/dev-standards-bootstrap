@@ -744,9 +744,11 @@ at_least "A30 stage-6 dual clause" 1 "$STD" '延伸发现与历史相似检索�
 at_least "A30 discover-register-now clause" 1 "$STD" '会话内发现即登记'
 at_least "A30 erratum cites origin CHG" 1 "$STD" '显式引用原 CHG 号'
 at_least "A30 seven-element history field" 1 "$STD" '历史检索命中的 BUG/CHG 号'
-# A31 枚举面 pin（CHG-058/REQ-978）：G 组清单于双语 README+SKILL 在册（G10 同步漏更复发防线，A29 同族）+ bugfix-log 模板历史相似字段
-at_least "A31 G10 enumerated in EN README" 1 "$ROOT/README.md" 'G10'
-at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
+# A31 枚举面 pin（CHG-058/REQ-978，CHG-120 改指）：G 组索引唯一权威=AGENTS 锚点表（G10 同步漏更复发防线，A29 同族）；
+# 双 README 自 CHG-120 起只留「G1–G16」指针、不再逐组枚举 —— pin 随实现改指唯一索引，同时钉住 README 的指针形态。
+at_least "A31 G10 enumerated in the AGENTS index" 1 "$ROOT/resources/AGENTS.md" 'G10'
+at_least "A31 EN README points at the single audit-group index" 1 "$ROOT/README.md" 'G1–G16'
+at_least "A31 zh README points at the single audit-group index" 1 "$ROOT/README.zh-CN.md" 'G1–G16'
 # CHG-118: pin 随实现更新——audit 实际已是 G1–G16（G15/G16 于 v3.84.0/v3.89.0 加入），
 # 旧 pin 'G1–G14' 是过期字面量，会在 SKILL 如实更新时误判为回退。
 at_least "A31 audit-group enumeration in SKILL (G1-G16)" 1 "$ROOT/SKILL.md" 'G1–G16'
