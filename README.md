@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.88.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.89.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -87,7 +87,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
 | **Release Integrity + Evidence Reuse** | One version authority (`scripts/release.sh check\|bump`) verifies every carrier and rewrites only declared sites; CI runs the full suite once, uploads a tree-keyed receipt, and reuses it for hard audit gates; a workspace suite lock admits one full run at a time and reclaims dead owners |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1308 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1368 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -201,7 +201,8 @@ Command reference (invoked by the above; manual runs are for debugging):
 
 | Command | Purpose |
 |---|---|
-| `begin <change-id>` / `end` | Activate or clear the active change; requires the eight change artifacts and validates governance state (risk level, distinct execution owners; L3 additionally the three `release_authorized_by`-family authorization fields) plus A-layer content markers |
+| `begin <change-id>` / `end` | Activate or clear the active change; the **entry gate** validates the three entry artifacts (00-intent / 00-governance / 00.5) plus governance state (risk level, distinct execution owners; L3 additionally the three `release_authorized_by`-family authorization fields) and A-layer markers; the 01–04 artifact checks run at the stateless stage gates |
+| `--stage spec\|design\|testplan` | Stateless stage gates read disk anchors only — spec: 01 REQ anchors + gap-free numbering; design: 02 three-dimensional impact/rollback + 03 option comparison/existing-paradigm + 03.5 tasks; testplan: 04 TC matrix + TC landing list. Idempotent, no stage-state file; `AGENT_GUARD_STAGE_GATES=0` restores the legacy full begin check (default on = new semantics) |
 | `--stage pre-write` | Validates the active change before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts, otherwise the commit is rejected |
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
@@ -319,7 +320,7 @@ Any change that fails any gate is **blocked from merge to main**.
 - **Defect groups join daily batches by default (v3.35.0, flat since v3.36.0)**: the first same-day defect creates one flat `docs/bugs/BATCH-YYYYMMDD/` directory and later same-day defects join it — six files named exactly as before, told apart by `## BUG-xxx` section anchors, same-day appends land in the same files (per-defect subdirectories remain a legal legacy form). The append-only `docs/bugfix-log.md` index (one dated row per bug) stays the day-level retrieval layer, and a defect's change-track entry (`BUG-*`) may still join a change batch like any other change.
 - **Methodology selection (M0–M3)**: `docs/METHODOLOGY.md` is the sole authority for which methodologies are allowed at which level; `docs/methodologies/development.md`, `docs/methodologies/data-structures.md`, `docs/methodologies/state-trigger-audit.md`, `docs/methodologies/expert-capabilities.md` and `docs/methodologies/project-masters.md` carry the per-item engineering rationale (SOLID/DRY applicability, weak-typing ban, implicit state/trigger-link three-way traversal, expert theory toolboxes). `docs/STAGE_PLAYBOOK.md` carries the operational detail migrated from DS §2.5 / §2.16.6 (clause authority stays in DS, v3.61.0).
 - **Self-evolution**: skills derived from this one (declaring `derived_from: dev-standards-bootstrap`) live and evolve independently, and every installer/upgrade write path skips them; `--force` does not override that. `bash scripts/bootstrap.sh --derived-report` lists them.
-- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity + globally unique change UID / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / G10 deprecation-marker sweep — a deprecation marker must carry its replaced-by version pointer (v3.41.0) / G11 UJ↔REQ coverage / G12 five-party evidence / G13 three-dimensional cross-check / G14 source cross-check / G15 source-artifact mapping closure / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
+- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity + globally unique change UID / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / G10 deprecation-marker sweep — a deprecation marker must carry its replaced-by version pointer (v3.41.0) / G11 UJ↔REQ coverage / G12 five-party evidence / G13 three-dimensional cross-check / G14 source cross-check / G15 source-artifact mapping closure / G16 unaccounted-change detection — a dirty local worktree carrying source-path changes with no active change and no same-day defect batch FAILS by name (standards §2.17.2b signal ③; a clean/non-git tree prints an explicit VACUOUS SKIP) / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
 
 ## Repository Structure
 
@@ -375,7 +376,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.88.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.89.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -389,7 +390,7 @@ dev-standards-bootstrap/
         ├── docs-readme.md                  # One-page docs map (v3.37.0): five layers, roles, update timing (→ <docs>/README.md)
         ├── communication.md                 # Communication-first gate artifact (v3.52.0): round-1 communication draft + user overall confirmation record (→ docs/changes/<id>/00.5-communication.md)
         ├── project                           # Project master set (v3.67.0): 13 SDLC masters P00–P12 + review-record template (→ docs/templates/project/)
-        ├── entry                             # Change-entry skeletons (v3.67.0): the eight begin-required artifacts + conditional 03.6-ui-spec.md + shape templates 01.5/05/07/09 (v3.70.0 CHG-045, → docs/templates/entry/)
+        ├── entry                             # Change-entry skeletons (v3.67.0): the eight entry templates (begin validates the three entry artifacts; 01–04 are checked by the stage gates) + conditional 03.6-ui-spec.md + shape templates 01.5/05/07/09 (v3.70.0 CHG-045, → docs/templates/entry/)
         ├── new-change.sh                   # Change-entry scaffolder (v3.43.0): dedicated-dir vs same-day-batch resolution (→ scripts/new-change)
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -457,7 +458,7 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 | Job | What it does |
 |---|---|
 | **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 641) |
-| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1308 golden-case assertions) in throwaway git repos; bash + git only |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1368 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
 **There is no soft mode and no double run in CI.** golden-case runs the suite once with `-j 4` under a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`, so a regression fails loudly instead of drifting into the job timeout) and uploads `.agent-state/last-suite-receipt.json` for human forensics. source-audit no longer consumes that artifact: A3/A3c/A10 read the **committed baselines** and run as hard gates (no `AGENT_GUARD_AUDIT_SOFT`), which is also why it needs no dependency on the suite job and runs in parallel with it. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
@@ -496,7 +497,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.88.0 | **Last Updated:** 2026-10-21 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.89.0 | **Last Updated:** 2026-10-24 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

@@ -602,7 +602,70 @@ is_code_path() {
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
-# v3.55.0 (CHG-068): single source for the 延伸发现/历史相似检索 check family —
+# v3.89.0 (CHG-117, REQ-1199/1200, DES-1956): unaccounted source-change gate —
+# signal class ③ of §2.17.2b (three signal classes). A source-path diff with
+# NO active change, NO same-day defect batch, and a non-docs-only face is
+# unaccounted work (修完不留痕). The exclusion face is is_code_path above —
+# ONE source for "what is source" (session-gate.sh and the G16 audit lane keep
+# byte-compatible replicas with a pinned sync duty; changing one side obliges
+# the other two).
+# Exemption ladder (fail-closed, never silent):
+#   1. active-change pointer present (git-path, same resolution as stop);
+#   2. same-day defect batch dir present (<bugs_root>/BATCH-<UTCday>/ — anchor
+#      completeness stays with G8 / the existing group validators);
+#   3. AGENT_GUARD_ALLOW_UNACCOUNTED=1 — same ladder as ALLOW_NO_SHIFT /
+#      ALLOW_OVER_RED: the bypass prints a WARN line and appends a
+#      GATE-E125BYPASS row to the friction ledger; the justification is owed
+#      to 09「重要上下文」.
+# SKIP_VERIFY judgment (DES-1958): this check NEVER consults
+# AGENT_GUARD_SKIP_VERIFY — that env only ever waived the verification_command
+# run (v3.28.0) and keeps meaning exactly that. session-gate idle passes the
+# internal marker AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle (parent-process
+# injection only) purely as a stated contract that the unaccounted check must
+# run regardless of any skip semantics; setting both variables by hand has NO
+# bypass effect — the only bypass keys are the three exemptions above.
+day_bug_batch_present() { # -> 0 when <bugs_root>/BATCH-<UTCday>/ exists
+  [[ -d "$bugs_root/BATCH-$(date -u +%Y%m%d)" ]]
+}
+
+unaccounted_exempt() { # -> 0 when the diff face is accounted for
+  local af
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$af" && -s "$af" ]] && return 0
+  day_bug_batch_present
+}
+
+validate_unaccounted_changes() { # <staged|worktree>
+  local mode="$1" files f hits=""
+  case "$mode" in
+    staged) files=$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true) ;;
+    # deletions included: removing source with no account is still 修完不留痕
+    worktree)
+      # stop-lane merged face: porcelain covers staged + unstaged + untracked
+      # (-uall lists untracked DIRECTORY CONTENTS individually — the collapsed
+      # `?? dir/` form would hide a fresh source file inside a new directory).
+      # Cut the XY status pair, keep the rename's NEW path; quoted paths are
+      # unquoted best-effort (core.quotePath names stay an accepted gap — the
+      # same gap changed_files has always had).
+      files=$(git status --porcelain -uall 2>/dev/null | cut -c4- | sed -E 's/.* -> //; s/^"//; s/"$//' || true) ;;
+    *) return 0 ;;
+  esac
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    is_code_path "$f" && hits+="$f"$'\n'
+  done <<< "$files"
+  [[ -n "$hits" ]] || return 0
+  unaccounted_exempt && return 0
+  if [[ "${AGENT_GUARD_ALLOW_UNACCOUNTED:-}" == "1" ]]; then
+    echo "agent-gate: WARN — AGENT_GUARD_ALLOW_UNACCOUNTED=1 bypassed the unaccounted source-change check; the justification is owed to 09「重要上下文」(standards §2.17.2b, v3.89.0 CHG-117)" >&2
+    printf 'GATE-E125BYPASS\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+      >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+    return 0
+  fi
+  die "GATE-E125: source-path changes with no active change and no same-day defect batch ($mode face: $(printf '%s' "$hits" | head -3 | tr '\n' ' ')...) — standards §2.17.2b signal ③, three options: ① open the change (scripts/agent-gate begin <change-id> / new-change scaffold), ② bind the defect batch (bug-autointent / same-day <bugs_root>/BATCH-<UTCday>/ anchors), ③ skip only with AGENT_GUARD_ALLOW_UNACCOUNTED=1 recorded in 09「重要上下文」 (v3.89.0 CHG-117)"
+}
+
+# v3.67.0 (CHG-090, REQ-1056): single source for the 延伸发现/历史相似检索 check family —
 # a section heading (bare substring; declaration lines self-carry it) OR an
 # explicit 未命中（…检索…） declaration line. Callers own their die messages.
 require_section_or_decl() { # <file> <keyword> [decl_regex]
@@ -701,6 +764,121 @@ validate_dimensional_begin() { # <change-dir>
       || die "GATE-E106: chain_change declared but 04 lacks 否定测试 spot-check section — REQ without a regression TC is a test blind spot (standards §2.5 stage 4, v3.68.0)"
   fi
   return 0
+}
+
+# v3.89.0 (CHG-117, DES-1960): E113 TC-landing extracted from
+# validate_dimensional_stop — same scan, same single die literal (T41), two
+# callers: the stop lane (require-section=0 keeps the legacy soft warn for 04
+# files without the section) and the testplan stage gate (require-section=1
+# demands the section before source edits).
+tc_landing_check() { # <04-file> <require-section:0|1>
+  local f="$1" req="$2" tcl tc_path tc_id e113
+  if grep -q '^## TC 落点清单' "$f" 2>/dev/null; then
+    while IFS= read -r tcl; do
+      [[ -n "$tcl" ]] || continue
+      case "$tcl" in *"自动化"*) ;; *) continue ;; esac
+      tc_id=$(printf '%s\n' "$tcl" | sed -E 's/^[[:space:]]*-[[:space:]]*(TC-[A-Za-z0-9_-]+)[[:space:]]*:[[:space:]].*/\1/')
+      tc_path="${tcl#*:}"; tc_path="${tc_path%%（*}"; tc_path="${tc_path%%(*}"
+      tc_path="$(printf '%s' "$tc_path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      e113=""
+      if [[ -z "$tc_path" || ! -f "$tc_path" ]]; then
+        e113="TC landing '$tc_id' points at '$tc_path' which does not exist — every automated TC must land an executable file (standards §2.5 stage 7)"
+      elif ! grep -qE 'describe\(|\bit\(|\btest\(|expect\(|assert|def test_|@Test' "$tc_path" 2>/dev/null; then
+        e113="'$tc_id' landing '$tc_path' carries no recognizable test assertion marker"
+      fi
+      [[ -z "$e113" ]] \
+        || die "GATE-E113: $e113 (v3.71.0; escape review: 人工-typed rows are skipped)"
+    done < <(sed -n '/^## TC 落点清单/,/^## /p' "$f" | grep -E '^[[:space:]]*-[[:space:]]*TC-')
+  elif [[ "$req" == "1" ]]; then
+    stage_gate_fail "G-测试门 (testplan)" \
+      "$f lacks the 「TC 落点清单」 section" \
+      "04 用例矩阵 (TC-xxx + 覆盖维度) plus a TC 落点清单 (every automated TC → real executable test file); then agent-gate --stage testplan"
+  else
+    echo "agent-gate: TC landing soft warning: $f has no 「TC 落点清单」 section (legacy shape passes unblocked; new changes must land TC→file mappings, REQ-1091, v3.71.0)" >&2
+  fi
+}
+
+# v3.89.0 (CHG-117, REQ-1202, DES-1960): stateless stage gates. `--stage
+# spec|design|testplan` re-derives stage completion from disk anchors only —
+# no stage-state file, idempotent and re-entrant, so the legacy "all eight
+# artifacts before begin" habit passes every gate for free. begin narrows to
+# the ENTRY gate (00-intent + 00-governance.json + 00.5 confirmation); the
+# 01-04 checks this used to duplicate at begin live here, and the delivery
+# face (staged/stop/ci) keeps its full artifact checks unchanged — 收窄≠弱化.
+# AGENT_GUARD_STAGE_GATES=0: begin restores the legacy full eight-artifact
+# check and the session-gate check-mode stage predicates skip; an explicit
+# `--stage <gate>` invocation still validates (opt-in action).
+stage_gates_enabled() { [[ "${AGENT_GUARD_STAGE_GATES:-1}" != "0" ]]; }
+
+stage_gate_fail() { # <gate-name> <missing-what> <backfill-what> — single E126 die site (T41)
+  die "GATE-E126: stage gate $1 not satisfied: $2 — backfill $3, then re-run (stateless/idempotent; standards §2.16.2, §2.17; v3.89.0 CHG-117; AGENT_GUARD_STAGE_GATES=0 restores the legacy full begin check)"
+}
+
+unknown_stage() { # <stage> — single E78 die site (T41)
+  die "GATE-E78: unknown stage '$1'"
+}
+
+req_seq_gaps() { # <file> <prefix> -> gap count inside the file's own min..max
+  # Definition-form rows only (G2 audit audit-docs-consistency.sh DEF_RE, same
+  # rule and rationale: prose references must not inflate the numbering set).
+  local re nums
+  re=$(printf '^#{1,6}[[:space:]]*%s-[0-9]+|^\\|[[:space:]]*`?%s-[0-9]+`?[[:space:]]*\\||^-[[:space:]]*`?%s-[0-9]+' "$2" "$2" "$2")
+  nums=$(grep -ohE "$re" "$1" 2>/dev/null \
+    | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq || true)
+  [[ -z "$nums" ]] && { printf 0; return; }
+  printf '%s\n' "$nums" \
+    | awk -v mn="$(printf '%s\n' "$nums" | head -1)" -v mx="$(printf '%s\n' "$nums" | tail -1)" \
+      '{a[$1+0]=1} END{n=0; for(i=mn;i<=mx;i++) if(!(i in a)) n++; print n}'
+}
+
+entry_gate_docs_present() { # <id> — narrowed begin face (v3.89.0, DES-1960)
+  # One die site per code (T41): the entry subset is the SAME loop and the
+  # SAME content checks as the legacy full gate, just scoped to three docs.
+  required_docs_present "$1" entry
+}
+
+stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anchors only
+  local stage="$1" id d gaps
+  id=$(active_change)
+  d=$(change_dir "$id")
+  case "$stage" in
+    spec)
+      [[ -s "$d/01-spec.md" ]] \
+        || stage_gate_fail "G-规格门 (spec)" "docs/changes/$id/01-spec.md missing" "the 01-spec REQ table (REQ-xxx rows)"
+      grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
+        || stage_gate_fail "G-规格门 (spec)" "01-spec has no REQ- anchors (E06 anchor)" "the 01-spec REQ table (REQ-xxx rows)"
+      gaps=$(req_seq_gaps "$d/01-spec.md" REQ)
+      [[ "$gaps" == 0 ]] \
+        || stage_gate_fail "G-规格门 (spec)" "REQ numbering has $gaps gap(s) inside the file's own min..max range" "continuous REQ rows in 01-spec (no gaps, standards §1.2)"
+      ;;
+    design)
+      [[ -s "$d/02-code-impact-analysis.md" && -s "$d/03-modification-plan.md" ]] \
+        || stage_gate_fail "G-设计门 (design)" "02-code-impact-analysis.md / 03-modification-plan.md missing or empty" "02 (业务影响/风险/回滚策略) + 03 (选型比较 + 既有范式关系)"
+      [[ -s "$d/03.5-tasks.md" ]] \
+        || stage_gate_fail "G-设计门 (design)" "docs/changes/$id/03.5-tasks.md missing or empty" "03.5 task breakdown (dependencies + milestones)"
+      grep -qE "^(#{1,6}[[:space:]].*业务影响|\|.*业务影响|[[:space:]]*[-*][[:space:]]+\*\*业务影响)" "$d/02-code-impact-analysis.md" \
+        || stage_gate_fail "G-设计门 (design)" "02 missing business-impact (业务影响) section" "the 02 三维影响 sections (业务影响/风险/回滚策略)"
+      grep -qE "^(#{1,6}[[:space:]].*风险|\|.*风险|[[:space:]]*[-*][[:space:]]+\*\*风险)" "$d/02-code-impact-analysis.md" \
+        || stage_gate_fail "G-设计门 (design)" "02 missing risk (风险) section" "the 02 三维影响 sections (业务影响/风险/回滚策略)"
+      grep -qE "^(#{1,6}[[:space:]].*回滚策略|\|.*回滚策略|[[:space:]]*[-*][[:space:]]+\*\*回滚策略)" "$d/02-code-impact-analysis.md" \
+        || stage_gate_fail "G-设计门 (design)" "02 missing rollback (回滚策略) section" "the 02 三维影响 sections (业务影响/风险/回滚策略)"
+      grep -qE "备选|选型" "$d/03-modification-plan.md" \
+        || stage_gate_fail "G-设计门 (design)" "03 has no option-comparison (备选/选型) content" "the 03 选型比较 section (≥2 candidates)"
+      sed 's/<!--[^>]*-->//g' "$d/03-modification-plan.md" 2>/dev/null | grep -q "既有范式关系" \
+        || stage_gate_fail "G-设计门 (design)" "03 missing 既有范式关系 section or declaration" "the 03 既有范式关系 section (E122 anchor)"
+      ;;
+    testplan)
+      [[ -s "$d/04-test-scripts.md" ]] \
+        || stage_gate_fail "G-测试门 (testplan)" "docs/changes/$id/04-test-scripts.md missing" "04 用例矩阵 (TC-xxx + 覆盖维度) + TC 落点清单"
+      grep -qE "TC-[0-9]+" "$d/04-test-scripts.md" \
+        || stage_gate_fail "G-测试门 (testplan)" "04 has no TC- numbering" "04 用例矩阵 (TC-xxx rows)"
+      grep -q "覆盖维度" "$d/04-test-scripts.md" \
+        || stage_gate_fail "G-测试门 (testplan)" "04 has no coverage-dimension (覆盖维度) column" "04 用例矩阵 with a 覆盖维度 column"
+      tc_landing_check "$d/04-test-scripts.md" 1
+      ;;
+    *) unknown_stage "$stage" ;;
+  esac
+  echo "agent-gate: stage gate $stage green ($id)"
 }
 
 # v3.68.0 (CHG-043): G13/G14 stop lane — the delivery backstop for the
@@ -814,31 +992,12 @@ EOF
   fi
   # v3.71.0 (CHG-046, REQ-1091): TC-landing gate — blocks "test planning posing
   # as tests" (external-project retro: 04 promised ~25 test files, zero materialized).
-  # Only the 「TC 落点清单」 section is scanned (legacy 04 files without the
-  # section keep passing; the discipline layer lands the mapping going forward).
+  # v3.89.0 (CHG-117, DES-1960): the row-level scan moved into tc_landing_check
+  # so the testplan stage gate reuses the SAME die site (E113 single-source).
   # 「人工」-typed entries are skipped (manual walkthroughs have no executable
   # file); automated entries must point at an existing file carrying a
   # test-assertion marker.
-  if grep -q '^## TC 落点清单' "$d/04-test-scripts.md" 2>/dev/null; then
-    local tcl tc_path tc_id
-    while IFS= read -r tcl; do
-      [[ -n "$tcl" ]] || continue
-      case "$tcl" in *"自动化"*) ;; *) continue ;; esac
-      tc_id=$(printf '%s\n' "$tcl" | sed -E 's/^[[:space:]]*-[[:space:]]*(TC-[A-Za-z0-9_-]+)[[:space:]]*:[[:space:]].*/\1/')
-      tc_path="${tcl#*:}"; tc_path="${tc_path%%（*}"; tc_path="${tc_path%%(*}"
-      tc_path="$(printf '%s' "$tc_path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      local e113=""
-      if [[ -z "$tc_path" || ! -f "$tc_path" ]]; then
-        e113="TC landing '$tc_id' points at '$tc_path' which does not exist — every automated TC must land an executable file (standards §2.5 stage 7)"
-      elif ! grep -qE 'describe\(|\bit\(|\btest\(|expect\(|assert|def test_|@Test' "$tc_path" 2>/dev/null; then
-        e113="'$tc_id' landing '$tc_path' carries no recognizable test assertion marker"
-      fi
-      [[ -z "$e113" ]] \
-        || die "GATE-E113: $e113 (v3.71.0; escape review: 人工-typed rows are skipped)"
-    done < <(sed -n '/^## TC 落点清单/,/^## /p' "$d/04-test-scripts.md" | grep -E '^[[:space:]]*-[[:space:]]*TC-')
-  else
-    echo "agent-gate: TC landing soft warning: $d/04-test-scripts.md has no 「TC 落点清单」 section (legacy shape passes unblocked; new changes must land TC→file mappings, REQ-1091, v3.71.0)" >&2
-  fi
+  tc_landing_check "$d/04-test-scripts.md" 0
   # G14d waiver transitivity (v3.70.0，CHG-045 收窄)：①「行为豁免」表行只允许出现在
   # 01-spec「拆除/豁免登记簿」节内——节外豁免行直接 E108（堵"节外豁免行躲检"）；
   # ②触真实业务链的节内豁免行须行内同时含 00.5 引用与「确认」——静默扩大豁免范围
@@ -971,12 +1130,16 @@ confirmation_gate_reason() { # <id> <dir>
   return 0
 }
 
-required_docs_present() {
-  local id="$1" doc d  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
+required_docs_present() { # <id> [entry]
+  local id="$1" scope="${2:-full}" doc d  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
+  local docs=("${required_docs[@]}")
+  # v3.89.0 (CHG-117, DES-1960): "entry" = the narrowed begin face (three
+  # entry docs + entry content checks); default = the legacy full eight.
+  [[ "$scope" == "entry" ]] && docs=(00-intent.md 00-governance.json 00.5-communication.md)
   # (kills "-foo", "foo.", "a..b"; existing CHG-xxx / BUG-<ts> forms all pass).
   [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "GATE-E02: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
   d=$(change_dir "$id")
-  for doc in "${required_docs[@]}"; do
+  for doc in "${docs[@]}"; do
     if [[ "$doc" == "00.5-communication.md" && "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]]; then
       # explicit bypass (§2.17.2d) — v3.60.0: append to the friction ledger so
       # bypass use is visible to metrics/review, not silent; 09 justification
@@ -987,14 +1150,18 @@ required_docs_present() {
     fi
     [[ -s "$d/$doc" ]] || die "GATE-E03: missing required artifact: $d/$doc"
   done
-  validate_artifact_content "$id"
+  if [[ "$scope" == "entry" ]]; then
+    validate_entry_content "$id"
+  else
+    validate_artifact_content "$id"
+  fi
 }
 
 # --- A-layer artifact content checks (DEVELOPMENT_STANDARDS §2.5) -----------
 # Presence alone is not acceptance: a hollow skeleton with no numbering system
 # must not pass as a complete artifact set. These checks are deterministic
 # greps; quality judgment (B layer) stays with independent roles.
-validate_artifact_content() {
+validate_entry_content() { # <id> — shared by the entry gate and the full gate (T41)
   local id="$1" d
   d=$(change_dir "$id")
   grep -q "预期结果" "$d/00-intent.md" \
@@ -1012,6 +1179,12 @@ validate_artifact_content() {
     [[ -z "$CONFIRM_REASON" ]] \
       || die "GATE-E83: communication-first gate: $CONFIRM_REASON — record the user overall confirmation (standards §2.17.2d; L0 single-line declaration allowed; AGENT_GUARD_ALLOW_UNCONFIRMED=1 is the explicit automation bypass)"
   fi
+}
+
+validate_artifact_content() {
+  local id="$1" d
+  d=$(change_dir "$id")
+  validate_entry_content "$id"
   grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
     || die "GATE-E06: $d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
   grep -qE "DES-[0-9]+" "$d/03-modification-plan.md" \
@@ -2253,7 +2426,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.88.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.89.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -2281,7 +2454,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.88.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.89.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -2667,7 +2840,17 @@ case "$command" in
     elif [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]]; then
       die "GATE-E72: change $id is already closed ($d/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
     fi
-    required_docs_present "$id"
+    # v3.89.0 (CHG-117, REQ-1202, DES-1960): begin narrows to the ENTRY gate —
+    # 00-intent (预期结果/开放问题/目录落位 via E86 below) + 00-governance.json
+    # + 00.5 confirmation. The 01-04 artifact checks moved to the stage gates
+    # (`--stage spec|design|testplan`, stateless). AGENT_GUARD_STAGE_GATES=0
+    # restores the legacy full check; staged/stop/ci keep the full bar either
+    # way, so coverage does not shrink — 收窄≠弱化.
+    if stage_gates_enabled; then
+      entry_gate_docs_present "$id"
+    else
+      required_docs_present "$id"
+    fi
     validate_governance_state "$id"
     # v3.27.0 (CHG-027): the same-day batch default is ENFORCED, not advisory —
     # once a BATCH-<today> exists, a new L0/L1 change must join it (standards
@@ -2927,8 +3110,14 @@ case "$command" in
           validate_active_change
         fi
         ;;
-      staged) validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery stop ;;
+      # v3.89.0 (CHG-117, REQ-1202, DES-1960): stateless stage gates. Explicit
+      # invocation validates regardless of AGENT_GUARD_STAGE_GATES (opt-in
+      # action; the switch only controls begin narrowing and the session-gate
+      # check-mode predicates).
+      spec|design|testplan)
+        stage_gate_check "$stage" ;;
+      staged) validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -2943,7 +3132,7 @@ case "$command" in
         fi
         validate_commit_msg "$msgfile"
         ;;
-      *) die "GATE-E78: unknown stage '$stage'" ;;
+      *) unknown_stage "$stage" ;;
     esac
     ;;
   help|--help|-h)
@@ -2953,6 +3142,7 @@ Usage:
   scripts/agent-gate end
   scripts/agent-gate metrics
   scripts/agent-gate --stage pre-write [--file path]
+  scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop               # v3.83.0: successful-verify receipt cache (key = version+cmd+tree-fingerprint+change-id, TTL 30min, rc=0 only; repos whose tests read external mutable state set AGENT_GUARD_VERIFY_CACHE=0)
   scripts/agent-gate --stage ci [--base ref]
@@ -2962,15 +3152,40 @@ Usage:
   scripts/agent-gate check-smoke                 # exit 0/1/2, read-only (v3.71.0)
   scripts/agent-gate preflight <change-id>       # exit 0/1/2, read-only probe, collects all begin- AND stop-side shape anchors in one run (v3.72.0; v3.82.0 adds the delivery shape face E85/E114/E115/E117/E46, round ledger excluded)
 
-begin requires eight non-empty artifacts under the change root:
-00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,
+begin narrows to the ENTRY gate in v3.89.0 (CHG-117, standards §2.17):
+00-intent.md (expected-outcome / open-questions), 00-governance.json, and
+00.5-communication.md (communication-first E83). The 01-04 artifact checks
+moved to the STATELESS STAGE GATES: `--stage spec` (01-spec REQ anchors +
+gap-free REQ numbering), `--stage design` (02 三维影响+回滚 + 03 选型比较 +
+既有范式关系 + 03.5 任务拆解), `--stage testplan` (04 用例矩阵 TC-xxx + 覆盖维度 + TC 落点清单).
+Stage gates read disk anchors only — no stage-state file, idempotent and
+re-entrant, so completing all artifacts up front passes every gate for free.
+Coverage does not shrink: staged/stop/ci keep the full artifact checks
+(收窄≠弱化). AGENT_GUARD_STAGE_GATES=0 restores the legacy begin full check
+and turns the session-gate check-mode stage predicates off (smooth-upgrade
+switch; default on).
+
+Unaccounted source-change gate (v3.89.0, CHG-117, standards §2.17.2b signal
+③): `--stage staged` scans the staged diff, `--stage stop` scans the merged
+worktree face (git status --porcelain); source-path changes (is_code_path
+face) with no active change and no same-day defect batch die GATE-E125.
+Bypass: AGENT_GUARD_ALLOW_UNACCOUNTED=1 — the bypass prints a WARN line and
+lands a GATE-E125BYPASS row in the friction ledger; the justification is owed
+to 09「重要上下文」. This check never consults AGENT_GUARD_SKIP_VERIFY (that
+env still only waives the verification_command run); session-gate idle passes
+the internal parent-process marker AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle to
+state that the unaccounted check must run regardless of any skip semantics.
+
+begin requires the entry artifacts under the change root (v3.89.0 entry gate;
+AGENT_GUARD_STAGE_GATES=0 requires all eight):
+00-intent.md, 00-governance.json, 00.5-communication.md (+ 01-spec.md,
 02-code-impact-analysis.md, 03-modification-plan.md, 03.5-tasks.md,
-04-test-scripts.md. It also enforces
+04-test-scripts.md under the legacy full check). It also enforces
 the project masters (v3.35.0, standards §1.3): all thirteen docs/project/ files
 must exist (escape hatch AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a
 recorded justification). It also enforces
 A-layer content checks (standards §2.5): 00-intent.md must contain the
-expected-outcome and open-questions sections; 00.5-communication.md must
+expected-outcome and open-questions sections (entry gate); 00.5-communication.md must
 carry a non-empty user-overall-confirmation record (v3.52.0 communication-
 first gate, §2.17.2d; L0 single-line declaration allowed); 01-spec.md must use REQ-
 numbering; 02 must cover business impact, risk and rollback; 03-modification-
@@ -2978,7 +3193,10 @@ plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
 carry dependencies/milestones plus a review-input (评审输入) field, or an
 explicit no-breakdown exemption; 04-test-
 scripts.md must use TC- numbering, a coverage-dimension column, and SC-
-scenario numbering. Hollow skeletons fail.
+scenario numbering. Hollow skeletons fail. The 01-04 faces are asserted by
+the stage gates at their §2.16.2 stage and re-asserted by staged/stop/ci
+(v3.89.0 split; the legacy AGENT_GUARD_STAGE_GATES=0 mode keeps them at
+begin).
 
 commit-msg attribution (v3.5.0): a code-bearing commit message must
 reference its change id (e.g. 'feat: CHG-123 implement ...'); the referenced

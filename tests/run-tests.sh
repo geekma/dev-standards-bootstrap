@@ -36,6 +36,10 @@ GATE_SRC="$ROOT/resources/templates/agent-gate.sh"
 BOOT_SRC="$ROOT/scripts/bootstrap.sh"
 AUDIT_SRC="$ROOT/resources/templates/audit-docs-consistency.sh"
 [[ -f "$AUDIT_SRC" ]] || AUDIT_SRC="$ROOT/tests/audit-docs-consistency.sh"
+# hoisted (order-independence for -j; CHG-117 T78/T81 exercise the shipped
+# session-gate; skill-repo layout prefers the template, target repo the local copy)
+SESSION_GATE_SRC="$ROOT/resources/templates/session-gate.sh"
+[[ -f "$SESSION_GATE_SRC" ]] || SESSION_GATE_SRC="$ROOT/scripts/session-gate.sh"
 STD_SRC="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 [[ -f "$STD_SRC" ]] || STD_SRC="$ROOT/docs/DEVELOPMENT_STANDARDS.md"
 AG_SRC="$ROOT/resources/AGENTS.md"
@@ -450,18 +454,22 @@ section_T1b() {
 # ------------------------------------------------- T1b A 层内容校验（§2.5）
 new_repo
 seed_artifacts CHG-110 L1 claude/s-1
+# CHG-117: these A-layer content checks belong to the full lane. Default begin
+# is the narrowed entry gate (T80 pins that); pin the legacy checks through
+# the documented compatibility switch. The partial-set cases below stay on
+# the default begin to prove the narrowing.
 echo "no numbering here" > docs/changes/CHG-110/01-spec.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects spec without REQ- numbering" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 echo "no numbering" > docs/changes/CHG-110/03-modification-plan.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects plan without DES- numbering" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 echo "no numbering" > docs/changes/CHG-110/04-test-scripts.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects tests without TC- numbering" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
@@ -472,50 +480,54 @@ report "begin rejects intent missing expected-outcome section" 2 $?
 # v2.20.0 专业角色标记负例：选型对比 / 覆盖维度 / 02 三维 / 03.5 依赖里程碑
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# plan\n- DES-001: sample design\n' > docs/changes/CHG-110/03-modification-plan.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects plan without option-comparison markers" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# tests\n- TC-001: sample case\n' > docs/changes/CHG-110/04-test-scripts.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects tests without coverage-dimension column" 2 $?
 
 # v3.3.0：04 必含业务场景清单（SC- 编号），缺 SC 拒绝
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# tests\n- TC-001: sample case\n## 用例矩阵\n覆盖维度: 正常流\n' > docs/changes/CHG-110/04-test-scripts.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects tests without SC- scenario numbering" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# impact\n## 技术影响\ncall chain only\n' > docs/changes/CHG-110/02-code-impact-analysis.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects impact doc without business-impact section" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# impact\n## 业务影响\nx\n## 风险\ny\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/changes/CHG-110/02-code-impact-analysis.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects impact doc without rollback strategy" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# tasks\n- T-001: do something\n' > docs/changes/CHG-110/03.5-tasks.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects tasks doc without dependency/milestone markers" 2 $?
 
 # v2.22.0：豁免路径 / 缺 02 / 缺 03.5
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# tasks\nCHG 直接实施（未拆任务，理由: trivial）\n' > docs/changes/CHG-110/03.5-tasks.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin accepts tasks doc with explicit exemption" 0 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
-rm docs/changes/CHG-110/02-code-impact-analysis.md   # 缺影响分析：先分析后方案必须拒绝
+rm docs/changes/CHG-110/02-code-impact-analysis.md   # 缺影响分析：v3.89.0 起 begin 放行（阶段门接管），G-设计门拒绝
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
-report "begin rejects missing impact analysis doc" 2 $?
+report "begin accepts partial set without impact analysis (stage gate owns it)" 0 $?
+scripts/agent-gate --stage design CHG-110 >/dev/null 2>&1
+report "design stage gate rejects missing impact analysis" 2 $?
 
 seed_artifacts CHG-110 L1 claude/s-1
-rm docs/changes/CHG-110/03.5-tasks.md   # 缺任务拆解：必须拒绝
+rm docs/changes/CHG-110/03.5-tasks.md   # 缺任务拆解：begin 放行，G-设计门拒绝
 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
-report "begin rejects missing tasks doc" 2 $?
+report "begin accepts partial set without tasks doc (stage gate owns it)" 0 $?
+scripts/agent-gate --stage design CHG-110 >/dev/null 2>&1
+report "design stage gate rejects missing tasks doc" 2 $?
 
 seed_begin CHG-110 L1 claude/s-1
 report "begin accepts compliant A-layer content markers" 0 $?
@@ -523,7 +535,7 @@ report "begin accepts compliant A-layer content markers" 0 $?
 # CHG-007 / FU-008：编号必须带数字——散文提及 "REQ-"（无编号）不再放行
 seed_artifacts CHG-110 L1 claude/s-1
 printf '# spec\n需求编号参见 REQ- 约定（无具体编号）。\n' > docs/changes/CHG-110/01-spec.md
-scripts/agent-gate begin CHG-110 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-110 >/dev/null 2>&1
 report "begin rejects spec whose REQ- mention carries no number (FU-008)" 2 $?
 
 # CHG-007 / FU-015（BUG-003）：重开已闭合变更必须拒绝——以 09-changelog.md 为闭合标志
@@ -650,6 +662,9 @@ git rm -rq --cached .githooks tests >/dev/null 2>&1 || true
 
 new_repo
 seed_artifacts CHG-400 L1 claude/s-1
+# CHG-117: artifacts alone are no longer an account anchor — the compliant
+# flow opens the change (active-change marker) before touching source.
+scripts/agent-gate begin CHG-400 >/dev/null 2>&1
 commit_all "docs: CHG-400 artifacts"
 echo x > src/a.go
 git add src/a.go
@@ -3358,10 +3373,13 @@ if [[ -s "$GATE44_SRC" ]]; then
   # TC-1052: CHG 轨——02 无历史相似检索节且无未命中声明 → E84；有声明 → 过
   seed_artifacts CHG-970 L1 claude/s-44
   sed -i '' '/历史相似检索/d' docs/changes/CHG-970/02-code-impact-analysis.md 2>/dev/null || sed -i '/历史相似检索/d' docs/changes/CHG-970/02-code-impact-analysis.md
-  out=$(scripts/agent-gate begin CHG-970 2>&1 || true)
+  # CHG-117: begin narrowed to the entry gate; E84 lives on the legacy full
+  # check and the staged/stop delivery face. Pin it through the documented
+  # compatibility switch (default-on narrowing is covered by T80).
+  out=$(AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-970 2>&1 || true)
   check_output "T44 CHG track refuses 02 missing 历史相似检索 (E84)" "GATE-E84" "$out"
   printf '历史相似检索：未命中（根因关键词检索）\n' >> docs/changes/CHG-970/02-code-impact-analysis.md
-  scripts/agent-gate begin CHG-970 >/dev/null 2>&1
+  AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-970 >/dev/null 2>&1
   report "T44 CHG track passes with declaration line" 0 $?
   # TC-1053: BUG 轨——01-diagnosis 缺历史相似检索 → E81
   mkdir -p docs/bugs/BUG-970
@@ -3766,7 +3784,8 @@ section_T50() {
   # CHG-110: tail recalibrated T65→T66 (verify 结果缓存节 joins; TC-1414).
   # CHG-111: tail recalibrated T66→T67 (六不变量机校节 joins; TC-1424~1432).
   # CHG-113: tail recalibrated T67→T68; CHG-115: T68→T73b (基线/事实/编排/前置/变异/汇总六节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T76 ]] && echo 0 || echo 1)"
+  # CHG-117: tail recalibrated T76→T81 (无账门/编辑硬拦/G16/阶段门/阶段感知五节 joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T81 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -3989,16 +4008,18 @@ section_T52() {
 new_repo
 seed_artifacts CHG-1000 L1 claude/s-1
 # E90：声明 ui_change 但无 UJ → begin 拒
+# CHG-117: begin 默认收窄为入口门，E90 由兼容开关下的全量 begin 与 staged
+# 交付面执法；本三态钉用显式开关（默认收窄本身由 T80 钉）。
 printf '# spec\n- **ui_change**：true\n- REQ-001: r\n' > docs/changes/CHG-1000/01-spec.md
-scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
 report "T52 E90 rejects ui_change:true without a UJ" 2 $?
 # E90 负例补强：模板形态的空挂靠（`**挂靠 UJ**：<!-- 待填 -->`）同样拒
 printf '# spec\n- **ui_change**：true\n### REQ-001\n**描述**：r\n**挂靠 UJ**：<!-- 待填：UJ-xxx -->\n' > docs/changes/CHG-1000/01-spec.md
-scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
 report "T52 E90 rejects an unfilled UJ anchor placeholder" 2 $?
 # E90 正例：REQ 块内挂靠真实 UJ → begin 过
 printf '# spec\n- **ui_change**：true\n## 用户任务\n### UJ-001\n- **入口**：记录列表\n### REQ-001\n**描述**：r\n**挂靠 UJ**：UJ-001\n' > docs/changes/CHG-1000/01-spec.md
-scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1000 >/dev/null 2>&1
 report "T52 E90 passes once a UJ anchors the REQ" 0 $?
 echo x > src/a.go
 git add src/a.go
@@ -4162,9 +4183,11 @@ check_output "T53 TC-1130 refusal names GATE-E99" "GATE-E99" "$out"
 bash "$EXTRACT_SRC" proto/index.html > docs/changes/CHG-1020/behavior-inventory.json
 # TC-1233（E109 begin 级，评审中3 补测）：origin_artifact 指向不存在路径 → begin 红
 sed -e 's|origin_artifact\*\*: proto/index.html|origin_artifact**: proto/missing.html|' docs/changes/CHG-1020/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1020/01-spec.md
-scripts/agent-gate begin CHG-1020 >/dev/null 2>&1
+# CHG-117: E109 rides the full (legacy) begin lane and the delivery face;
+# the default narrowed begin is covered by T80.
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1020 >/dev/null 2>&1
 report "T53 TC-1233 E109 begin red: origin artifact path not found" 2 $?
-out=$(scripts/agent-gate begin CHG-1020 2>&1 || true)
+out=$(AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1020 2>&1 || true)
 check_output "T53 TC-1233 refusal names GATE-E109" "GATE-E109" "$out"
 sed -e 's|origin_artifact\*\*: proto/missing.html|origin_artifact**: proto/index.html|' docs/changes/CHG-1020/01-spec.md > .t53-spec.tmp && mv .t53-spec.tmp docs/changes/CHG-1020/01-spec.md
 # TC-1132（E105/E106 begin 级）：chain_change 而无 数据流规格表 / 空单元格 / 无 否定测试
@@ -5902,12 +5925,16 @@ section_T67() {
 new_repo
 seed_begin CHG-1110 L1 claude/s-1
 printf '# plan\n- DES-001: d\n' > docs/changes/CHG-1110/03-modification-plan.md
-scripts/agent-gate begin CHG-1110 >/dev/null 2>&1
+# CHG-117: E122 is a full-lane anchor (legacy begin + delivery); the design
+# stage gate reports it as G-设计门/E126. Pin the E122 code via the documented
+# compatibility switch.
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1110 >/dev/null 2>&1
 rc=$?
-out=$(scripts/agent-gate begin CHG-1110 2>&1 || true)
+out=$(AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1110 2>&1 || true)
 report "T67 TC-1424 E122 rejects 03 without 既有范式关系" 2 "$rc"
 check_output "T67 TC-1424 refusal names GATE-E122" "GATE-E122" "$out"
 seed_begin CHG-1110 L1 claude/s-1
+AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1110 >/dev/null 2>&1
 report "T67 TC-1424 begin passes with 既有范式关系 declaration" 0 $?
 # TC-1425/1426：E123（来源物映射）/E124（业务合理性终审）三态
 new_repo
@@ -6821,8 +6848,254 @@ section_T76() {
   fi
 }
 
+# hoisted (order-independence for -j; CHG-117 T78/T78b/T81 sandbox helper)
+t_install_session_gate() { # -> sandbox scripts/session-gate.sh (target-repo-realistic layout)
+  cp "$SESSION_GATE_SRC" scripts/session-gate.sh && chmod +x scripts/session-gate.sh
+}
+
+t_tc_landing() { # <04-file> <test-file> — append the TC 落点清单 face to a seeded 04
+  printf '\n## TC 落点清单\n\n- TC-001: %s（类型：自动化）\n' "$2" >> "$1"
+}
+
+section_T77() {
+# ------------------------------------------------ T77 gate 无账源码改动门（v3.89.0，CHG-117，REQ-1200，DES-1956）
+# 交付边界 fail-closed：staged 扫暂存面、stop 扫 git status 合并面；豁免阶梯 =
+# 活跃变更 / 当日缺陷组 / AGENT_GUARD_ALLOW_UNACCOUNTED=1（WARN 不静默，09 义务）。
+if [[ ! -f "$GATE_SRC" ]]; then echo "SKIP T77: agent-gate absent"; return 0; fi
+# TC-1483 red: staged source change, no active change, no same-day defect batch
+new_repo
+printf 'chg\n' > src/a.go
+git add src/a.go
+t77_out=$(scripts/agent-gate --stage staged 2>&1); t77_rc=$?
+report "T77 TC-1483 staged unaccounted source change dies E125" 2 "$t77_rc"
+check_output "T77 TC-1483 die message carries the three-option ladder" "bind the defect batch" "$t77_out"
+check_output "T77 TC-1483 die message names the exemption env" "AGENT_GUARD_ALLOW_UNACCOUNTED" "$t77_out"
+check_output "T77 TC-1483 die message anchors standards §2.17.2b" "2\.17\.2b" "$t77_out"
+# TC-1483b stop lane scans the merged worktree face (untracked source file included)
+new_repo
+printf 'x\n' > src/b.py
+t77_out=$(scripts/agent-gate --stage stop 2>&1); t77_rc=$?
+report "T77 TC-1483b stop merged face catches an untracked source file" 2 "$t77_rc"
+check_output "T77 TC-1483b the stop-face red is E125 (not a downstream artifact complaint)" "GATE-E125" "$t77_out"
+# TC-1483c: staged DELETION of tracked source is a source change too (A/M/R/D face)
+new_repo
+printf 'x\n' > src/gone.py
+git add src/gone.py && git commit -qm addsrc
+git rm -q src/gone.py
+t77_out=$(scripts/agent-gate --stage staged 2>&1); t77_rc=$?
+report "T77 TC-1483c staged source deletion is unaccounted (E125)" 2 "$t77_rc"
+check_output "T77 TC-1483c the deletion red is E125" "GATE-E125" "$t77_out"
+# TC-1484 green: active change in place
+new_repo
+seed_begin CHG-1170 L1 claude/s-1
+printf 'chg\n' > src/a.go
+git add src/a.go
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T77 TC-1484 staged source change with an active change passes" 0 $?
+# TC-1485a docs-only staged face never trips the gate (is_code_path exclusion face)
+seed_begin CHG-1171 L1 claude/s-1b
+printf 'docs\n' >> README.md
+git add README.md
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T77 TC-1485a docs-only staged change passes" 0 $?
+# TC-1485b explicit env bypass is loud and does not hide the artifacts backstop
+new_repo
+printf 'chg\n' > src/a.go
+git add src/a.go
+seed_artifacts CHG-1172 L1 claude/s-1c   # complete artifacts face, deliberately NOT begun
+t77_out=$(AGENT_GUARD_ALLOW_UNACCOUNTED=1 scripts/agent-gate --stage staged 2>&1); t77_rc=$?
+report "T77 TC-1485b env bypass releases the unaccounted gate (artifacts face still enforced)" 0 "$t77_rc"
+check_output "T77 TC-1485b bypass is never silent (WARN line, 09 duty)" "WARN" "$t77_out"
+}
+
+section_T78() {
+# ------------------------------------------------ T78 session-gate check 两态 + idle 收窄（v3.89.0，CHG-117，REQ-1199/1200，DES-1957/1958）
+if [[ ! -f "$SESSION_GATE_SRC" ]]; then echo "SKIP T78: session-gate absent"; return 0; fi
+new_repo
+t_install_session_gate
+# TC-1486 red: unaccounted source edit at edit time → exit 2 + three options
+t78_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check 2>&1); t78_rc=$?
+report "T78 TC-1486 check blocks an unaccounted source edit (exit 2)" 2 "$t78_rc"
+check_output "T78 TC-1486 message carries the signal-③ three options" "三选项" "$t78_out"
+check_output "T78 TC-1486 message names AGENT_GUARD_ALLOW_UNACCOUNTED" "ALLOW_UNACCOUNTED" "$t78_out"
+# TC-1486b: Claude PreToolUse hands an ABSOLUTE file_path — normalization, not a silent bypass
+t78_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/src/a.go"}}' "$PWD" | bash scripts/session-gate.sh check 2>&1); t78_rc=$?
+report "T78 TC-1486b absolute hook path still hits the unaccounted gate (exit 2)" 2 "$t78_rc"
+check_output "T78 TC-1486b absolute-path message carries the signal-③ three options" "三选项" "$t78_out"
+# TC-1487 green: accounted edit (active change + G-测试门 face) and docs paths
+seed_begin CHG-1173 L1 claude/s-1
+mkdir -p tests && printf 'assert "t78"\n' > tests/test_a.py
+t_tc_landing docs/changes/CHG-1173/04-test-scripts.md tests/test_a.py
+t78_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t78_rc=$?
+report "T78 TC-1487 accounted source edit with the testplan face in place passes" 0 "$t78_rc"
+t78_rc=0
+printf '{"tool_name":"Write","tool_input":{"file_path":"docs/notes.md"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t78_rc=$?
+report "T78 TC-1487b docs-path edit passes (exclusion face)" 0 "$t78_rc"
+# TC-1488 SKIP_VERIFY narrowing (DES-1958): the env + the internal idle marker
+# never waive the unaccounted gate — only the three structural exemptions do.
+new_repo
+t_install_session_gate
+printf 'x\n' > src/a.go
+git add src/a.go
+t78_out=$(AGENT_GUARD_SKIP_VERIFY=1 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle scripts/agent-gate --stage staged 2>&1); t78_rc=$?
+report "T78 TC-1488a SKIP_VERIFY=1 + idle marker still red on the staged face" 2 "$t78_rc"
+check_output "T78 TC-1488a the red is the unaccounted gate (E125), not a skip" "GATE-E125" "$t78_out"
+t78_out=$(AGENT_GUARD_SKIP_VERIFY=1 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle scripts/agent-gate --stage stop 2>&1); t78_rc=$?
+report "T78 TC-1488b same narrowing on the stop merged face" 2 "$t78_rc"
+check_output "T78 TC-1488b the stop-face red is E125" "GATE-E125" "$t78_out"
+t78_rc=0
+AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle scripts/agent-gate --stage staged >/dev/null 2>&1 || t78_rc=$?
+report "T78 TC-1488c the internal marker alone grants nothing (anti-spoof)" 2 "$t78_rc"
+}
+
+section_T79() {
+# ------------------------------------------------ T79 audit G16 三态（v3.89.0，CHG-117，REQ-1201，DES-1959）
+if [[ ! -f "$AUDIT_SRC" ]]; then echo "SKIP T79: audit-docs-consistency absent"; return 0; fi
+# clean + non-git: explicit VACUOUS SKIP line (G9 anti-false-green family)
+t79_fx=$(mktemp -d); audit_fixture "$t79_fx"
+t79_out=$(bash "$AUDIT_SRC" "$t79_fx" 2>&1); t79_rc=$?
+report "T79 TC-1490a non-git fixture passes with G16 VACUOUS SKIP declared" 0 "$t79_rc"
+check_output "T79 TC-1490a the skip is explicit, not silent" "G16 VACUOUS SKIP" "$t79_out"
+# dirty unaccounted: FAIL names the offending files
+t79_fx2=$(mktemp -d); audit_fixture "$t79_fx2"
+(cd "$t79_fx2" && git init -q && git config user.email t@e.invalid && git config user.name t \
+  && git add -A && git commit -qm init && mkdir -p src && printf 'x\n' > src/leak.py)
+t79_out=$(bash "$AUDIT_SRC" "$t79_fx2" 2>&1); t79_rc=$?
+report "T79 TC-1489 dirty unaccounted worktree fails G16" 1 "$t79_rc"
+check_output "T79 TC-1489 the FAIL names the offending file" "leak\.py" "$t79_out"
+# accounted: same dirty tree + active-change pointer
+t79_af=$(git -C "$t79_fx2" rev-parse --git-path agent-governance/active-change)
+mkdir -p "$t79_fx2/$(dirname "$t79_af")" && printf 'CHG-1173\n' > "$t79_fx2/$t79_af"
+t79_out=$(bash "$AUDIT_SRC" "$t79_fx2" 2>&1); t79_rc=$?
+report "T79 TC-1490b same dirty tree with an active change passes" 0 "$t79_rc"
+check_output "T79 TC-1490b the pass states the account anchor" "G16 local source changes are accounted" "$t79_out"
+# --only-fail on a clean git tree: rc 0 and the skip face is suppressed (DES-1959)
+t79_fx3=$(mktemp -d); audit_fixture "$t79_fx3"
+(cd "$t79_fx3" && git init -q && git config user.email t@e.invalid && git config user.name t \
+  && git add -A && git commit -qm init)
+t79_out=$(bash "$AUDIT_SRC" --only-fail "$t79_fx3" 2>&1); t79_rc=$?
+report "T79 TC-1490c clean tree passes under --only-fail" 0 "$t79_rc"
+report "T79 TC-1490c --only-fail suppresses the G16 skip face" 0 "$(printf '%s\n' "$t79_out" | grep -c 'G16 VACUOUS SKIP')"
+rm -rf "$t79_fx" "$t79_fx2" "$t79_fx3"
+}
+
+section_T80() {
+# ------------------------------------------------ T80 阶段门红→绿 + STAGE_GATES 开关（v3.89.0，CHG-117，REQ-1202，DES-1960）
+if [[ ! -f "$GATE_SRC" ]]; then echo "SKIP T80: agent-gate absent"; return 0; fi
+new_repo
+seed_begin CHG-1174 L1 claude/s-1
+# G-规格门: missing file / numbering gap / idempotent re-entry
+rm docs/changes/CHG-1174/01-spec.md
+t80_rc=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1491a spec gate dies when 01-spec is missing" 2 "$t80_rc"
+printf '# spec\n- REQ-001: a\n- REQ-003: gap\n' > docs/changes/CHG-1174/01-spec.md
+t80_rc=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1491b spec gate dies on a REQ numbering gap" 2 "$t80_rc"
+printf '# spec\n- REQ-001: a\n- REQ-002: b\n' > docs/changes/CHG-1174/01-spec.md
+t80_rc=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1491c spec gate green after backfill (stateless re-entry)" 0 "$t80_rc"
+# G-设计门: 02 rollback face / 03 selection+paradigm faces
+sed -i '' '/回滚策略/d' docs/changes/CHG-1174/02-code-impact-analysis.md 2>/dev/null \
+  || sed -i '/回滚策略/d' docs/changes/CHG-1174/02-code-impact-analysis.md
+t80_rc=0; scripts/agent-gate --stage design >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1492a design gate dies when 02 lacks the rollback face" 2 "$t80_rc"
+printf '## 回滚策略\nrollback: ok\n' >> docs/changes/CHG-1174/02-code-impact-analysis.md
+t80_rc=0; scripts/agent-gate --stage design >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1492b design gate green again" 0 "$t80_rc"
+# G-测试门: 04 用例矩阵 + TC 落点清单
+t80_rc=0; scripts/agent-gate --stage testplan >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1493a testplan gate dies without the TC 落点清单 section" 2 "$t80_rc"
+mkdir -p tests && printf 'assert "t80"\n' > tests/test_a.py
+t_tc_landing docs/changes/CHG-1174/04-test-scripts.md tests/test_a.py
+t80_rc=0; scripts/agent-gate --stage testplan >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1493b testplan gate green once the TC landing lands" 0 "$t80_rc"
+# 八件齐的存量习惯: every stage gate idempotent-green
+t80_all=0
+for t80_g in spec design testplan; do
+  scripts/agent-gate --stage "$t80_g" >/dev/null 2>&1 || t80_all=1
+  scripts/agent-gate --stage "$t80_g" >/dev/null 2>&1 || t80_all=1   # second pass = idempotence
+done
+report "T80 TC-1493c all-artifacts habit passes every stage gate twice (idempotent)" 0 "$t80_all"
+# narrowed begin takes the entry three alone; STAGE_GATES=0 restores the legacy full check
+mkdir -p docs/changes/CHG-1175
+printf '# i\n## 问题\np\n## 预期结果\ne\n## 目录落位\n- **目录落位**：独立目录（t80 fixture）\n## 开放问题\no\n' > docs/changes/CHG-1175/00-intent.md
+printf '{"change_id":"CHG-1175","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-9","test_owner":"claude/s-t","review_owner":"claude/s-r"}\n' > docs/changes/CHG-1175/00-governance.json
+cp docs/changes/CHG-1174/00.5-communication.md docs/changes/CHG-1175/00.5-communication.md
+t80_rc=0; scripts/agent-gate begin CHG-1175 >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1493d narrowed begin passes on the entry three alone" 0 "$t80_rc"
+t80_rc=0; AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1175 >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1493e STAGE_GATES=0 restores the legacy full begin check (missing 01 dies)" 2 "$t80_rc"
+}
+
+section_T81() {
+# ------------------------------------------------ T81 check 阶段感知四态（v3.89.0，CHG-117，REQ-1203，DES-1961）
+if [[ ! -f "$SESSION_GATE_SRC" ]]; then echo "SKIP T81: session-gate absent"; return 0; fi
+new_repo
+t_install_session_gate
+seed_begin CHG-1176 L1 claude/s-1
+# TC-1494a: source edit without the G-测试门 face → exit 2 naming the gate
+rm docs/changes/CHG-1176/04-test-scripts.md
+t81_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check 2>&1); t81_rc=$?
+report "T81 TC-1494a source edit without G-测试门 dies" 2 "$t81_rc"
+check_output "T81 TC-1494a message names the missing gate and the backfill face" "G-测试门" "$t81_out"
+# TC-1494b: 04 with the TC-landing face present → release
+mkdir -p tests && printf 'assert "t81"\n' > tests/test_a.py
+printf '# tests\n- TC-001: sample case\n覆盖维度: 正常流\n' > docs/changes/CHG-1176/04-test-scripts.md
+t_tc_landing docs/changes/CHG-1176/04-test-scripts.md tests/test_a.py
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1494b source edit passes once the testplan face is in place" 0 "$t81_rc"
+# TC-1495a/b: 02 edit needs G-规格门 (01 REQ face in place)
+mv docs/changes/CHG-1176/01-spec.md docs/changes/CHG-1176/01-held.md
+t81_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/02-code-impact-analysis.md"}}' | bash scripts/session-gate.sh check 2>&1); t81_rc=$?
+report "T81 TC-1495a editing 02 without 01 dies at G-规格门" 2 "$t81_rc"
+check_output "T81 TC-1495a message says which gate and what to backfill" "G-规格门" "$t81_out"
+# TC-1495a2: the same red under Claude's ABSOLUTE file_path contract (normalization)
+t81_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/docs/changes/CHG-1176/02-code-impact-analysis.md"}}' "$PWD" | bash scripts/session-gate.sh check 2>&1); t81_rc=$?
+report "T81 TC-1495a2 absolute hook path still dies at G-规格门 (normalized)" 2 "$t81_rc"
+check_output "T81 TC-1495a2 absolute-path message names the spec gate" "G-规格门" "$t81_out"
+mv docs/changes/CHG-1176/01-held.md docs/changes/CHG-1176/01-spec.md
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/02-code-impact-analysis.md"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495b 02 edit passes with 01 back in place" 0 "$t81_rc"
+# TC-1495b2: editing 04 needs the whole G-设计门 face — 03.5 included
+mv docs/changes/CHG-1176/03.5-tasks.md docs/changes/CHG-1176/03.5-held.md
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/04-test-scripts.md"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495b2 editing 04 without 03.5 dies at G-设计门" 2 "$t81_rc"
+mv docs/changes/CHG-1176/03.5-held.md docs/changes/CHG-1176/03.5-tasks.md
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/04-test-scripts.md"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495b2b 04 edit passes with 02+03+03.5 in place" 0 "$t81_rc"
+# TC-1495c: process-action faces are never blocked
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/00.5-communication.md"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495c 00.5 edits are process actions (never blocked)" 0 "$t81_rc"
+# TC-1495d/e: bug credential channel — skeleton alone is NOT enough; the log row completes it
+git rev-parse --git-path agent-governance/active-change | xargs rm -f
+mkdir -p "docs/bugs/BATCH-$(date -u +%Y%m%d)"
+printf '## BUG-9001\n诊断骨架\n' > "docs/bugs/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
+t81_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check 2>&1); t81_rc=$?
+report "T81 TC-1495d batch skeleton without the bugfix-log row does NOT release source edits" 2 "$t81_rc"
+check_output "T81 TC-1495d message names the missing credential" "bug 凭证" "$t81_out"
+printf '### BUG-9001：现象\n' >> docs/bugfix-log.md
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495e bug credential (skeleton + log row) releases the fix edit" 0 "$t81_rc"
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/bugs/BATCH-99990101/01-diagnosis.md"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495f defect-batch-dir edits are process actions (never blocked)" 0 "$t81_rc"
+# STAGE_GATES=0 turns the stage predicate layer off (unaccounted layer stays on)
+mv docs/changes/CHG-1176/01-spec.md docs/changes/CHG-1176/01-held.md
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/02-code-impact-analysis.md"}}' | AGENT_GUARD_STAGE_GATES=0 bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1495g STAGE_GATES=0 skips the stage predicate layer" 0 "$t81_rc"
+mv docs/changes/CHG-1176/01-held.md docs/changes/CHG-1176/01-spec.md
+}
+
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then

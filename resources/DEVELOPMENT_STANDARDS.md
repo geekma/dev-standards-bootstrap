@@ -738,9 +738,9 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 前置(§2.16.1)；**新变更先取新号建目录（§2.15 规则 4）**；先落 00-intent.md / 00-governance.json / 00.5-communication.md（§2.17，变更目录）→ **沟通先行门（§2.17.2d）：00.5 用户整体确认记录落盘后方可生成后续产物正文与源码编辑** → begin 前可跑 agent-gate preflight <变更号>一次报全缺锚（v3.72.0，REQ-1095）→ gate begin（**begin 机校项目总册 13 册在位，§1.3**；Bug 另建缺陷组并声明 bug_ref，§2.5 阶段 6）
  → 阶段1(门禁1) 01-spec：REQ 追加式 + 来源/评审（专家评审 §2.2）
  → 阶段2 02：三维影响(先分析后方案)、时点快照、回滚必含；命中状态/触发链路含「隐式链路三向遍历」
- → 阶段3(门禁1) 03(DES+选型≥2候选)+03.5(T 任务或 CHG 豁免)（专家评审 §2.2）
- → 阶段4(门禁2) 测试 Agent：04 覆盖维度矩阵 + SC 清单(≥80%) + 复用/新增判定 + 打点断言
- → 阶段5 开发 Agent：源码(CHG-xxx/WHY/契约/降级) + 04.5 编码记录 + 供应链（项目管理专家漏项检测 + 安全/性能专家，§2.2）
+ → 阶段3(门禁1) 03(DES+选型≥2候选)+03.5(T 任务或 CHG 豁免)（专家评审 §2.2）——开动前 `agent-gate --stage spec` 须绿（G-规格门，v3.89.0）
+ → 阶段4(门禁2) 测试 Agent：04 覆盖维度矩阵 + SC 清单(≥80%) + 复用/新增判定 + 打点断言——开动前 `agent-gate --stage design` 须绿（G-设计门，v3.89.0）
+ → 阶段5 开发 Agent：源码(CHG-xxx/WHY/契约/降级) + 04.5 编码记录 + 供应链（项目管理专家漏项检测 + 安全/性能专家，§2.2）——开动前 `agent-gate --stage testplan` 须绿（G-测试门，v3.89.0；源码编辑另受 §2.17.2b 信号③编辑时刻硬拦）
  → [命中] 配置/DB §2.6 · AI/LLM §2.9 · 隔离 §2.10 · 发布 §2.7
  → 阶段6(Bug) 缺陷组六件套 + 根因表(「同族推演」行) + BUG 双登记
  → 阶段7(门禁3) 05 新批次 §N(绑 CHG+四要素+覆盖率)，历史不可覆盖
@@ -840,6 +840,8 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 > **本地 Git Hook 强制面（v3.5.0）**：`commit-msg` 归因闸门（`agent-gate --stage commit-msg <msgfile>`，模板 `resources/templates/commit-msg`）——暂存区代码提交的消息须引用有效变更号，豁免阶梯：合并提交、`Revert` 开头、纯文档/纯产物提交（无代码文件）；branch 模式（`--stage ci --base <ref>`）对 diff 触及的变更追加 delivery 证据核验（05+09 与 Observation，§2.17.5）；`pre-push` 模板接线 `--stage ci`（base=upstream，无则 HEAD）。**安装器自动接线（v3.11.0）**：`bootstrap --guard` 自动配置 `core.hooksPath`（不覆盖已有值）、自动生成客户端适配器、自动探测测试命令预填 `.agent-governance.yml`；gate 验证通道四态 absent/placeholder/tampered/unparsable（stop 车道；unparsable→`GATE-E118`）；方言与在途维护见模板注释。
 
+> **无状态阶段门与无账源码改动门（v3.89.0，CHG-117，REQ-1199~1203）**：`agent-gate --stage spec|design|testplan` 为**无状态锚点校验**（G-规格=01 REQ 表+编号连续；G-设计=02 三维+回滚 + 03 选型/既有范式节 + 03.5 任务拆解在位；G-测试=04 用例矩阵+TC 落点清单）——从磁盘产物推断完成度，不写阶段状态文件，幂等可重入（八件齐的存量习惯全门自然绿）。`begin` 相应收窄为**入口门**（00-intent 预期结果/开放问题 + 00-governance.json + 00.5 确认，E83/E86 语义不变），01-04 校验由阶段门承接——**收窄≠弱化**：staged/stop/ci 交付全查不变，覆盖面不减；`AGENT_GUARD_STAGE_GATES=0` 整体关闭阶段门与 check 阶段谓词（存量平滑开关，默认开；显式 `--stage <门>` 调用不受开关影响）。session-gate `check` 模式同步**阶段感知**：源码编辑需 G-测试门在场**或** bug 凭证（当日缺陷组骨架锚点 + bugfix-log 登记行）；02/03 编辑需 G-规格门；04 编辑需 G-设计门；00-intent/00-governance/00.5/01、缺陷组目录与模板骨架为流程动作不拦；取不到 hook 入参路径的客户端降级不拦（staged/audit 兜底）。**会话内无账源码改动**（§2.17.2b 信号③）双层执法：编辑时刻（check exit 2）+ 交付边界（staged 扫暂存面、stop 扫 `git status` 合并面，`GATE-E125`）；`AGENT_GUARD_SKIP_VERIFY` 仅豁免全量回归**不豁免**无账检查（idle 经进程环境注入内部标记 `AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle` 仅声明语义，外部手工设置同值无越权效果）。
+
 #### 2.17.1 传动机制（Artifact Pipeline）
 
 0. **入口件脚手架（v3.38.0）**：`scripts/new-change <变更号> --risk Lx`（随 `--guard` 安装）从 `<docs>/templates/entry/` 生成 begin 必检八件骨架，自动判定专用目录/当日批次归并（语义同 gate）；骨架只含章节标题与待填注释，治理 JSON 执行主体占位 `PENDING` 由 begin 占位符校验拒绝——**脚手架不消除任何门禁，只消除"入口件无模板"的空白**。
@@ -858,9 +860,9 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 4. **自主权上限**：本管线只创建文档骨架与 PR（A2 级，见 §2.17.3），不自动修复、不自动合入、不触碰生产环境。
 5. **复盘义务（v3.75.0，CHG-099，REQ-1112）**：处置闭合前，缺陷组 `01-diagnosis.md` 必须写「应捕获层」行（枚举 `需求|设计|编码前置|测试|门禁|运行监控|无`，`无` 须给理由）并给出该层检查落点或本次补齐的检查——只修不汲取不算闭环（形状见 `bug-diagnosis.md` 模板，审计 A46）。
 
-#### 2.17.2b 缺陷发现入口扩展（Regression/Signal -> Bug，v3.43.0，REQ-958/959，FU-106④）
+#### 2.17.2b 缺陷发现入口扩展（Regression/Signal -> Bug，v3.43.0，REQ-958/959，FU-106④；v3.89.0 增信号③，REQ-1199/1200）
 
-1. **三类信号、双通道分流**：①**主干合入后测试回归红**（无人值守，无对话对象）→ `scripts/bug-autointent` 自动建**完整缺陷六件套**骨架（`docs/bugs/BATCH-<UTCday>/` 扁平 `## BUG-<UTCts>` 锚点，失败元数据预填，severity 不声明=六件全查 fail-closed）+ bugfix-log 双登记；workflow 参考实现 `github-regression-to-bug.yml`（workflow_run 监听测试 workflow，failure 且默认分支）。②**audit 红灯 / gate 摩擦**（会话内，有对话对象）→ Agent **交互三选项**动态处置：建骨架 / 登记 FU（P09）/ 忽略（须 09「重要上下文」理由）；session-gate start 红灯时输出交互提示行（软执法 fail-open，v3.43.0）。
+1. **三类信号、双通道分流**：①**主干合入后测试回归红**（无人值守，无对话对象）→ `scripts/bug-autointent` 自动建**完整缺陷六件套**骨架（`docs/bugs/BATCH-<UTCday>/` 扁平 `## BUG-<UTCts>` 锚点，失败元数据预填，severity 不声明=六件全查 fail-closed）+ bugfix-log 双登记；workflow 参考实现 `github-regression-to-bug.yml`（workflow_run 监听测试 workflow，failure 且默认分支）。②**audit 红灯 / gate 摩擦**（会话内，有对话对象）→ Agent **交互三选项**动态处置：建骨架 / 登记 FU（P09）/ 忽略（须 09「重要上下文」理由）；session-gate start 红灯时输出交互提示行（软执法 fail-open，v3.43.0）。③**会话内无账源码改动**（v3.89.0，CHG-117，REQ-1199/1200）：编辑/暂存源码路径文件时无活跃变更、无当日缺陷组、非纯文档改动 → 与②同走**交互三选项**（建变更骨架 / 缺陷组绑定 / 豁免须 09 理由），且为**双层执法**：编辑时刻硬拦（session-gate `check` 模式 exit 2）+ 交付边界 fail-closed（agent-gate `--stage staged/stop`，`GATE-E125`）；豁免 `AGENT_GUARD_ALLOW_UNACCOUNTED=1` 越权放行打印 WARN 并入 friction 台账，理由须 09 登记；审计 **G16** 披露面兜底（无 hook 仓不静默）。
 2. **频控闸门（防重复建组）**：失败指纹 = 规范化失败项集合的 cksum；同指纹在 `AGENT_GUARD_AUTOBUG_WINDOW`（默认 86400 秒，env 可覆）内**不新建**，仅向原 01-diagnosis「复现记录（自动）」节追加复现行（追加式）；指纹台账 `docs/bugs/.autofingerprint.tsv`（隐藏非 md，不入 G8 扫描面；指纹/窗口/台账机制细则见 `scripts/bug-autointent` 头注释）。
 3. **自主权上限**：同 §2.17.2 第 4 条——只建骨架/追加复现行与 PR（A2 级），处置与修复永远走 §2.5 阶段 6 + 门禁。**复盘义务同 §2.17.2 第 5 条**（本通道建组的缺陷同样须写「应捕获层」）。
 
@@ -1082,4 +1084,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.88.0 | 更新时间：2026-10-21 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.89.0 | 更新时间：2026-10-24 | 全局维护责任人：geekma (geekma@gmail.com)*

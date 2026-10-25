@@ -27,7 +27,7 @@
 | R03 | 缺陷六件套必含清单 | DEVELOPMENT_STANDARDS.md::复现步骤、完整调用链 | L0-bugfix | 硬 | 结构 |
 | R04 | 根因表与同族推演 | DEVELOPMENT_STANDARDS.md::**根因·同族推演（v3.4.0）** | L0-bugfix | 硬 | 结构 |
 | R05 | Bug 修复记录七要素 | DEVELOPMENT_STANDARDS.md::Bug 修复记录七要素 | L0-bugfix | 硬 | 结构 |
-| R06 | 缺陷发现入口（bug-autointent/交互三选项） | DEVELOPMENT_STANDARDS.md::#### 2.17.2b 缺陷发现入口扩展 | L0-bugfix | 硬 | 结构 |
+| R06 | 缺陷发现入口（bug-autointent/交互三选项/无账源码改动信号③——编辑时刻硬拦+交付边界 fail-closed+阶段感知谓词，v3.89.0） | DEVELOPMENT_STANDARDS.md::#### 2.17.2b 缺陷发现入口扩展 | L0-bugfix | 硬 | 结构 |
 | R07 | 诊断前必读总册 | DEVELOPMENT_STANDARDS.md::诊断前必读总册 | L0-bugfix | 硬 | 行为 |
 | R08 | TC 覆盖强制（修复必被 TC 覆盖） | DEVELOPMENT_STANDARDS.md::TC 覆盖强制 | L0-bugfix | 硬 | 行为 |
 | R09 | Bug 修复回填清单 | DEVELOPMENT_STANDARDS.md::#### Bug 修复回填清单 | L0-bugfix | 硬 | 结构 |
@@ -209,6 +209,8 @@
 | GATE-E118 | 验证通道 `ci.verification_command` 有值但形态非法（空值/未闭合引号/非法块指示符/多行裸标量/不在 `ci:` 段内）——fail-closed，不静默跳过 | agent-gate.sh::yml_scalar()/validate_stop()（v3.76.0） |
 | GATE-E120 | scaffold 拒绝非空专用目录——existing 产物会被同 id 遮蔽，换新变更号重跑（fail-closed，幂等保护） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
 | GATE-E121 | scaffold 拒绝对已携带本变更成员锚的产物重入——id 已物化，防双节污染（fail-closed） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
+| GATE-E125 | staged/stop 面存在源路径改动但无活跃变更、无同日缺陷批锚、无豁免 env（无账门 fail-closed） | agent-gate.sh::validate_unaccounted_changes()（v3.89.0，CHG-117） |
+| GATE-E126 | 阶段门（spec/design/testplan）未满足对应产物锚——无状态、幂等、按阶段补产物后复跑 | agent-gate.sh::stage_gate_fail()（v3.89.0，CHG-117） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

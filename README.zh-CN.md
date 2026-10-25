@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.88.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.89.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -87,7 +87,7 @@
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
 | **发布完整性 + 证据复用** | 单一版本权威（`scripts/release.sh check\|bump`）校验全部载体、只重写声明位点；CI 只跑一次全量套件并上传树指纹收据，硬审计复用同一收据；工作区套件锁同一时刻只允许一次全量运行并回收死锁主 |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1308 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1368 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -201,7 +201,8 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 | 命令 | 用途 |
 |---|---|
-| `begin <变更号>` / `end` | 激活或清除活跃变更；要求八件变更产物并校验治理状态（风险等级、互异的执行主体；L3 另须三个 `release_authorized_by` 系列授权字段）与 A 层内容标记 |
+| `begin <变更号>` / `end` | 激活或清除活跃变更；**入口门**只校验入口三件（00-intent / 00-governance / 00.5）与治理状态（风险等级、互异的执行主体；L3 另须三个 `release_authorized_by` 系列授权字段）及 A 层内容标记；01–04 产物校验由无状态阶段门承接 |
+| `--stage spec\|design\|testplan` | 无状态阶段门只读磁盘锚点——spec：01 REQ 表+编号连续；design：02 三维影响/回滚 + 03 选型比较/既有范式关系 + 03.5 任务拆解；testplan：04 用例矩阵+TC 落点清单。幂等、不写阶段状态文件；`AGENT_GUARD_STAGE_GATES=0` 恢复旧 begin 全查（默认开=新语义） |
 | `--stage pre-write` | Agent 写源码前校验活跃变更；无法从 Hook 输入解析目标路径即 fail-closed |
 | `--stage staged` | 暂存的源码变更必须随带匹配的变更产物，否则提交被拒 |
 | `--stage commit-msg <msgfile>` | 归因闸门：含代码的提交必须引用有效变更号（合并/回退/纯文档豁免） |
@@ -319,7 +320,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 - **缺陷六件套默认按天入批（v3.35.0；v3.36.0 扁平化）**：当天首个缺陷即建扁平 `docs/bugs/BATCH-YYYYMMDD/`、后续同日缺陷并入——六件套文件名一字不改，用 `## BUG-xxx` 小节锚点区分，当天的追加/回填落在同一套文件里（逐缺陷子目录为历史合法形态，存量不回改）；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）保持天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
 - **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md`、`docs/methodologies/expert-capabilities.md` 与 `docs/methodologies/project-masters.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱）。`docs/STAGE_PLAYBOOK.md` 承载自 DS §2.5/§2.16.6 迁移的操作性细则（条款权威仍在 DS，v3.61.0）。
 - **自进化**：从本 Skill 派生（声明 `derived_from: dev-standards-bootstrap`）的 Skill 独立演进，安装/升级的每条写入路径都会跳过它们；`--force` 也不越过。`bash scripts/bootstrap.sh --derived-report` 可列出派生清单。
-- **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 + 变更 UID 全局唯一 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽 / G8 缺陷六件套存在性 / G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截 / G10 废弃条款 sweep——废止标记须带被替代版本指向（v3.41.0） / G11 UJ↔REQ 覆盖 / G12 五方证据 / G13 三维对照 / G14 源对照 / G15 来源物映射闭合 / A 组盖章互证）可在 CI 或本地运行；失败项即回填清单。
+- **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh`（G1 版本链 / G2 编号连续 + 变更 UID 全局唯一 / G3 归档同源 / G4 缺陷双登记互证 / G5 RTVM 回填 / G6 必填节 / G7 批次自洽 / G8 缺陷六件套存在性 / G9 项目总册存在+自证+回填清单+功能目录表外 reviews/ 拦截 / G10 废弃条款 sweep——废止标记须带被替代版本指向（v3.41.0） / G11 UJ↔REQ 覆盖 / G12 五方证据 / G13 三维对照 / G14 源对照 / G15 来源物映射闭合 / G16 未入账改动检测——本地工作树源码面无账（无活跃变更、无当日缺陷组）即 FAIL 点名（§2.17.2b 信号③；干净/非 git 树显式 VACUOUS SKIP 防假绿）/ A 组盖章互证）可在 CI 或本地运行；失败项即回填清单。
 
 ## 仓库结构
 
@@ -375,7 +376,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.88.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.89.0（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -389,7 +390,7 @@ dev-standards-bootstrap/
         ├── docs-readme.md                  # 一页文档地图（v3.37.0）：五层职责+更新时机（→ <docs>/README.md）
         ├── communication.md                 # 沟通先行门产物（v3.52.0）：Round-1 沟通稿+用户整体确认记录（→ docs/changes/<id>/00.5-communication.md）
         ├── project                           # 项目级总册（v3.67.0）：SDLC 13 册 P00–P12 + 评审记录模板（→ docs/templates/project/）
-        ├── entry                             # 变更入口骨架（v3.67.0）：begin 必检八件模板 + 条件件 03.6-ui-spec.md + 形状件 01.5/05/07/09（v3.70.0 CHG-045，→ docs/templates/entry/）
+        ├── entry                             # 变更入口骨架（v3.67.0）：入口八件模板（begin 只校验入口三件；01–04 由阶段门校验）+ 条件件 03.6-ui-spec.md + 形状件 01.5/05/07/09（v3.70.0 CHG-045，→ docs/templates/entry/）
         ├── new-change.sh                   # 变更入口脚手架（v3.43.0）：专用目录/当日批次自动判定（→ scripts/new-change）
         ├── CLAUDE.md                       # Claude Code 一行导入
         ├── PULL_REQUEST_TEMPLATE.md        # 带门禁自检的 GitHub PR 模板
@@ -457,7 +458,7 @@ dev-standards-bootstrap/
 | Job | 职责 |
 |---|---|
 | **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：641） |
-| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1308 条 golden-case 断言）；仅依赖 bash + git |
+| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1368 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
 **CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍（600s 墙钟预算 `AGENT_GUARD_CI_WALL_BUDGET_S`，超过即显式失败，不会拖到 job 上限才超时），并上传 `.agent-state/last-suite-receipt.json` 供人工取证；source-audit **不再消费该 artifact**——A3/A3c/A10 直接读**已提交的基线**做硬校验（不再设 `AGENT_GUARD_AUDIT_SOFT`），因此它对套件 job 没有任何依赖，可与之并行。**两个真实 job 受 `timeout-minutes: 15` 约束，聚合门 `agent-governance` 为 5 分钟。** 工作区套件锁（`lib-suite-lock.sh`，随 `--guard` 下发）同一时刻只允许一次全量运行并回收死锁主；收据/红档路径可用 `AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH` 覆盖，自测不会污染真实台账。workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
@@ -496,7 +497,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v3.88.0 | **最后更新：** 2026-10-21 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.89.0 | **最后更新：** 2026-10-24 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

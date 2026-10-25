@@ -56,6 +56,29 @@
 #     （同步计入 other 总口径，既有读者不受影响）；阈值 AGENT_GUARD_EDIT_LIMIT 默认 40，
 #     达阈值 idle/status 亮 YELLOW 要求 09 登记。name-only 降级路径同样可用（不依赖
 #     cmd head）；旧 stats 文件缺 `edits` 键读 0（stat_get 既有兼容语义）。
+#   · 编辑时刻硬拦 + 阶段感知谓词（v3.89.0，CHG-117，REQ-1199/1203，DES-1957/1961）：
+#     `check` 模式在轮次超限判定后新增 edit/write 族谓词——hook 入参（stdin JSON 的
+#     `tool_name` 与 `file_path|path|filePath|target_file` 字段，字段拼写面与 gate
+#     extract_file_from_hook_input 同表）解析出目标路径后：先判无账（源码路径编辑且
+#     无活跃变更、无当日缺陷组、AGENT_GUARD_ALLOW_UNACCOUNTED 未设 → exit 2，§2.17.2b
+#     信号③三选项文案），后判阶段（AGENT_GUARD_STAGE_GATES≠0 时按路径映射：源码编辑
+#     需 G-测试门（活跃变更 04 用例矩阵+TC 落点清单）或 bug 凭证（当日缺陷组骨架锚点
+#     在场 + bugfix-log 登记行）；02/03 编辑需 G-规格门（该变更目录 01 REQ 表在位）；
+#     04 编辑需 G-设计门（02+03+03.5 在位）；00-intent/00-governance/00.5/01、bugs 六件套
+#     目录、模板与骨架路径不拦——流程动作本身）。hook 入参给绝对路径时按 git toplevel /
+#     PWD 归一为仓库相对路径再判归属（Claude PreToolUse 契约），仓库外路径不归本仓治理；
+#     取不到 hook 入参路径的客户端（如
+#     opencode 插件未透传 tool_input）降级为不拦（与轮次检查同降级路径），由 staged/
+#     audit 兜底——三层冗余。stdin 读取带上限（read -t 2），永不闭合的管道不挂死；
+#     `AGENT_GUARD_CHECK_STDIN=0` 可整体关闭入参解析面。源码路径判定用
+#     sg_is_code_path——与 agent-gate is_code_path 同表同源（两侧互钉同步义务，
+#     gate 无法被 source：其顶层有 git 解析与目录副作用）。
+#   · SKIP_VERIFY 收窄判定口径（v3.89.0，CHG-117，DES-1958）：idle 的 stop 等价调用
+#     在 AGENT_GUARD_SKIP_VERIFY=1 之外只注入内部标记
+#     AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle（仅本脚本→gate 的进程环境传递）；该标记
+#     不构成任何豁免——gate 侧「无账源码改动」检查根本不消费 SKIP_VERIFY（豁免键
+#     只有三个结构性豁免 + AGENT_GUARD_ALLOW_UNACCOUNTED），外部手工设置同值对也无
+#     越权效果（防伪装：标记只声明语义，不是开关）。
 #
 # 零依赖：bash 3.2+、git；被调脚本缺失时降级为显式提示，不猜不编。
 set -uo pipefail
@@ -230,6 +253,67 @@ emit() { # 摘要进 stdout（Claude SessionStart 会把 stdout 注入上下文�
   printf '%s\n' "$1"
 }
 
+# v3.89.0（CHG-117，DES-1957/1961）：路径根解析 + 源码路径判定。
+# sg_cfg_path 与 agent-gate cfg_path 同规则（env > .agent-governance.yml paths.* > 默认）。
+sg_cfg_path() { # <key> <default>
+  local v=""
+  if [[ -f .agent-governance.yml ]]; then
+    v=$(sed -nE "s/^[[:space:]]*$1:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+        | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$v" ]] || v="$2"
+  printf '%s' "$v"
+}
+sg_re_escape() { printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g'; }
+DOCS_ROOT="${AGENT_GUARD_DOCS_DIR:-$(sg_cfg_path docs docs)}"
+SCRIPTS_ROOT="${AGENT_GUARD_SCRIPTS_DIR:-$(sg_cfg_path scripts scripts)}"
+TESTS_ROOT="${AGENT_GUARD_TESTS_DIR:-$(sg_cfg_path tests tests)}"
+GITHOOKS_ROOT="${AGENT_GUARD_GITHOOKS_DIR:-$(sg_cfg_path githooks .githooks)}"
+CHANGE_ROOT="${AGENT_GUARD_CHANGE_ROOT:-$(sg_cfg_path change_root "$DOCS_ROOT/changes")}"
+BUGS_ROOT="${AGENT_GUARD_BUGS_ROOT:-$(sg_cfg_path bugs_root "$DOCS_ROOT/bugs")}"
+DOCS_RE=$(sg_re_escape "$DOCS_ROOT"); SCRIPTS_RE=$(sg_re_escape "$SCRIPTS_ROOT")
+TESTS_RE=$(sg_re_escape "$TESTS_ROOT"); GITHOOKS_RE=$(sg_re_escape "$GITHOOKS_ROOT")
+CHANGE_ROOT_RE=$(sg_re_escape "$CHANGE_ROOT")
+
+sg_is_code_path() { # <path>
+  # session-gate 本地副本——与 scripts/agent-gate 的 is_code_path **同表同源**：
+  # 同步义务互钉（两处各留注释；gate 不能被 source——其顶层有 git 解析与目录解析副作用）。
+  # 改任一侧的排除面/扩展名表，必须同步另一侧与 tests/audit-docs-consistency.sh 的 G16 副本。
+  local p="$1"
+  [[ "$p" =~ ^(${DOCS_RE}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
+  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$) ]] && return 1
+  [[ "$p" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
+}
+
+# v3.89.0（CHG-117）：hook 入参路径归一化。Claude PreToolUse 的 tool_input.file_path
+# 是**绝对路径**，而 sg_is_code_path / CHANGE_ROOT 前缀判定按仓库相对路径设计——
+# 不归一则 02/03/04 阶段谓词永不命中（静默假绿）。按 git toplevel（含符号链接的物理
+# 路径兜底）或 PWD 剥前缀；仓库外路径原样返回，由调用方降级不拦。
+sg_repo_relative() { # <path> -> repo-relative when inside the worktree, unchanged otherwise
+  local p="$1" root rp rr
+  p="${p#./}"
+  [[ "$p" == /* ]] || { printf '%s' "$p"; return 0; }
+  root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$root" ]]; then
+    case "$p" in
+      "$root"/*) printf '%s' "${p#"$root"/}"; return 0 ;;
+    esac
+    # macOS /var → /private/var 类符号链接：hook 与 git 可能各自给出物理/逻辑路径
+    rp=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P) || rp=""
+    rr=$(cd "$root" 2>/dev/null && pwd -P) || rr=""
+    if [[ -n "$rp" && -n "$rr" ]]; then
+      case "$rp" in
+        "$rr") printf '%s' "${p##*/}"; return 0 ;;
+        "$rr"/*) printf '%s' "${rp#"$rr"/}/${p##*/}"; return 0 ;;
+      esac
+    fi
+  fi
+  if [[ -n "${PWD:-}" ]]; then
+    case "$p" in "$PWD"/*) printf '%s' "${p#"$PWD"/}"; return 0 ;; esac
+  fi
+  printf '%s' "$p"
+}
+
 if [[ "$mode" == "count" ]]; then
   sub="${2:-}"
   case "$sub" in
@@ -300,6 +384,115 @@ if [[ "$mode" == "check" ]]; then
       echo "session-gate: HARD STOP — ${t} turns >= ${limit} (§2.9.6): run /handoff, write the handoff doc, continue in a new session; AGENT_GUARD_SESSION_TURN_LIMIT=<n> re-arms (justification goes in 09 重要上下文)." >&2
       exit 2
     fi
+  fi
+  # v3.89.0 (CHG-117, REQ-1199/1203, DES-1957/1961): edit-time hard stop.
+  # 判定口径唯一权威 = 本文件头注释「编辑时刻硬拦」块；这里只落实现。
+  sg_edit_predicate() {
+    # 仅 edit/write 族工具参与（纪律 12 命名族口径，与 count tool 同源）
+    local lc
+    lc=$(printf '%s' "${SG_TOOL:-}" | tr '[:upper:]' '[:lower:]')
+    case "$lc" in *edit*|*write*) ;; *) return 0 ;;
+    esac
+    [[ -n "${SG_FILE:-}" ]] || return 0   # 取不到路径 = 降级不拦（三层冗余兜底）
+    # 绝对路径归一（见 sg_repo_relative 头注）；仓库外路径不归本仓治理
+    SG_FILE=$(sg_repo_relative "$SG_FILE")
+    [[ "$SG_FILE" != /* ]] || return 0
+    # 流程动作本身永不拦：00-intent / 00-governance / 00.5 / 01-spec、bugs 根下、
+    # 目标仓入口模板目录（<docs>/templates/ —— new-change 骨架生成面）
+    case "$SG_FILE" in
+      */00-intent.md|*/00-governance.json|*/00.5-communication.md|*/01-spec.md) return 0 ;;
+      "$BUGS_ROOT"/*|"$DOCS_ROOT"/templates/*) return 0 ;;
+    esac
+    # 路径归属：变更产物 02/03/04 面或源码面
+    local cid sgdir
+    if [[ "$SG_FILE" =~ ^${CHANGE_ROOT_RE}/([^/]+)/ ]] && printf '%s' "${SG_FILE##*/}" | grep -qE '^(02|03|04)-'; then
+      # 02/03/04 阶段谓词（REQ-1203）：AGENT_GUARD_STAGE_GATES=0 时整体跳过——
+      # 仅源码面保留无账判定（REQ-1199 语义），文档产物面回归放行
+      [[ "${AGENT_GUARD_STAGE_GATES:-1}" == "0" ]] && return 0
+      cid="${BASH_REMATCH[1]}"
+      sgdir="$CHANGE_ROOT/$cid"
+      case "$SG_FILE" in
+        */02-*|*/03-*)
+          # G-规格门：该变更目录 01 REQ 表在位
+          if [[ ! -s "$sgdir/01-spec.md" ]] || ! grep -qE 'REQ-[0-9]+' "$sgdir/01-spec.md" 2>/dev/null; then
+            echo "session-gate: HARD STOP — 编辑 $SG_FILE 缺 G-规格门（docs/changes/$cid/01-spec.md 的 REQ 表在位即放行）；补 01-spec REQ-xxx 行后重试，或 AGENT_GUARD_STAGE_GATES=0 关闭阶段谓词层（理由登记 09）(standards §2.16.2/§2.17, v3.89.0 CHG-117)" >&2
+            exit 2
+          fi ;;
+        */04-*)
+          # G-设计门：该变更目录 02（三维+回滚）+03（选型/范式）+03.5（任务拆解）在位
+          design_gate=1
+          [[ -s "$sgdir/02-code-impact-analysis.md" ]] || design_gate=0
+          [[ -s "$sgdir/03-modification-plan.md" ]] || design_gate=0
+          [[ -s "$sgdir/03.5-tasks.md" ]] || design_gate=0
+          if [[ "$design_gate" != 1 ]]; then
+            echo "session-gate: HARD STOP — 编辑 $SG_FILE 缺 G-设计门（docs/changes/$cid/ 02 三维影响+回滚、03 选型比较+既有范式关系 与 03.5 任务拆解 在位即放行）；补产物后重试，或 AGENT_GUARD_STAGE_GATES=0 关闭阶段谓词层（理由登记 09）(standards §2.16.2/§2.17, v3.89.0 CHG-117)" >&2
+            exit 2
+          fi ;;
+      esac
+      return 0
+    fi
+    # 源码面（sg_is_code_path 同表同源，gate is_code_path 互钉）
+    sg_is_code_path "$SG_FILE" || return 0   # 非源码非产物 = 不拦（docs-only 天然豁免）
+    # 无账判定（REQ-1199，先于阶段判定）：无活跃变更 + 无当日缺陷组 + 未豁免 → 硬拦
+    local af paid=0
+    af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+    [[ -n "$af" && -s "$af" ]] && paid=1
+    [[ -d "$BUGS_ROOT/BATCH-$(date -u +%Y%m%d)" ]] && paid=1
+    if [[ "$paid" != 1 ]]; then
+      if [[ "${AGENT_GUARD_ALLOW_UNACCOUNTED:-}" == "1" ]]; then
+        return 0   # 豁免不静默：staged/stop 的 GATE-E125BYPASS 台账承接（此处无台账写面，不重复）
+      fi
+      echo "session-gate: HARD STOP — 编辑/写入源码路径 $SG_FILE 但无活跃变更、无当日缺陷组（§2.17.2b 信号③三选项）：①建骨架 scripts/agent-gate begin <变更号>（或 new-change）；②缺陷走当日组 docs/bugs/BATCH-<UTC日>/（bug-autointent）；③忽略须 09「重要上下文」登记理由（AGENT_GUARD_ALLOW_UNACCOUNTED=1 仅显式豁免用）(v3.89.0 CHG-117)" >&2
+      exit 2
+    fi
+    # 阶段判定（REQ-1203）：AGENT_GUARD_STAGE_GATES=0 时整体跳过，仅剩无账判定
+    [[ "${AGENT_GUARD_STAGE_GATES:-1}" == "0" ]] && return 0
+    if [[ "$paid" == 1 && -n "$af" && -s "$af" ]]; then
+      # 活跃变更在场：G-测试门（04 用例矩阵 + TC 落点清单在位）
+      local id d04 ok4=1
+      id=$(tr -d '[:space:]' < "$af" 2>/dev/null || true)
+      d04="$CHANGE_ROOT/$id/04-test-scripts.md"
+      [[ -s "$d04" ]] || ok4=0
+      [[ "$ok4" == 1 ]] && { grep -qE 'TC-[0-9]+' "$d04" 2>/dev/null || ok4=0; }
+      [[ "$ok4" == 1 ]] && { grep -q '^## TC 落点清单' "$d04" 2>/dev/null || ok4=0; }
+      if [[ "$ok4" != 1 ]]; then
+        echo "session-gate: HARD STOP — 源码编辑缺 G-测试门（docs/changes/$id/04-test-scripts.md 用例矩阵 TC-xxx + 覆盖维度 与 「TC 落点清单」节在位即放行）；先过 agent-gate --stage testplan，或 AGENT_GUARD_STAGE_GATES=0 关闭阶段谓词层（理由登记 09）(standards §2.16.2/§2.17, v3.89.0 CHG-117)" >&2
+        exit 2
+      fi
+      return 0
+    fi
+    # 当日缺陷组在场（无活跃变更）：bug 凭证 = 组骨架锚点 + bugfix-log 登记行
+    local bd bid cred=0
+    bd="$BUGS_ROOT/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
+    if [[ -s "$bd" ]]; then
+      while IFS= read -r bid; do
+        [[ -n "$bid" ]] || continue
+        if [[ -s "$DOCS_ROOT/bugfix-log.md" ]] && grep -qE "^### ${bid}([[:space:]]|：|:|$)" "$DOCS_ROOT/bugfix-log.md" 2>/dev/null; then
+          cred=1; break
+        fi
+      done < <(grep -ohE '^##[[:space:]]+BUG-[0-9A-Za-z_-]+' "$bd" 2>/dev/null | awk '{print $2}')
+    fi
+    if [[ "$cred" != 1 ]]; then
+      echo "session-gate: HARD STOP — 源码编辑缺 bug 凭证（当日缺陷组 01-diagnosis 骨架锚点 + docs/bugfix-log.md 「### BUG-xxx」登记行在位即放行；或补全后重试）(standards §2.17.2b/§2.5 阶段 6, v3.89.0 CHG-117)" >&2
+      exit 2
+    fi
+    return 0
+  }
+  if [[ "${AGENT_GUARD_CHECK_STDIN:-1}" == "1" ]] && [[ ! -t 0 ]]; then
+    # 有界读取：适配器入参是有限 JSON 块，EOF 即回；永不闭合的管道 2s 超时放弃
+    #（降级=不拦）。末段无换行（printf 型 JSON、heredoc 差异）也要并入——read 以
+    # EOF 退出时残留值必须补收，否则整块入参被静默丢弃=降级假绿。取字段拼写面与
+    # gate extract_file_from_hook_input 同表。
+    SG_INPUT=""
+    sg_ln=""
+    while IFS= read -r -t 2 sg_ln; do
+      SG_INPUT+="$sg_ln"$'\n'
+      sg_ln=""
+    done
+    [[ -n "$sg_ln" ]] && SG_INPUT+="$sg_ln"
+    SG_TOOL=$(printf '%s' "$SG_INPUT" | sed -nE 's/.*"tool_name"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' | head -1)
+    SG_FILE=$(printf '%s' "$SG_INPUT" | sed -nE 's/.*"(file_path|path|filePath|target_file)"[[:space:]]*:[[:space:]]*"([^"\\]+)".*/\2/p' | head -1)
+    sg_edit_predicate
   fi
   exit 0
 fi
@@ -427,7 +620,11 @@ if [[ -n "$active" && -x "$GATE" ]]; then
   # 软执法：跳过 verification_command（可能是 mvn test 级全量回归，session.idle
   # 每轮触发跑不起）。结构/证据类校验照跑；全量回归由真实交付线（Claude Stop
   # hook / pre-commit / CI）承担——那里不设 AGENT_GUARD_SKIP_VERIFY。
-  out=$(AGENT_GUARD_SKIP_VERIFY=1 bash "$GATE" --stage stop 2>&1 | tail -40); rc=$?
+  # v3.89.0（CHG-117，DES-1958）：追加内部标记 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle
+  # （仅本调用链注入）。判定口径见头注释「SKIP_VERIFY 收窄判定口径」：gate 的
+  # 无账源码改动检查不消费 SKIP_VERIFY，无账照跑照红；标记只声明语义不构成豁免，
+  # 外部手工设置同值对无越权效果。
+  out=$(AGENT_GUARD_SKIP_VERIFY=1 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle bash "$GATE" --stage stop 2>&1 | tail -40); rc=$?
   if [[ "$rc" -eq 0 ]]; then
     emit "session-gate: stop checks GREEN ($active)"
     report_add "- gate --stage stop：通过（${active}）"
