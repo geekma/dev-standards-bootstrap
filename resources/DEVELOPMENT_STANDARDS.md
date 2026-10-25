@@ -181,7 +181,7 @@
 >
 > **编号规则唯一引用**：连续递增、不跳号、不重号、历史不重排（详见 §1.2，不再重复）。**机校**：G2 查连续性，G2b 查 `change_uid` 全局唯一与历史重号别名。
 >
-> **路径根可配置（v3.15.0）**：全文出现的 `docs/`、`scripts/`、`tests/`、`.githooks/` 均为**默认目录根**，可按仓库习惯在 `.agent-governance.yml` 的 `paths:` 段改写（安装参数 `--docs-dir` 等会同步写入该段，并改写模板**内部**的路径引用）。解析优先级：`AGENT_GUARD_<KEY>_DIR` 环境变量 > 配置文件 > 内置默认；**不配置即等于默认，行为与本版之前逐字节一致**。机器读取方：`scripts/agent-gate`、`scripts/check-standards-compliance.sh`、`tests/audit-docs-consistency.sh`、`scripts/bootstrap.sh`。
+> **路径根可配置（v3.15.0）**：全文出现的 `docs/`、`scripts/`、`tests/`、`.githooks/` 均为**默认目录根**，可按仓库习惯在 `.agent-governance.yml` 的 `paths:` 段改写（安装参数 `--docs-dir` 等会同步写入该段，并改写模板**内部**的路径引用）。解析优先级：`AGENT_GUARD_<KEY>_DIR` 环境变量 > 配置文件 > 内置默认；**不配置即等于默认，行为与本版之前逐字节一致**。机器读取方：`scripts/agent-gate`、`scripts/check-standards-compliance.sh`、`tests/audit-docs-consistency.sh`，以及安装器（源仓维护者工具，不随 payload 下发）。
 >
 > **不可配置项（v3.15.0）**：①`.github/`——平台只从 `.github/workflows/` 与 `.github/`/仓库根读 workflow 与 PR 模板，换名即流水线静默失效，做成旋钮是假的；②**契约名**——`AGENTS.md` 文件名、`scripts/agent-gate` 落点名、变更 15 件契约产物名（+ 条件件 `handoff.md` = 16；另 `03.6-ui-spec.md` 在 `ui_change: true` 时必需）、缺陷六件套名、required-check 名 `agent-governance`。它们一旦随仓库而异，跨仓逐文件比对与"装一次、迁移到任意仓库"的能力即失效。**参数化目录根是便利，参数化契约名是解体。**
 >
@@ -1084,4 +1084,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.90.0 | 更新时间：2026-10-24 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.90.1 | 更新时间：2026-10-24 | 全局维护责任人：geekma (geekma@gmail.com)*

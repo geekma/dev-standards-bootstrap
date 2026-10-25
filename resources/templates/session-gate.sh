@@ -99,6 +99,10 @@ STATE_DIR=".agent-state"
 REPORT="$STATE_DIR/session-gate-last.md"
 STATS_FILE="$STATE_DIR/session-tool-stats.json"
 WATER_FILE="$STATE_DIR/session-water.json"
+# v3.90.1 (CHG-123, P0-15): runtime ledgers for cost metering. Not contract
+# artifacts — they live in .agent-state/ and are excluded from tree fingerprints.
+MODEL_FILE="$STATE_DIR/model-profile.json"
+MODEL_TSV="$STATE_DIR/model-transitions.tsv"
 
 mkdir -p "$STATE_DIR"
 
@@ -112,7 +116,13 @@ mkdir -p "$STATE_DIR"
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S; }
 
 reset_state() {
-  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"edits":0,"updated_at":"%s"}\n' "$(now_iso)" > "$STATS_FILE"
+  # v3.90.1 (CHG-123, P0-15): the first 8 keys keep their old names AND order so
+  # every existing reader (`awk -F`/`sed`/substring golden) keeps working; the
+  # metering keys are APPENDED and missing ones read as 0/"" for old files.
+  sg_model_resolve
+  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"edits":0,"tokens_in":%s,"tokens_out":%s,"context_chars":0,"wall_s":0,"stage":"%s","change":"%s","model_id":"%s","ctx_window":%s,"exec_source":"%s","updated_at":"%s"}\n' \
+    "$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" 0)" "$(sg_positive_int "${AGENT_GUARD_TOKENS_OUT:-}" 0)" \
+    "${AGENT_GUARD_STAGE:-}" "${AGENT_GUARD_CHANGE:-}" "$SG_MODEL_ID" "$SG_CTX_WINDOW" "$(sg_exec_source)" "$(now_iso)" > "$STATS_FILE"
   printf '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)" > "$WATER_FILE"
   # v3.63.0（REQ-1033，DES-1822）：会话起点标记——agent-gate begin 的 GATE-E89
   # 以「交付时刻晚于本会话起点」判定同会话交付后未换挡；新会话 start 重置起点后放行。
@@ -126,12 +136,143 @@ stat_get() { # <key> — 缺键（旧格式 stats 文件，CHG-096 前schema）�
 }
 
 stat_write() { # turns bash grep other sleep_polls full_suite total edits
-  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"edits":%s,"updated_at":"%s"}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$(now_iso)" > "$STATS_FILE"
+  #   + tokens_in tokens_out context_chars wall_s stage change model_id ctx_window exec_source
+  # Old 8 keys stay in their original positions on purpose (CHG-101 compatibility rule).
+  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"edits":%s,"tokens_in":%s,"tokens_out":%s,"context_chars":%s,"wall_s":%s,"stage":"%s","change":"%s","model_id":"%s","ctx_window":%s,"exec_source":"%s","updated_at":"%s"}\n' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}" "${16}" "${17}" "$(now_iso)" > "$STATS_FILE"
 }
 
 water_write() { # <turns>
   printf '{"turns":%s,"session":"","updated_at":"%s"}\n' "$1" "$(now_iso)" > "$WATER_FILE"
+}
+
+# ---- 执行成本计量（v3.90.1，CHG-123，P0-15）----------------------------------
+# 单一写者：计量只活在这里（hook 已接线），agent-gate 只读盘。
+# 窗口不写死：env > 同 model_id 缓存画像 > 保守 128000（assumed + WARN）。
+# 估算来源只作趋势，**不参与任何 exit 2 判定**（§17.2 来源分级）。
+
+sg_positive_int() { # <value> <fallback> -> value when it is a bare positive int
+  case "$1" in ''|*[!0-9]*) printf '%s' "$2" ;; *) printf '%s' "$1" ;; esac
+}
+
+stat_get_s() { # <key> — string field; missing key -> empty (old-schema compatible)
+  local v
+  v=$(sed -n "s/.*\"$1\":[[:space:]]*\"\([^\"]*\)\".*/\1/p" "$STATS_FILE" 2>/dev/null | head -1)
+  printf '%s' "${v:-}"
+}
+
+sg_profile_get() { # <key> — read a string or numeric field from model-profile.json
+  [[ -s "$MODEL_FILE" ]] || return 0
+  sed -n "s/.*\"$1\":[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$MODEL_FILE" 2>/dev/null | head -1
+}
+
+sg_model_resolve() { # sets SG_MODEL_ID / SG_CTX_WINDOW / SG_WINDOW_SOURCE
+  local env_model env_win cached_model cached_win mid win src
+  env_model="${AGENT_GUARD_MODEL:-}"
+  env_win=$(sg_positive_int "${AGENT_GUARD_CONTEXT_WINDOW:-}" "")
+  cached_model=$(sg_profile_get model_id)
+  cached_win=$(sg_positive_int "$(sg_profile_get context_window)" "")
+  mid="${env_model:-$cached_model}"
+  [[ -n "$mid" ]] || mid="unknown"
+  if [[ -n "$env_win" ]]; then
+    win="$env_win"; src="declared"
+  elif [[ -n "$cached_win" && -n "$cached_model" && "$cached_model" != "unknown" && "$mid" == "$cached_model" ]]; then
+    win="$cached_win"; src="cached"
+  else
+    win=128000; src="assumed"
+  fi
+  SG_MODEL_ID="$mid"; SG_CTX_WINDOW="$win"; SG_WINDOW_SOURCE="$src"
+}
+
+sg_profile_write() { # persist SG_* as the runtime model profile; write failure is a WARN
+  printf '{"model_id":"%s","provider":"%s","context_window":%s,"source":"%s","observed_at":"%s"}\n' \
+    "$SG_MODEL_ID" "${AGENT_GUARD_MODEL_PROVIDER:-unknown}" "$SG_CTX_WINDOW" "$SG_WINDOW_SOURCE" "$(now_iso)" \
+    > "$MODEL_FILE" 2>/dev/null \
+    || echo "session-gate: WARN — cannot write $MODEL_FILE; cost metering degrades to unknown (P0-15)" >&2
+}
+
+sg_wall_s() { # session wall clock in seconds (0 when the start marker is absent/unparsable)
+  local st ep now
+  now=$(date -u +%s)
+  st=""
+  [[ -s "$STATE_DIR/session-started.json" ]] \
+    && st=$(sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p' "$STATE_DIR/session-started.json" | head -1)
+  [[ -n "$st" ]] || { printf '0'; return 0; }
+  ep=$(iso_to_epoch "$st")
+  [[ "$ep" =~ ^[0-9]+$ && "$ep" -gt 0 ]] || { printf '0'; return 0; }
+  printf '%s' "$(( now - ep ))"
+}
+
+sg_used_pct() { # <used_tokens> <window>
+  local used="$1" win="$2"
+  [[ "$win" =~ ^[0-9]+$ && "$win" -gt 0 ]] || { printf '0'; return 0; }
+  [[ "$used" =~ ^[0-9]+$ ]] || used=0
+  printf '%s' "$(( used * 100 / win ))"
+}
+
+sg_h_level() { # <pct> -> H0/H1/H2/H3 (H1 >=60, H2 >=75, H3 >=90)
+  local p="$1"
+  [[ "$p" =~ ^[0-9]+$ ]] || p=0
+  if [[ "$p" -ge 90 ]]; then printf 'H3'
+  elif [[ "$p" -ge 75 ]]; then printf 'H2'
+  elif [[ "$p" -ge 60 ]]; then printf 'H1'
+  else printf 'H0'; fi
+}
+
+sg_exec_source() { # measured only when BOTH token counts are supplied explicitly
+  if [[ -n "$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" "")" && -n "$(sg_positive_int "${AGENT_GUARD_TOKENS_OUT:-}" "")" ]]; then
+    printf 'measured'
+  else
+    printf 'estimated'
+  fi
+}
+
+sg_note_model_switch() { # <old_model> <new_model> <old_win> <new_win> <used>
+  local old="$1" new="$2" ow="$3" nw="$4" used="$5" pct
+  [[ -n "$old" && "$old" != "unknown" && "$old" != "$new" ]] || return 0
+  printf '%s\t%s\t%s\t%s\t%s\n' "$(now_iso)" "$old" "$new" "${ow:-0}" "${nw:-0}" >> "$MODEL_TSV" 2>/dev/null || true
+  pct=$(sg_used_pct "$used" "$nw")
+  emit "session-gate: WARN — model changed ${old} -> ${new}; window ${ow:-?} -> ${nw:-?} (used≈${pct}%, $(sg_h_level "$pct")) — budgets recomputed on the new window (§17.2.1)"
+  # report_add lives further down (status/report lane); count runs before it is
+  # defined, so only call it when the session report lane is actually loaded.
+  if declare -F report_add >/dev/null 2>&1; then
+    report_add "- WARN: 模型切换 ${old}→${new}，窗口 ${ow:-?}→${nw:-?}，已用≈${pct}%（$(sg_h_level "$pct")）——预算按新窗口重算"
+  fi
+}
+
+sg_stats_refresh() { # 读当前计量 + 模型切换检测；结果放 SG_TIN/SG_TOUT/SG_CCHARS/SG_WALL/SG_STAGE/SG_CHANGE/SG_EXEC
+  local old_model old_win used
+  old_model=$(stat_get_s model_id)
+  old_win=$(sg_positive_int "$(stat_get ctx_window)" "")
+  sg_model_resolve
+  SG_CCHARS=$(sg_positive_int "$(stat_get context_chars)" 0)
+  SG_TOUT=$(sg_positive_int "${AGENT_GUARD_TOKENS_OUT:-}" 0)
+  SG_TIN=$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" "")
+  SG_EXEC=$(sg_exec_source)
+  SG_WALL=$(sg_wall_s)
+  SG_STAGE="${AGENT_GUARD_STAGE:-$(stat_get_s stage)}"
+  SG_CHANGE="${AGENT_GUARD_CHANGE:-$(stat_get_s change)}"
+  if [[ -n "$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" "")" ]]; then
+    used=$SG_TIN
+  else
+    used=$(( SG_CCHARS / 4 ))
+  fi
+  [[ "$SG_TOUT" -gt 0 ]] && used=$(( used + SG_TOUT ))
+  sg_note_model_switch "$old_model" "$SG_MODEL_ID" "$old_win" "$SG_CTX_WINDOW" "$used"
+}
+
+sg_cost_line() { # one human-readable cost line for status/idle (never fails)
+  local used win src pct lvl tin tout wall model
+  model=$(stat_get_s model_id); [[ -n "$model" ]] || model=$(sg_profile_get model_id)
+  win=$(sg_positive_int "$(stat_get ctx_window)" "")
+  [[ -n "$win" ]] || win=$(sg_positive_int "$(sg_profile_get context_window)" 128000)
+  src=$(sg_profile_get source)
+  used=$(sg_positive_int "$(stat_get tokens_in)" 0)
+  [[ "$used" -gt 0 ]] || used=$(( $(sg_positive_int "$(stat_get context_chars)" 0) / 4 ))
+  pct=$(sg_used_pct "$used" "$win"); lvl=$(sg_h_level "$pct")
+  tin=$(stat_get tokens_in); tout=$(stat_get tokens_out); wall=$(sg_wall_s)
+  printf -- '- 成本：model=%s 窗口=%s（source=%s）已用≈%s%%（%s）tokens_in=%s/%s out=%s（%s）墙钟=%ss\n' \
+    "${model:-unknown}" "$win" "${src:-unknown}" "$pct" "$lvl" "$tin" "$used" "$tout" "${SG_EXEC_SRC_SHOWN:-$(stat_get_s exec_source)}" "$wall"
 }
 
 # v3.73.0（CHG-096，REQ-1102）：仓库根 .agent-governance.yml 声明的「锚定全量形态」
@@ -144,6 +285,12 @@ gov_full_test_patterns() {
 
 full_suite_hit() { # <cmd_head> — 命中任一声明 pattern 即 0；非法正则该条跳过（fail-open 不报错）
   local pats p
+  # v3.90.1 (CHG-123, P0-11): the counter measures "full BUSINESS regression"
+  # purchases. Governance self-tests (this repo's own suite/audit) are not the
+  # thing the discipline protects — counting them rewarded running them.
+  case "$1" in
+    *tests/run-tests.sh*|*audit-docs-consistency*|*audit-standards-src*|*verify-all*) return 1 ;;
+  esac
   pats=$(gov_full_test_patterns) || return 1
   [[ -n "$pats" ]] || return 1
   IFS=',' read -r -a __ftp <<< "$pats" || true
@@ -157,8 +304,10 @@ full_suite_hit() { # <cmd_head> — 命中任一声明 pattern 即 0；非法正
 }
 
 stats_line() {
-  printf 'session-gate: session stats — turns %s, bash %s, grep %s, other %s (resource discipline baseline: bash <= 20)' \
+  printf 'session-gate: session stats — turns %s, bash %s, grep %s, other %s (resource discipline baseline: bash <= 20)\n' \
     "$(stat_get turns)" "$(stat_get bash)" "$(stat_get grep)" "$(stat_get other)"
+  # v3.90.1 (CHG-123, P0-15): cost line — model / window(+source) / used% / H level / tokens / wall.
+  sg_cost_line
 }
 
 # v3.76.0 (CHG-100, REQ-1117): 验证通道状态行——读 agent-gate stop 落盘的最近一次
@@ -354,10 +503,13 @@ if [[ "$mode" == "count" ]]; then
   case "$sub" in
     turn)
       [[ -s "$STATS_FILE" ]] || reset_state
+      sg_stats_refresh
       t=$(stat_get turns); t=$(( ${t:-0} + 1 ))
       b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other)
       sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total); e=$(stat_get edits)
-      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "${tot:-0}" "${e:-0}"
+      stat_write "$t" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "${tot:-0}" "${e:-0}" \
+        "${SG_TIN:-0}" "${SG_TOUT:-0}" "${SG_CCHARS:-0}" "${SG_WALL:-0}" "${SG_STAGE:-}" "${SG_CHANGE:-}" \
+        "${SG_MODEL_ID:-unknown}" "${SG_CTX_WINDOW:-128000}" "${SG_EXEC:-estimated}"
       water_write "$t"
       limit="${AGENT_GUARD_SESSION_TURN_LIMIT:-50}"
       if [[ "$t" -ge "$limit" && $(( (t - limit) % 10 )) -eq 0 ]]; then
@@ -382,6 +534,13 @@ if [[ "$mode" == "count" ]]; then
       cmd_head=$(printf '%s' "$cmd_head" | head -1 | cut -c1-200)
       lc=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
       [[ -s "$STATS_FILE" ]] || reset_state
+      # P0-15: observed context bytes = tool name + command head (+ raw stdin when
+      # the `-` form was used). Tokens are then chars/4 unless env declares them.
+      sg_bytes=$(( ${#name} + ${#cmd_head} ))
+      [[ -n "${stdin_json:-}" ]] && sg_bytes=$(( sg_bytes + ${#stdin_json} ))
+      sg_stats_refresh
+      SG_CCHARS=$(( SG_CCHARS + sg_bytes ))
+      if [[ -z "$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" "")" ]]; then SG_TIN=$(( SG_CCHARS / 4 )); fi
       t=$(stat_get turns); b=$(stat_get bash); g=$(stat_get grep); o=$(stat_get other)
       sp=$(stat_get sleep_polls); fs=$(stat_get full_suite); tot=$(stat_get total); e=$(stat_get edits)
       case "$lc" in
@@ -398,7 +557,9 @@ if [[ "$mode" == "count" ]]; then
           fs=$(( ${fs:-0} + 1 ))
         fi
       fi
-      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "$(( ${tot:-0} + 1 ))" "${e:-0}"
+      stat_write "${t:-0}" "${b:-0}" "${g:-0}" "${o:-0}" "${sp:-0}" "${fs:-0}" "$(( ${tot:-0} + 1 ))" "${e:-0}" \
+        "${SG_TIN:-0}" "${SG_TOUT:-0}" "${SG_CCHARS:-0}" "${SG_WALL:-0}" "${SG_STAGE:-}" "${SG_CHANGE:-}" \
+        "${SG_MODEL_ID:-unknown}" "${SG_CTX_WINDOW:-128000}" "${SG_EXEC:-estimated}"
       ;;
     *) echo "usage: scripts/session-gate.sh count turn|count tool <name|-> [cmd-head]" >&2; exit 2 ;;
   esac
@@ -586,6 +747,12 @@ esac
 report_init
 
 if [[ "$mode" == "start" ]]; then
+  # v3.90.1 (CHG-123, P0-15): resolve the window before the reset so the stats
+  # snapshot is stamped with the same model/window the session will run under.
+  sg_model_resolve
+  sg_profile_write
+  [[ "$SG_WINDOW_SOURCE" != "assumed" ]] \
+    || emit "session-gate: WARN — context window unverified for model '${SG_MODEL_ID}' (assumed 128000); declare with AGENT_GUARD_MODEL / AGENT_GUARD_CONTEXT_WINDOW (P0-15)"
   reset_state
   if [[ ! -f "$AUDIT" ]]; then
     emit "session-gate: $AUDIT not found — cross-doc audit skipped (install --core first)"

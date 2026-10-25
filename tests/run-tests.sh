@@ -19,6 +19,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # (CHG-087 lesson), so the hash is taken once from a fixed anchor. Empty when
 # $ROOT is not a git repo (tarball installs) → the receipt is skipped entirely.
 SUITE_HEAD=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
+SUITE_KEY=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)
 # v3.79.0 (CHG-103, REQ-1144): tree-fingerprint source. ONE recipe shared by the
 # emitter (closing receipt block below) and scripts/update-assertion-count.sh
 # (consumer); the lib degrades to an empty string on ANY failure (non-git repo,
@@ -89,7 +90,58 @@ check_output() { # name pattern actual_output -- pass if pattern matches
   fi
 }
 
+# ---- v3.90.1 (CHG-123, P0-3/P0-14): cost ledger + per-section timing ------
+# One append-only TSV for every measurable action: section / TC / audit / verify.
+# Columns: ts kind id suite_key cost_s setup_s cache exit   (8 columns, header once).
+# Write failure is a WARN and never changes a verdict.
+LEDGER_FILE="${AGENT_GUARD_COST_LEDGER:-$ROOT/.agent-state/cost-ledger.tsv}"
+NEW_REPO_SETUP_S=0
+
+ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit>
+  mkdir -p "$(dirname "$LEDGER_FILE")" 2>/dev/null || return 0
+  [[ -s "$LEDGER_FILE" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n' > "$LEDGER_FILE" 2>/dev/null || return 0
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "${SUITE_KEY:-}" "$3" "$4" "$5" "$6" \
+    >> "$LEDGER_FILE" 2>/dev/null \
+    || { printf 'warning: could not append to %s (non-fatal)\n' "$LEDGER_FILE" >&2; return 0; }
+}
+
+# v3.90.1 (CHG-123, P0-13): source-vs-target layout predicate. The old proxy was
+# "does scripts/facts.sh exist" — a filename, not a capability. Target repos now
+# get -T auto and their own runner, so the gate must key on the LAYOUT instead.
+is_source_layout() {
+  [[ -d "$ROOT/resources/templates" && -f "$ROOT/tests/audit-standards-src.sh" ]]
+}
+
+# v3.90.1 (CHG-123, P0-2): liveness snapshot for waiters — status=running is
+# written BEFORE the first section and rewritten after each SERIAL section, so a
+# poller can tell "still working" from "finished". Parallel runs update at the
+# boundaries only (race-free); the per-section `[done]` lines carry live detail.
+progress_write() { # <status: running|done|failed>
+  local pf tmp mode
+  pf="${AGENT_GUARD_SUITE_PROGRESS_PATH:-$ROOT/.agent-state/suite-progress.json}"
+  mkdir -p "$(dirname "$pf")" 2>/dev/null || return 0
+  tmp="$pf.$$"
+  mode="serial"; [[ "${JOBS:-1}" -ge 2 ]] && mode="parallel"
+  {
+    printf '{"run_id":"%s-%s","status":"%s","head":"%s","mode":"%s","wall_s":%d,"sections":[' \
+      "$$" "$(date -u +%s)" "$1" "${SUITE_KEY:-}" "$mode" "$SECONDS"
+    _p_first=1
+    for _t in ${_TIMINGS[@]+"${_TIMINGS[@]}"}; do
+      _tid="${_t%%:*}"; _rest="${_t#*:}"; _tc="${_rest%%:*}"; _ts="${_rest#*:}"
+      [[ "$_p_first" == "1" ]] || printf ','
+      _p_first=0
+      printf '{"id":"%s","cost_s":%s,"setup_s":%s}' "$_tid" "$_tc" "$_ts"
+    done
+    printf '],"generated_at":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } > "$tmp" 2>/dev/null && mv -f "$tmp" "$pf" 2>/dev/null \
+    || { rm -f "$tmp" 2>/dev/null; printf 'warning: could not write %s (non-fatal)\n' "$pf" >&2; }
+}
+
 new_repo() {
+  local _nr_t0
+  _nr_t0=$(date +%s)
+  NEW_REPO_SETUP_S=0
   REPO=$(mktemp -d "${TMPDIR:-/tmp}/agent-gate-test.XXXXXX")
   cd "$REPO"
   git init -q
@@ -127,6 +179,7 @@ new_repo() {
   echo init > README.md
   git add README.md scripts
   git commit -qm init
+  NEW_REPO_SETUP_S=$(( $(date +%s) - _nr_t0 ))
 }
 
 # 创建合规七产物（L1：无需独立 test/review owner；内容满足 §2.5 A 层验收标记）
@@ -2188,15 +2241,15 @@ new_repo
 seed_begin CHG-842 L1 claude/s-1
 report "T19 one-line records still begin (no regression)" 0 $?
 
-# ⑥ 结构校验（CHG-121，batch 0）：同一行拼接的 JSON 对象必须被 E126 拒绝。
+# ⑥ 结构校验（CHG-121，batch 0；CHG-123 拆码 E134）：同一行拼接的 JSON 对象必须被拒绝。
 #    实测 12/12 个批次台账外部 json.load 失败，正是这个形状；内部读取器容忍它，
 #    所以坏台账一直静默存在。
 new_repo
 seed_artifacts CHG-843 L1 claude/s-1
 printf '{"change_id": "CHG-843", "risk_level": "L1", "spec_author":"a/b/c","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x"}{"change_id": "CHG-844", "risk_level": "L1"}\n' > docs/changes/CHG-843/00-governance.json
 out=$(scripts/agent-gate begin CHG-843 2>&1); rc=$?
-report "T19 E126 refuses same-line concatenated governance records (CHG-121)" 2 "$rc"
-check_output "T19 E126 names the invalid shape (CHG-121)" "GATE-E126" "$out"
+report "T19 E134 refuses same-line concatenated governance records (CHG-123)" 2 "$rc"
+check_output "T19 E134 names the invalid shape (CHG-123)" "GATE-E134" "$out"
 
 }
 section_T20() {
@@ -2713,9 +2766,124 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   check_output "T26 idle carries yellow light" "bash calls 26 > 20" "$out"
   out=$(AGENT_GUARD_SESSION_TURN_LIMIT=5 bash scripts/session-gate.sh count turn 2>&1)
   if printf '%s' "$out" | grep -q "TURN LIMIT"; then report "T26 under-limit stays silent" 1 0; else report "T26 under-limit stays silent" 0 0; fi
+  # ---- v3.90.1 (CHG-123, P0-15): token / model / context metering ----------
+  rm -f .agent-state/model-profile.json
+  out=$(bash scripts/session-gate.sh start 2>&1)
+  check_output "T26 cost: unknown model flags assumed window" "WARN — context window unverified" "$out"
+  check_output "T26 cost: assumed window is conservative 128000" '"context_window":128000,"source":"assumed"' "$(cat .agent-state/model-profile.json)"
+  AGENT_GUARD_MODEL=m1 AGENT_GUARD_CONTEXT_WINDOW=64000 bash scripts/session-gate.sh start >/dev/null 2>&1
+  check_output "T26 cost: env declares model+window" '"context_window":64000,"source":"declared"' "$(cat .agent-state/model-profile.json)"
+  check_output "T26 cost: stats carries model+window keys" '"model_id":"m1","ctx_window":64000' "$(cat .agent-state/session-tool-stats.json)"
+  out=$(AGENT_GUARD_MODEL=m2 AGENT_GUARD_CONTEXT_WINDOW=32000 AGENT_GUARD_TOKENS_IN=25600 bash scripts/session-gate.sh count tool Bash "echo x" 2>&1)
+  check_output "T26 cost: model switch recomputes (80% => H2)" "used≈80%, H2" "$out"
+  check_output "T26 cost: transition row appended" "m1	m2	64000	32000" "$(cat .agent-state/model-transitions.tsv)"
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  check_output "T26 cost: status prints cost line" "- 成本：model=m2 窗口=32000（source=declared）已用≈80%（H2）" "$out"
+  printf '{"turns":3,"bash":1,"grep":0,"other":2,"total":3,"updated_at":"2020-01-01T00:00:00Z"}\n' > .agent-state/session-tool-stats.json
+  bash scripts/session-gate.sh count tool Bash "ls" >/dev/null 2>&1
+  check_output "T26 cost: old-schema stats stay readable" '"turns":3' "$(cat .agent-state/session-tool-stats.json)"
+  check_output "T26 cost: old-schema gains ctx_window key" '"ctx_window":' "$(cat .agent-state/session-tool-stats.json)"
+  # ---- v3.90.1 (CHG-123, P0-11): full_suite counts BUSINESS regressions only
+  printf 'full_test_patterns: mvn test,tests/run-tests.sh\n' > .agent-governance.yml
+  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"edits":0,"updated_at":"2020-01-01T00:00:00Z"}\n' > .agent-state/session-tool-stats.json
+  bash scripts/session-gate.sh count tool Bash "bash tests/run-tests.sh" >/dev/null 2>&1
+  check_output "T26 full_suite ignores governance self-test" '"full_suite":0' "$(cat .agent-state/session-tool-stats.json)"
+  bash scripts/session-gate.sh count tool Bash "mvn test" >/dev/null 2>&1
+  check_output "T26 full_suite counts business regression" '"full_suite":1' "$(cat .agent-state/session-tool-stats.json)"
+  rm -f .agent-governance.yml
 else
   echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
 fi
+
+}
+section_T26b() {
+# ------------------------------------------------ T26b gate cost line (v3.90.1, CHG-123 P0-15)
+new_repo
+SG26B="$ROOT/resources/templates/session-gate.sh"
+GT26B="$ROOT/resources/templates/agent-gate.sh"
+if [[ -s "$SG26B" && -s "$GT26B" ]]; then
+  cp "$SG26B" scripts/session-gate.sh
+  cp "$GT26B" scripts/agent-gate
+  chmod +x scripts/session-gate.sh scripts/agent-gate
+  seed_artifacts CHG-930 L1 claude/s-26b
+  printf '# 09\n' > docs/changes/CHG-930/09-changelog.md
+  bash scripts/session-gate.sh start >/dev/null 2>&1
+  bash scripts/session-gate.sh count tool Bash "echo x" >/dev/null 2>&1
+  out=$(scripts/agent-gate cost-line CHG-930 2>&1); rc=$?
+  report "T26b cost-line exits 0" 0 "$rc"
+  check_output "T26b cost line lands in 09" "本次执行成本" "$(cat docs/changes/CHG-930/09-changelog.md)"
+  before=$(grep -c '本次执行成本' docs/changes/CHG-930/09-changelog.md || true)
+  scripts/agent-gate cost-line CHG-930 >/dev/null 2>&1
+  after=$(grep -c '本次执行成本' docs/changes/CHG-930/09-changelog.md || true)
+  report "T26b cost line idempotent per session" 0 "$(( after - before ))"
+  out=$(scripts/agent-gate cost-line 2>&1 || true)
+  check_output "T26b missing change id dies E132" "GATE-E132" "$out"
+  report "T26b session-gate mirror byte-identical" 0 "$(cmp -s scripts/session-gate.sh "$SG26B"; echo $?)"
+  report "T26b agent-gate mirror byte-identical" 0 "$(cmp -s scripts/agent-gate "$GT26B"; echo $?)"
+else
+  echo "SKIP T26b: session-gate.sh/agent-gate.sh absent — 跳过成本行 golden cases"
+fi
+
+}
+section_T26c() {
+# ------------------------------------------------ T26c 等待纪律 + payload 边界（v3.90.1，CHG-123）
+# P0-6: AGENTS 纪律 10 forbids blocking waits and names the progress file.
+check_output "T26c AGENTS forbids blocking TaskOutput" 'block:true timeout>60s' "$(cat "$ROOT/resources/AGENTS.md")"
+check_output "T26c AGENTS names the progress file" 'suite-progress.json' "$(cat "$ROOT/resources/AGENTS.md")"
+# P0-16: no S-layer path may appear inside a P-layer (installed) document.
+# SKILL.md is the skill's own installer guide (source side), so it is NOT scanned;
+# the payload face is what a target repo receives.
+S16=$(mktemp -d "${TMPDIR:-/tmp}/payload.XXXXXX")
+for f in "$ROOT/resources/AGENTS.md" "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$ROOT"/resources/templates/*.md; do
+  [[ -f "$f" ]] && cp "$f" "$S16/" 2>/dev/null || true
+done
+hits=$(grep -hoE '(scripts/(bootstrap|facts|verify-all|selfcheck|lib-source-facts)|tests/audit-standards-src)\.sh' "$S16"/*.md 2>/dev/null | wc -l | tr -d ' ')
+report "T26c P-layer docs never reference S-layer paths" 0 "$hits"
+rm -rf "$S16"
+# ---- P0-1: runtime probe (protocol family) + unknown => exit 3 + handshake ----
+R16=$(mktemp -d "${TMPDIR:-/tmp}/runtime.XXXXXX")
+mkdir -p "$R16/scripts"
+cp "$ROOT/resources/templates/install-hook-adapter.sh" "$R16/scripts/" 2>/dev/null || true
+cp "$ROOT/resources/templates/agent-gate.sh" "$R16/scripts/agent-gate" 2>/dev/null || true
+# Strip client CLIs from PATH so "unknown" is reachable on a dev machine that
+# happens to have them installed (the probe must key on shapes, not on my laptop).
+r16_out=$( cd "$R16" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --detect 2>&1 ); r16_rc=$?
+report "T26c unknown runtime exits 3 (never silent success)" 3 "$r16_rc"
+check_output "T26c unknown runtime names the effective layers" 'Git hooks \+ CI only' "$r16_out"
+mkdir -p "$R16/.claude"
+r16_out=$( cd "$R16" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --detect 2>&1 ); r16_rc=$?
+report "T26c known runtime exits 0" 0 "$r16_rc"
+check_output "T26c runtime classified by family, not name" 'claude \(json-hooks\)' "$r16_out"
+check_output "T26c runtime ledger written" '"family":"json-hooks"' "$(cat "$R16/.agent-state/runtime.json" 2>/dev/null)"
+printf '{"runtime_id":"opencode","family":"plugin-api","clients":"opencode","generated_at":"x"}\n' > "$R16/.agent-state/runtime.json"
+r16_out=$( cd "$R16" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --detect 2>&1 )
+check_output "T26c runtime transition recorded" 'runtime changed' "$r16_out"
+check_output "T26c handshake file written" '"runtime":' "$( cd "$R16" && git init -q . && bash scripts/agent-gate session-start >/dev/null 2>&1; cat "$R16"/.agent-state/runtime/*.json 2>/dev/null )"
+rm -rf "$R16"
+# ---- P0-7: every gate refusal carries expected / allowed / fix / ref -------
+r16_out=$( cd "$R16" 2>/dev/null; printf '' )
+G16="$ROOT/resources/templates/agent-gate.sh"
+check_output "T26c die hints carry expected" 'expected:' "$(sed -n '/^gate_hint()/,/^}/p' "$G16")"
+check_output "T26c die hints carry allowed" 'allowed:' "$(sed -n '/^gate_hint()/,/^}/p' "$G16")"
+check_output "T26c die hints carry fix" 'fix:' "$(sed -n '/^gate_hint()/,/^}/p' "$G16")"
+check_output "T26c die hints carry ref" 'ref:' "$(sed -n '/^gate_hint()/,/^}/p' "$G16")"
+R17=$(mktemp -d "${TMPDIR:-/tmp}/four.XXXXXX"); mkdir -p "$R17/scripts"
+cp "$G16" "$R17/scripts/agent-gate"; chmod +x "$R17/scripts/agent-gate"
+r17_out=$( cd "$R17" && git init -q . && bash scripts/agent-gate begin CHG-404 2>&1 || true )
+check_output "T26c refusal prints the four elements" 'expected:.*' "$r17_out"
+check_output "T26c refusal names a fix command" '^fix:' "$r17_out"
+check_output "T26c refusal points at a clause" '^ref:' "$r17_out"
+rm -rf "$R17"
+# review CHG-123 #3/#6 pins: bad --since ref is a usage error; probe switch is a
+# real single switch back to legacy detection.
+"$ROOT/tests/audit-docs-consistency.sh" --since no-such-ref-xyz >/dev/null 2>&1
+report "T26c --since with an unresolvable ref exits 2" 2 $?
+r17_out=$( cd "$R16" 2>/dev/null; printf '' )
+R18=$(mktemp -d "${TMPDIR:-/tmp}/probe0.XXXXXX"); mkdir -p "$R18/scripts"
+cp "$ROOT/resources/templates/install-hook-adapter.sh" "$R18/scripts/"
+( cd "$R18" && PATH=/usr/bin:/bin AGENT_GUARD_RUNTIME_PROBE=0 bash scripts/install-hook-adapter.sh --detect >/dev/null 2>&1 ); r18_rc=$?
+report "T26c AGENT_GUARD_RUNTIME_PROBE=0 restores legacy exit 0" 0 "$r18_rc"
+rm -rf "$R18"
 
 }
 section_T27() {
@@ -6794,8 +6962,8 @@ section_T75() {
 # 映射是优化、不是正确性依赖：无映射命中 / runner 自改一律回落全量。partial 收据只落
 # last-suite-partial.json（kind:"partial"），权威路径 last-suite-receipt.json 永不被部分运行触碰。
   local r75 r75_rc r75_out r75_rec r75_part
-  if [[ ! -f "$ROOT/scripts/facts.sh" ]]; then
-    echo "SKIP T75: -T auto maps source-layer tools (source repo only)"
+  if ! is_source_layout; then
+    echo "SKIP T75: -T auto maps source-layer tools (source repo layout only)"
   else
     r75=$(mktemp -d "${TMPDIR:-/tmp}/auto.XXXXXX")
     r75_rec="$r75/last-suite-receipt.json"
@@ -6844,8 +7012,8 @@ section_T76() {
 # 计数器本体用 FAKE_FULL seam 实跑（真实全跑在收口权威一次时自证——05 引 stats 增量）；门控
 # 本身用真实 -T 不加 seam 钉（TC-1474），A57 另钉条件行结构。
   local r76 r76_rc r76_out r76_stats r76_after
-  if [[ ! -f "$ROOT/scripts/facts.sh" ]]; then
-    echo "SKIP T76: session stats self-counting ships with the runner's tools (source repo only)"
+  if ! is_source_layout; then
+    echo "SKIP T76: session stats self-counting ships with the runner's tools (source repo layout only)"
   else
     r76=$(mktemp -d "${TMPDIR:-/tmp}/stats.XXXXXX")
     r76_stats="$r76/stats.json"
@@ -7170,7 +7338,7 @@ report "T81 TC-1494c BATCH member source edit resolves the batch 04" 0 "$t81_rc"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
@@ -7203,18 +7371,27 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     README.md|README.zh-CN.md)         printf 'T51' ;;
     .github/*)                         printf 'T73b' ;;
     resources/DEVELOPMENT_STANDARDS.md) printf 'T11 T14 T15 T20 T21 T31 T38 T40 T43 T48 T55 T63 T64 T67' ;;
-    resources/AGENTS.md)               printf 'T40 T43 T48 T55 T63 T64' ;;
+    resources/AGENTS.md)               printf 'T26c T40 T43 T48 T55 T63 T64' ;;
     resources/STANDARDS_CHANGELOG.md)  printf 'T15 T40 T48' ;;
     SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
     resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
-    resources/templates/session-gate.sh)            printf 'T24 T26 T29 T49 T78' ;;
+    resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49 T78' ;;
+    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78' ;;
+    scripts/session-gate.sh|scripts/lib-suite-lock.sh) printf 'T26 T26b T41 T57' ;;
+    tests/*)                           printf 'T50 T51 T75 T76' ;;
     resources/templates/stamp-provenance.sh)        printf 'T16 T17 T17b' ;;
     resources/templates/install-hook-adapter.sh)    printf 'T49' ;;
     resources/templates/*.md)          printf 'T7b T18c T18d T43 T46' ;;
     resources/templates/agent-governance.yml|resources/templates/github-*.yml) printf 'T73b' ;;
+    resources/METHODOLOGY.md|resources/STAGE_PLAYBOOK.md|resources/methodologies/*|resources/templates/*.md) printf 'T40 T43 T48' ;;
+    scripts/*|resources/templates/*.sh) printf 'T19 T30 T41' ;;
     docs/*)                            return 2 ;;  # 变更产物/评审记录：不影响治理工具，无需套件
     MAINTAINER.md)                     return 2 ;;
     .agent-state/*|.workbuddy-ai/*)    return 2 ;;
+    # v3.90.1 (CHG-123, P0-12): unmapped governance-face paths fall back to the
+    # same-domain core section triple instead of a FULL run (historical 77%
+    # edit->FULL rate). Non-governance unknown paths stay "irrelevant".
+    scripts/*|resources/*|tests/*)     printf 'T19 T30 T41' ;;
     *) return 1 ;;
   esac
 }
@@ -7292,6 +7469,9 @@ fi
 # the report() wire format (^ok / ^FAIL).
 _RE_OK='^ok '
 _RE_FAIL='^FAIL '
+# v3.90.1 (CHG-123, P0-2): collected per-section timings -> suite-progress.json
+_TIMINGS=()
+progress_write running
 if [[ "$JOBS" -ge 2 ]]; then
   # ---- parallel branch: section-level pool + source-order replay ----------
   # SERIAL_CHAIN: sections that cannot run in parallel subshells, in THIS
@@ -7326,7 +7506,7 @@ if [[ "$JOBS" -ge 2 ]]; then
   if [[ ${#_pool[@]} -gt 0 ]]; then
     for _s in "${_pool[@]}"; do
       while [[ "$(jobs -rp | wc -l | tr -d ' ')" -ge "$JOBS" ]]; do sleep 0.3; done
-      ( "section_${_s//-/_}" ) >"${TMPDIR:-/tmp}/suite-${_s}.$$.out" 2>&1 &
+      ( _ps0=$(date +%s); NEW_REPO_SETUP_S=0; "section_${_s//-/_}"; echo $(( $(date +%s) - _ps0 )) > "${TMPDIR:-/tmp}/suite-${_s}.$$.sec"; echo "${NEW_REPO_SETUP_S:-0}" > "${TMPDIR:-/tmp}/suite-${_s}.$$.setup" ) >"${TMPDIR:-/tmp}/suite-${_s}.$$.out" 2>&1 &
     done
     wait
   fi
@@ -7340,7 +7520,10 @@ if [[ "$JOBS" -ge 2 ]]; then
   if [[ ${#_serial[@]} -gt 0 ]]; then
     (
       for _s in "${_serial[@]}"; do
+        _ss0=$(date +%s); NEW_REPO_SETUP_S=0
         "section_${_s//-/_}" >"${TMPDIR:-/tmp}/suite-${_s}.$$.out" 2>&1
+        echo $(( $(date +%s) - _ss0 )) > "${TMPDIR:-/tmp}/suite-${_s}.$$.sec"
+        echo "${NEW_REPO_SETUP_S:-0}" > "${TMPDIR:-/tmp}/suite-${_s}.$$.setup"
       done
     )
   fi
@@ -7357,13 +7540,24 @@ if [[ "$JOBS" -ge 2 ]]; then
     while IFS= read -r _fn; do failed_names+=("$_fn"); done < <(grep -hE "$_RE_FAIL" "$_sf" | sed -E 's/^FAIL (.*) \((expected exit|output does not match).*$/\1/')
     grep -vE "$_RE_FAIL" "$_sf"
     grep -E "$_RE_FAIL" "$_sf" >&2
-    rm -f "$_sf"
+    _se=$(cat "${TMPDIR:-/tmp}/suite-${_s}.$$.sec" 2>/dev/null || echo 0)
+    _ss=$(cat "${TMPDIR:-/tmp}/suite-${_s}.$$.setup" 2>/dev/null || echo 0)
+    printf '[done] %s %ss\n' "$_s" "$_se"
+    ledger_append sec "$_s" "$_se" "$_ss" none 0
+    _TIMINGS+=("${_s}:${_se}:${_ss}")
+    rm -f "$_sf" "${TMPDIR:-/tmp}/suite-${_s}.$$.sec" "${TMPDIR:-/tmp}/suite-${_s}.$$.setup"
   done
 else
   # ---- serial branch: pre--j dispatcher, byte-identical (JOBS<=1) ---------
   for _s in "${SECTIONS[@]}"; do
     if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
+      _t0=$(date +%s); NEW_REPO_SETUP_S=0
       "section_${_s//-/_}"
+      _el=$(( $(date +%s) - _t0 ))
+      printf '[done] %s %ss\n' "$_s" "$_el"
+      ledger_append sec "$_s" "$_el" "${NEW_REPO_SETUP_S:-0}" none 0
+      _TIMINGS+=("${_s}:${_el}:${NEW_REPO_SETUP_S:-0}")
+      progress_write running
     fi
   done
 fi
@@ -7378,6 +7572,11 @@ fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant tail wall-time; summary line format unchanged (update-assertion-count / audit A3 sed anchors)
+# v3.90.1 (CHG-123, P0-2): final progress snapshot — status flips to done/failed
+# so an external waiter can stop polling instead of blocking on a timeout.
+if [[ "$fail" -eq 0 ]]; then progress_write done; else progress_write failed; fi
+# Ledger aggregate row for this run (kind=run): the油表 sees whole-run cost too.
+ledger_append run "${JOBS}" "$SECONDS" 0 none "$fail"
 # v3.66.0 (CHG-088, REQ-1049): suite receipt. Only a FULL, unfiltered run may
 # touch it — filtered (-T) / -l runs are not evidence about the whole suite.
 # Green: write .agent-state/last-suite-receipt.json (local, gitignored, same

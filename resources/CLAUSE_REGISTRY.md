@@ -211,6 +211,10 @@
 | GATE-E121 | scaffold 拒绝对已携带本变更成员锚的产物重入——id 已物化，防双节污染（fail-closed） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
 | GATE-E125 | staged/stop 面存在源路径改动但无活跃变更、无同日缺陷批锚、无豁免 env（无账门 fail-closed） | agent-gate.sh::validate_unaccounted_changes()（v3.89.0，CHG-117） |
 | GATE-E126 | 阶段门（spec/design/testplan）未满足对应产物锚——无状态、幂等、按阶段补产物后复跑 | agent-gate.sh::stage_gate_fail()（v3.89.0，CHG-117） |
+| GATE-E132 | cost-line 子命令缺变更号或变更目录不存在（诊断入口参数错误） | agent-gate.sh::cost-line 分支（v3.90.1，CHG-123，P0-15） |
+| GATE-E133 | 治理记录 JSON 括号/引号不配对 | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
+| GATE-E134 | 治理记录 JSON 同行 `}{` 拼接（缺逗号） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
+| GATE-E135 | 治理记录 change_id 无法回读成完整对象（截断/重叠） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

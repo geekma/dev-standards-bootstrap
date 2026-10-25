@@ -102,6 +102,45 @@ die() { echo "install-hook-adapter: $1" >&2; exit 2; }
 note() { echo "install-hook-adapter: $1" >&2; }
 ok() { echo "install-hook-adapter: $1"; }
 
+# v3.90.1 (CHG-123, P0-1): protocol family, not product name. Products are
+# unbounded; the hook protocols they speak are not. Classification drives the
+# runtime ledger and the "unknown => visible" exit path.
+runtime_family() { # <client-name> -> family
+  case "$1" in
+    claude|cursor) printf 'json-hooks' ;;
+    opencode)      printf 'plugin-api' ;;
+    gemini|codex)  printf 'git+ci' ;;
+    *)             printf 'unknown' ;;
+  esac
+}
+
+runtime_record() { # <runtime-id> <family> <clients...>
+  local id="$1" fam="$2" clients="$3" st prev prev_fam ts
+  st=".agent-state"
+  mkdir -p "$st" 2>/dev/null || return 0
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  prev=""; prev_fam=""
+  [[ -s "$st/runtime.json" ]] \
+    && prev=$(sed -n 's/.*"runtime_id":"\([^"]*\)".*/\1/p' "$st/runtime.json" | head -1 || true)
+  [[ -s "$st/runtime.json" ]] \
+    && prev_fam=$(sed -n 's/.*"family":"\([^"]*\)".*/\1/p' "$st/runtime.json" | head -1 || true)
+  printf '{"runtime_id":"%s","family":"%s","clients":"%s","generated_at":"%s"}\n' \
+    "$id" "$fam" "$clients" "$ts" > "$st/runtime.json" 2>/dev/null || true
+  if [[ -n "$prev" && "$prev" != "$id" ]]; then
+    printf '%s\t%s\t%s\t%s\t%s\n' "$ts" "$prev" "${prev_fam:-unknown}" "$id" "$fam" \
+      >> "$st/runtime-transitions.tsv" 2>/dev/null || true
+    note "WARN runtime changed: $prev (${prev_fam:-unknown}) -> $id ($fam) — re-probe wiring and recheck the enforcement layers (P0-1)"
+  fi
+}
+
+runtime_layers() { # <id> — what is actually enforcing right now
+  case "$1" in
+    claude|cursor|opencode) echo "in-session (hook/plugin) + Git hooks + CI" ;;
+    codex|gemini)           echo "Git hooks + CI (this client has no repo-level hook surface)" ;;
+    *)                      echo "Git hooks + CI only (no in-session layer); AGENTS.md is read-only guidance" ;;
+  esac
+}
+
 need_gate() {
   [[ -x scripts/agent-gate ]] || die "ADAPTER-E01: scripts/agent-gate not found or not executable — install the enforcement package first (bootstrap --guard)"
   [[ -f scripts/session-gate.sh ]] || die "ADAPTER-E02: scripts/session-gate.sh not found — upgrade the enforcement package (v3.28.0+)"
@@ -884,15 +923,39 @@ while [[ $# -gt 0 ]]; do
 done
 
 matrix=$(detect_clients || true)
+# v3.90.1 (CHG-123, P0-1): env > detected config shape > unknown. AGENT_RUNTIME is
+# the user's explicit override (highest), mirroring AGENT_GUARD_MODEL.
+# AGENT_GUARD_RUNTIME_PROBE=0 is the single switch back to the legacy product-name
+# behaviour (visible in --detect, no runtime ledger written).
+if [[ "${AGENT_GUARD_RUNTIME_PROBE:-1}" == "0" ]]; then
+  if [[ "$mode_install" == false ]]; then
+    echo "install-hook-adapter: runtime probe disabled (AGENT_GUARD_RUNTIME_PROBE=0) — legacy product-name detection:"
+    if [[ -z "$matrix" ]]; then
+      echo "  (none detected — Git hooks + CI remain the enforcement line)"
+      exit 0
+    fi
+    for c in $matrix; do echo "  - $c"; done
+    exit 0
+  fi
+else
+runtime_id="${AGENT_RUNTIME:-}"
+[[ -n "$runtime_id" ]] || runtime_id=$(printf '%s\n' "$matrix" | head -1)
+[[ -n "$runtime_id" ]] || runtime_id="unknown"
+runtime_fam=$(runtime_family "$runtime_id")
+runtime_record "$runtime_id" "$runtime_fam" "$(printf '%s' "$matrix" | tr '\n' ' ')"
 
 if [[ "$mode_install" == false ]]; then
   echo "install-hook-adapter: detection matrix (env / CLI on PATH / repo config):"
+  echo "  runtime: $runtime_id (family: $runtime_fam)"
+  echo "  effective layers: $(runtime_layers "$runtime_id")"
   if [[ -z "$matrix" ]]; then
-    echo "  (none detected — Git hooks + CI remain the enforcement line)"
-    exit 0
+    echo "  (none detected) — in-session enforcement is NOT active; Git hooks + CI remain the line"
+    echo "  declare the client with AGENT_RUNTIME=<claude|opencode|cursor|gemini|codex> when detection cannot see it (exit 3 = unknown, never silent success)"
+    exit 3
   fi
-  for c in $matrix; do echo "  - $c"; done
+  for c in $matrix; do echo "  - $c ($(runtime_family "$c"))"; done
   exit 0
+fi
 fi
 
 need_gate
@@ -906,8 +969,8 @@ if [[ -n "$client" ]]; then
 else
   targets="$matrix"
   if [[ -z "$targets" ]]; then
-    note "no supported client detected — nothing wired. Git hooks + CI still enforce (they validate the repo, not the editor)."
-    note "supported clients: claude, opencode, cursor, gemini, codex — run inside the client or pass --client <name>."
+    note "no supported client detected — nothing wired; effective layers: $(runtime_layers unknown)"
+    note "Git hooks + CI still enforce (they validate the repo, not the editor). Declare the client with AGENT_RUNTIME=<name> if detection cannot see it (P0-1)."
     exit 0
   fi
 fi

@@ -78,14 +78,42 @@ set -uo pipefail
 
 ROOT=""
 only_fail=0
-for _a in "$@"; do
-  if [[ "$_a" == "--only-fail" ]]; then
-    only_fail=1
-  else
-    ROOT="$_a"
-  fi
+since_ref=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --only-fail) only_fail=1 ;;
+    # v3.90.1 (CHG-123, P0-4): incremental audit. It NEVER silently narrows a
+    # real audit: when the changed set misses this audit's subject files the run
+    # is a declared no-op; when it touches them the FULL audit still runs.
+    --since)
+      since_ref="${2:-}"
+      [[ -n "$since_ref" ]] || { echo "audit: --since requires a ref (usage: --since <ref>)" >&2; exit 2; }
+      shift ;;
+    *) ROOT="$1" ;;
+  esac
+  shift
 done
 ROOT="${ROOT:-$(pwd)}"
+
+if [[ -n "$since_ref" ]]; then
+  # An unresolvable ref must never read as "nothing changed" (review CHG-123 #3).
+  if ! git -C "$ROOT" rev-parse --verify -q "$since_ref^{commit}" >/dev/null 2>&1; then
+    echo "audit: --since ref '$since_ref' does not resolve — fix the ref, or omit the flag for a full audit" >&2
+    exit 2
+  fi
+  _changed=$( { git -C "$ROOT" diff --name-only "$since_ref"; git -C "$ROOT" ls-files --others --exclude-standard; } 2>/dev/null || true )
+  if [[ -z "$_changed" ]]; then
+    echo "since: no changed files (tracked or untracked) vs $since_ref — nothing to audit (declared no-op)"
+    exit 0
+  fi
+  _subject_hit=$(printf '%s\n' "$_changed" | grep -cE '^(README|SKILL|resources/|scripts/|tests/(run-tests|audit)|\.agent-governance\.yml)' || true)
+  if [[ "$_subject_hit" -eq 0 ]]; then
+    echo "since: $(printf '%s\n' "$_changed" | grep -c . ) changed file(s) vs $since_ref, none in this audit's subject (README/SKILL/resources/scripts/tests/yml) — declared no-op"
+    echo "since-uncovered: whole-repo sweeps (G-group inventory) were NOT run — use the full audit before release"
+    exit 0
+  fi
+  echo "since: $_subject_hit subject file(s) changed vs $since_ref — running the full audit (incremental narrowing is never silent)"
+fi
 
 # 路径根可配置（v3.15.0）：默认值 = 历史写死值，未配置即行为不变。
 # 解析优先级：环境变量 > .agent-governance.yml 的 paths.* > 内置默认。

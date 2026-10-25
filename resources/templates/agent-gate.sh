@@ -25,8 +25,34 @@ friction_append() { # <code> <kind: DIE|BYPASS> <reason>
     >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
 }
 
+# v3.90.1 (CHG-123, P0-7): error messages are the documentation — four elements
+# (expected / allowed / fix / ref) live in ONE hint table instead of being
+# copy-pasted into 100+ die sites. Only failure time pays the tokens; a message
+# that already carries its own four elements keeps them untouched.
+gate_hint() { # <GATE-Exxx> -> four-element hint block
+  case "$1" in
+    GATE-E03) printf 'expected: every required artifact exists at the exact path above\nallowed: <docs>/changes/<CHG>/{00-intent.md,00-governance.json,00.5-communication.md}\nfix: create the missing file (scripts/new-change <CHG> --risk Lx) and re-run begin\nref: standards §1.1 / §2.5 stage 1' ;;
+    GATE-E83) printf 'expected: 00.5 carries a non-empty user-overall-confirmation record\nallowed: a conclusion line + a status line (L0 may use the single-line exemption)\nfix: present the communication draft to the user, record the confirmation, then re-run begin\nref: standards §2.17.2d' ;;
+    GATE-E86) printf 'expected: the change directory placement is declared inside its own section\nallowed: "**目录落位**：BATCH-YYYYMMDD" or "独立目录（理由）"\nfix: add the placement line under the breakdown section named above, then re-run begin\nref: standards §1.1 / v3.60.0' ;;
+    GATE-E122) printf 'expected: 03 declares its relation to existing same-family implementations\nallowed: a "既有范式关系" section (reuse + anchor, or why different)\nfix: add that section to 03-modification-plan.md and re-run\nref: standards §2.5 stage 3 / v3.84.0' ;;
+    GATE-E10|GATE-E16) printf 'expected: the plan compares alternatives before choosing one\nallowed: a 候选方案/选型 table with at least two options and a verdict\nfix: add the comparison to 03-modification-plan.md, then re-run\nref: standards §2.5 stage 3' ;;
+    GATE-E47|GATE-E48) printf 'expected: the work lands in the directories declared by the governance file\nallowed: paths.* roots from .agent-governance.yml (defaults doc/scripts/tests/.githooks)\nfix: move the artifact to the declared root or fix paths.*, then re-run\nref: standards §1.1 / path-root clause' ;;
+    GATE-E60) printf 'expected: every project-master row starts with its Pxx id at line start\nallowed: "- [x] P01 ..." / "- [ ] P07 未命中"\nfix: rewrite the row with the P id first, then re-run\nref: standards §1.3' ;;
+    GATE-E85|GATE-E115|GATE-E117) printf 'expected: 07 carries the delivery shape rows the checker names\nallowed: signature with platform/model/task id; findings table >=5 columns; source column values from the enum\nfix: patch 07-review-report.md exactly at the named row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
+    GATE-E125) printf 'expected: every source-path change is accounted for by an active change or a same-day defect batch\nallowed: begin a change first, or set AGENT_GUARD_ALLOW_UNACCOUNTED=1 with a 09 justification\nfix: run scripts/agent-gate begin <CHG> (or register the bypass in 09), then re-run\nref: standards §2.17.2b signal 3' ;;
+    *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
+  esac
+}
+
 die() {
   echo "agent-gate: $*" >&2
+  # v3.90.1 (CHG-123, P0-7): append the four elements unless the message already
+  # carries them (new codes like E132/E134 do). Zero standing cost: only a
+  # FAILING gate prints these lines.
+  local _code4="${1%%:*}"
+  case "$_code4" in
+    GATE-E[0-9]*) case "$*" in *expected:*) : ;; *) gate_hint "$_code4" >&2 ;; esac ;;
+  esac
   # v3.43.0 (REQ-960): gate 摩擦事件账（append-only TSV，metrics 侧聚合）。
   # fail-open：缺 .agent-state 或写失败不影响拒绝语义；TSV 而非 JSON——bash 零依赖。
   local _code="${1%%:*}" _re='^GATE-E[0-9]+$'
@@ -1429,19 +1455,19 @@ validate_governance_state() {
   _closes=$(tr -cd '}' < "$file" 2>/dev/null | wc -c | tr -d ' ')
   _quotes=$(tr -cd '"' < "$file" 2>/dev/null | wc -c | tr -d ' ')
   if [[ "$_opens" -ne "$_closes" ]] || (( _quotes % 2 != 0 )); then
-    die "GATE-E126: $file is not structurally valid (braces ${_opens}/${_closes}, quotes ${_quotes}) — repair the record file before begin (batch 0, CHG-121)"
+    die "GATE-E133: $file is not structurally valid (braces ${_opens}/${_closes}, quotes ${_quotes}) — expected: one JSON object per line or a proper array; allowed: balanced braces/quotes; fix: repair the record file, then re-run begin; ref: CHG-121 batch 0 / CHG-123 P0-7"
   fi
   # The observed 12/12 failure shape: sibling objects concatenated on ONE line
   # (`"..."}{"..."`) — not valid JSON for any external reader. A comma-separated
   # array (`},{`) and the documented one-object-per-line batch style both pass.
   if grep -qE '\}[[:space:]]*\{' "$file" 2>/dev/null; then
-    die "GATE-E126: $file concatenates JSON objects on one line ('}{' without a comma) — write one object per line or a proper array (batch 0, CHG-121)"
+    die "GATE-E134: $file concatenates JSON objects on one line ('}{' without a comma) — expected: one object per line or a comma-separated array; allowed: '{\"...\"}\n{\"...\"}' or '[{...},{...}]'; fix: rewrite the record file, then re-run begin; ref: CHG-121 batch 0 / CHG-123 P0-7"
   fi
   while IFS= read -r _gid; do
     [[ -n "$_gid" ]] || continue
     [[ -n "$(gov_record "$file" "$_gid")" ]] || _bad+=" $_gid"
   done < <(gov_ids "$file")
-  [[ -z "$_bad" ]] || die "GATE-E126: $file declares change_id(s)$_bad that cannot be read back as records — truncated/overlapping JSON (batch 0, CHG-121)"
+  [[ -z "$_bad" ]] || die "GATE-E135: $file declares change_id(s)$_bad that cannot be read back as records — expected: every change_id has a complete, self-contained object; allowed: truncated/overlapping JSON is rejected; fix: repair the record file, then re-run begin; ref: CHG-121 batch 0 / CHG-123 P0-7"
   # A dedicated <CHG>/ directory holds one record; a batch holds one line per
   # bundled change. Scope to THIS change's line so a sibling's risk/owners can
   # never satisfy our checks (or be misread as ours).
@@ -2340,6 +2366,64 @@ append_verify_evidence() { # <line>（单行；调用端负责折叠换行）
   return 0
 }
 
+# v3.90.1 (CHG-123, P0-15): execution-cost record — one append-only line in the
+# change's 09, written once per (change, session start). The gate only READS the
+# runtime ledgers written by session-gate.sh; estimated values are labelled and
+# never feed any exit-2 decision.
+cl_json() { # <file> <key> — flat-JSON string/number field, empty when absent
+  sed -n "s/.*\"$2\":[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$1" 2>/dev/null | head -1 || true
+}
+
+record_cost_line() { # <change-id> [verdict]
+  local id="$1" verdict="${2:-ok}" d f stats prof started marker ts
+  local stage tin tout chars wall calls src wmin dev
+  d=$(change_dir "$id")
+  [[ -d "$d" ]] || { echo "agent-gate: cost line skipped — no change dir for $id" >&2; return 0; }
+  f="$d/09-changelog.md"
+  [[ -s "$f" ]] || { echo "agent-gate: cost line skipped — $f missing (write 09 first)" >&2; return 0; }
+  stats="$repo_root/.agent-state/session-tool-stats.json"
+  prof="$repo_root/.agent-state/model-profile.json"
+  [[ -s "$stats" ]] || { echo "agent-gate: cost line skipped — no $stats (session-gate start/count not wired)" >&2; return 0; }
+  started=""
+  [[ -s "$repo_root/.agent-state/session-started.json" ]] \
+    && started=$(sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1 || true)
+  marker="$repo_root/.agent-state/cost-line.json"
+  if [[ -n "$started" ]]; then
+    if [[ -s "$marker" ]] \
+       && grep -qF "\"change\":\"$id\"" "$marker" 2>/dev/null \
+       && grep -qF "\"session\":\"$started\"" "$marker" 2>/dev/null; then
+      echo "agent-gate: cost line already recorded for $id in this session (P0-15)"
+      return 0
+    fi
+  else
+    # No session-start marker (hook-less/legacy repos): fall back to one line
+    # per change — better than appending on every stop (review CHG-123 #8).
+    if [[ -s "$marker" ]] && grep -qF "\"change\":\"$id\"" "$marker" 2>/dev/null; then
+      echo "agent-gate: cost line already recorded for $id (no session marker; one per change) — P0-15"
+      return 0
+    fi
+    started="unknown-session"
+  fi
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  stage=$(cl_json "$stats" stage); [[ -n "$stage" ]] || stage="delivery"
+  tin=$(cl_json "$stats" tokens_in); [[ -n "$tin" ]] || tin=0
+  tout=$(cl_json "$stats" tokens_out); [[ -n "$tout" ]] || tout=0
+  chars=$(cl_json "$stats" context_chars); [[ -n "$chars" ]] || chars=0
+  wall=$(cl_json "$stats" wall_s); [[ -n "$wall" ]] || wall=0
+  calls=$(cl_json "$stats" total); [[ -n "$calls" ]] || calls=0
+  src=$(cl_json "$stats" exec_source); [[ -n "$src" ]] || { src=$(cl_json "$prof" source); [[ -n "$src" ]] || src="unavailable"; }
+  wmin=$(( wall / 60 ))
+  dev="n/a（基线缺失见 05）"
+  {
+    printf '\n#### 本次执行成本（P0-15，v3.90.1）\n\n'
+    printf -- '- %s | stage=%s | wall_min=%s | tokens_in/out=%s/%s（%s） | tool_calls=%s | 预算偏差=%s | verdict=%s\n' \
+      "$id" "$stage" "$wmin" "$tin" "$tout" "$src" "$calls" "$dev" "$verdict"
+  } >> "$f" 2>/dev/null \
+    || { echo "agent-gate: WARN — cannot append cost line to $f (P0-15)" >&2; return 0; }
+  printf '{"change":"%s","session":"%s","recorded_at":"%s"}\n' "$id" "$started" "$ts" > "$marker" 2>/dev/null || true
+  echo "agent-gate: cost line recorded in $f (P0-15: wall ${wmin}min, tokens ${tin}/${tout} $src, calls ${calls})"
+}
+
 validate_stop() {
   local id
   working_code_changed || return 0
@@ -2993,6 +3077,12 @@ case "$command" in
         fi
       fi
     fi
+    # v3.90.1 (CHG-123, P0-1): handshake visibility — a session with no
+    # handshake runs on the L0 baseline only. Soft WARN in R1 (never blocks);
+    # the hard requirement belongs to the R2/R3 trains.
+    if ! ls "$repo_root"/.agent-state/runtime/*.json >/dev/null 2>&1; then
+      echo "agent-gate: YELLOW handshake: no .agent-state/runtime/<session>.json — run scripts/agent-gate session-start so this session's runtime/model/window are on record (P0-1)"
+    fi
     # v3.40.0 (CHG-046, FU-106⑤): unresolved session RED blocks new changes.
     # .agent-state/session-gate-last.md is the last start/idle audit report; a
     # `GATE RED` report FRESHER than the newest delivered 09-changelog means the
@@ -3146,6 +3236,43 @@ case "$command" in
     fi
     exit 1
     ;;
+  cost-line)
+    # v3.90.1 (CHG-123, P0-15): diagnostic subcommand (same family as metrics /
+    # verify-channel). `--stage stop` calls the same writer automatically.
+    cid="${2:-}"; cdir=""
+    [[ -n "$cid" ]] && cdir=$(change_dir "$cid")
+    if [[ -z "$cid" || ! -d "$cdir" ]]; then
+      die "GATE-E132: cost-line needs an existing change id (got '${cid:-<none>}') — expected: scripts/agent-gate cost-line CHG-123; allowed: a directory under changes/ or a BATCH dir carrying '## <id>'; fix: pass the right change id and re-run; ref: standards §1.1 / CHG-123 P0-15"
+    fi
+    record_cost_line "$cid" manual
+    ;;
+  session-start)
+    # v3.90.1 (CHG-123, P0-1): session handshake — the L0 baseline every agent can
+    # produce (no hook surface required). Runtime/model/window are self-reported;
+    # missing capabilities stay explicit instead of being guessed.
+    ss_dir="$repo_root/.agent-state/runtime"
+    mkdir -p "$ss_dir" 2>/dev/null || true
+    ss_sid="${AGENT_GUARD_SESSION_ID:-$$-$(date -u +%s)}"
+    ss_rt="${AGENT_RUNTIME:-}"
+    if [[ -z "$ss_rt" && -s "$repo_root/.agent-state/runtime.json" ]]; then
+      ss_rt=$(sed -n 's/.*"runtime_id":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/runtime.json" | head -1)
+    fi
+    [[ -n "$ss_rt" ]] || ss_rt="unknown"
+    ss_prof="$repo_root/.agent-state/model-profile.json"
+    ss_model="${AGENT_GUARD_MODEL:-}"; ss_win="${AGENT_GUARD_CONTEXT_WINDOW:-}"; ss_src="declared"
+    if [[ -z "$ss_model" && -s "$ss_prof" ]]; then
+      ss_model=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$ss_prof" | head -1)
+      ss_win=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$ss_prof" | head -1)
+      ss_src="profile"
+    fi
+    [[ -n "$ss_model" ]] || ss_model="unknown"
+    [[ -n "$ss_win" ]] || { ss_win=128000; ss_src="assumed"; }
+    printf '{"session":"%s","runtime":"%s","model":"%s","context_window":%s,"window_source":"%s","started_at":"%s"}\n' \
+      "$ss_sid" "$ss_rt" "$ss_model" "$ss_win" "$ss_src" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+      > "$ss_dir/$ss_sid.json" 2>/dev/null \
+      || echo "agent-gate: WARN — cannot write session handshake under $ss_dir (P0-1)" >&2
+    echo "agent-gate: session handshake recorded ($ss_dir/$ss_sid.json): runtime=$ss_rt model=$ss_model window=$ss_win ($ss_src)"
+    ;;
   metrics)
     emit_metrics
     ;;
@@ -3170,7 +3297,7 @@ case "$command" in
       spec|design|testplan)
         stage_gate_check "$stage" ;;
       staged) validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery stop ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change 2>/dev/null || true); [[ -n "$cost_cid" ]] && record_cost_line "$cost_cid" stop; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -3194,6 +3321,8 @@ Usage:
   scripts/agent-gate begin <change-id>
   scripts/agent-gate end
   scripts/agent-gate metrics
+  scripts/agent-gate session-start          # v3.90.1: write the session handshake (runtime/model/window, P0-1)
+  scripts/agent-gate cost-line <change-id>        # v3.90.1: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
   scripts/agent-gate --stage staged

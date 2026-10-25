@@ -37,7 +37,7 @@
 7. **定向验证**：模块/单测级验证命令先行；全量回归仅由门禁（stop/staged/CI）统一触发，禁止随手裸跑全量。执法（v3.73.0，CHG-096/REQ-1102）：`.agent-governance.yml` 声明 `full_test_patterns`（锚定全量形态 ERE）后，session-gate 对 LLM bash 命中调用计数，≥阈值（默认 2，`AGENT_GUARD_FULL_TEST_LIMIT`）亮黄灯；不声明不执法；门禁/CI 触发的全量不经 LLM bash turn 天然豁免。**治理自测按变更选节（2026-10-25 接线补充，§2.17.4 执行细则）**：`tests/run-tests.sh` 具备 `-T auto`（按 `git diff` 自动选节，未映射文件回落全量）、`-T <节[,节]>`、`-j N`（节级并行，N≥2）、`-l`（列节）四种跑法；**改文档/模板/单个工具脚本一律 `-T auto` 或 `-T <节>`，禁止裸跑全量**——实证同一会话裸跑 11 次 ≈4.6 h，而 `-T auto` 同等覆盖面为秒级到分钟级。只有改动**被测核心**（`resources/templates/agent-gate.sh`、`tests/run-tests.sh`、`.agent-governance.yml`）才需全量，且**收口跑一次即可**，不得每改一处跑一遍。收口前若不确定选节是否正确，用 `-T auto` 的 `AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1` 先看解析结果再执行。
 8. **有状态 mock 隔离**：跨两次调用的有状态依赖（会话/游标/水位类）每用例隔离重建；"第二次调用被跳过"类失败优先查共享 mock 内部状态。
 9. **禁并行集成测试（v3.71.0，CHG-046/REQ-1092）**：共享远程 DB 期间禁止并行代理同时跑集成测试（实证：连接池抖动→伪红/资源争抢）；调度并行任务前核对目标库共享态，共享即串行或各自独立库；细则=STAGE_PLAYBOOK 阶段 7 节。
-10. **长任务等待纪律（v3.73.0，CHG-096/REQ-1100）**：禁止把"等待长命令完成"做成独立 LLM 轮（`sleep N` 后再探测类调用算一次 bash 预算且无进展——每轮询烧一个 LLM turn）。合法三式：①前台单次执行+充足 timeout；②单 shell 内 `while ! 判据; do sleep 30; done` 一次等到；③后台启动+完成通知续接。执法：session-gate 对首 token 为 `sleep` 的 bash 调用计数，`idle/status` ≥阈值（默认 2，`AGENT_GUARD_SLEEP_POLL_LIMIT`）亮黄灯，要求 09「重要上下文」登记；判定口径与降级路径唯一权威=session-gate.sh 头注释。
+10. **长任务等待纪律（v3.73.0，CHG-096/REQ-1100）**：禁止把"等待长命令完成"做成独立 LLM 轮（`sleep N` 后再探测类调用算一次 bash 预算且无进展——每轮询烧一个 LLM turn）。合法三式：①前台单次执行+充足 timeout；②单 shell 内 `while ! 判据; do sleep 30; done` 一次等到；③后台启动+完成通知续接。执法：session-gate 对首 token 为 `sleep` 的 bash 调用计数，`idle/status` ≥阈值（默认 2，`AGENT_GUARD_SLEEP_POLL_LIMIT`）亮黄灯，要求 09「重要上下文」登记；判定口径与降级路径唯一权威=session-gate.sh 头注释。**进度文件（v3.90.1，CHG-123/P0-2）**：套件逐节输出 `[done] Tnn Ns` 并写 `.agent-state/suite-progress.json`；等待改「读进度文件 + 短轮询」，**禁止** `TaskOutput block:true timeout>60s`（一次阻塞超 1 分钟即盲等）。
 11. **环境归因续跑（v3.73.0，CHG-096/REQ-1101，B 层）**：子代理/长任务失败先归因再处置——环境类（网络/凭证/超时/基建）恢复后按已落盘产物续跑或增量重启，不从零重启；任务类（方案错/理解错）才推倒重来；归因结论与续跑起点登记 09。
 12. **调用批处理（v3.77.0，CHG-101/REQ-1124）**：独立 shell 命令合并为单次调用（`&&` 链或并行工具调用）；同文件多处改动合并为一次多段 edit，禁止小步高频读写同一文件——**每次工具调用重付整个上下文前缀，请求数 × 上下文水位才是 token 乘数**（单次 edit 在高水位会话约合十万级 token）；未用到的 MCP/扩展能力不挂载（静态基线按需）。执法（v3.77.0，CHG-101/REQ-1127）：session-gate 对 edit/write 族调用计数，`idle/status` ≥阈值（默认 40，`AGENT_GUARD_EDIT_LIMIT`）亮黄灯，要求 09「重要上下文」登记；判定口径与降级路径唯一权威=session-gate.sh 头注释。
 13. **尾部增量读（v3.77.0，CHG-101/REQ-1125）**：追加类更新用 `cat >>` 或定点 Edit 落盘，禁止为追加而全量重读回灌上下文；read 大文件沿用纪律 3 小窗口径，换挡重建状态时只读 handoff 与增量区段（§2.9.6），禁止整文件重读。
@@ -102,5 +102,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.90.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.90.1_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->
