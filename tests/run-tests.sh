@@ -6892,7 +6892,22 @@ printf 'chg\n' > src/a.go
 git add src/a.go
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T77 TC-1484 staged source change with an active change passes" 0 $?
+# TC-1484b/c (独立评审 F2): an empty same-day batch directory is NOT a credential —
+# the identity piece (01-diagnosis.md with a `## BUG-` anchor) is what counts.
+# The assertion is scoped to E125: downstream gates (E57 completeness / E66
+# change-artifact rule) keep their own bars and are not this case's subject.
+new_repo
+mkdir -p "docs/bugs/BATCH-$(date -u +%Y%m%d)"
+printf 'chg\n' > src/a.go
+git add src/a.go
+t77_out=$(scripts/agent-gate --stage staged 2>&1); t77_rc=$?
+report "T77 TC-1484b empty same-day defect-batch dir does not exempt E125" 2 "$t77_rc"
+check_output "T77 TC-1484b the red is E125 (no silent exemption)" "GATE-E125" "$t77_out"
+printf '## BUG-9002\nseverity: P3\n诊断骨架\n' > "docs/bugs/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
+t77_out=$(scripts/agent-gate --stage staged 2>&1); t77_rc=$?
+report "T77 TC-1484c same-day batch carrying a BUG anchor clears E125" 0 "$(printf '%s\n' "$t77_out" | grep -c 'GATE-E125')"
 # TC-1485a docs-only staged face never trips the gate (is_code_path exclusion face)
+new_repo
 seed_begin CHG-1171 L1 claude/s-1b
 printf 'docs\n' >> README.md
 git add README.md
@@ -6922,6 +6937,12 @@ check_output "T78 TC-1486 message names AGENT_GUARD_ALLOW_UNACCOUNTED" "ALLOW_UN
 t78_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"%s/src/a.go"}}' "$PWD" | bash scripts/session-gate.sh check 2>&1); t78_rc=$?
 report "T78 TC-1486b absolute hook path still hits the unaccounted gate (exit 2)" 2 "$t78_rc"
 check_output "T78 TC-1486b absolute-path message carries the signal-③ three options" "三选项" "$t78_out"
+# TC-1486c (独立评审 F4): a physical-root path into a NOT-yet-existing directory
+# (dirname cannot be pwd -P'd) must still normalize, not fall open.
+t78_phys=$(cd "$REPO" && pwd -P)
+t78_out=$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s/src/newdir/a.go"}}' "$t78_phys" | bash scripts/session-gate.sh check 2>&1); t78_rc=$?
+report "T78 TC-1486c physical path into a new directory still hits the gate" 2 "$t78_rc"
+check_output "T78 TC-1486c normalized physical-path red is the unaccounted gate" "三选项" "$t78_out"
 # TC-1487 green: accounted edit (active change + G-测试门 face) and docs paths
 seed_begin CHG-1173 L1 claude/s-1
 mkdir -p tests && printf 'assert "t78"\n' > tests/test_a.py
@@ -6939,14 +6960,14 @@ t_install_session_gate
 printf 'x\n' > src/a.go
 git add src/a.go
 t78_out=$(AGENT_GUARD_SKIP_VERIFY=1 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle scripts/agent-gate --stage staged 2>&1); t78_rc=$?
-report "T78 TC-1488a SKIP_VERIFY=1 + idle marker still red on the staged face" 2 "$t78_rc"
-check_output "T78 TC-1488a the red is the unaccounted gate (E125), not a skip" "GATE-E125" "$t78_out"
+report "T78b TC-1488a SKIP_VERIFY=1 + idle marker still red on the staged face" 2 "$t78_rc"
+check_output "T78b TC-1488a the red is the unaccounted gate (E125), not a skip" "GATE-E125" "$t78_out"
 t78_out=$(AGENT_GUARD_SKIP_VERIFY=1 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle scripts/agent-gate --stage stop 2>&1); t78_rc=$?
-report "T78 TC-1488b same narrowing on the stop merged face" 2 "$t78_rc"
-check_output "T78 TC-1488b the stop-face red is E125" "GATE-E125" "$t78_out"
+report "T78b TC-1488b same narrowing on the stop merged face" 2 "$t78_rc"
+check_output "T78b TC-1488b the stop-face red is E125" "GATE-E125" "$t78_out"
 t78_rc=0
 AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle scripts/agent-gate --stage staged >/dev/null 2>&1 || t78_rc=$?
-report "T78 TC-1488c the internal marker alone grants nothing (anti-spoof)" 2 "$t78_rc"
+report "T78b TC-1488c the internal marker alone grants nothing (anti-spoof)" 2 "$t78_rc"
 }
 
 section_T79() {
@@ -7026,6 +7047,20 @@ t80_rc=0; scripts/agent-gate begin CHG-1175 >/dev/null 2>&1 || t80_rc=$?
 report "T80 TC-1493d narrowed begin passes on the entry three alone" 0 "$t80_rc"
 t80_rc=0; AGENT_GUARD_STAGE_GATES=0 scripts/agent-gate begin CHG-1175 >/dev/null 2>&1 || t80_rc=$?
 report "T80 TC-1493e STAGE_GATES=0 restores the legacy full begin check (missing 01 dies)" 2 "$t80_rc"
+# TC-1493f (独立评审 F3): preflight must share the narrowed begin's entry scope —
+# an entry-only change is green, not a wall of missing 01-04 complaints.
+t80_out=$(scripts/agent-gate preflight CHG-1175 2>&1); t80_rc=$?
+report "T80 TC-1493f preflight agrees with narrowed begin on an entry-only change" 0 "$t80_rc"
+# TC-1493g (独立评审 F1): a BATCH member's artifacts live in the batch dir; the
+# stage gate must resolve them through change_dir (same source as session-gate).
+new_repo
+seed_batch_artifacts BATCH-20260101 CHG-1177:L1
+mkdir -p tests && printf 'assert "batch"\n' > tests/test_a.py
+t_tc_landing docs/changes/BATCH-20260101/04-test-scripts.md tests/test_a.py
+t80_af=$(git rev-parse --git-path agent-governance/active-change)
+mkdir -p "$(dirname "$t80_af")" && printf 'CHG-1177\n' > "$t80_af"
+t80_rc=0; scripts/agent-gate --stage testplan >/dev/null 2>&1 || t80_rc=$?
+report "T80 TC-1493g BATCH member testplan gate resolves the batch directory" 0 "$t80_rc"
 }
 
 section_T81() {
@@ -7075,6 +7110,9 @@ report "T81 TC-1495c 00.5 edits are process actions (never blocked)" 0 "$t81_rc"
 # TC-1495d/e: bug credential channel — skeleton alone is NOT enough; the log row completes it
 git rev-parse --git-path agent-governance/active-change | xargs rm -f
 mkdir -p "docs/bugs/BATCH-$(date -u +%Y%m%d)"
+# 独立评审 F2: the bare directory is not a defect batch (identity piece required)
+t81_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check 2>&1); t81_rc=$?
+report "T81 TC-1495d0 empty same-day defect-batch dir does NOT release source edits" 2 "$t81_rc"
 printf '## BUG-9001\n诊断骨架\n' > "docs/bugs/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
 t81_out=$(printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check 2>&1); t81_rc=$?
 report "T81 TC-1495d batch skeleton without the bugfix-log row does NOT release source edits" 2 "$t81_rc"
@@ -7092,6 +7130,18 @@ t81_rc=0
 printf '{"tool_name":"Edit","tool_input":{"file_path":"docs/changes/CHG-1176/02-code-impact-analysis.md"}}' | AGENT_GUARD_STAGE_GATES=0 bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
 report "T81 TC-1495g STAGE_GATES=0 skips the stage predicate layer" 0 "$t81_rc"
 mv docs/changes/CHG-1176/01-held.md docs/changes/CHG-1176/01-spec.md
+# TC-1494c (独立评审 F1): a BATCH member's 04 lives in docs/changes/BATCH-*/ —
+# check must resolve it the same way agent-gate change_dir does (no false red).
+new_repo
+t_install_session_gate
+seed_batch_artifacts BATCH-20260101 CHG-1177:L1
+mkdir -p tests && printf 'assert "batch"\n' > tests/test_a.py
+t_tc_landing docs/changes/BATCH-20260101/04-test-scripts.md tests/test_a.py
+t81_af=$(git rev-parse --git-path agent-governance/active-change)
+mkdir -p "$(dirname "$t81_af")" && printf 'CHG-1177\n' > "$t81_af"
+t81_rc=0
+printf '{"tool_name":"Edit","tool_input":{"file_path":"src/a.go"}}' | bash scripts/session-gate.sh check >/dev/null 2>&1 || t81_rc=$?
+report "T81 TC-1494c BATCH member source edit resolves the batch 04" 0 "$t81_rc"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.

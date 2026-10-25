@@ -635,7 +635,7 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
 # A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0、v3.43.0、v3.89.0 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 172KB（176,128 字节，v3.89.0 +8KiB 步进）。
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 168KB（172,032 字节，v3.89.0 +4KiB 步进）。
 # v3.29.0（CHG-028）重校准 132KB → 140KB 的依据：§2.1 九专家行 + §2.2 分阶段专家评审矩阵为
 # 新增规范性内容（两轮措辞压缩后仍超 136KB 约 1.6KB），按 KiB 步进 +4KB；STANDARDS_CHANGELOG v3.29.0 行即依据。
 # v3.25.0（CHG-025）重校准 128KB → 132KB 的依据（按既有三个条件）：
@@ -679,14 +679,20 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 # v3.70.0 回转 172KB → 164KB（CHG-045，2026-10-13，用户"体积要控制"指令 + 配对减法纪律兑现）：
 #   CHG-045 存量法下沉实移 ~3.2KB（DS 170,823→167,610——盘点估值 13KB 偏高，可无语义损失
 #   移出的形状就这些；软警线 163,840B 常亮=下次结构增长的减法触发器）。A28/MAINTAINER 同步。
+# v3.89.0 重校准 164KB → 168KB 的依据（CHG-117，REQ-1199~1203，独立评审批 F5）：
+#   ① §2.17.2b 信号③专句 + §2.16.2 阶段门执法点 + §2.17 阶段门/无账门专段（含设计门补齐
+#      03.5）把 DS 推到 165,937 字节——旧软警 163,840B 之上、旧硬上界 167,936B 内余 1,999B；
+#   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.89.0 行；
+#   ③ 按 +4KB 步进重设为 168KB（172,032 字节），余量 6,095B——**不是**按当前体量贴合；
+#      软警线随上界 −4KiB = 167,936B。独立评审核回+8KB 步进放宽过多，此处兑现 +4KB。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 172KB (FU-017; ratchet-up v3.89.0 CHG-117, +8KiB step)" 1 "$([[ "$std_bytes" -le 176128 ]] && echo 1 || echo 0)"
-# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥163,840B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
+report "A11 standards body size <= 168KB (FU-017; ratchet-up v3.89.0 CHG-117, +4KiB step)" 1 "$([[ "$std_bytes" -le 172032 ]] && echo 1 || echo 0)"
+# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥167,936B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 172,032B)" 0 "$([[ "$std_bytes" -ge 172032 ]] && echo 1 || echo 0)"
+report_soft "A11s standards body approaching hard cap (soft warn >= 167,936B)" 0 "$([[ "$std_bytes" -ge 167936 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '172 KB / 176,128 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '168 KB / 172,032 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"

@@ -611,8 +611,10 @@ is_code_path() {
 # the other two).
 # Exemption ladder (fail-closed, never silent):
 #   1. active-change pointer present (git-path, same resolution as stop);
-#   2. same-day defect batch dir present (<bugs_root>/BATCH-<UTCday>/ — anchor
-#      completeness stays with G8 / the existing group validators);
+#   2. same-day defect batch WITH its identity piece (<bugs_root>/BATCH-<UTCday>/
+#      01-diagnosis.md carrying at least one `## BUG-` anchor) — an empty
+#      directory is not a batch (independent review F2); full anchor
+#      completeness stays with G8 / the existing group validators;
 #   3. AGENT_GUARD_ALLOW_UNACCOUNTED=1 — same ladder as ALLOW_NO_SHIFT /
 #      ALLOW_OVER_RED: the bypass prints a WARN line and appends a
 #      GATE-E125BYPASS row to the friction ledger; the justification is owed
@@ -624,8 +626,10 @@ is_code_path() {
 # injection only) purely as a stated contract that the unaccounted check must
 # run regardless of any skip semantics; setting both variables by hand has NO
 # bypass effect — the only bypass keys are the three exemptions above.
-day_bug_batch_present() { # -> 0 when <bugs_root>/BATCH-<UTCday>/ exists
-  [[ -d "$bugs_root/BATCH-$(date -u +%Y%m%d)" ]]
+day_bug_batch_present() { # -> 0 when <bugs_root>/BATCH-<UTCday>/01-diagnosis.md carries a BUG anchor
+  local d
+  d="$bugs_root/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
+  [[ -s "$d" ]] && grep -qE '^##[[:space:]]+BUG-[0-9A-Za-z_-]+' "$d" 2>/dev/null
 }
 
 unaccounted_exempt() { # -> 0 when the diff face is accounted for
@@ -3071,10 +3075,20 @@ case "$command" in
       done <<< "$out"
       return 0
     }
-    p_run required_docs_present "$id"
-    p_run validate_artifact_content "$id"
+    # v3.89.0 (CHG-117, 独立评审 F3): begin 已收窄为入口门，preflight 的 begin
+    # face 必须同口径——入口三件齐即绿；01-04 的完整校验只在阶段工作已开动
+    # （任一阶段产物在场）时加入，避免把“刚 begin”误报成缺 01-04。
+    pf_flow=0
+    for pf_a in 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+      [[ -s "$pf_d/$pf_a" ]] && pf_flow=1
+    done
+    p_run required_docs_present "$id" entry
     p_run validate_governance_state "$id"
-    p_run validate_dimensional_begin "$pf_d"
+    if [[ "$pf_flow" == 1 ]]; then
+      p_run required_docs_present "$id"
+      p_run validate_artifact_content "$id"
+      p_run validate_dimensional_begin "$pf_d"
+    fi
     p_run validate_project_masters
     # v3.82.0 (CHG-109, REQ-1160): the stop-side delivery shape face joins the
     # probe (same die sites, zero side effects — the round-ledger write stays

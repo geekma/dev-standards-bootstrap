@@ -298,9 +298,15 @@ sg_repo_relative() { # <path> -> repo-relative when inside the worktree, unchang
     case "$p" in
       "$root"/*) printf '%s' "${p#"$root"/}"; return 0 ;;
     esac
-    # macOS /var → /private/var 类符号链接：hook 与 git 可能各自给出物理/逻辑路径
-    rp=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P) || rp=""
+    # macOS /var → /private/var 类符号链接：hook 与 git 可能各自给出物理/逻辑路径。
+    # 物理根直接前缀比较优先（新目录 dirname 尚不存在时 pwd -P 会失败）。
     rr=$(cd "$root" 2>/dev/null && pwd -P) || rr=""
+    if [[ -n "$rr" ]]; then
+      case "$p" in
+        "$rr"/*) printf '%s' "${p#"$rr"/}"; return 0 ;;
+      esac
+    fi
+    rp=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P) || rp=""
     if [[ -n "$rp" && -n "$rr" ]]; then
       case "$rp" in
         "$rr") printf '%s' "${p##*/}"; return 0 ;;
@@ -309,9 +315,38 @@ sg_repo_relative() { # <path> -> repo-relative when inside the worktree, unchang
     fi
   fi
   if [[ -n "${PWD:-}" ]]; then
+    # 逻辑根兜底（独立评审 F4）：PWD 在仓内子目录时，用 --show-prefix 反推
+    # PWD 方言下的仓库根——别名路径 + 新建目录（dirname 尚不存在，pwd -P 失败）
+    # 也能剥前缀。PWD 不在仓内时退化为原前缀判定，仓库外仍原样返回（降级不拦）。
+    local lroot pref
+    pref=$(git rev-parse --show-prefix 2>/dev/null || true)
+    lroot="${PWD%/}"
+    [[ -z "$pref" ]] || lroot="${lroot%/${pref%/}}"
+    case "$p" in "$lroot"/*) printf '%s' "${p#"$lroot"/}"; return 0 ;; esac
     case "$p" in "$PWD"/*) printf '%s' "${p#"$PWD"/}"; return 0 ;; esac
   fi
   printf '%s' "$p"
+}
+
+# v3.89.0（CHG-117，独立评审批 F1）：活跃变更目录解析必须与 agent-gate `change_dir`
+# 同源——BATCH-YYYYMMDD/ 承载多个变更（`## <id>` 锚点区分），04 在批次目录里，
+# 不能假设 `$CHANGE_ROOT/<id>/` 存在。改一侧须同步另一侧与 T81 批次用例。
+sg_change_dir() { # <change-id> -> directory
+  # 先声明再赋值：`local id="$1" d="$CHANGE_ROOT/$id"` 在同一 local 语句里
+  # 展开 `$id` 时局部变量尚未生效，set -u 下直接 unbound（T81 回归已钉）。
+  local id="$1" d b
+  d="$CHANGE_ROOT/$id"
+  [[ -d "$d" ]] && { printf '%s' "$d"; return 0; }
+  if [[ -n "${AGENT_GUARD_CHANGE_DIR:-}" && -d "${AGENT_GUARD_CHANGE_DIR:-}" ]]; then
+    printf '%s' "$AGENT_GUARD_CHANGE_DIR"; return 0
+  fi
+  for b in "$CHANGE_ROOT"/BATCH-*/; do
+    [[ -d "$b" ]] || continue
+    if grep -qE "^##[[:space:]]+${id}([[:space:]]|$)" "$b"/*.md 2>/dev/null; then
+      printf '%s' "${b%/}"; return 0
+    fi
+  done
+  printf '%s' "$d"
 }
 
 if [[ "$mode" == "count" ]]; then
@@ -410,7 +445,7 @@ if [[ "$mode" == "check" ]]; then
       # 仅源码面保留无账判定（REQ-1199 语义），文档产物面回归放行
       [[ "${AGENT_GUARD_STAGE_GATES:-1}" == "0" ]] && return 0
       cid="${BASH_REMATCH[1]}"
-      sgdir="$CHANGE_ROOT/$cid"
+      sgdir=$(sg_change_dir "$cid")
       case "$SG_FILE" in
         */02-*|*/03-*)
           # G-规格门：该变更目录 01 REQ 表在位
@@ -437,7 +472,15 @@ if [[ "$mode" == "check" ]]; then
     local af paid=0
     af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
     [[ -n "$af" && -s "$af" ]] && paid=1
-    [[ -d "$BUGS_ROOT/BATCH-$(date -u +%Y%m%d)" ]] && paid=1
+    # 当日缺陷组在位≠目录存在：空目录不得静默豁免（独立评审 F2）；身份件
+    # 01-diagnosis.md 至少一个 `## BUG-` 锚点才算“组在场”，齐备性仍归 G8。
+    if [[ "$paid" != 1 ]]; then
+      local bdiag
+      bdiag="$BUGS_ROOT/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
+      if [[ -s "$bdiag" ]] && grep -qE '^##[[:space:]]+BUG-[0-9A-Za-z_-]+' "$bdiag" 2>/dev/null; then
+        paid=1
+      fi
+    fi
     if [[ "$paid" != 1 ]]; then
       if [[ "${AGENT_GUARD_ALLOW_UNACCOUNTED:-}" == "1" ]]; then
         return 0   # 豁免不静默：staged/stop 的 GATE-E125BYPASS 台账承接（此处无台账写面，不重复）
@@ -449,14 +492,15 @@ if [[ "$mode" == "check" ]]; then
     [[ "${AGENT_GUARD_STAGE_GATES:-1}" == "0" ]] && return 0
     if [[ "$paid" == 1 && -n "$af" && -s "$af" ]]; then
       # 活跃变更在场：G-测试门（04 用例矩阵 + TC 落点清单在位）
-      local id d04 ok4=1
+      local id d04 src_dir ok4=1
       id=$(tr -d '[:space:]' < "$af" 2>/dev/null || true)
-      d04="$CHANGE_ROOT/$id/04-test-scripts.md"
+      src_dir=$(sg_change_dir "$id")
+      d04="$src_dir/04-test-scripts.md"
       [[ -s "$d04" ]] || ok4=0
       [[ "$ok4" == 1 ]] && { grep -qE 'TC-[0-9]+' "$d04" 2>/dev/null || ok4=0; }
       [[ "$ok4" == 1 ]] && { grep -q '^## TC 落点清单' "$d04" 2>/dev/null || ok4=0; }
       if [[ "$ok4" != 1 ]]; then
-        echo "session-gate: HARD STOP — 源码编辑缺 G-测试门（docs/changes/$id/04-test-scripts.md 用例矩阵 TC-xxx + 覆盖维度 与 「TC 落点清单」节在位即放行）；先过 agent-gate --stage testplan，或 AGENT_GUARD_STAGE_GATES=0 关闭阶段谓词层（理由登记 09）(standards §2.16.2/§2.17, v3.89.0 CHG-117)" >&2
+        echo "session-gate: HARD STOP — 源码编辑缺 G-测试门（$d04 用例矩阵 TC-xxx + 覆盖维度 与 「TC 落点清单」节在位即放行）；先过 agent-gate --stage testplan，或 AGENT_GUARD_STAGE_GATES=0 关闭阶段谓词层（理由登记 09）(standards §2.16.2/§2.17, v3.89.0 CHG-117)" >&2
         exit 2
       fi
       return 0
