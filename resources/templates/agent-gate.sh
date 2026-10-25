@@ -2709,7 +2709,7 @@ delivery_ready() {
 
 emit_metrics() {
   local dir id risk t_intent t_gov t_spec t_plan t_test t_chg t_code
-  local sigs esess esess_over r_rounds r_limit r_over f_tot f_dis f_rate
+  local sigs esess r_rounds r_limit r_over f_tot f_dis f_rate
   [[ -d "$change_root" ]] || exit 0
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
@@ -2733,15 +2733,14 @@ emit_metrics() {
       t_chg=$(first_commit_ts "$dir/09-changelog.md")
       t_code=$(first_commit_referencing "$id")
       # v3.34.0 (CHG-034): observational count of DISTINCT expert-review
-      # signature task-ids (§2.1.7 third segment) across 01/03 — makes the
-      # L2 ≤3 session guardrail (§2.2) visible WITHOUT enforcing (metrics is
-      # read-only by contract).
+      # signature task-ids (§2.1.7 third segment) across 01/03 — read-only by
+      # contract (§2.17.5). The old `expert_sessions_over_guardrail` flag is gone
+      # with the L2 ≤3 session cap (v3.90.0, CHG-122): that cap contradicted
+      # "阶段 1-5 各派独立子代理".
       sigs=$(cat "$dir/01-spec.md" "$dir/03-modification-plan.md" 2>/dev/null \
         | grep -Eo '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / [A-Za-z0-9_-]+' \
         | awk -F'/' '{gsub(/[[:space:]]/,"",$3); print $3}' | sort -u || true)
       esess=$(printf '%s' "$sigs" | grep -c . || true)
-      esess_over=false
-      if [[ "$risk" == '"L2"' || "$risk" == '"L3"' ]] && [[ "${esess:-0}" -gt 3 ]]; then esess_over=true; fi
       # v3.38.0 (CHG-040): artifact cost observation — md file count and byte
       # volume of the change's containing directory. In a BATCH the files are
       # SHARED by every member, so each member reports the same directory-wide
@@ -2807,8 +2806,8 @@ emit_metrics() {
           f_pre=${f_counts#* }; f_pre=${f_pre%% *}
         fi
       fi
-      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s,"findings_introduced":%s,"findings_pre_existing":%s}\n' \
-        "$id" "$risk" "${esess:-0}" "$esess_over" "${a_files:-0}" "${a_bytes:-0}" \
+      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s,"findings_introduced":%s,"findings_pre_existing":%s}\n' \
+        "$id" "$risk" "${esess:-0}" "${a_files:-0}" "${a_bytes:-0}" \
         "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
         "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
         "$(ts_or_null "$t_chg")" \

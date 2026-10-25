@@ -1083,7 +1083,7 @@ commit_all "docs: CHG-700 evidence"
 out=$(scripts/agent-gate metrics)
 check_output "metrics flips delivery_ready after evidence" '"delivery_ready":true' "$out"
 # v3.34.0（CHG-034）：专家会话数观测字段（只观测不拦截）
-check_output "metrics emits expert_sessions field" '"expert_sessions":[0-9]+,"expert_sessions_over_guardrail":(true|false)' "$out"
+check_output "metrics emits expert_sessions field" '"expert_sessions":[0-9]+,"artifact_files"' "$out"
 # v3.38.0（CHG-040）：产物体量观测字段（瘦身决策数据化）
 check_output "metrics emits artifact cost fields" '"artifact_files":[0-9]+,"artifact_bytes":[0-9]+' "$out"
 
