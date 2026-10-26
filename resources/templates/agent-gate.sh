@@ -2606,6 +2606,196 @@ review_consent_check() { # <id> — E137: a deep/approval model needs user conse
 # the whole face off (byte-identical to v3.90.2 behaviour).
 plan_enabled() { [[ "${AGENT_GUARD_ADAPT:-1}" != "0" ]]; }
 
+# v3.90.5 (CHG-126, P0-0): baseline snapshot — read the five numbers that make
+# "how much did we save" measurable, from the ledgers already on disk. No new
+# instrumentation, no writes unless --write; missing data stays explicit (null).
+baseline_p50() { # <kind> -> p50 of the last 5 numeric cost_s rows (empty when absent)
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" kind="$1" vals
+  [[ -s "$lg" ]] || return 0
+  vals=$(awk -F'\t' -v k="$kind" '$2==k && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
+  [[ -n "$vals" ]] || return 0
+  printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
+}
+
+baseline_last() { # <kind> -> cost_s of the last numeric row (empty when absent)
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" kind="$1"
+  [[ -s "$lg" ]] || return 0
+  awk -F'\t' -v k="$kind" '$2==k && $5 ~ /^[0-9]+$/ {v=$5} END{if (v!="") print v}' "$lg"
+}
+
+baseline_count() { # <kind> -> row count
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" kind="$1"
+  [[ -s "$lg" ]] || { printf '0'; return 0; }
+  awk -F'\t' -v k="$kind" '$2==k {n++} END{print n+0}' "$lg"
+}
+
+baseline_snapshot() { # -> one-line JSON (never writes)
+  local stop_p50 full_runs audit_p50 assertions wall src parts=""
+  stop_p50=$(baseline_p50 run-full)
+  full_runs=$(baseline_count run-full)
+  audit_p50=$(baseline_p50 audit)
+  wall=$(baseline_last run-full)
+  assertions=""
+  if [[ -s "$repo_root/.agent-state/last-suite-receipt.json" ]]; then
+    local pa fa
+    pa=$(sed -nE 's/.*"passed":[[:space:]]*([0-9]+).*/\1/p' "$repo_root/.agent-state/last-suite-receipt.json" | head -1)
+    fa=$(sed -nE 's/.*"failed":[[:space:]]*([0-9]+).*/\1/p' "$repo_root/.agent-state/last-suite-receipt.json" | head -1)
+    if [[ -n "$pa" && -n "$fa" ]]; then assertions=$(( pa + fa )); fi
+  fi
+  if [[ -n "$stop_p50" && -n "$audit_p50" && -n "$assertions" ]]; then src="ledger+receipt"
+  elif [[ -n "$stop_p50" || -n "$audit_p50" ]]; then src="ledger"
+  elif [[ -n "$assertions" ]]; then src="receipt"
+  else src="partial"; fi
+  printf '{"measured_at":"%s","source":"%s","stop_p50_s":%s,"full_runs":%s,"audit_p50_s":%s,"full_assertions":%s,"full_wall_s":%s}' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$src" \
+    "${stop_p50:-null}" "${full_runs:-0}" "${audit_p50:-null}" "${assertions:-null}" "${wall:-null}"
+}
+
+baseline_write() { # <change-dir> <json>
+  local d="$1" js="$2" f="$1/baseline.json" log="$1/09-changelog.md"
+  printf '%s\n' "$js" > "$f" 2>/dev/null || {
+    echo "agent-gate: WARN — could not write $f (P0-0)" >&2; return 1; }
+  if [[ -s "$log" ]] && ! grep -q '^- \[baseline\]' "$log" 2>/dev/null; then
+    printf -- '- [baseline] %s\n' "$js" >> "$log" 2>/dev/null || true
+  fi
+  echo "agent-gate: baseline recorded at $f"
+}
+
+# v3.90.5 (CHG-126, P1-2): three-source TC index. The old resolver read only 04;
+# the union adds test-script self-declarations and the RTVM matrix, and marks
+# dangling landings instead of silently counting them as resolved. The index is a
+# target-repo CACHE (tests/tc-index.tsv) — never shipped, never a contract artifact.
+tc_section_exists() { # <section-id>
+  local sec="$1"
+  [[ -n "$sec" && "$sec" != "-" ]] || return 1
+  grep -qE "^SECTIONS=.*[[:space:]]${sec}[),]|^section_${sec//-/_}\(\)" \
+    "$repo_root/tests/run-tests.sh" 2>/dev/null
+}
+
+tc_expand() { # <TC-spec> -> one id per line (ranges expanded)
+  local spec="$1" a b n
+  case "$spec" in
+    *~*)
+      a="${spec%%~*}"; b="${spec#*~}"
+      a="${a#TC-}"; b="${b#TC-}"
+      case "$a$b" in *[!0-9]*) printf '%s\n' "$spec"; return 0 ;; esac
+      [[ "$b" -ge "$a" ]] || { printf '%s\n' "$spec"; return 0; }
+      n="$a"
+      while [[ "$n" -le "$b" ]]; do printf 'TC-%s\n' "$n"; n=$(( n + 1 )); done
+      ;;
+    *) printf '%s\n' "$spec" ;;
+  esac
+}
+
+tc_emit() { # <rows-file> <tc> <source> <section|-> <file|->
+  local rows="$1" tc="$2" src="$3" sec="$4" fil="$5" sok="-" fok="-"
+  [[ -n "$sec" ]] || sec="-"
+  [[ -n "$fil" ]] || fil="-"
+  if [[ "$sec" != "-" ]]; then
+    tc_section_exists "$sec" && sok="ok" || sok="missing"
+  fi
+  if [[ "$fil" != "-" ]]; then
+    [[ -f "$repo_root/$fil" ]] && fok="ok" || fok="missing"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$tc" "$src" "$sec" "$sok" "$fil" "$fok" >> "$rows"
+}
+
+tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_TOTAL / TC_INDEX_DANGLING
+  local d="$1" f04="$1/04-test-scripts.md" f15="$1/01.5-rtvm-matrix.md"
+  local raw agg line spec secs fil tc s f files fp
+  raw=$(mktemp 2>/dev/null) || { TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
+  agg=$(mktemp 2>/dev/null) || { rm -f "$raw"; TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
+
+  # S1: 04 matrix rows (TC id + landing section/file)
+  if [[ -s "$f04" ]]; then
+    while IFS= read -r line; do
+      spec=$(printf '%s' "$line" | sed -E 's/^\|[[:space:]]*(TC-[0-9]+(~TC?-?[0-9]+)?).*/\1/')
+      [[ "$spec" == TC-* ]] || continue
+      secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u | tr '\n' ' ' || true)
+      fil=$(printf '%s' "$line" | grep -oE '(tests|scripts)/[A-Za-z0-9._/-]+\.(sh|py|js|ts|java|go|rb)' | sort -u | tr '\n' ' ' || true)
+      for tc in $(tc_expand "$spec"); do
+        if [[ -n "$secs" || -n "$fil" ]]; then
+          for s in $secs; do tc_emit "$raw" "$tc" 04 "$s" "-"; done
+          for f in $fil; do tc_emit "$raw" "$tc" 04 "-" "$f"; done
+        else
+          tc_emit "$raw" "$tc" 04 "-" "-"
+        fi
+      done
+    done <<< "$(grep -E '^\|[[:space:]]*TC-[0-9]+' "$f04" 2>/dev/null || true)"
+  fi
+
+  # S2: test scripts referenced by 04/01.5 that declare TC ids themselves
+  files=$( { grep -oE '(tests|scripts)/[A-Za-z0-9._/-]+\.(sh|py|js|ts|java|go|rb)' "$f04" "$f15" 2>/dev/null || true; } \
+    | sed -E 's/^[^:]+://' | sort -u)
+  for fp in $files; do
+    [[ -f "$repo_root/$fp" ]] || continue
+    grep -oE 'TC-[0-9]+' "$repo_root/$fp" 2>/dev/null | sort -u | while IFS= read -r tc; do
+      tc_emit "$raw" "$tc" script "-" "$fp"
+    done
+  done
+
+  # S3: RTVM matrix declares TC rows even when 04 has not caught up yet
+  if [[ -s "$f15" ]]; then
+    while IFS= read -r line; do
+      secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u | tr '\n' ' ' || true)
+      for tc in $(printf '%s' "$line" | grep -oE 'TC-[0-9]+' | sort -u); do
+        if [[ -n "$secs" ]]; then
+          for s in $secs; do tc_emit "$raw" "$tc" 01.5 "$s" "-"; done
+        else
+          tc_emit "$raw" "$tc" 01.5 "-" "-"
+        fi
+      done
+    done <<< "$(grep -E 'TC-[0-9]+' "$f15" 2>/dev/null || true)"
+  fi
+
+  awk -F'\t' '
+    {
+      tc=$1; src=$2; sec=$3; sok=$4; fil=$5; fok=$6
+      if (!(tc in seen)) { seen[tc]=1; order[++n]=tc }
+      srcs[tc]=srcs[tc] (srcs[tc]?" ":"") src
+      if (sok=="ok" && sec!="-" && bestsec[tc]=="") bestsec[tc]=sec
+      if (fok=="ok" && fil!="-" && bestfil[tc]=="") bestfil[tc]=fil
+      if ((sec!="-" && sok=="ok") || (fil!="-" && fok=="ok")) ok[tc]=1
+      if ((sec!="-" && sok!="ok") || (fil!="-" && fok!="ok")) dang[tc]=1
+    }
+    END {
+      print "tc\tsource\tsection\tfile\tstatus"
+      for (i=1; i<=n; i++) {
+        tc=order[i]
+        st=(ok[tc]?"ok":(dang[tc]?"dangling":"unresolved"))
+        print tc "\t" srcs[tc] "\t" (bestsec[tc]?bestsec[tc]:"-") "\t" (bestfil[tc]?bestfil[tc]:"-") "\t" st
+      }
+    }' "$raw" > "$agg"
+
+  TC_INDEX_OUT="$agg"
+  TC_INDEX_TOTAL=$(awk -F'\t' 'NR>1 {n++} END{print n+0}' "$agg")
+  TC_INDEX_OK=$(awk -F'\t' 'NR>1 && $5=="ok" {n++} END{print n+0}' "$agg")
+  TC_INDEX_DANGLING=$(awk -F'\t' 'NR>1 && $5=="dangling" {print $1}' "$agg" | tr '\n' ',' | sed 's/,$//')
+  rm -f "$raw"
+}
+
+tc_index_rate() { # total ok -> integer percent (0 when nothing declared)
+  local total="$1" ok="$2"
+  [[ "$total" -gt 0 ]] || { printf '0'; return 0; }
+  printf '%s' $(( ok * 100 / total ))
+}
+
+tc_index_build() { # <id> [--write]
+  local id="$1" write="${2:-}" d dest
+  d=$(change_dir "$id")
+  tc_index_scan "$d"
+  dest="$repo_root/tests/tc-index.tsv"
+  echo "tc-index: resolved=${TC_INDEX_OK}/${TC_INDEX_TOTAL} rate=$(tc_index_rate "$TC_INDEX_TOTAL" "$TC_INDEX_OK")% dangling=${TC_INDEX_DANGLING:-none}"
+  if [[ "$write" == "--write" ]]; then
+    mkdir -p "$repo_root/tests" 2>/dev/null || true
+    cat "$TC_INDEX_OUT" > "$dest" 2>/dev/null \
+      && echo "tc-index: wrote $dest" \
+      || echo "agent-gate: WARN — could not write $dest (P1-2)" >&2
+  fi
+  cat "$TC_INDEX_OUT"
+  rm -f "$TC_INDEX_OUT" 2>/dev/null || true
+}
+
 plan_changed_csv() { # staged+unstaged+untracked, governance-face only, CSV for run-tests
   { git -C "$repo_root" diff --name-only HEAD 2>/dev/null
     git -C "$repo_root" diff --cached --name-only 2>/dev/null
@@ -2613,9 +2803,10 @@ plan_changed_csv() { # staged+unstaged+untracked, governance-face only, CSV for 
   } | sort -u | tr '\n' ',' | sed 's/,$//'
 }
 
-plan_sections() { # single source: the runner's own -T auto resolver (no 4th map)
-  local out
-  out=$(AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_AUTO_DIFF="$(plan_changed_csv)" \
+plan_sections() { # [changed-csv] — single source: the runner's own -T auto resolver
+  local out changed="${1:-}"
+  [[ -n "$changed" ]] || changed=$(plan_changed_csv)
+  out=$(AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_AUTO_DIFF="$changed" \
     bash "$repo_root/tests/run-tests.sh" -T auto 2>/dev/null \
     | sed -n 's/^auto-resolve-only:[[:space:]]*//p' | tail -1 || true)
   case "$out" in NONE) printf '' ;; *) printf '%s' "$out" ;; esac
@@ -2637,41 +2828,82 @@ plan_section_cost() { # <section> -> p50-ish seconds from the ledger (last 5 row
   printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
 }
 
-plan_resolution_rate() { # <change-dir> — tc=<resolved>/<declared> over ROWS THAT NAME A SECTION
-  # Why rows: 04 in this repo separates the case matrix (TC + method) from a
-  # 落点清单 (TC spec → section). Only the latter can carry Tnn tokens; matrix
-  # rows without a section are not "unresolved", they simply do not claim one.
-  # Ranges (`TC-1~2`) count as their expanded size so the denominator is honest.
-  local d="$1" f="$1/04-test-scripts.md" total=0 parsed=0 line spec n _hit sec unp=""
-  [[ -s "$f" ]] || { printf 'tc=0/0'; return 0; }
-  while IFS= read -r line; do
-    [[ -n "$line" ]] || continue
-    # size of the TC spec in column 1 (single id or range)
-    spec=$(printf '%s' "$line" | sed -E 's/^\|[[:space:]]*(TC-[0-9]+(~[0-9]+)?).*/\1/')
-    [[ "$spec" == TC-* ]] || continue
-    # Rows that name no section are not "unresolved" — they make no such claim.
-    _secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u || true)
-    [[ -n "$_secs" ]] || continue
-    n=1
-    case "$spec" in
-      *~*) n=$(( ${spec#*~} - $(printf '%s' "$spec" | sed -E 's/TC-([0-9]+)~[0-9]+/\1/') + 1 )) ;;
-    esac
-    total=$(( total + n ))
-    _hit=0
-    for sec in $_secs; do
-      if grep -qE "^SECTIONS=.*[[:space:]]${sec}[),]|^section_${sec//-/_}\(\)" "$repo_root/tests/run-tests.sh" 2>/dev/null; then
-        _hit=1; break
-      fi
-    done
-    if [[ "$_hit" == "1" ]]; then parsed=$(( parsed + n )); else unp="$unp $spec"; fi
-  done <<< "$(grep -E '^\|[[:space:]]*TC-[0-9]+' "$f" 2>/dev/null || true)"
-  printf 'tc=%s/%s%s' "$parsed" "$total" "${unp:+ unresolved:${unp# }}"
+plan_resolution_rate() { # <change-dir> — tc=<resolved>/<declared> over the three-source union
+  # v3.90.5 (CHG-126, P1-2): the 04-only resolver could not see TC ids declared
+  # by the test script itself or by 01.5. The union is the single implementation
+  # (tc_index_scan); this wrapper keeps the historical `tc=N/M` shape.
+  local d="$1" unp=""
+  tc_index_scan "$d"
+  unp=$(awk -F'\t' 'NR>1 && $5=="unresolved" {print $1}' "$TC_INDEX_OUT" | tr '\n' ',' | sed 's/,$//')
+  printf 'tc=%s/%s%s' "$TC_INDEX_OK" "$TC_INDEX_TOTAL" "${unp:+ unresolved:${unp}}"
+  rm -f "$TC_INDEX_OUT" 2>/dev/null || true
+}
+
+# v3.90.5 (CHG-126, P2-1): four judges (artifacts / reviews / stages / masters).
+# The engine only encodes STRUCTURAL FLOORS (risk + whether code paths moved);
+# it never encodes business keywords ("payment" etc.). An AI override is accepted
+# only with a >=20-char basis and a platform/model/session reviewer signature.
+plan_judges_json() { # <change-dir> [changed-csv] -> JSON fragment (no outer braces)
+  local d="$1" changed="${2:-}" risk pcode=0 psize="" diffn=0 cp
+  local art rev stg mas jsrc="engine" jrev="" jbasis="" aib air
+  aib="${AGENT_GUARD_PLAN_AI_BASIS:-}"; air="${AGENT_GUARD_PLAN_AI_REVIEWER:-}"
+  risk=$(sed -n 's/.*"risk_level":[[:space:]]*"\(L[0-3]\)".*/\1/p' "$d/00-governance.json" 2>/dev/null | head -1)
+  [[ "$risk" =~ ^L[0-3]$ ]] || risk="L1"
+  [[ -n "$changed" ]] || changed=$(plan_changed_csv)
+  for cp in $(printf '%s' "$changed" | tr ',' '\n'); do
+    [[ -n "$cp" ]] || continue
+    diffn=$(( diffn + 1 ))
+    is_code_path "$cp" && { pcode=1; break; }
+  done
+  psize=$(sed -nE 's/^[[:space:]]+size:[[:space:]]*([^#]*).*/\1/p' "$repo_root/.agent-governance.yml" 2>/dev/null | head -1 | tr -d '[:space:]') || true
+  case "$risk:$pcode" in
+    L0:0|L1:0)
+      art="00-intent.md,00-governance.json,05-test-results.md,09-changelog.md"
+      rev="min=1;independent=true"
+      stg="staged,stop"
+      mas="P10"
+      ;;
+    L3:*)
+      art="00-intent.md,00-governance.json,00.5-communication.md,01-spec.md,01.5-rtvm-matrix.md,02-code-impact-analysis.md,03-modification-plan.md,03.5-tasks.md,04-test-scripts.md,04.5-coding-record.md,05-test-results.md,06-bugs.md,06.5-bug-tasks.md,07-review-report.md,09-changelog.md"
+      rev="min=2;independent=true;cross_model=true"
+      stg="spec,design,testplan,implement,test,review,staged,stop"
+      mas="P00,P01,P02,P03,P04,P05,P06,P07,P08,P09,P10,P11,P12"
+      ;;
+    *)
+      art="00-intent.md,00-governance.json,00.5-communication.md,01-spec.md,01.5-rtvm-matrix.md,02-code-impact-analysis.md,03-modification-plan.md,03.5-tasks.md,04-test-scripts.md,04.5-coding-record.md,05-test-results.md,07-review-report.md,09-changelog.md"
+      rev="min=2;independent=true"
+      stg="spec,design,testplan,staged,stop"
+      mas="P01,P06,P09,P10,P11"
+      ;;
+  esac
+  jbasis="engine: risk=$risk; code-change=$pcode; changed-files=$diffn; profile-size=${psize:-unknown}"
+  if [[ -n "${AGENT_GUARD_PLAN_AI_ARTIFACTS:-}${AGENT_GUARD_PLAN_AI_STAGES:-}${AGENT_GUARD_PLAN_AI_MASTERS:-}${AGENT_GUARD_PLAN_AI_REVIEWS:-}" ]]; then
+    if [[ ${#aib} -ge 20 ]] \
+      && printf '%s' "$air" | grep -Eq '^[^/]+ / [^/]+ / (task|ses)-[A-Za-z0-9._-]+$'; then
+      jsrc="ai"; jrev="$air"; jbasis="$aib"
+      [[ -n "${AGENT_GUARD_PLAN_AI_ARTIFACTS:-}" ]] && art="$AGENT_GUARD_PLAN_AI_ARTIFACTS"
+      [[ -n "${AGENT_GUARD_PLAN_AI_STAGES:-}" ]] && stg="$AGENT_GUARD_PLAN_AI_STAGES"
+      [[ -n "${AGENT_GUARD_PLAN_AI_MASTERS:-}" ]] && mas="$AGENT_GUARD_PLAN_AI_MASTERS"
+      [[ -n "${AGENT_GUARD_PLAN_AI_REVIEWS:-}" ]] && rev="$AGENT_GUARD_PLAN_AI_REVIEWS"
+    else
+      echo "agent-gate: WARN — plan AI override ignored: need AGENT_GUARD_PLAN_AI_BASIS >=20 chars and AGENT_GUARD_PLAN_AI_REVIEWER 'platform / model / task-|ses-…' (P2-1)" >&2
+    fi
+  fi
+  art=$(printf '%s' "$art" | tr -d '\n\r"')
+  rev=$(printf '%s' "$rev" | tr -d '\n\r"')
+  stg=$(printf '%s' "$stg" | tr -d '\n\r"')
+  mas=$(printf '%s' "$mas" | tr -d '\n\r"')
+  jrev=$(printf '%s' "$jrev" | tr -d '\n\r"')
+  jbasis=$(printf '%s' "$jbasis" | tr -d '\n\r"')
+  printf '"artifacts":"%s","reviews":"%s","stages":"%s","masters":"%s","judges_source":"%s","judges_reviewer":"%s","judges_basis":"%s","tc_index":"tests/tc-index.tsv"' \
+    "$art" "$rev" "$stg" "$mas" "$jsrc" "$jrev" "$jbasis"
 }
 
 plan_json() { # <id> -> one-line decision JSON (no writes)
-  local id="$1" d secs budget pred src per gap="" rate diffh now
+  local id="$1" d secs budget pred src per gap="" rate diffh now judges changed
   d=$(change_dir "$id")
-  secs=$(plan_sections)
+  changed=$(plan_changed_csv)
+  secs=$(plan_sections "$changed")
   budget="${AGENT_GUARD_BUDGET_CLOSE_S:-120}"
   [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
   pred=0; src="prior"
@@ -2710,8 +2942,9 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   diffh=$( { git -C "$repo_root" diff HEAD 2>/dev/null; git -C "$repo_root" diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print $1}' || true)
   [[ -n "$diffh" ]] || diffh="unavailable"
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
-  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s"}' \
-    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis"
+  judges=$(plan_judges_json "$d" "$changed")
+  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s",%s}' \
+    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis" "$judges"
 }
 
 plan_strip_decision() { # <file> — drop a top-level "decision":{...} key with brace matching
@@ -2903,8 +3136,34 @@ plan_run() { # <id> <dry|write> [explain] — the only side-effecting entry poin
 # and each has its own off switch, so a single bad gate cannot disable the rest.
 stage_close_enabled() { [[ "${AGENT_GUARD_STAGE_CLOSE:-1}" != "0" ]]; }
 
-stage_close_check() { # <id> — E127 when the close prerequisites are missing
-  local id="$1" d os reason f rec
+stage_history_last() { # <change> <field> [stage] -> last matching value
+  local id="$1" field="$2" want="${3:-}" hf="$repo_root/.agent-state/stage-close.tsv"
+  [[ -s "$hf" ]] || return 0
+  awk -F'\t' -v c="$id" -v w="$want" -v fld="$field" '
+    $2==c && (w=="" || $3==w) { v=$fld } END { if (v!="") print v }' "$hf"
+}
+
+stage_backfilled() { # <d> <stage> -> csv of Pxx backfilled at this stage
+  local d="$1" n="$2" out="" p f pdir="$docs_dir/project"
+  if [[ -d "$pdir" ]]; then
+    for f in "$pdir"/P*.md; do
+      [[ -s "$f" ]] || continue
+      grep -qE "filled-at[[:space:]]+stage=${n}([^0-9]|$)" "$f" 2>/dev/null || continue
+      p=$(basename "$f"); p="${p%%-*}"
+      out="${out}${out:+,}$p"
+    done
+  fi
+  if [[ -s "$d/09-changelog.md" ]]; then
+    while IFS= read -r p; do
+      [[ "$out" == *"$p"* ]] && continue
+      out="${out}${out:+,}$p"
+    done <<< "$(sed -nE 's/^- \[x\] (P[0-9]{2}).*已回填.*/\1/p' "$d/09-changelog.md" 2>/dev/null | sort -u)"
+  fi
+  printf '%s' "${out:-none}"
+}
+
+stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 ordering
+  local id="$1" argn="${2:-}" d os reason f rec n prev late pt hts p first missing=""
   stage_close_enabled || { echo "agent-gate: stage close disabled (AGENT_GUARD_STAGE_CLOSE=0)"; return 0; }
   d=$(change_dir "$id")
   reason=""
@@ -2918,14 +3177,49 @@ stage_close_check() { # <id> — E127 when the close prerequisites are missing
   if [[ -n "$reason" ]]; then
     die "GATE-E127: $id cannot close: $reason — expected: confirmation + child-agent release recorded before closing; allowed: L0 single-line exemption; fix: record both, then re-run --stage close; ref: CHG-125 P2-1 / standards §2.17.2d"
   fi
+  # v3.90.5 (CHG-126, P2-5): stage number defaults to "next after the last close".
+  n="$argn"
+  [[ "$n" =~ ^[1-8]$ ]] || n=$(( $(stage_history_last "$id" 3) + 1 ))
+  [[ "$n" -ge 1 && "$n" -le 8 ]] || n=1
+
+  # A) late backfill: a master marked for a FUTURE stage, or stamped after that
+  # stage already closed, is evidence of "fill it all at the end" (Q7 forbids it).
+  late=""
+  for f in "$docs_dir"/project/P*.md; do
+    [[ -s "$f" ]] || continue
+    pt=$(sed -nE 's/^generated_at:[[:space:]]*([^[:space:]]+).*/\1/p' "$f" 2>/dev/null | head -1)
+    local fa
+    fa=$(sed -nE 's/.*filled-at[[:space:]]+stage=([1-8]).*/\1/p' "$f" 2>/dev/null | head -1)
+    [[ -n "$fa" ]] || continue
+    p=$(basename "$f"); p="${p%%-*}"
+    if [[ "$fa" -gt "$n" ]]; then late="$late $p(stage=$fa>N=$n)"; continue; fi
+    hts=$(stage_history_last "$id" 4 "$fa")
+    if [[ -n "$pt" && -n "$hts" && "$pt" > "$hts" ]]; then late="$late $p(stamped=$pt>closed[$fa]=$hts)"; fi
+  done
+  [[ -z "$late" ]] || die "GATE-E145: $id stage $n late backfill:$late — expected: a master is filled at the stage that needs it (filled-at stage=M with M<=N and stamped before that stage closed); allowed: re-open the stage and fill it there; fix: move the content to the correct stage and update filled-at; ref: CHG-126 P2-5 / Q7"
+
+  # B) the next stage must read what the previous stage backfilled.
+  prev=$(stage_history_last "$id" 5 "$(( n - 1 ))")
+  if [[ -n "$prev" && "$prev" != "none" ]]; then
+    first=$(awk -v m="阶段 $(( n - 1 )) 关闭" 'index($0,m){f=1;next} f && /Observation/ {print; exit}' "$d/09-changelog.md" 2>/dev/null)
+    for p in $(printf '%s' "$prev" | tr ',' ' '); do
+      printf '%s' "$first" | grep -q "$p" 2>/dev/null || missing="$missing $p"
+    done
+    [[ -z "$missing" ]] || die "GATE-E146: $id stage $n did not read the previous stage's backfill:$missing — expected: the first Observation after '阶段 $(( n - 1 )) 关闭' names every backfilled master; allowed: an Observation line quoting the anchors; fix: add the read-back Observation, then re-run; ref: CHG-126 P2-5 / Q7"
+  fi
+
+  rec=$(stage_backfilled "$d" "$n")
   f="$repo_root/.agent-state/stage-close.json"
   mkdir -p "$(dirname "$f")" 2>/dev/null || true
-  rec=$(printf '%s %s %s' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-    "closed=$id" "release=child-agent")
-  printf '{"change":"%s","closed_at":"%s","release":"child-agent","changelog_lines":%s}\n' \
-    "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+  hf="$repo_root/.agent-state/stage-close.tsv"
+  [[ -s "$hf" ]] || printf 'ts\tchange\tstage\tstamped_at\tbackfilled\n' > "$hf" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$id" "$n" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rec" >> "$hf" 2>/dev/null || true
+  printf '{"change":"%s","closed_at":"%s","release":"child-agent","stage":%s,"backfilled":"%s","changelog_lines":%s}\n' \
+    "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$n" "$rec" \
     "$(wc -l < "$d/09-changelog.md" 2>/dev/null | tr -d ' ' || echo 0)" > "$f" 2>/dev/null || true
-  echo "agent-gate: stage close recorded for $id ($f)"
+  printf -- '- 阶段 %s 关闭：%s；回填：%s\n' "$n" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rec" >> "$d/09-changelog.md" 2>/dev/null || true
+  echo "agent-gate: stage close recorded for $id (stage=$n backfilled=$rec, $f)"
 }
 
 reviews_pair_check() { # <id> — E128: a dedicated 阶段复核 CLAIM needs its review artifact
@@ -2954,6 +3248,125 @@ confirm_required_check() { # <id> <code> — E129 (staged) / E130 (preflight) fo
     die "GATE-E129: $id is $risk but 00.5 has no user-overall-confirmation — expected: '确认状态：已整体确认' before code evidence enters the staged face; allowed: record the user's overall confirmation; fix: present the communication draft and record it, then re-run; ref: CHG-125 P2-3 / standards §2.17.2d"
   fi
   die "GATE-E130: $id is $risk but 00.5 has no user-overall-confirmation — expected: '确认状态：已整体确认' before the preflight probe accepts evidence; allowed: record the user's overall confirmation; fix: record it, then re-run preflight; ref: CHG-125 P2-3 / standards §2.17.2d"
+}
+
+# v3.90.5 (CHG-126, P2-2/P2-3): consume the decision the engine already wrote.
+# Hard floors (required artifacts/stages) reject; soft gaps (masters/reviews)
+# only WARN unless AGENT_GUARD_PLAN_STRICT=1. Legacy changes without a decision
+# stay WARN-only by default, so存量 is not blocked.
+plan_decision_value() { # <d> <key>
+  local d="$1" key="$2"
+  sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" \
+    "$d/00-governance.json" 2>/dev/null | head -1
+}
+
+plan_gap_declared() { # <09> <prefix>
+  local log="$1" pfx="$2"
+  grep -qE "^- decision-gap: ${pfx}" "$log" 2>/dev/null
+}
+
+plan_mark_accepted() { # <id> <yes|no|gap>
+  local lg="$repo_root/.agent-state/adapt-decisions.tsv" id="$1" val="$2" tmp
+  [[ -s "$lg" ]] || return 0
+  tmp="$lg.$$"
+  awk -F'\t' -v OFS='\t' -v id="$id" -v val="$val" '
+    { line[NR]=$0 }
+    END {
+      for (i=NR; i>=1; i--) {
+        n=split(line[i], a, "\t")
+        if (a[2]==id) { a[7]=val; line[i]=a[1]; for (j=2;j<=n;j++) line[i]=line[i] OFS a[j]; break }
+      }
+      for (i=1; i<=NR; i++) print line[i]
+    }' "$lg" > "$tmp" 2>/dev/null && mv -f "$tmp" "$lg" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+}
+
+coverage_gap_check() { # <change-id> <change-dir> <chosen>
+  local cid="$1" cdir="$2" chosen="$3" diffs="" sec f05
+  [[ "$chosen" == "FULL" || -z "$chosen" ]] && return 0
+  f05="$cdir/05-test-results.md"
+  [[ -s "$f05" ]] || return 0
+  for sec in $(printf '%s' "$chosen" | tr ',' ' '); do
+    grep -qE "(^|[^A-Za-z0-9_])${sec}([^A-Za-z0-9_]|$)" "$f05" 2>/dev/null || diffs="$diffs $sec"
+  done
+  [[ -n "$diffs" ]] || { plan_mark_accepted "$cid" yes; return 0; }
+  if plan_gap_declared "$cdir/09-changelog.md" "coverage"; then
+    echo "agent-gate: plan coverage gap declared in 09:$diffs (P2-3)" >&2
+    plan_mark_accepted "$cid" gap
+    return 0
+  fi
+  echo "agent-gate: WARN — plan coverage gap: decision.chosen=[$chosen] but 05 has no evidence for:$diffs — add '- decision-gap: coverage …' to 09 (P2-3)" >&2
+  plan_mark_accepted "$cid" no
+  [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
+    && die "GATE-E144: $cid decision.chosen has no 05 evidence for:$diffs — expected: every chosen section appears in 05 (or a declared gap); allowed: '- decision-gap: coverage <sections> — <reason>' in 09; fix: run the sections and record them, or declare the gap; ref: CHG-126 P2-3"
+  return 0
+}
+
+plan_consume_check() { # <id>
+  local id="$1" d dec arts stages masters reviews missing="" soft="" reason="" a s p f pdir
+  plan_enabled || return 0
+  d=$(change_dir "$id") || return 0
+  [[ -d "$d" ]] || return 0
+  if ! grep -q '"decision"' "$d/00-governance.json" 2>/dev/null; then
+    if [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]]; then
+      die "GATE-E142: $id has no decision in 00-governance.json — expected: an engine decision recorded at begin (scripts/agent-gate plan $id); allowed: AGENT_GUARD_PLAN_STRICT=0 (WARN only) or AGENT_GUARD_ADAPT=0; fix: run plan, then re-run stop; ref: CHG-126 P2-2"
+    fi
+    echo "agent-gate: WARN — $id has no engine decision (run: scripts/agent-gate plan $id); continuing in WARN mode (P2-2)" >&2
+    return 0
+  fi
+  arts=$(plan_decision_value "$d" artifacts)
+  stages=$(plan_decision_value "$d" stages)
+  masters=$(plan_decision_value "$d" masters)
+  reviews=$(plan_decision_value "$d" reviews)
+
+  # Hard floor 1: required artifacts exist.
+  if [[ -n "$arts" ]]; then
+    for a in $(printf '%s' "$arts" | tr ',' ' '); do
+      [[ -f "$d/$a" ]] || missing="$missing $a"
+    done
+  fi
+  # Hard floor 2: required stages have their representative artifact.
+  if [[ -n "$stages" ]]; then
+    for s in $(printf '%s' "$stages" | tr ',' ' '); do
+      case "$s" in
+        spec) f="01-spec.md" ;;
+        design) f="02-code-impact-analysis.md" ;;
+        testplan) f="04-test-scripts.md" ;;
+        staged) f="05-test-results.md" ;;
+        stop) f="09-changelog.md" ;;
+        *) f="" ;;
+      esac
+      [[ -z "$f" || -f "$d/$f" ]] || missing="$missing stage:$s($f)"
+    done
+  fi
+  [[ -z "$missing" ]] || reason="hard items absent:$missing"
+
+  # Soft floor: masters/reviews → WARN + require a declared gap.
+  if [[ -n "$masters" ]]; then
+    for p in $(printf '%s' "$masters" | tr ',' ' '); do
+      f=$(find "$docs_dir/project" -maxdepth 1 -type f -name "$p-*.md" 2>/dev/null | head -1)
+      if [[ -z "$f" ]] || ! grep -q "变更注记 $id" "$f" 2>/dev/null; then soft="$soft master:$p"; fi
+    done
+  fi
+  if [[ -n "$reviews" ]]; then
+    local min n
+    min=$(printf '%s' "$reviews" | sed -nE 's/.*min=([0-9]+).*/\1/p')
+    [[ "$min" =~ ^[0-9]+$ ]] || min=1
+    n=0
+    [[ -d "$d/reviews" ]] && n=$(find "$d/reviews" -maxdepth 1 -type f -name 'P*.review.md' -size +0 2>/dev/null | wc -l | tr -d ' ')
+    [[ "$n" -ge "$min" ]] || soft="$soft reviews:$n<$min"
+  fi
+  if [[ -n "$soft" ]]; then
+    if plan_gap_declared "$d/09-changelog.md" "soft"; then
+      echo "agent-gate: plan soft gaps declared in 09:$soft (P2-2)" >&2
+    else
+      echo "agent-gate: WARN — plan soft gaps:$soft — add '- decision-gap: soft <item> — <reason>' to 09 (P2-2)" >&2
+      [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] && reason="${reason:+$reason; }soft items unmet:$soft (no '- decision-gap: soft …' line)"
+    fi
+  fi
+  # ONE die site for E143 (T41): hard and strict-soft findings are assembled
+  # into $reason instead of duplicating the branch.
+  [[ -z "$reason" ]] || die "GATE-E143: $id decision items unmet: $reason — expected: every artifacts/stages item present and soft gaps declared in 09; allowed: fill the item or add '- decision-gap: soft|coverage …'; fix: close the gap, then re-run; ref: CHG-126 P2-2"
+  coverage_gap_check "$id" "$d" "$(plan_decision_value "$d" chosen)"
 }
 
 validate_stop() {
@@ -3086,7 +3499,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.90.4" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.90.5" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -3124,7 +3537,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.90.4","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.90.5","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -3786,6 +4199,9 @@ case "$command" in
       p_run validate_delivery_shape_front "$id"
       p_run validate_delivery_shape_back "$id"
       p_run reviews_pair_check "$id"
+      # v3.90.5: the decision-consume face joins the probe too, so a missing
+      # hard artifact surfaces at second-level instead of at stop.
+      p_run plan_consume_check "$id"
     fi
     if [[ "$p_n" -eq 0 ]]; then
       echo "agent-gate: preflight: $id: all artifact gates clean"
@@ -3829,6 +4245,27 @@ case "$command" in
       > "$ss_dir/$ss_sid.json" 2>/dev/null \
       || echo "agent-gate: WARN — cannot write session handshake under $ss_dir (P0-1)" >&2
     echo "agent-gate: session handshake recorded ($ss_dir/$ss_sid.json): runtime=$ss_rt model=$ss_model window=$ss_win ($ss_src)"
+    ;;
+  baseline)
+    # v3.90.5 (CHG-126, P0-0): 5-number snapshot; --write persists it in the
+    # change dir. Read-only otherwise (never touches code/config).
+    bcid="${2:-}"; bmode="${3:-}"; bdir=""
+    [[ -n "$bcid" ]] && bdir=$(change_dir "$bcid")
+    if [[ -z "$bcid" || ! -d "$bdir" || ( -n "$bmode" && "$bmode" != "--write" ) ]]; then
+      die "GATE-E140: usage: scripts/agent-gate baseline <change-id> [--write] (got '${bcid:-<none>}' '${bmode:-}') — expected an existing change; allowed: --write (persist baseline.json + one 09 line); fix: pass a real change id; ref: CHG-126 P0-0"
+    fi
+    bjs=$(baseline_snapshot)
+    echo "baseline: $bjs"
+    [[ "$bmode" == "--write" ]] && baseline_write "$bdir" "$bjs"
+    ;;
+  tc-index)
+    # v3.90.5 (CHG-126, P1-2): three-source union (04 + script headers + 01.5).
+    tcid="${2:-}"; tcmode="${3:-}"; tcdir=""
+    [[ -n "$tcid" ]] && tcdir=$(change_dir "$tcid")
+    if [[ -z "$tcid" || ! -d "$tcdir" || ( -n "$tcmode" && "$tcmode" != "--write" ) ]]; then
+      die "GATE-E141: usage: scripts/agent-gate tc-index <change-id> [--write] (got '${tcid:-<none>}' '${tcmode:-}') — expected an existing change; allowed: --write (persist tests/tc-index.tsv cache); fix: pass a real change id; ref: CHG-126 P1-2"
+    fi
+    tc_index_build "$tcid" "$tcmode"
     ;;
   plan)
     # v3.90.2 (CHG-124, P1-1/P1-2): read-only decision. R2 never blocks on the
@@ -3903,9 +4340,13 @@ case "$command" in
       # check-mode predicates).
       spec|design|testplan)
         stage_gate_check "$stage" ;;
-      close) stage_close_check "${1:-$(active_change)}" ;;
+      close)
+        # v3.90.5: `--stage close <N>` closes a numbered stage; a non-numeric
+        # argument keeps the historical meaning (explicit change id).
+        if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
+        else stage_close_check "${1:-$(active_change)}"; fi ;;
       staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; fi; record_delivery stop ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -3931,6 +4372,8 @@ Usage:
   scripts/agent-gate metrics
   scripts/agent-gate session-start          # v3.90.2: write the session handshake (runtime/model/window, P0-1)
   scripts/agent-gate plan <change-id> [--dry-run|--explain]  # v3.90.2: read-only test-scope decision (P1-1/P1-2)
+  scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)
+  scripts/agent-gate tc-index <change-id> [--write]          # v3.90.5: three-source TC index cache (P1-2)
   scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>]  # v3.90.4: runtime-aware review plan; deep/high-cost needs USER consent
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]

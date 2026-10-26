@@ -901,7 +901,8 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 2. 修改 `agent-gate.sh`、hooks 或 CI 模板的变更必须先跑通全部用例再合入；用例与实现同仓同版本。
 3. 测试套件零依赖（bash 3.2+ 与 git），macOS/Linux、任意 IDE 终端均可运行，作为 §2.13.4 自动化门禁对治理配置自身的适用。
-4. **评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）**：事故与回归缺陷经 `scripts/eval-cases` 派生为**评测集**（运行时生成物，禁入库、禁手编），由 `scripts/eval-rescore` 打分（口径=已沉淀防回归用例的用例占比），收据绑定治理面内容哈希——漂移（治理面或用例集变更）即旧分作废、复核后经 `--update-baseline` 重建基线。**优先级序**：真缺陷召回优先于轮次下降，噪声与轮次是次优目标。
+4. **评测资产与重打分（v3.75.0，CHG-099）**：事故与回归缺陷经 `scripts/eval-cases` 派生为**评测集**（运行时生成物，禁入库、禁手编），由 `scripts/eval-rescore` 打分，收据绑定治理面内容哈希——漂移即旧分作废、复核后经 `--update-baseline` 重建基线。**优先级序**：真缺陷召回优先于轮次下降。
+5. **判定消费与回填时序**：stop/preflight 消费 `plan.decision`——硬项缺失 `E143`、strict 缺 decision `E142`、软项默认 WARN + 09 `decision-gap`、`chosen` 与 05 差集 strict `E144`；总册 `filled-at stage=N` 未来阶段/晚于关闭 `E145`，下阶段首条 Observation 未引用回填锚点 `E146`。
 
 #### 2.17.5 管线度量（metrics）
 
@@ -1087,4 +1088,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.90.4 | 更新时间：2026-10-26 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.90.5 | 更新时间：2026-10-26 | 全局维护责任人：geekma (geekma@gmail.com)*

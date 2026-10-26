@@ -2940,6 +2940,37 @@ if [[ -s "$GT82" ]]; then
   check_output "T82 E131 checks dogfood-next" 'dogfood-next' "$(sed -n '/^e131_dogfood_check()/,/^}/p' "$GT82")"
   check_output "T82 suite mode writes to 05" 'suite_mode=' "$(sed -n '/^record_suite_suggestion()/,/^}/p' "$GT82")"
   check_output "T82 down without reason falls back" 'falling back to adopt' "$(sed -n '/^record_suite_suggestion()/,/^}/p' "$GT82")"
+  # v3.90.5 (CHG-126): P0-0 baseline + P1-2 tc-index + P2-1 four judges
+  printf '# 09\n' > docs/changes/CHG-960/09-changelog.md
+  out=$(scripts/agent-gate baseline CHG-960 --write 2>&1); report "T82 baseline --write exits 0" 0 "$?"
+  report "T82 baseline writes five numbers" 5 "$(grep -oE '"(stop_p50_s|full_runs|audit_p50_s|full_assertions|full_wall_s)"' docs/changes/CHG-960/baseline.json | wc -l | tr -d ' ')"
+  out=$(scripts/agent-gate baseline CHG-960 --write 2>&1)
+  report "T82 baseline 09 line stays single" 1 "$(grep -c '^- \[baseline\]' docs/changes/CHG-960/09-changelog.md 2>/dev/null || true)"
+  printf '| TC-9999 | fixture | tests/missing.sh |\n' >> docs/changes/CHG-960/04-test-scripts.md
+  out=$(scripts/agent-gate tc-index CHG-960 2>&1)
+  check_output "T82 tc-index marks a dangling landing" 'dangling=TC-9999' "$out"
+  check_output "T82 tc-index reports the union rate" 'rate=' "$out"
+  scripts/agent-gate tc-index CHG-960 --write >/dev/null 2>&1
+  report "T82 tc-index --write persists the cache" 0 "$([[ -s tests/tc-index.tsv ]] && echo 0 || echo 1)"
+  report "T82 tc-index names its source" 1 "$(grep -c '^TC-9999' tests/tc-index.tsv 2>/dev/null || true)"
+  check_output "T82 decision carries the four judges" '"artifacts".*"reviews".*"stages".*"masters"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 L1 judges are lean" '"stages":"staged,stop"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  sed 's/"risk_level":"L1"/"risk_level":"L2"/' docs/changes/CHG-960/00-governance.json > .gov.tmp && mv .gov.tmp docs/changes/CHG-960/00-governance.json
+  scripts/agent-gate plan CHG-960 >/dev/null 2>&1
+  check_output "T82 L2 judges require the full stages" '"stages":"spec,design,testplan,staged,stop"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  out=$(AGENT_GUARD_PLAN_AI_MASTERS="P10" \
+    AGENT_GUARD_PLAN_AI_BASIS="fixture change is documented and risks no runtime surface" \
+    AGENT_GUARD_PLAN_AI_REVIEWER="WorkBuddy / test-model / ses-t82-ai" \
+    scripts/agent-gate plan CHG-960 --dry-run 2>&1)
+  check_output "T82 AI judges override is recorded" '"judges_source":"ai"' "$out"
+  out=$(AGENT_GUARD_PLAN_AI_MASTERS="P10" AGENT_GUARD_PLAN_AI_BASIS="short" \
+    AGENT_GUARD_PLAN_AI_REVIEWER="WorkBuddy / test-model / ses-t82-ai" \
+    scripts/agent-gate plan CHG-960 --dry-run 2>&1)
+  check_output "T82 short AI basis falls back to engine" '"judges_source":"engine"' "$out"
+  out=$(scripts/agent-gate baseline NOPE 2>&1 || true)
+  check_output "T82 baseline bad id dies E140" 'GATE-E140' "$out"
+  out=$(scripts/agent-gate tc-index NOPE 2>&1 || true)
+  check_output "T82 tc-index bad id dies E141" 'GATE-E141' "$out"
 else
   echo "SKIP T82: agent-gate absent — 跳过判定引擎 golden cases"
 fi
@@ -2956,6 +2987,20 @@ if [[ -s "$BS82" ]]; then
   report "T82 profile not duplicated on re-run" 0 "$(( $(grep -c '^profile:' "$P82/.agent-governance.yml" || true) - 1 ))"
   check_output "T82 upgrade report names the switch" 'AGENT_GUARD_ADAPT=0' "$(sed -n '/upgrade-behavior/p' "$ROOT/scripts/bootstrap.sh")"
   rm -rf "$P82"
+  # v3.90.5 P0-9/U-6: an older profile block gains missing keys, user values kept.
+  P82b=$(mktemp -d "${TMPDIR:-/tmp}/prof-old.XXXXXX")
+  ( cd "$P82b" && git init -q . && git config user.email t@e.invalid && git config user.name t \
+    && echo x > README.md && git add README.md && git commit -qm i \
+    && bash "$ROOT/scripts/bootstrap.sh" --guard . >/dev/null 2>&1 \
+    && git add -A && git commit -qm install >/dev/null 2>&1 )
+  # Shrink the fresh profile to the pre-U-6 shape, commit, then upgrade in place.
+  perl -0777 -pi -e 's/^profile:\n(?:  .*\n)+/profile:\n  language: python\n  size: small\n/m' "$P82b/.agent-governance.yml"
+  ( cd "$P82b" && git add .agent-governance.yml && git commit -qm shrink >/dev/null 2>&1 \
+    && bash "$ROOT/scripts/bootstrap.sh" --upgrade . >/dev/null 2>&1 )
+  check_output "T82 old profile keeps the user language" '^  language: python$' "$(cat "$P82b/.agent-governance.yml")"
+  report "T82 old profile gains files" 1 "$(grep -c '^  files:' "$P82b/.agent-governance.yml" 2>/dev/null || true)"
+  report "T82 old profile gains budgets" 1 "$(grep -c '^  budgets:' "$P82b/.agent-governance.yml" 2>/dev/null || true)"
+  rm -rf "$P82b"
 fi
 
 }
@@ -3037,6 +3082,34 @@ out=$(AGENT_GUARD_COST_LEDGER=/tmp/t83-ledger.tsv bash "$ROOT/tests/run-tests.sh
 check_output "T83 dual-run prints the scan" 'unwhitelisted=' "$out"
 check_output "T83 targeted run is not run-full" '0' "$(grep -c '^.*	run-full	' /tmp/t83-ledger.tsv 2>/dev/null || true)"
 rm -f /tmp/t83-ledger.tsv
+# v3.90.5 (CHG-126): P2-2 decision consume + P2-3 coverage + P2-5 backfill order
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 E142 strict requires a decision" 1 "$?"
+check_output "T83 E142 names the code" 'GATE-E142' "$out"
+scripts/agent-gate plan CHG-970 >/dev/null 2>&1
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 E143 missing hard artifact" 1 "$?"
+check_output "T83 E143 names the code" 'GATE-E143' "$out"
+cat > docs/changes/CHG-970/00-governance.json <<'EOF'
+{"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","artifacts":"05-test-results.md,09-changelog.md","reviews":"min=1;independent=true","stages":"staged,stop","masters":"","judges_source":"engine"}}
+EOF
+out=$(scripts/agent-gate preflight CHG-970 2>&1)
+report "T83 coverage gap only WARNs" 0 "$(printf '%s' "$out" | grep -c 'GATE-E144' || true)"
+report "T83 coverage gap is recorded in the decision log" 1 "$(grep -c 'no$' .agent-state/adapt-decisions.tsv 2>/dev/null || true)"
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 E144 strict coverage gap" 1 "$?"
+check_output "T83 E144 names the code" 'GATE-E144' "$out"
+printf -- '- decision-gap: coverage T83 — fixture gap\n' >> docs/changes/CHG-970/09-changelog.md
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
+report "T83 declared coverage gap is accepted" 0 "$(printf '%s' "$out" | grep -c 'GATE-E144' || true)"
+printf '> filled-at stage=3\n' >> docs/project/P05-task-plan.md
+out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E145 late backfill" 2 "$?"
+check_output "T83 E145 names the code" 'GATE-E145' "$out"
+sed '/filled-at stage=3/d' docs/project/P05-task-plan.md > .p05.tmp && mv .p05.tmp docs/project/P05-task-plan.md
+printf '> filled-at stage=1\n' >> docs/project/P01-requirements-master.md
+out=$(scripts/agent-gate --stage close 1 2>&1); report "T83 close stage 1 records P01" 0 "$?"
+printf -- 'Observation: 已核对 00-04（未读回填）\n' >> docs/changes/CHG-970/09-changelog.md
+out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E146 unread backfill" 2 "$?"
+check_output "T83 E146 names the code" 'GATE-E146' "$out"
+sed 's/Observation: 已核对 00-04（未读回填）/Observation: 已读 P01 增量并继续/' docs/changes/CHG-970/09-changelog.md > .o83.tmp && mv .o83.tmp docs/changes/CHG-970/09-changelog.md
+out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 read-back Observation clears E146" 0 "$?"
 # ---- TC-1555: self-bootstrap VERIFIED WITH CHG-124's real artifacts (copy only) ----
 S83=$(mktemp -d "${TMPDIR:-/tmp}/selfboot.XXXXXX")
 mkdir -p "$S83/scripts" "$S83/docs/changes"

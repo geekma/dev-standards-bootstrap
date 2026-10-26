@@ -224,6 +224,13 @@
 | GATE-E129 | L2/L3 无用户整体确认却进入 staged 证据面 | agent-gate.sh::confirm_required_check()（v3.90.3，CHG-125，P2-3） |
 | GATE-E130 | L2/L3 无用户整体确认即 preflight | agent-gate.sh::confirm_required_check()（v3.90.3，CHG-125，P2-3） |
 | GATE-E131 | 09 缺自举两行（`[dogfood]` / `[dogfood-next]`） | agent-gate.sh::e131_dogfood_check()（v3.90.3，CHG-125，P2-4） |
+| GATE-E140 | `baseline` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::baseline 分支（v3.90.5，CHG-126，P0-0） |
+| GATE-E141 | `tc-index` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::tc-index 分支（v3.90.5，CHG-126，P1-2） |
+| GATE-E142 | stop/preflight 缺引擎 decision 且 `PLAN_STRICT=1`（存量默认只 WARN） | agent-gate.sh::plan_consume_check()（v3.90.5，CHG-126，P2-2） |
+| GATE-E143 | decision 的 artifacts/stages 硬项或 masters/reviews 软项缺失 | agent-gate.sh::plan_consume_check()（v3.90.5，CHG-126，P2-2） |
+| GATE-E144 | `decision.chosen` 的测试节在 05 无证据且未声明 coverage gap（strict） | agent-gate.sh::coverage_gap_check()（v3.90.5，CHG-126，P2-3） |
+| GATE-E145 | 总册 `filled-at stage=M` 晚于当前关闭阶段或晚于该阶段关闭时间（迟到回填） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
+| GATE-E146 | 下一阶段首条 Observation 未引用上一阶段回填的总册锚点（漏读） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

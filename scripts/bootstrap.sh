@@ -815,7 +815,42 @@ rewrite_yml_key() { # file key value
 write_profile_section() { # <yml> <target>
   local y="$1" t="$2" lang="unknown" size="unknown" tests="none" ci="none" nfiles
   [[ -f "$y" ]] || return 0
-  grep -qE '^profile:' "$y" 2>/dev/null && return 0
+  # v3.90.5 (CHG-126, P0-9/U-6): existing profile blocks are user-owned — never
+  # rewrite a value. Only *add* keys the install knows are missing (files/budgets),
+  # so an older install upgrades in place instead of duplicating the block.
+  # A user-declared `schema: 2` means "I manage this block myself" → untouched.
+  if grep -qE '^profile:' "$y" 2>/dev/null; then
+    grep -qE '^[[:space:]]+schema:[[:space:]]*2' "$y" 2>/dev/null && return 0
+    nfiles=$(find "$t" -type f -not -path '*/.git/*' -not -path '*/.agent-state/*' 2>/dev/null | wc -l | tr -d ' ')
+    case "$nfiles" in ''|*[!0-9]*) nfiles=0 ;; esac
+    local _pf_add=0 _pf_addb=0 _pf_tmp _pf_added=""
+    grep -qE '^[[:space:]]+files:' "$y" 2>/dev/null || { _pf_add=1; _pf_added="files"; }
+    grep -qE '^[[:space:]]+budgets:' "$y" 2>/dev/null || { _pf_addb=1; _pf_added="${_pf_added}${_pf_added:+,}budgets"; }
+    if [[ "$_pf_add" == "1" || "$_pf_addb" == "1" ]]; then
+      _pf_tmp=$(mktemp 2>/dev/null) || return 0
+      awk -v nf="$nfiles" -v addf="$_pf_add" -v addb="$_pf_addb" '
+        { line[NR]=$0 }
+        END {
+          p=0
+          for (i=1; i<=NR; i++) if (line[i] ~ /^profile:[[:space:]]*$/) { p=i; break }
+          if (p==0) { for (i=1; i<=NR; i++) print line[i]; exit }
+          e=p
+          for (i=p+1; i<=NR; i++) {
+            if (line[i] ~ /^[[:space:]]+/) e=i
+            else if (line[i] ~ /^[[:space:]]*$/) continue
+            else break
+          }
+          for (i=1; i<=e; i++) print line[i]
+          if (addf==1) print "  files: " nf
+          if (addb==1) print "  budgets: {inner_s: 10, close_s: 120, ci_s: 1800}"
+          for (i=e+1; i<=NR; i++) print line[i]
+        }' "$y" > "$_pf_tmp" 2>/dev/null \
+        && cat "$_pf_tmp" > "$y" 2>/dev/null
+      rm -f "$_pf_tmp"
+      echo "auto-wired   profile: added missing keys ($_pf_added) to existing block — user values kept"
+    fi
+    return 0
+  fi
   if [[ -f "$t/package.json" ]]; then lang="node"
   elif [[ -f "$t/go.mod" ]]; then lang="go"
   elif [[ -f "$t/pom.xml" || -f "$t/build.gradle" ]]; then lang="java"
