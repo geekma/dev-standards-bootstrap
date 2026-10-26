@@ -714,6 +714,18 @@ validate_unaccounted_changes() { # <staged|worktree>
   die "GATE-E125: source-path changes with no active change and no same-day defect batch ($mode face: $(printf '%s' "$hits" | head -3 | tr '\n' ' ')...) — standards §2.17.2b signal ③, three options: ① open the change (scripts/agent-gate begin <change-id> / new-change scaffold), ② bind the defect batch (bug-autointent / same-day <bugs_root>/BATCH-<UTCday>/ anchors), ③ skip only with AGENT_GUARD_ALLOW_UNACCOUNTED=1 recorded in 09「重要上下文」 (v3.89.0 CHG-117)"
 }
 
+# v3.90.3 (CHG-125, P2-3): L2/L3 may not accumulate code evidence before the
+# user's overall confirmation is on disk (the §2.17.2d gate extended to staged).
+validate_confirmed_work() { # <staged|preflight>
+  local cid
+  cid=$(active_change 2>/dev/null || true)
+  [[ -n "$cid" ]] || return 0
+  case "$1" in
+    staged)    confirm_required_check "$cid" E129 ;;
+    preflight) confirm_required_check "$cid" E130 ;;
+  esac
+}
+
 # v3.67.0 (CHG-090, REQ-1056): single source for the 延伸发现/历史相似检索 check family —
 # a section heading (bare substring; declaration lines self-carry it) OR an
 # explicit 未命中（…检索…） declaration line. Callers own their die messages.
@@ -1761,6 +1773,7 @@ stub_guard() { # file risk id
 validate_delivery() { # change-id
   local id="$1" d
   d=$(change_dir "$id")
+  reviews_pair_check "$id"
   validate_delivery_shape_front "$id"
   if [[ -s "$d/07-review-report.md" ]]; then
     track_review_round "$d" "$id" "$d/07-review-report.md"
@@ -2444,10 +2457,10 @@ plan_sections() { # single source: the runner's own -T auto resolver (no 4th map
   case "$out" in NONE) printf '' ;; *) printf '%s' "$out" ;; esac
 }
 
-plan_run_cost() { # whole-run p50 from ledger kind=run; empty when absent
+plan_run_cost() { # whole-run p50 from FULL runs only (kind=run-full); empty when absent
   local lg="$repo_root/.agent-state/cost-ledger.tsv" vals
   [[ -s "$lg" ]] || return 0
-  vals=$(awk -F'\t' '$2=="run" && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
+  vals=$(awk -F'\t' '$2=="run-full" && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
   [[ -n "$vals" ]] || return 0
   printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
 }
@@ -2460,12 +2473,22 @@ plan_section_cost() { # <section> -> p50-ish seconds from the ledger (last 5 row
   printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
 }
 
-plan_resolution_rate() { # <change-dir> -> resolved/total TC rows (best-effort, gaps over guesses)
-  local d="$1" f="$d/04-test-scripts.md" total=0 parsed=0
-  [[ -s "$f" ]] || { printf '0/0'; return 0; }
+plan_resolution_rate() { # <change-dir> — tc=<parsed>/<total> (TC → 落点列 → 存在的节)
+  local d="$1" f="$1/04-test-scripts.md" total=0 parsed=0 line land sec unp=""
+  [[ -s "$f" ]] || { printf 'tc=0/0'; return 0; }
   total=$(grep -cE '^\|[[:space:]]*TC-[0-9]+' "$f" 2>/dev/null || true)
-  parsed=$(grep -cE '^\|[[:space:]]*TC-[0-9]+.*\|[[:space:]]*(脚本|人工|[^|]*tests/|[^|]*\.sh)' "$f" 2>/dev/null || true)
-  printf '%s/%s' "$parsed" "$total"
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    # 落点 = last-but-one column is unreliable; scan the whole row for a Tnn token.
+    sec=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | head -1 || true)
+    if [[ -n "$sec" ]] \
+       && grep -qE "^SECTIONS=.*[[:space:]]${sec}[),]|^section_${sec//-/_}\(\)" "$repo_root/tests/run-tests.sh" 2>/dev/null; then
+      parsed=$(( parsed + 1 ))
+    else
+      unp="$unp $(printf '%s' "$line" | grep -oE 'TC-[0-9]+' | head -1)"
+    fi
+  done <<< "$(grep -E '^\|[[:space:]]*TC-[0-9]+' "$f" 2>/dev/null || true)"
+  printf 'tc=%s/%s%s' "$parsed" "$total" "${unp:+ unresolved:${unp# }}"
 }
 
 plan_json() { # <id> -> one-line decision JSON (no writes)
@@ -2655,17 +2678,17 @@ record_suite_suggestion() { # <change-id> — R2 advice line + 05 record; never 
   plan_log "$id" "$dec" >/dev/null 2>&1 || true
 }
 
-e131_dogfood_check() { # <change-dir> — R2: WARN only (R3 hard-rejects)
-  local d="$1" f
+e131_dogfood_check() { # <change-dir> — R3: HARD reject (R2's WARN is over)
+  local d="$1" f reason
   [[ "${AGENT_GUARD_ADAPT:-1}" != "0" ]] || return 0
   f="$d/09-changelog.md"
   [[ -s "$f" ]] || return 0
-  if ! grep -q '\[dogfood\]' "$f" 2>/dev/null; then
-    echo "agent-gate: WARN GATE-E131: $f has no [dogfood] line — record what last round's capability was verified, with 05 evidence (R2 warn; R3 will reject)" >&2
+  reason=""
+  grep -q '\[dogfood\]' "$f" 2>/dev/null || reason="no [dogfood] line (what last round's capability was verified, with 05 evidence)"
+  if [[ -z "$reason" ]]; then
+    grep -q '\[dogfood-next\]' "$f" 2>/dev/null || reason="no [dogfood-next] line (capability + command + expected for the next round)"
   fi
-  if ! grep -q '\[dogfood-next\]' "$f" 2>/dev/null; then
-    echo "agent-gate: WARN GATE-E131: $f has no [dogfood-next] line — leave capability/command/expected for the next round (R2 warn; R3 will reject)" >&2
-  fi
+  [[ -z "$reason" ]] || die "GATE-E131: $(basename "$(dirname "$f")") — $reason — expected: both self-bootstrap lines in 09; allowed: AGENT_GUARD_ADAPT=0 only when you explicitly abandon self-verification; fix: add the missing line(s) with 05 evidence, then re-run; ref: CHG-125 P2-4 / §18.3"
 }
 
 plan_run() { # <id> <dry|write> [explain] — the only side-effecting entry point
@@ -2680,6 +2703,63 @@ plan_run() { # <id> <dry|write> [explain] — the only side-effecting entry poin
       plan_log "$id" "$dec"
     fi
   fi
+}
+
+# v3.90.3 (CHG-125, P2): R3 hard gates. All of them act ONLY on the active change
+# and each has its own off switch, so a single bad gate cannot disable the rest.
+stage_close_enabled() { [[ "${AGENT_GUARD_STAGE_CLOSE:-1}" != "0" ]]; }
+
+stage_close_check() { # <id> — E127 when the close prerequisites are missing
+  local id="$1" d os reason f rec
+  stage_close_enabled || { echo "agent-gate: stage close disabled (AGENT_GUARD_STAGE_CLOSE=0)"; return 0; }
+  d=$(change_dir "$id")
+  reason=""
+  printf '%s\n' "$(cat "$d/00.5-communication.md" 2>/dev/null)" \
+    | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)' \
+    || reason="00.5 has no user-overall-confirmation record"
+  if [[ -z "$reason" ]]; then
+    os=$(grep -E '子 Agent 放行' "$d/09-changelog.md" 2>/dev/null | grep -vc '待' || true)
+    [[ "$os" -ge 1 ]] || reason="09 has no completed 子 Agent 放行 record (child-agent release; a '待…' placeholder does not count)"
+  fi
+  if [[ -n "$reason" ]]; then
+    die "GATE-E127: $id cannot close: $reason — expected: confirmation + child-agent release recorded before closing; allowed: L0 single-line exemption; fix: record both, then re-run --stage close; ref: CHG-125 P2-1 / standards §2.17.2d"
+  fi
+  f="$repo_root/.agent-state/stage-close.json"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  rec=$(printf '%s %s %s' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "closed=$id" "release=child-agent")
+  printf '{"change":"%s","closed_at":"%s","release":"child-agent","changelog_lines":%s}\n' \
+    "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$(wc -l < "$d/09-changelog.md" 2>/dev/null | tr -d ' ' || echo 0)" > "$f" 2>/dev/null || true
+  echo "agent-gate: stage close recorded for $id ($f)"
+}
+
+reviews_pair_check() { # <id> — E128: a dedicated 阶段复核 CLAIM needs its review artifact
+  local id="$1" d n
+  d=$(change_dir "$id")
+  # Only a dedicated heading counts as a claim; prose mentions ("复核成对") must
+  # not self-trigger (review CHG-125 #2).
+  grep -qE '^####[[:space:]]*阶段复核' "$d/09-changelog.md" 2>/dev/null || return 0
+  n=0
+  [[ -d "$d/reviews" ]] && n=$(find "$d/reviews" -maxdepth 1 -type f -name 'P*.review.md' -size +0 2>/dev/null | wc -l | tr -d ' ')
+  [[ "$n" -ge 1 ]] || die "GATE-E128: $id claims 阶段复核 but $d/reviews/ has no non-empty P*.review.md — expected: one review artifact per claimed stage batch; allowed: reviews/P01.review.md …; fix: write the review file (or remove the claim), then re-run; ref: CHG-125 P2-2"
+}
+
+confirm_required_check() { # <id> <code> — E129 (staged) / E130 (preflight) for L2/L3
+  local id="$1" code="$2" d risk
+  [[ "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]] && return 0
+  [[ "${AGENT_GUARD_STAGE_CLOSE:-1}" != "0" ]] || return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" ]] || return 0
+  risk=$(sed -n 's/.*"risk_level":[[:space:]]*"\(L[0-3]\)".*/\1/p' "$d/00-governance.json" 2>/dev/null | head -1)
+  case "$risk" in L2|L3) ;; *) return 0 ;; esac
+  printf '%s\n' "$(cat "$d/00.5-communication.md" 2>/dev/null)" \
+    | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)' \
+    && return 0
+  if [[ "$code" == "E129" ]]; then
+    die "GATE-E129: $id is $risk but 00.5 has no user-overall-confirmation — expected: '确认状态：已整体确认' before code evidence enters the staged face; allowed: record the user's overall confirmation; fix: present the communication draft and record it, then re-run; ref: CHG-125 P2-3 / standards §2.17.2d"
+  fi
+  die "GATE-E130: $id is $risk but 00.5 has no user-overall-confirmation — expected: '确认状态：已整体确认' before the preflight probe accepts evidence; allowed: record the user's overall confirmation; fix: record it, then re-run preflight; ref: CHG-125 P2-3 / standards §2.17.2d"
 }
 
 validate_stop() {
@@ -2820,6 +2900,16 @@ validate_stop() {
       echo "agent-gate: verification command CACHED (receipt match, age $(( $(date +%s) - vc_r_at ))s) — AGENT_GUARD_VERIFY_CACHE=0 forces a run"
       vreason="${vreason:-} (cached receipt, REQ-1161)"
       append_verify_evidence "- 通道缓存命中（REQ-1161）：键匹配（版本/命令/树指纹/变更号），年龄 $(( $(date +%s) - vc_r_at ))s；未重复执行。"
+    fi
+    # v3.90.3 (CHG-125, FU-959): a cache hit is a zero-cost verify action — record
+    # it so the ledger can tell "reused" from "ran" (columns unchanged).
+    if [[ "$vc_hit" == "1" && -d "$repo_root/.agent-state" ]]; then
+      _vlg="$repo_root/.agent-state/cost-ledger.tsv"
+      [[ -s "$_vlg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n' > "$_vlg" 2>/dev/null || true
+      printf '%s\tverify\t%s\t%s\t0\t0\thit\t0\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+        "$(active_change 2>/dev/null || echo -)" \
+        "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || true)" >> "$_vlg" 2>/dev/null || true
     fi
   fi
   if [[ -n "$vcmd" && "$vc_hit" != "1" ]]; then
@@ -3454,6 +3544,13 @@ case "$command" in
     pf_d=$(change_dir "$id")
     p_n=0
     p_seen=""
+    # v3.90.3 (CHG-125, P2-3): L2/L3 without a confirmed 00.5 is collected as an
+    # E130 violation (die shadowed in the subshell, like every other probe).
+    _e130_out=$( ( die() { printf 'agent-gate: preflight: %s\n' "$*"; }; confirm_required_check "$id" E130 ) 2>&1 ) || true
+    if [[ -n "$_e130_out" ]]; then
+      printf '%s\n' "$_e130_out" >&2
+      p_n=$(( p_n + 1 )); p_seen="$_e130_out"
+    fi
     p_run() {
       unset AGENT_GUARD_ALLOW_UNCONFIRMED AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS  # probe determinism (v3.72.0 erratum, CHG-095, REQ-1099)
       local out p_line
@@ -3493,6 +3590,7 @@ case "$command" in
     if [[ -e "$pf_d/09-changelog.md" || -e "$pf_d/04.5-coding-record.md" || -e "$pf_d/05-test-results.md" ]]; then
       p_run validate_delivery_shape_front "$id"
       p_run validate_delivery_shape_back "$id"
+      p_run reviews_pair_check "$id"
     fi
     if [[ "$p_n" -eq 0 ]]; then
       echo "agent-gate: preflight: $id: all artifact gates clean"
@@ -3578,7 +3676,8 @@ case "$command" in
       # check-mode predicates).
       spec|design|testplan)
         stage_gate_check "$stage" ;;
-      staged) validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      close) stage_close_check "${1:-$(active_change)}" ;;
+      staged) validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
       stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change 2>/dev/null || true); [[ -n "$cost_cid" ]] && record_cost_line "$cost_cid" stop; [[ -n "$cost_cid" ]] && record_suite_suggestion "$cost_cid"; [[ -n "$cost_cid" ]] && e131_dogfood_check "$(change_dir "$cost_cid")"; record_delivery stop ;;
       ci)
         base=""

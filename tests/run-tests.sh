@@ -456,6 +456,7 @@ LIST_ONLY=0
 JOBS=1
 AUTO=0
 AUTO_BASE=""
+DUAL_RUN=0
 WANTED=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -483,7 +484,8 @@ while [[ $# -gt 0 ]]; do
       [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { printf 'invalid -j value: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list])\n' "${2:-}" >&2; exit 2; }
       JOBS="$2"; shift 2 ;;
     -l|--list) LIST_ONLY=1; shift ;;
-    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list])\n' "$1" >&2; exit 2 ;;
+    --dual-run) DUAL_RUN=1; shift ;;
+    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [--dual-run] [-l|--list])\n' "$1" >&2; exit 2 ;;
   esac
 done
 # No -T operand means "all sections". bash 3.2 + set -u forbids expanding an
@@ -2929,7 +2931,7 @@ if [[ -s "$GT82" ]]; then
   out=$(scripts/agent-gate plan CHG-999 2>&1 || true)
   check_output "T82 bad change id dies E136" 'GATE-E136' "$out"
   # E131 pins: warn-only wording + both markers
-  check_output "T82 E131 is a WARN, not a die" 'WARN GATE-E131' "$(sed -n '/^e131_dogfood_check()/,/^}/p' "$GT82")"
+  report "T82 E131 is a hard die (R3)" 0 "$(( $(grep -c 'GATE-E131:' "$GT82" || true) >= 1 ? 0 : 1 ))"
   check_output "T82 E131 checks dogfood-next" 'dogfood-next' "$(sed -n '/^e131_dogfood_check()/,/^}/p' "$GT82")"
   check_output "T82 suite mode writes to 05" 'suite_mode=' "$(sed -n '/^record_suite_suggestion()/,/^}/p' "$GT82")"
   check_output "T82 down without reason falls back" 'falling back to adopt' "$(sed -n '/^record_suite_suggestion()/,/^}/p' "$GT82")"
@@ -2950,6 +2952,84 @@ if [[ -s "$BS82" ]]; then
   check_output "T82 upgrade report names the switch" 'AGENT_GUARD_ADAPT=0' "$(sed -n '/upgrade-behavior/p' "$ROOT/scripts/bootstrap.sh")"
   rm -rf "$P82"
 fi
+
+}
+# PORTABILITY-WHITELIST-BEGIN
+# Every `\|` below is an ERE literal inside a single-quoted pattern (legal on BSD
+# and GNU grep -E), reviewed line by line in CHG-125; the CI OS matrix is the
+# executable proof. New occurrences outside this block fail `--dual-run`.
+# PORTABILITY-WHITELIST-END
+section_T83() {
+# ------------------------------------------------ T83 R3 硬门 + 自举（v3.90.3，CHG-125）
+new_repo
+GT83="$ROOT/resources/templates/agent-gate.sh"
+if [[ ! -s "$GT83" ]]; then echo "SKIP T83: agent-gate absent — 跳过 R3 硬门 golden cases"; return 0; fi
+cp "$GT83" scripts/agent-gate; chmod +x scripts/agent-gate
+seed_artifacts CHG-970 L2 claude/s-83
+printf '# c\n\n### 用户整体确认记录\n\n- 待确认\n' > docs/changes/CHG-970/00.5-communication.md
+printf '# 09\n' > docs/changes/CHG-970/09-changelog.md
+af=$(git rev-parse --git-path agent-governance/active-change); mkdir -p "$(dirname "$af")"; printf 'CHG-970\n' > "$af"
+out=$(scripts/agent-gate --stage staged 2>&1); report "T83 E129 L2 staged without confirmation" 2 "$?"
+check_output "T83 E129 names the code" 'GATE-E129' "$out"
+out=$(scripts/agent-gate preflight CHG-970 2>&1); report "T83 E130 preflight collects it" 1 "$?"
+check_output "T83 E130 names the code" 'GATE-E130' "$out"
+out=$(scripts/agent-gate --stage close 2>&1); report "T83 E127 close without confirmation" 2 "$?"
+check_output "T83 E127 names the confirmation gap" 'no user-overall-confirmation' "$out"
+printf '# c\n\n### 用户整体确认记录\n\n- 确认状态：已整体确认\n' > docs/changes/CHG-970/00.5-communication.md
+out=$(scripts/agent-gate --stage close 2>&1); report "T83 E127 close without child-agent release" 2 "$?"
+check_output "T83 E127 names the release gap" 'completed 子 Agent 放行' "$out"
+printf '子 Agent 放行：待 07\n' >> docs/changes/CHG-970/09-changelog.md
+out=$(scripts/agent-gate --stage close 2>&1); report "T83 E127 rejects a placeholder release" 2 "$?"
+printf '子 Agent 放行：sub-83 放行 00-04\n' >> docs/changes/CHG-970/09-changelog.md
+out=$(scripts/agent-gate --stage close 2>&1); report "T83 close green with prerequisites" 0 "$?"
+test -s .agent-state/stage-close.json; report "T83 stage-close.json written" 0 "$?"
+out=$(AGENT_GUARD_STAGE_CLOSE=0 scripts/agent-gate --stage close 2>&1); report "T83 STAGE_CLOSE=0 disables the gate" 0 "$?"
+report "T83 E128 wired into delivery" 0 "$(( $(grep -c 'reviews_pair_check' "$GT83" || true) >= 1 ? 0 : 1 ))"
+printf '#### 阶段复核\n' >> docs/changes/CHG-970/09-changelog.md
+printf '# 05\n' > docs/changes/CHG-970/05-test-results.md
+printf '# 04.5\n' > docs/changes/CHG-970/04.5-coding-record.md
+out=$(scripts/agent-gate preflight CHG-970 2>&1); report "T83 E128 preflight negative" 1 "$?"
+check_output "T83 E128 names the missing review file" 'GATE-E128' "$out"
+mkdir -p docs/changes/CHG-970/reviews; printf 'ok\n' > docs/changes/CHG-970/reviews/P01.review.md
+out=$(scripts/agent-gate preflight CHG-970 2>&1 || true)
+report "T83 E128 quiet once the review file exists" 0 "$(printf '%s' "$out" | grep -c 'GATE-E128' || true)"
+report "T83 E131 is a hard die (R3)" 0 "$(( $(grep -c 'GATE-E131:' "$GT83" || true) >= 1 ? 0 : 1 ))"
+check_output "T83 bootstrap engine self-check" 'engine self-check' "$(cat "$ROOT/scripts/bootstrap.sh")"
+check_output "T83 bootstrap runtime re-probe" 'runtime re-probe' "$(cat "$ROOT/scripts/bootstrap.sh")"
+check_output "T83 audit writes a ledger row" 'audit' "$(sed -n '/FU-959/,+6p' "$ROOT/resources/templates/audit-docs-consistency.sh")"
+report "T83 plan resolution is TC-level" 0 "$(( $(grep -c 'tc=%s' "$GT83" || true) >= 1 ? 0 : 1 ))"
+check_output "T83 run p50 is full-only" 'run-full' "$(sed -n '/^plan_run_cost()/,/^}/p' "$GT83")"
+# --dual-run scan + targeted run stays `run` (not run-full)
+out=$(AGENT_GUARD_COST_LEDGER=/tmp/t83-ledger.tsv bash "$ROOT/tests/run-tests.sh" --dual-run -T T76 2>&1 | grep 'dual-run:' || true)
+check_output "T83 dual-run prints the scan" 'unwhitelisted=' "$out"
+check_output "T83 targeted run is not run-full" '0' "$(grep -c '^.*	run-full	' /tmp/t83-ledger.tsv 2>/dev/null || true)"
+rm -f /tmp/t83-ledger.tsv
+# ---- TC-1555: self-bootstrap VERIFIED WITH CHG-124's real artifacts (copy only) ----
+S83=$(mktemp -d "${TMPDIR:-/tmp}/selfboot.XXXXXX")
+mkdir -p "$S83/scripts" "$S83/docs/changes"
+cp "$GT83" "$S83/scripts/agent-gate"
+cp "$ROOT/resources/templates/session-gate.sh" "$S83/scripts/session-gate.sh"
+cp "$ROOT/resources/templates/install-hook-adapter.sh" "$S83/scripts/install-hook-adapter.sh"
+cp "$ROOT/resources/templates/audit-docs-consistency.sh" "$S83/scripts/audit-docs-consistency.sh"
+cp -R "$ROOT/docs/changes/CHG-124" "$S83/docs/changes/" 2>/dev/null || true
+( cd "$S83" && git init -q . && git config user.email t@e.invalid && git config user.name t && git add -A >/dev/null 2>&1 && git commit -qm seed >/dev/null 2>&1 )
+out=$( cd "$S83" && bash scripts/agent-gate plan CHG-124 2>&1 ); report "T83 self-boot plan on CHG-124 copy" 0 "$?"
+( cd "$S83" && bash scripts/agent-gate plan CHG-124 >/dev/null 2>&1 )
+if command -v python3 >/dev/null 2>&1; then
+  python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$S83/docs/changes/CHG-124/00-governance.json" >/dev/null 2>&1
+  report "T83 self-boot CHG-124 JSON valid after re-plan" 0 "$?"
+fi
+report "T83 self-boot decision stays unique" 0 "$(( $(grep -o '"decision"' "$S83/docs/changes/CHG-124/00-governance.json" | wc -l | tr -d ' ') - 1 ))"
+out=$( cd "$S83" && bash scripts/session-gate.sh start >/dev/null 2>&1; bash scripts/session-gate.sh count tool Bash x >/dev/null 2>&1; bash scripts/session-gate.sh status 2>&1 )
+check_output "T83 self-boot CHG-123 cost line still prints" '成本：' "$out"
+r83=$( cd "$S83" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --detect >/dev/null 2>&1; echo $? )
+report "T83 self-boot unknown runtime exits 3" 3 "$r83"
+mkdir -p "$S83/.claude"
+out=$( cd "$S83" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --detect 2>&1 )
+check_output "T83 self-boot family classification still works" 'claude \(json-hooks\)' "$out"
+out=$( cd "$S83" && bash scripts/audit-docs-consistency.sh --since HEAD 2>&1 | head -1 )
+check_output "T83 CHG-123 audit --since no-op path" 'declared no-op' "$out"
+rm -rf "$S83"
 
 }
 section_T27() {
@@ -4033,7 +4113,7 @@ section_T50() {
   # CHG-111: tail recalibrated T66→T67 (六不变量机校节 joins; TC-1424~1432).
   # CHG-113: tail recalibrated T67→T68; CHG-115: T68→T73b (基线/事实/编排/前置/变异/汇总六节 joins).
   # CHG-117: tail recalibrated T76→T81 (无账门/编辑硬拦/G16/阶段门/阶段感知五节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T82 ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T83 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -7404,7 +7484,7 @@ report "T81 TC-1494c BATCH member source edit resolves the batch 04" 0 "$t81_rc"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
@@ -7443,7 +7523,7 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
     resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
     resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49 T78' ;;
-    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78 T82' ;;
+    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78 T82 T83' ;;
     scripts/session-gate.sh|scripts/lib-suite-lock.sh) printf 'T26 T26b T41 T57' ;;
     tests/*)                           printf 'T50 T51 T75 T76' ;;
     resources/templates/stamp-provenance.sh)        printf 'T16 T17 T17b' ;;
@@ -7642,8 +7722,21 @@ printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant ta
 # v3.90.1 (CHG-123, P0-2): final progress snapshot — status flips to done/failed
 # so an external waiter can stop polling instead of blocking on a timeout.
 if [[ "$fail" -eq 0 ]]; then progress_write done; else progress_write failed; fi
-# Ledger aggregate row for this run (kind=run): the油表 sees whole-run cost too.
-ledger_append run "${JOBS}" "$SECONDS" 0 none "$fail"
+# Ledger aggregate row. v3.90.3 (CHG-125, FU-964): only an untargeted (full) run
+# is tagged `run-full`; `-T` partial runs stay `run` and never feed the p50.
+if [[ ${#WANTED[@]} -eq 0 ]]; then
+  ledger_append run-full "${JOBS}" "$SECONDS" 0 none "$fail"
+else
+  ledger_append run "${JOBS}" "$SECONDS" 0 none "$fail"
+fi
+# v3.90.3 (CHG-125, FU-960): local portability scan (the real dual-implementation
+# run happens in the CI OS matrix; this flag proves the assertion surface has no
+# un-whitelisted BRE-only dialect left).
+if [[ "${DUAL_RUN:-0}" == "1" ]]; then
+  _pdial=$(grep -c '\\|' "$ROOT/tests/run-tests.sh" 2>/dev/null || true)
+  _pwhite=$(sed -n '/^# PORTABILITY-WHITELIST-BEGIN/,/^# PORTABILITY-WHITELIST-END/p' "$ROOT/tests/run-tests.sh" 2>/dev/null | grep -c '\\|' || true)
+  printf 'dual-run: dialect occurrences=%s whitelisted=%s unwhitelisted=%s\n' "${_pdial:-0}" "${_pwhite:-0}" "$(( ${_pdial:-0} - ${_pwhite:-0} ))"
+fi
 # v3.66.0 (CHG-088, REQ-1049): suite receipt. Only a FULL, unfiltered run may
 # touch it — filtered (-T) / -l runs are not evidence about the whole suite.
 # Green: write .agent-state/last-suite-receipt.json (local, gitignored, same

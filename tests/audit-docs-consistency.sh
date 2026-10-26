@@ -911,4 +911,14 @@ fi
 rm -f "$S3TMP"
 echo
 echo "$pass passed, $fail failed"
+# v3.90.3 (CHG-125, FU-959): audit is a measurable action too — one append-only
+# ledger row (columns unchanged; write failure never changes the verdict).
+_lg="$ROOT/.agent-state/cost-ledger.tsv"
+if mkdir -p "$(dirname "$_lg")" 2>/dev/null; then
+  [[ -s "$_lg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n' > "$_lg" 2>/dev/null || true
+  printf '%s\taudit\t%s\t%s\t%s\t0\tnone\t%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "${since_ref:-full}" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)" \
+    "${SECONDS:-0}" "$fail" >> "$_lg" 2>/dev/null || true
+fi
 [[ "$fail" -eq 0 ]]

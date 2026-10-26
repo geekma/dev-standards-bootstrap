@@ -1023,6 +1023,24 @@ auto_wire_guard() {
   fi
   # 6) platform-side step cannot be automated via files — print exact hint.
   echo "manual       GitHub: mark 'agent-governance' workflow as a required check (repo Settings -> Branches -> Branch protection, or via gh api)"
+  # v3.90.3 (CHG-125, FU-958): engine self-check + runtime re-probe. Both are
+  # read-only and never block the install (a broken engine is a WARN here and a
+  # hard failure at the first gate run anyway).
+  if [[ -x "$SCRIPTS_DIR/agent-gate" ]]; then
+    if ( cd "$target" && "$SCRIPTS_DIR/agent-gate" metrics >/dev/null 2>&1 ); then
+      echo "engine self-check: agent-gate metrics ok ($SCRIPTS_DIR/agent-gate)"
+    else
+      echo "NOTE         engine self-check failed: $SCRIPTS_DIR/agent-gate metrics did not run from $target — reinstall or inspect it before relying on the gate" >&2
+    fi
+  fi
+  _adapter=""
+  for _c in "$SCRIPTS_DIR/install-hook-adapter" "$SCRIPTS_DIR/install-hook-adapter.sh"; do
+    [[ -x "$_c" ]] && _adapter="$_c" && break
+  done
+  if [[ -n "$_adapter" ]]; then
+    _rt_line=$( cd "$target" && "$_adapter" --detect 2>/dev/null | sed -n 's/^  runtime: //p' | head -1 )
+    echo "runtime re-probe: ${_rt_line:-unknown — declare AGENT_RUNTIME if detection cannot see the client}"
+  fi
 }
 case " $layers " in
   *" guard "*) auto_wire_guard ;;
