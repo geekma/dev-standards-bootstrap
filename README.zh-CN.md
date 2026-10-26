@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.90.3-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.90.4-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -318,7 +318,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 - **执行侧 token 纪律**：下发的 `AGENTS.md` 内置「Agent 执行资源纪律」**十五条**，另有规范 §2.9.6 会话与上下文纪律、§2.5 产物最小表达形态（单产物 ≤40 行软上限）——目标：压 cache_read（= 上下文水位 × 轮数）。**规则正文、编号与读集口径的唯一权威 = 随包 `AGENTS.md` 该节**；本 README 刻意不复述。
 - **同日变更批次（v3.18.0；v3.24.0 默认化；v3.61.2 时序澄清）**：当天**首个 L0/L1** 变更/缺陷**即建** `<docs>/changes/BATCH-YYYYMMDD/`，后续同日变更/缺陷以锚段小节并入，而不是各建一个。放宽的只有目录——产物文件名一字不改，同批变更用 `## <变更号>` 小节锚点区分，批次变更集合从 `00-governance.json` 的权威名单读取（绝不从标题反推）。风险上限不放宽：**L2/L3 必须独立目录**，门禁按治理记录拒绝批次内的 L2/L3（以 `00-governance.json` 名单为准）。
 - **缺陷六件套默认按天入批（v3.35.0；v3.36.0 扁平化）**：当天首个缺陷即建扁平 `docs/bugs/BATCH-YYYYMMDD/`、后续同日缺陷并入——六件套文件名一字不改，用 `## BUG-xxx` 小节锚点区分，当天的追加/回填落在同一套文件里（逐缺陷子目录为历史合法形态，存量不回改）；追加式 `docs/bugfix-log.md` 索引（每缺陷一行、带日期）保持天级检索层；缺陷的**变更轨入口**（`BUG-*`）仍可像普通变更一样入批。
-- **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md`、`docs/methodologies/expert-capabilities.md` 与 `docs/methodologies/project-masters.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱）。`docs/STAGE_PLAYBOOK.md` 承载自 DS §2.5/§2.16.6 迁移的操作性细则（条款权威仍在 DS，v3.61.0）。
+- **方法论选型（M0–M3）**：`docs/METHODOLOGY.md` 是哪一级允许哪些方法论的唯一权威；`docs/methodologies/development.md`、`docs/methodologies/data-structures.md`、`docs/methodologies/state-trigger-audit.md`、`docs/methodologies/expert-capabilities.md`、`docs/methodologies/project-masters.md` 与 `docs/methodologies/review-intelligence.md` 提供逐条工程依据（SOLID/DRY 适用性、弱类型禁令、隐式状态/触发链路三向遍历、专家理论工具箱、AI 评审智能与运行时/模型选择）。`docs/STAGE_PLAYBOOK.md` 承载自 DS §2.5/§2.16.6 迁移的操作性细则（条款权威仍在 DS，v3.61.0）。
 - **自进化**：从本 Skill 派生（声明 `derived_from: dev-standards-bootstrap`）的 Skill 独立演进，安装/升级的每条写入路径都会跳过它们；`--force` 也不越过。`bash scripts/bootstrap.sh --derived-report` 可列出派生清单。
 - **跨文档一致性审计**：`bash tests/audit-docs-consistency.sh` 运行 **G1–G16** 不变量组 + A 组盖章互证（逐组定义以脚本头注释为唯一权威，人类索引 = `resources/AGENTS.md` 锚点表），可在 CI 或本地运行；失败项即回填清单。本 README 不再逐组展开。
 
@@ -376,7 +376,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.90.3（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.90.4（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -386,6 +386,7 @@ dev-standards-bootstrap/
     │   ├── state-trigger-audit.md           # 状态/触发链路审计：6 条教训 + 6 步清单 + 3 个反模式（v3.4.0）
     │   ├── expert-capabilities.md           # 专家能力卡：9 核心 + 产品可用性专家 + 3 条件命中专家（理论工具箱/广度/经验/自适应；v3.67.0 加 UX/UAT 卡）
     │   └── project-masters.md               # 项目级总册细节层：13 册清单/必含章节/回填注记语义（v3.35.0；v3.67.0 加 P12 产品上下文册）
+    │   └── review-intelligence.md           # AI 评审契约：项目背景/专业能力/运行时探测/模型成本确认/独立性
     └── templates/
         ├── docs-readme.md                  # 一页文档地图（v3.37.0）：五层职责+更新时机（→ <docs>/README.md）
         ├── communication.md                 # 沟通先行门产物（v3.52.0）：Round-1 沟通稿+用户整体确认记录（→ docs/changes/<id>/00.5-communication.md）
@@ -404,6 +405,7 @@ dev-standards-bootstrap/
         ├── bug-diagnosis.md、bug-impact.md、bug-test-plan.md、bug-matrix.md、bug-config.md、bug-tasks.md  # 缺陷文档组六件套（→ docs/bugs/_templates/）
         ├── 06.5-deployment-config.md       # 部署/配置/DB 记录模板（→ docs/；未命中须显式声明"未命中，不适用"）
         ├── 06-delivery-summary.md          # 交付总结 + FU 台账模板（→ docs/；§2.5 阶段 9.5 四个必含节）
+        ├── review-models.json              # 评审模型清单示例（→ .agent-review-models.example.json；改名 .agent-review-models.json 后启用档位/确认）
         ├── audit-docs-consistency.sh       # 跨文档一致性审计：版本链 / 编号连续 / 清单同步 / 缺陷双登记 / RTVM 回填 / 变更批次自洽（复制到 tests/）
         ├── governance-state.json           # 每次变更 00-governance.json 的模板（不下发——由 Agent 按变更生成）
         ├── agent-governance.yml            # 团队可复核的治理配置记录（复制到 .agent-governance.yml）
@@ -457,7 +459,7 @@ dev-standards-bootstrap/
 
 | Job | 职责 |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：643） |
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：646） |
 | **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1470 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
@@ -497,7 +499,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v3.90.3 | **最后更新：** 2026-10-24 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.90.4 | **最后更新：** 2026-10-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

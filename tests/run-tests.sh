@@ -158,6 +158,10 @@ new_repo() {
   # legacy sections begin after fixture deliveries (directory-resolution
   # subjects, not shift subjects); the shift-themed T49 overrides with =0.
   export AGENT_GUARD_ALLOW_NO_SHIFT=1
+  # v3.90.4: legacy fixtures predate the R3 self-bootstrap hard gate (E131).
+  # Default the adaptation face OFF here; T82/T83 (the sections that actually
+  # test plan/E131) explicitly turn it back ON.
+  export AGENT_GUARD_ADAPT=0
   mkdir -p scripts docs/changes src
   seed_project_masters
   cp "$GATE_SRC" scripts/agent-gate
@@ -2891,6 +2895,7 @@ rm -rf "$R18"
 section_T82() {
 # ------------------------------------------------ T82 判定引擎 v0（v3.90.2，CHG-124 P1）
 new_repo
+export AGENT_GUARD_ADAPT=1
 GT82="$ROOT/resources/templates/agent-gate.sh"
 BS82="$ROOT/scripts/bootstrap.sh"
 if [[ -s "$GT82" ]]; then
@@ -2962,6 +2967,7 @@ fi
 section_T83() {
 # ------------------------------------------------ T83 R3 硬门 + 自举（v3.90.3，CHG-125）
 new_repo
+export AGENT_GUARD_ADAPT=1
 GT83="$ROOT/resources/templates/agent-gate.sh"
 if [[ ! -s "$GT83" ]]; then echo "SKIP T83: agent-gate absent — 跳过 R3 硬门 golden cases"; return 0; fi
 cp "$GT83" scripts/agent-gate; chmod +x scripts/agent-gate
@@ -2999,6 +3005,33 @@ check_output "T83 bootstrap runtime re-probe" 'runtime re-probe' "$(cat "$ROOT/s
 check_output "T83 audit writes a ledger row" 'audit' "$(sed -n '/FU-959/,+6p' "$ROOT/resources/templates/audit-docs-consistency.sh")"
 report "T83 plan resolution is TC-level" 0 "$(( $(grep -c 'tc=%s' "$GT83" || true) >= 1 ? 0 : 1 ))"
 check_output "T83 run p50 is full-only" 'run-full' "$(sed -n '/^plan_run_cost()/,/^}/p' "$GT83")"
+# v3.90.4: review intelligence + runtime-aware model consent
+report "T83 E137 consent gate is wired into delivery" 0 "$(( $(grep -c 'GATE-E137' "$GT83" || true) >= 1 ? 0 : 1 ))"
+report "T83 E138 review-plan usage code present" 0 "$(( $(grep -c 'GATE-E138' "$GT83" || true) >= 1 ? 0 : 1 ))"
+report "T83 begin seeds the review plan" 0 "$(( $(grep -c 'review_plan_seed' "$GT83" || true) >= 1 ? 0 : 1 ))"
+check_output "T83 07 carries the input/professional contract" '评审输入契约与专业能力' "$(cat "$ROOT/resources/templates/entry/07-review-report.md")"
+check_output "T83 07 carries model-cost consent" '模型选择与成本确认' "$(cat "$ROOT/resources/templates/entry/07-review-report.md")"
+check_output "T83 07 carries producer-vs-reviewer independence" '独立性声明（生产 vs 评审' "$(cat "$ROOT/resources/templates/entry/07-review-report.md")"
+check_output "T83 review intelligence contract ships runtime adaptation" '运行时适配' "$(cat "$ROOT/resources/methodologies/review-intelligence.md")"
+# FU-126-1: AI judgment may override the runner-self-edit FULL fallback only with evidence.
+out=$(AGENT_GUARD_SUITE_AUTO_DIFF="tests/run-tests.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+  AGENT_GUARD_SUITE_AI_SECTIONS="T83" \
+  AGENT_GUARD_SUITE_AI_BASIS="diff only touches T83 assertions and review-plan; no shared gate state" \
+  AGENT_GUARD_SUITE_AI_REVIEWER="WorkBuddy / test-model / ses-t83-ai" \
+  bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+check_output "T83 AI judgment overrides runner-self-edit FULL" 'auto-resolve-only: T50 T83' "$out"
+check_output "T83 AI judgment is announced with its basis" 'auto: AI judgment accepted' "$out"
+out=$(AGENT_GUARD_SUITE_AUTO_DIFF="tests/run-tests.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+  AGENT_GUARD_SUITE_AI_SECTIONS="T83" AGENT_GUARD_SUITE_AI_BASIS="too short" \
+  AGENT_GUARD_SUITE_AI_REVIEWER="WorkBuddy / test-model / ses-t83-ai" \
+  bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+check_output "T83 AI judgment without evidence falls back to FULL" 'auto-resolve-only: FULL' "$out"
+out=$(AGENT_GUARD_SUITE_AUTO_DIFF="tests/run-tests.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+  AGENT_GUARD_SUITE_AI_SECTIONS="T999" \
+  AGENT_GUARD_SUITE_AI_BASIS="diff only touches T83 assertions and review-plan; no shared gate state" \
+  AGENT_GUARD_SUITE_AI_REVIEWER="WorkBuddy / test-model / ses-t83-ai" \
+  bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
+check_output "T83 AI judgment with an unknown section falls back to FULL" 'auto-resolve-only: FULL' "$out"
 # --dual-run scan + targeted run stays `run` (not run-full)
 out=$(AGENT_GUARD_COST_LEDGER=/tmp/t83-ledger.tsv bash "$ROOT/tests/run-tests.sh" --dual-run -T T76 2>&1 | grep 'dual-run:' || true)
 check_output "T83 dual-run prints the scan" 'unwhitelisted=' "$out"
@@ -3029,6 +3062,18 @@ out=$( cd "$S83" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --de
 check_output "T83 self-boot family classification still works" 'claude \(json-hooks\)' "$out"
 out=$( cd "$S83" && bash scripts/audit-docs-consistency.sh --since HEAD 2>&1 | head -1 )
 check_output "T83 CHG-123 audit --since no-op path" 'declared no-op' "$out"
+# v3.90.4: runtime-aware review plan + user-only consent on the CHG-124 copy
+out=$( cd "$S83" && bash scripts/agent-gate review-plan CHG-124 2>&1 )
+check_output "T83 review-plan detects the runtime" 'runtime=claude' "$out"
+check_output "T83 review-plan names the family" 'family=json-hooks' "$out"
+check_output "T83 review-plan names a viable execution scheme" 'scheme=(in-session-independent-subagent|multi-runtime-choose-one)' "$out"
+printf '%s\n' '{"models":[{"id":"deep-test","provider":"v","tier":"deep","approval":true,"strengths":["code","handoff","architecture","business","bug"]}]}' > "$S83/deep-models.json"
+out=$( cd "$S83" && AGENT_GUARD_REVIEW_MODELS="$S83/deep-models.json" bash scripts/agent-gate review-plan CHG-124 2>&1 )
+check_output "T83 review-plan flags high-cost consent" 'approval_required=true' "$out"
+r83=$( cd "$S83" && AGENT_GUARD_REVIEW_MODELS="$S83/deep-models.json" bash scripts/agent-gate review-plan CHG-124 --approve deep-test >/dev/null 2>&1; echo $? )
+report "T83 review-plan refuses AI self-approval" 3 "$r83"
+out=$( cd "$S83" && AGENT_REVIEW_USER_APPROVED=1 AGENT_GUARD_REVIEW_MODELS="$S83/deep-models.json" bash scripts/agent-gate review-plan CHG-124 --approve deep-test 2>&1 )
+check_output "T83 user approval is recorded" '"approved":true' "$out"
 rm -rf "$S83"
 
 }
@@ -7119,7 +7164,7 @@ section_T75() {
       bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
     report "T75 TC-1476 auto maps a changed tool to its sections plus the registry pin" 1 \
       "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: T50 T70')"
-    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="scripts/setup-branch-protection.sh,scripts/facts.sh" \
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="unknown/unmapped.xyz,scripts/facts.sh" \
       AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
     report "T75 TC-1477 an unmapped changed file falls back to FULL" 1 \
       "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: FULL')"
@@ -7557,6 +7602,31 @@ if [[ "$AUTO" -eq 1 ]]; then
   _auto_full=""
   _auto_secs=""
   _auto_skip_n=0
+  # v3.90.4 (FU-126-1): AI judgment for test scope. The orchestrator may pass an
+  # explicit decision ONLY with evidence; a missing/short basis, a malformed
+  # reviewer signature, or an unknown section is rejected and the engine mapping
+  # (or FULL fallback) wins. This replaces the hard "runner self-edit => FULL"
+  # mono-rule with "AI may override when it can prove the narrower scope".
+  _ai_secs="${AGENT_GUARD_SUITE_AI_SECTIONS:-}"
+  _ai_basis="${AGENT_GUARD_SUITE_AI_BASIS:-}"
+  _ai_reviewer="${AGENT_GUARD_SUITE_AI_REVIEWER:-}"
+  _ai_valid=0
+  _ai_reject=""
+  if [[ -n "$_ai_secs" ]]; then
+    if [[ -z "$_ai_basis" || ${#_ai_basis} -lt 20 ]]; then
+      _ai_reject="basis missing or shorter than 20 chars"
+    elif [[ ! "$_ai_reviewer" =~ ^[^/]+[[:space:]]/[[:space:]][^/]+[[:space:]]/[[:space:]](task-|ses-) ]]; then
+      _ai_reject="reviewer must be 'platform / model / task-|ses-…'"
+    else
+      _ai_valid=1
+      for _s in $_ai_secs; do
+        case " ${SECTIONS[*]} " in
+          *" $_s "*) ;;
+          *) _ai_valid=0; _ai_reject="unknown section $_s"; break ;;
+        esac
+      done
+    fi
+  fi
   for _f in "${_auto_files[@]}"; do
     if [[ "$_f" == "tests/run-tests.sh" ]]; then _auto_full="runner self-edit ($_f)"; break; fi
     _m=$(_auto_map "$_f") && _rc=0 || _rc=$?
@@ -7566,6 +7636,13 @@ if [[ "$AUTO" -eq 1 ]]; then
       *) _auto_full="unmapped changed file: $_f"; break ;;
     esac
   done
+  if [[ "$_ai_valid" == "1" ]]; then
+    _auto_secs="$_ai_secs"
+    _auto_full=""
+    printf 'auto: AI judgment accepted (%s) — basis: %s\n' "$_ai_reviewer" "$_ai_basis"
+  elif [[ -n "$_ai_secs" ]]; then
+    printf 'auto: AI judgment rejected (%s) — engine mapping decides\n' "$_ai_reject"
+  fi
   # All changed files are suite-irrelevant: there is nothing to verify. Exiting 0 here
   # is the honest answer — running the suite would prove nothing about these files.
   if [[ -z "$_auto_full" && -z "${_auto_secs// /}" ]]; then

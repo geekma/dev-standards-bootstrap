@@ -718,7 +718,7 @@ validate_unaccounted_changes() { # <staged|worktree>
 # user's overall confirmation is on disk (the §2.17.2d gate extended to staged).
 validate_confirmed_work() { # <staged|preflight>
   local cid
-  cid=$(active_change 2>/dev/null || true)
+  cid=$(active_change_quiet)
   [[ -n "$cid" ]] || return 0
   case "$1" in
     staged)    confirm_required_check "$cid" E129 ;;
@@ -1662,6 +1662,17 @@ active_change() {
   tr -d '[:space:]' < "$active_file"
 }
 
+# v3.90.4: quiet variant for optional lanes (staged/stop). active_change() calls
+# die(), and `exit` inside a command substitution terminates that subshell before
+# `|| true` can run — under `set -e` the parent then exits silently. Optional
+# callers must use this reader instead.
+active_change_quiet() {
+  local af
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -s "$af" ]] || return 0
+  tr -d '[:space:]' < "$af" 2>/dev/null || true
+}
+
 extract_file_from_hook_input() {
   # Claude Code, Cursor, Gemini CLI, and Copilot place tool arguments under
   # tool_input. This intentionally supports the common path field spellings
@@ -1774,6 +1785,7 @@ validate_delivery() { # change-id
   local id="$1" d
   d=$(change_dir "$id")
   reviews_pair_check "$id"
+  review_consent_check "$id"
   validate_delivery_shape_front "$id"
   if [[ -s "$d/07-review-report.md" ]]; then
     track_review_round "$d" "$id" "$d/07-review-report.md"
@@ -2437,6 +2449,158 @@ record_cost_line() { # <change-id> [verdict]
   echo "agent-gate: cost line recorded in $f (P0-15: wall ${wmin}min, tokens ${tin}/${tout} $src, calls ${calls})"
 }
 
+# v3.90.4 (review intelligence): runtime-aware review plan + cost consent.
+# The gate NEVER picks an expensive model for the user: it lists candidates,
+# labels cost tiers, and refuses to let a `deep`/approval-required model reach
+# the review gate until the user records consent. Detection reuses the adapter
+# (single source for runtime/family/layers) instead of a fourth client map.
+review_models_file() { printf '%s' "${AGENT_GUARD_REVIEW_MODELS:-$repo_root/.agent-review-models.json}"; }
+
+review_adapter_path() {
+  local p
+  for p in "$repo_root/scripts/install-hook-adapter" "$repo_root/scripts/install-hook-adapter.sh" "$repo_root/resources/templates/install-hook-adapter.sh"; do
+    [[ -f "$p" ]] && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+
+review_runtime_raw() { # adapter --detect run INSIDE the target repo (never the source-repo CWD)
+  local ad
+  ad=$(review_adapter_path) || return 0
+  ( cd "$repo_root" && bash "$ad" --detect 2>/dev/null ) || true
+}
+
+review_ui_change() { # <change-dir> -> 0 when 01-spec declares ui_change: true
+  grep -qE '^[[:space:]]*ui_change[[:space:]]*:[[:space:]]*true' "$1/01-spec.md" 2>/dev/null
+}
+
+review_roles_for() { # <change-dir> <id> -> space-separated role names
+  local d="$1" id="$2" rec risk roles="code handoff" bug_ref
+  rec=$(gov_record "$d/00-governance.json" "$id")
+  risk=$(json_field "$rec" risk_level)
+  case "$risk" in L2|L3) roles="$roles architecture business" ;; esac
+  review_ui_change "$d" && roles="$roles ui business"
+  bug_ref=$(json_field "$rec" bug_ref)
+  [[ -n "$bug_ref" ]] && roles="$roles bug"
+  printf '%s' "$(printf '%s\n' $roles | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
+}
+
+review_plan_json() { # <id> -> one-line plan JSON; no writes, never exits 2
+  local id="$1" d roles raw rt fam clients layers cfg
+  d=$(change_dir "$id")
+  roles=$(review_roles_for "$d" "$id")
+  raw=$(review_runtime_raw)
+  rt=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: *\([^ ]*\).*/\1/p' | head -1 || true)
+  fam=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: .*(family: *\([^)]*\)).*/\1/p' | head -1 || true)
+  clients=$(printf '%s\n' "$raw" | sed -n 's/^  - \([A-Za-z0-9_-]*\) (.*/\1/p' | tr '\n' ',' | sed 's/,$//' || true)
+  layers=$(printf '%s\n' "$raw" | sed -n 's/^  effective layers: *//p' | head -1 || true)
+  [[ -n "$rt" ]] || rt="unknown"
+  [[ -n "$fam" ]] || fam="unknown"
+  cfg=$(review_models_file)
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$cfg" "$(printf '%s' "$roles" | tr ' ' ',')" "$id" "$rt" "$fam" "$clients" "$layers" <<'PY'
+import json, os, sys, datetime
+cfg, roles_s, cid, rt, fam, clients, layers = sys.argv[1:8]
+now = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+if fam in ('json-hooks', 'plugin-api'):
+    scheme = 'in-session-independent-subagent'
+elif fam == 'git+ci':
+    scheme = 'external-cli-or-human-ci'
+else:
+    scheme = 'blocked-no-independent-executor'
+clients_list = [c for c in clients.split(',') if c]
+if len(clients_list) > 1:
+    scheme = 'multi-runtime-choose-one'
+roles = [r for r in roles_s.split(',') if r]
+models = []
+if cfg and os.path.exists(cfg):
+    try:
+        data = json.load(open(cfg, encoding='utf-8'))
+    except Exception:
+        data = {}
+    for m in data.get('models', []) or []:
+        if not isinstance(m, dict):
+            continue
+        strengths = []
+        for k in ('strengths', 'roles'):
+            v = m.get(k) or []
+            if isinstance(v, list):
+                strengths += [str(x) for x in v]
+        models.append({
+            'id': str(m.get('id', '')),
+            'provider': str(m.get('provider', '')),
+            'cli': str(m.get('cli', '')),
+            'tier': str(m.get('tier', 'standard')),
+            'approval': bool(m.get('approval', False)),
+            'strengths': strengths,
+            'note': str(m.get('note', '')),
+        })
+    models = [m for m in models if m['id']]
+selected = {}
+for r in roles:
+    cand = [m for m in models if (not m['strengths']) or (r in m['strengths'])]
+    if cand:
+        selected[r] = cand[0]['id']
+chosen = [m for m in models if m['id'] in selected.values()]
+order = {'economy': 0, 'standard': 1, 'deep': 2}
+tier = 'economy'
+for m in chosen:
+    if order.get(m['tier'], 1) > order.get(tier, 0):
+        tier = m['tier']
+approval_required = any(m['tier'] == 'deep' or m['approval'] for m in chosen)
+out = {
+    'change': cid, 'created_at': now,
+    'runtime': rt, 'runtime_family': fam, 'runtime_clients': [c for c in clients.split(',') if c],
+    'effective_layers': layers, 'scheme': scheme, 'roles': roles, 'models': models,
+    'selected': selected, 'tier': tier, 'approval_required': approval_required,
+    'approved': False, 'approved_by': '', 'approved_at': '',
+}
+print(json.dumps(out, ensure_ascii=False, separators=(',', ':')))
+PY
+  else
+    printf '{"change":"%s","created_at":"%s","runtime":"%s","runtime_family":"%s","runtime_clients":[],"effective_layers":"","scheme":"blocked-no-independent-executor","roles":%s,"models":[],"selected":{},"tier":"economy","approval_required":false,"approved":false,"approved_by":"","approved_at":""}\n' \
+      "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rt" "$fam" \
+      "$(printf '%s' "$roles" | awk '{printf "["; for(i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i; printf "]"}')"
+  fi
+}
+
+review_plan_write() { # <id> [approved-model] — write the runtime plan; no die
+  local id="$1" am="${2:-}" f js
+  f="$repo_root/.agent-state/review-plan.json"
+  js=$(review_plan_json "$id") || return 0
+  [[ -n "$js" ]] || return 0
+  if [[ -n "$am" ]]; then
+    js=$(printf '%s' "$js" | sed "s/\"approved\":false/\"approved\":true/; s/\"approved_by\":\"\"/\"approved_by\":\"user\"/; s/\"approved_at\":\"\"/\"approved_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)\"/")
+    # record which model the user approved (replace the selected map's targets)
+    js=$(printf '%s' "$js" | sed "s/\"selected\":{[^}]*}/\"selected\":{\"approved\":\"$am\"}/")
+  fi
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  printf '%s\n' "$js" > "$f" 2>/dev/null || { echo "agent-gate: WARN — cannot write $f (review plan)" >&2; return 0; }
+  printf '%s\n' "$js"
+}
+
+review_plan_seed() { # <id> — begin-time seed; economy default when no config
+  local id="$1" f ch
+  f="$repo_root/.agent-state/review-plan.json"
+  if [[ -s "$f" ]]; then
+    ch=$(json_field "$(tr -d '\n\r' < "$f" 2>/dev/null || true)" change)
+    [[ "$ch" == "$id" ]] && return 0
+  fi
+  review_plan_write "$id" >/dev/null 2>&1 || true
+}
+
+review_consent_check() { # <id> — E137: a deep/approval model needs user consent
+  local id="$1" f line ch
+  f="$repo_root/.agent-state/review-plan.json"
+  [[ -s "$f" ]] || return 0
+  line=$(tr -d '\n\r' < "$f" 2>/dev/null || true)
+  ch=$(json_field "$line" change)
+  [[ -z "$ch" || "$ch" == "$id" ]] || return 0
+  printf '%s\n' "$line" | grep -q '"approval_required":true' || return 0
+  printf '%s\n' "$line" | grep -q '"approved":true' && return 0
+  die "GATE-E137: $id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
+}
+
 # v3.90.2 (CHG-124, P1-1~P1-3): read-only decision engine. R2 = ADVISE ONLY:
 # nothing here may exit 2 for a coverage judgement, and AGENT_GUARD_ADAPT=0 turns
 # the whole face off (byte-identical to v3.90.2 behaviour).
@@ -2525,6 +2689,13 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   [[ -n "$secs" ]] && [[ "$src" != "prior" ]] || true
   [[ -n "$secs" ]] || src="no-map"
   rate=$(plan_resolution_rate "$d")
+  local judgment="engine" j_reviewer="" j_basis=""
+  if [[ -n "${AGENT_GUARD_SUITE_AI_SECTIONS:-}" && -n "${AGENT_GUARD_SUITE_AI_BASIS:-}" \
+        && -n "${AGENT_GUARD_SUITE_AI_REVIEWER:-}" && "$secs" != "FULL" ]]; then
+    judgment="ai"
+    j_reviewer=$(printf '%s' "$AGENT_GUARD_SUITE_AI_REVIEWER" | tr -d '\n\r"')
+    j_basis=$(printf '%s' "$AGENT_GUARD_SUITE_AI_BASIS" | tr -d '\n\r"')
+  fi
   if [[ -n "$secs" ]]; then
     local dang=""
     if [[ -s "$d/04-test-scripts.md" ]]; then
@@ -2539,8 +2710,8 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   diffh=$( { git -C "$repo_root" diff HEAD 2>/dev/null; git -C "$repo_root" diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print $1}' || true)
   [[ -n "$diffh" ]] || diffh="unavailable"
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
-  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s}' \
-    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}"
+  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s"}' \
+    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis"
 }
 
 plan_strip_decision() { # <file> — drop a top-level "decision":{...} key with brace matching
@@ -2612,6 +2783,11 @@ plan_append_intent() { # <change-dir> <decision-json>
     printf -- '- 建议测试：%s\n' "${chosen:-（无映射）}"
     printf -- '- 预计耗时：%s s（预算 %s s，source=%s）\n' "${pred:-0}" "${budget:-120}" "${src:-prior}"
     printf -- '- TC 解析率：%s；gap 见 decision.gaps\n' "${rate:-0/0}"
+    if printf '%s' "$dec" | grep -q '"judgment":"ai"'; then
+      printf -- '- AI 判断：apply（复核：%s；依据：%s）\n' \
+        "$(printf '%s' "$dec" | sed -n 's/.*"judgment_reviewer":"\([^"]*\)".*/\1/p')" \
+        "$(printf '%s' "$dec" | sed -n 's/.*"judgment_basis":"\([^"]*\)".*/\1/p')"
+    fi
     printf -- '- 关闭：`AGENT_GUARD_ADAPT=0`；重算：`scripts/agent-gate plan %s`\n' "$(basename "$1")"
   } >> "$f"
 }
@@ -2644,7 +2820,12 @@ plan_explain() { # <id> <decision-json>
       if [[ -n "$c" ]]; then echo "  - $per: ${c}(ledger) s"; else echo "  - $per: 20(prior) s"; fi
     done
   fi
-  echo "plan: resolution_rate=$rate gaps=$(printf '%s' "$dec" | sed -n 's/.*"gaps":\(.*\)}$/\1/p')"
+  echo "plan: resolution_rate=$rate gaps=$(printf '%s' "$dec" | sed -n 's/.*"gaps":\(\[[^]]*\]\).*/\1/p')"
+  if printf '%s' "$dec" | grep -q '"judgment":"ai"'; then
+    echo "plan: judgment=ai reviewer=$(printf '%s' "$dec" | sed -n 's/.*"judgment_reviewer":"\([^"]*\)".*/\1/p') basis=$(printf '%s' "$dec" | sed -n 's/.*"judgment_basis":"\([^"]*\)".*/\1/p')"
+  else
+    echo "plan: judgment=engine"
+  fi
   echo "plan: ledger=${repo_root}/.agent-state/cost-ledger.tsv (absent => prior 20s/section)"
 }
 
@@ -2905,7 +3086,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.89.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.90.4" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -2921,7 +3102,7 @@ validate_stop() {
       [[ -s "$_vlg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n' > "$_vlg" 2>/dev/null || true
       printf '%s\tverify\t%s\t%s\t0\t0\thit\t0\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-        "$(active_change 2>/dev/null || echo -)" \
+        "$(c=$(active_change_quiet); printf '%s' "${c:--}")" \
         "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || true)" >> "$_vlg" 2>/dev/null || true
     fi
   fi
@@ -2943,7 +3124,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.89.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.90.4","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -3468,6 +3649,7 @@ case "$command" in
     if plan_enabled; then
       plan_run "$id" write | sed -n 's/^plan: /agent-gate: plan: /p' || true
     fi
+    review_plan_seed "$id"
     ;;
   end)
     rm -f "$active_file"
@@ -3666,6 +3848,38 @@ case "$command" in
       esac
     fi
     ;;
+  review-plan)
+    # v3.90.4: runtime-aware review plan. Read-only unless --write/--approve.
+    # High-cost models NEVER auto-approve: --approve requires the USER marker.
+    rcid="${2:-}"; rmode="${3:-}"; rmodel="${4:-}"; rdir=""
+    [[ -n "$rcid" ]] && rdir=$(change_dir "$rcid")
+    if [[ -z "$rcid" || ! -d "$rdir" || ( -n "$rmode" && "$rmode" != "--json" && "$rmode" != "--write" && "$rmode" != "--approve" ) ]]; then
+      die "GATE-E138: usage: scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>] (got '${rcid:-<none>}' '${rmode:-}' '${rmodel:-}') — expected an existing change; fix: pass a real change id and a known option; ref: standards §2.1 rule 11 / v3.90.4"
+    fi
+    case "$rmode" in
+      --write) js=$(review_plan_write "$rcid") ;;
+      --approve)
+        [[ -n "$rmodel" ]] || die "GATE-E139: review-plan --approve needs a model id — fix: review-plan $rcid --approve <model>; ref: standards §2.1 rule 11"
+        if [[ "${AGENT_REVIEW_USER_APPROVED:-}" != "1" ]]; then
+          echo "agent-gate: review-plan: --approve refused — set AGENT_REVIEW_USER_APPROVED=1 only after the USER chooses the model (AI must not self-approve; §2.1 rule 11)" >&2
+          exit 3
+        fi
+        js=$(review_plan_write "$rcid" "$rmodel")
+        ;;
+      *) js=$(review_plan_json "$rcid") ;;
+    esac
+    rt=$(printf '%s' "$js" | sed -n 's/.*"runtime":"\([^"]*\)".*/\1/p')
+    fam=$(printf '%s' "$js" | sed -n 's/.*"runtime_family":"\([^"]*\)".*/\1/p')
+    tier=$(printf '%s' "$js" | sed -n 's/.*"tier":"\([^"]*\)".*/\1/p')
+    scheme=$(printf '%s' "$js" | sed -n 's/.*"scheme":"\([^"]*\)".*/\1/p')
+    appr=false
+    printf '%s' "$js" | grep -q '"approval_required":true' && appr=true
+    echo "review-plan: runtime=${rt:-unknown} family=${fam:-unknown} scheme=${scheme:-unknown} tier=${tier:-economy} approval_required=${appr:-false}"
+    echo "$js"
+    if [[ "$appr" == "true" && "$rmode" != "--approve" ]]; then
+      echo "review-plan: USER CONSENT REQUIRED — choose a model from the candidates above, then run: AGENT_REVIEW_USER_APPROVED=1 scripts/agent-gate review-plan $rcid --approve <model> (AI must not choose for you)" >&2
+    fi
+    ;;
   metrics)
     emit_metrics
     ;;
@@ -3690,8 +3904,8 @@ case "$command" in
       spec|design|testplan)
         stage_gate_check "$stage" ;;
       close) stage_close_check "${1:-$(active_change)}" ;;
-      staged) validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change 2>/dev/null || true); [[ -n "$cost_cid" ]] && record_cost_line "$cost_cid" stop; [[ -n "$cost_cid" ]] && record_suite_suggestion "$cost_cid"; [[ -n "$cost_cid" ]] && e131_dogfood_check "$(change_dir "$cost_cid")"; record_delivery stop ;;
+      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -3717,6 +3931,7 @@ Usage:
   scripts/agent-gate metrics
   scripts/agent-gate session-start          # v3.90.2: write the session handshake (runtime/model/window, P0-1)
   scripts/agent-gate plan <change-id> [--dry-run|--explain]  # v3.90.2: read-only test-scope decision (P1-1/P1-2)
+  scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>]  # v3.90.4: runtime-aware review plan; deep/high-cost needs USER consent
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)

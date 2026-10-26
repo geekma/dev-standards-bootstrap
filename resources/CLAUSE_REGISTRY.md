@@ -216,6 +216,9 @@
 | GATE-E134 | 治理记录 JSON 同行 `}{` 拼接（缺逗号） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E135 | 治理记录 change_id 无法回读成完整对象（截断/重叠） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E136 | `plan` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::plan 分支（v3.90.2，CHG-124，P1-1） |
+| GATE-E137 | 评审计划要求 deep/高成本模型但无用户确认（AI 不得自行选择） | agent-gate.sh::review_consent_check()（v3.90.4） |
+| GATE-E138 | `review-plan` 子命令用法错误（缺变更号 / 未知选项） | agent-gate.sh::review-plan 分支（v3.90.4） |
+| GATE-E139 | `review-plan --approve` 缺模型 id | agent-gate.sh::review-plan 分支（v3.90.4） |
 | GATE-E127 | 阶段关闭前置缺失（00.5 无确认 / 09 无子 Agent 放行） | agent-gate.sh::stage_close_check()（v3.90.3，CHG-125，P2-1） |
 | GATE-E128 | 09 声称阶段复核但 `reviews/P*.review.md` 缺失或为空 | agent-gate.sh::reviews_pair_check()（v3.90.3，CHG-125，P2-2） |
 | GATE-E129 | L2/L3 无用户整体确认却进入 staged 证据面 | agent-gate.sh::confirm_required_check()（v3.90.3，CHG-125，P2-3） |

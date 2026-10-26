@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-hook-adapter.sh — 按当前 Agent 环境自适应生成会话内执法接线（v3.28.0）。
+# install-hook-adapter.sh — 按目标仓当前 Agent 环境自适应生成会话内执法接线（v3.28.0）。
 #
 # 设计原则（"不写死"）：
 #   · 客户端是**探测**出来的，不是假设的：env 变量 / CLI on PATH / 仓库内配置目录

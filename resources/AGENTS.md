@@ -22,6 +22,8 @@
 - 严禁未经 Thought（全局影响分析：当前状态/目标/波及的调用方、流程与业务，引用 02 三维影响分析）直接修改代码或文档——必须 Thought → Action → Observation 三段式推进，Observation 须附验证命令与关键输出并归档 09「执行记录（ReAct）」（§2.16.2 铁律）。
 - 严禁因为大部分完成就整体标记完成；任一清单项缺失即视为未完成，必须继续执行或明确报告阻塞原因。
 - 高风险变更（命中 §0 门禁5 清单）必须获得人类 Release Owner 明确授权，AI 不得替代该授权。
+- 严禁 AI 自行选择高成本/`deep` 档模型做评审：只能列候选、能力与成本档位，由用户确认后执行（§2.1 规则 11，`agent-gate review-plan`）；未确认即用=门禁违规。
+- 严禁同一执行主体/同一会话既生产又评审，或编排 Agent 代签评审结论；评审必须先探测**目标仓被打开的 Agent 客户端**运行时再选执行方案（在目标仓根执行 `install-hook-adapter --detect`，不是编辑 Skill 的源仓客户端），且必须装载项目背景与专业能力（`resources/methodologies/review-intelligence.md`）。
 - 写入文件后必须用 shell 命令（`grep -c` / `wc -l` / `git diff --stat`）在磁盘层验证落盘；不得以编辑工具的“成功”返回作为完成依据，不得用 Read 工具验证落盘（其可能返回缓存内容）。
 - 上下文被压缩或总结后，对话记忆不可信：磁盘产物（`docs/changes/`、git 状态、文件内容）是唯一权威状态，必须重新从磁盘读取活跃变更与本红线后再继续，不得依据记忆中的“已完成”声明推进。
 - 长输出命令（构建、测试、日志检索、JSON 解析等）必须接管道过滤，关键输出进对话与产物、完整输出归档到文件并给落点；禁止把原始输出整段贴入上下文（细则见下方「Agent 执行资源纪律」第 1 条）。
@@ -34,7 +36,7 @@
 4. **勘探下放（v3.39.0 起默认强制，非建议）**：预计读 >2 文件或 >100 行日志/代码定位、或 >2 pattern 的检索，**必须**合并单次调用或委派只读子代理执行，只回结论与行号，原始输出不进主上下文；子代理超出派发输入清单的读盘动作须在结论中声明原因（§2.2 输入契约）。
 5. **无匹配 ≠ 通过**：过滤后无输出不等于校验通过——以命令退出码与 FAIL 汇总行为准，FAIL 汇总行不得被过滤吞掉。
 6. **并行批量**：写产物、相互独立的编辑必须单消息并行批量调用；仅内容依赖前序输出时才拆轮。
-7. **定向验证**：模块/单测级验证命令先行；全量回归仅由门禁（stop/staged/CI）统一触发，禁止随手裸跑全量。执法（v3.73.0，CHG-096/REQ-1102）：`.agent-governance.yml` 声明 `full_test_patterns`（锚定全量形态 ERE）后，session-gate 对 LLM bash 命中调用计数，≥阈值（默认 2，`AGENT_GUARD_FULL_TEST_LIMIT`）亮黄灯；不声明不执法；门禁/CI 触发的全量不经 LLM bash turn 天然豁免。**治理自测按变更选节（2026-10-25 接线补充，§2.17.4 执行细则）**：`tests/run-tests.sh` 具备 `-T auto`（按 `git diff` 自动选节，未映射文件回落全量）、`-T <节[,节]>`、`-j N`（节级并行，N≥2）、`-l`（列节）四种跑法；**改文档/模板/单个工具脚本一律 `-T auto` 或 `-T <节>`，禁止裸跑全量**——实证同一会话裸跑 11 次 ≈4.6 h，而 `-T auto` 同等覆盖面为秒级到分钟级。只有改动**被测核心**（`resources/templates/agent-gate.sh`、`tests/run-tests.sh`、`.agent-governance.yml`）才需全量，且**收口跑一次即可**，不得每改一处跑一遍。收口前若不确定选节是否正确，用 `-T auto` 的 `AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1` 先看解析结果再执行。
+7. **定向验证**：模块/单测级验证命令先行；全量回归仅由门禁（stop/staged/CI）统一触发，禁止随手裸跑全量。执法（v3.73.0，CHG-096/REQ-1102）：`.agent-governance.yml` 声明 `full_test_patterns`（锚定全量形态 ERE）后，session-gate 对 LLM bash 命中调用计数，≥阈值（默认 2，`AGENT_GUARD_FULL_TEST_LIMIT`）亮黄灯；不声明不执法；门禁/CI 触发的全量不经 LLM bash turn 天然豁免。**治理自测按变更选节（2026-10-25 接线补充，§2.17.4 执行细则）**：`tests/run-tests.sh` 具备 `-T auto`（按 `git diff` 自动选节，未映射文件回落全量）、`-T <节[,节]>`、`-j N`（节级并行，N≥2）、`-l`（列节）四种跑法；**改文档/模板/单个工具脚本一律 `-T auto` 或 `-T <节>`，禁止裸跑全量**——实证同一会话裸跑 11 次 ≈4.6 h，而 `-T auto` 同等覆盖面为秒级到分钟级。只有改动**被测核心**（`resources/templates/agent-gate.sh`、`tests/run-tests.sh`、`.agent-governance.yml`）才需全量，且**收口跑一次即可**，不得每改一处跑一遍。**测试范围 AI 判断（v3.90.4，FU-126-1）**：`tests/run-tests.sh` 自改默认回落 FULL **不是写死结论**——AI 可基于 diff 证据收窄，但必须同时给出 `AGENT_GUARD_SUITE_AI_SECTIONS`（节列表）+ `AGENT_GUARD_SUITE_AI_BASIS`（≥20 字符证据）+ `AGENT_GUARD_SUITE_AI_REVIEWER`（`platform / model / task- 或 ses-`）；缺证据、评审签名不合规或未知节一律回落 FULL，`T50` 恒跑；判断来源与依据写入 `plan.decision` 的 `judgment/judgment_reviewer/judgment_basis`，门禁只验证据，不写死结论。收口前若不确定选节是否正确，用 `-T auto` 的 `AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1` 先看解析结果再执行。
 8. **有状态 mock 隔离**：跨两次调用的有状态依赖（会话/游标/水位类）每用例隔离重建；"第二次调用被跳过"类失败优先查共享 mock 内部状态。
 9. **禁并行集成测试（v3.71.0，CHG-046/REQ-1092）**：共享远程 DB 期间禁止并行代理同时跑集成测试（实证：连接池抖动→伪红/资源争抢）；调度并行任务前核对目标库共享态，共享即串行或各自独立库；细则=STAGE_PLAYBOOK 阶段 7 节。
 10. **长任务等待纪律（v3.73.0，CHG-096/REQ-1100）**：禁止把"等待长命令完成"做成独立 LLM 轮（`sleep N` 后再探测类调用算一次 bash 预算且无进展——每轮询烧一个 LLM turn）。合法三式：①前台单次执行+充足 timeout；②单 shell 内 `while ! 判据; do sleep 30; done` 一次等到；③后台启动+完成通知续接。执法：session-gate 对首 token 为 `sleep` 的 bash 调用计数，`idle/status` ≥阈值（默认 2，`AGENT_GUARD_SLEEP_POLL_LIMIT`）亮黄灯，要求 09「重要上下文」登记；判定口径与降级路径唯一权威=session-gate.sh 头注释。**进度文件（v3.90.3，CHG-123/P0-2）**：套件逐节输出 `[done] Tnn Ns` 并写 `.agent-state/suite-progress.json`；等待改「读进度文件 + 短轮询」，**禁止** `TaskOutput block:true timeout>60s`（一次阻塞超 1 分钟即盲等）。
@@ -63,6 +65,7 @@
 |---|---|
 | 判断这次改动风险等级、要不要跨平台交叉验证 | §0.5 |
 | 分阶段专家评审、九专家职责映射与上下文贴近契约（防泛泛而谈）；评审/测试子代理派发必须附**输入契约**（变更文件清单+diff 摘要+待核对产物路径+行号锚点，§2.2 v3.39.0）；专家能力卡见 `resources/methodologies/expert-capabilities.md` | §2.2 |
+| 做各环节评审 / 派发评审子代理 / 选评审模型：项目背景装载、专业能力匹配、批判性质询、目标仓运行时探测、成本确认 | §2.1 规则 11 + §2.2 + `resources/methodologies/review-intelligence.md`（候选命令 `scripts/agent-gate review-plan <变更号>`） |
 | 确认本次变更作者/实现/测试/评审四主体互异（能否兼任） | §2.1 规则 10 |
 | 执行中遇到歧义怎么裁定（何时必须问用户、何时可自裁） | §2.1 规则 8「歧义分级裁定」 |
 | 只加载本次任务需要的规范层（宪法/流程/操作/历史） | §头部「分层阅读路由」 |
@@ -102,5 +105,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.90.3_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v3.90.4_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

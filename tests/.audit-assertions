@@ -583,6 +583,7 @@ README en mentions methodologies/data-structures.md
 README en mentions methodologies/development.md
 README en mentions methodologies/expert-capabilities.md
 README en mentions methodologies/project-masters.md
+README en mentions methodologies/review-intelligence.md
 README en mentions methodologies/state-trigger-audit.md
 README en tree lists audit
 README h2 heading count identical (en vs zh)
@@ -596,6 +597,7 @@ README zh mentions methodologies/data-structures.md
 README zh mentions methodologies/development.md
 README zh mentions methodologies/expert-capabilities.md
 README zh mentions methodologies/project-masters.md
+README zh mentions methodologies/review-intelligence.md
 README zh mentions methodologies/state-trigger-audit.md
 README zh tree lists audit
 route state-trigger-audit in AGENTS.md
@@ -637,6 +639,7 @@ version footer synced: methodologies/data-structures.md
 version footer synced: methodologies/development.md
 version footer synced: methodologies/expert-capabilities.md
 version footer synced: methodologies/project-masters.md
+version footer synced: methodologies/review-intelligence.md
 version footer synced: methodologies/state-trigger-audit.md
 version footer synced: METHODOLOGY.md
 version footer zh

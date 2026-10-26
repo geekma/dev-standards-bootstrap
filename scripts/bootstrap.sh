@@ -676,7 +676,7 @@ run_layer() {
       install_file - "$DOCS_DIR/METHODOLOGY.md" resources/METHODOLOGY.md
       # v3.61.0（FU-911）：阶段执行手册（DS §2.5/§2.16.6 叙事细则载体，条款权威仍在 DS）。
       install_file - "$DOCS_DIR/STAGE_PLAYBOOK.md" resources/STAGE_PLAYBOOK.md
-      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md; do
+      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md review-intelligence.md; do
         install_file - "$DOCS_DIR/methodologies/$m" "resources/methodologies/$m"
       done
       # v3.35.0（§1.3）：项目级总册 13 册 + 评审记录模板骨架 → <docs>/templates/project/，
@@ -705,6 +705,9 @@ run_layer() {
       # 未命中时也必须存在并显式声明"未命中，不适用"——不能靠"不建文件"来表达不适用。
       install_file deployment-config "$DOCS_DIR/06.5-deployment-config.md" resources/templates/06.5-deployment-config.md
       install_file delivery-summary  "$DOCS_DIR/06-delivery-summary.md"     resources/templates/06-delivery-summary.md
+      # v3.90.4：评审模型清单示例（复制为 .agent-review-models.json 后生效；
+      # 不复制即默认 economy，无需用户确认）。
+      install_file review-models .agent-review-models.example.json resources/templates/review-models.json
       install_file - "$TESTS_DIR/audit-docs-consistency.sh" resources/templates/audit-docs-consistency.sh 755
       ;;
     claude)
