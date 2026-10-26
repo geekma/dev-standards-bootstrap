@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.91.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.91.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -208,7 +208,11 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | `--stage commit-msg <msgfile>` | 归因闸门：含代码的提交必须引用有效变更号（合并/回退/纯文档豁免） |
 | `--stage stop` | 源码改动后收尾要求 `04.5-coding-record.md`、`05-test-results.md`、`09-changelog.md`（含 ReAct Observation）及验证命令通过（L0：04.5/05 可按 §1.1 单行声明，v3.44.0）；changelog 引用的 REQ 须回填 `01.5-rtvm-matrix.md`（门禁 4 闭环） |
 | `--stage ci [--base <ref>]` | 复查分支/PR diff 并运行真实验证命令 |
-| `metrics` | 只读管线度量（JSON Lines）——仅观察；聚合 gate 摩擦事件账（die 错误码→计数，v3.43.0） |
+| `plan <变更号> [--explain\|--dry-run]` / `plan --refresh-profile` | 只读自适应判定引擎（v3.90.2 起，v3.91.0 加固）：读画像 + diff + 成本台账，把 `decision` 写进 `00-governance.json`（选节、预计秒数、CAB `deferred`/`wasted`、嵌套 artifacts/stages/masters、`must`、TC 解析率）。`--explain` 打印成本/覆盖账；`--refresh-profile` 报 profile 缺键。总开关 `AGENT_GUARD_ADAPT=0` |
+| `status` | 打印生效执法面——runtime、hook 协议家族、层、`enforcement=hook\|handshake`、握手是否存在、当前模型/上下文窗口（v3.91.0） |
+| `resume <变更号>` | 从 `handoff.md` + `decision` 恢复换挡会话并打印下一步；只读，缺参报 `GATE-E149` |
+| `baseline <变更号> [--write]` / `tc-index <变更号> [--write]` | P0-0 五数基线与 P1-2 三源 TC 索引（04 矩阵 + 脚本自声明 + RTVM）；索引是目标仓缓存，不是契约产物 |
+| `metrics` | 只读管线度量（JSON Lines）——仅观察；聚合 gate 摩擦事件账（die 错误码→计数，v3.43.0），v3.91.0 起增采纳/wasted/stale/握手/评审独立性列 |
 
 **文件溯源**：编码记录必须携带由 `scripts/stamp-provenance.sh <变更号>` 生成的 `<!-- provenance -->` 块——作者、提交者、提交哈希、主机、平台、UTC 时间全部从运行环境读出，手写编不出来。`--all` 可给变更目录全部 `*.md` 产物盖章（治理 JSON 刻意排除）；v3.41.0 起 pre-commit Hook 自动执行，v3.42.0 增 `--trace`——changelog §4 的追踪矩阵编号从 `01.5-rtvm-matrix.md` 确定性派生，不再手抄。门禁校验块形状与生产者；`author` 值本身是否属实**不可机器验证**——设计如实说明而非假装已解决。不追溯既往：历史永不回填，因为回填会把 `generated_at` 伪造成"今天"——那正是溯源块要防的事。
 
@@ -376,7 +380,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.91.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.91.1（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -499,7 +503,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v3.91.0 | **最后更新：** 2026-10-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.91.1 | **最后更新：** 2026-10-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

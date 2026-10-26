@@ -124,6 +124,15 @@ ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [out
     "$a_" "$6" "$out" "$rk" "$mid" "$mwin" \
     >> "$LEDGER_FILE" 2>/dev/null \
     || { printf 'warning: could not append to %s (non-fatal)\n' "$LEDGER_FILE" >&2; return 0; }
+  # v3.91.1 (CHG-127 self-audit, final-plan §2.2): retention — header + last 500
+  # rows (or 90 days), whichever comes first, so the ledger cannot grow forever.
+  local _ln
+  _ln=$(wc -l < "$LEDGER_FILE" 2>/dev/null | tr -d ' ')
+  case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac
+  if [[ "$_ln" -gt 501 ]]; then
+    awk 'NR==1 {print; next} {a[NR]=$0} END {s=NR-499; if (s<2) s=2; for (i=s; i<=NR; i++) print a[i]}' \
+      "$LEDGER_FILE" > "$LEDGER_FILE.rot" 2>/dev/null && mv -f "$LEDGER_FILE.rot" "$LEDGER_FILE" 2>/dev/null || rm -f "$LEDGER_FILE.rot" 2>/dev/null
+  fi
 }
 
 # v3.90.1 (CHG-123, P0-13): source-vs-target layout predicate. The old proxy was

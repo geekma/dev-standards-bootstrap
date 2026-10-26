@@ -467,7 +467,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     00.5-communication.md)
       printf '# %s Communication（00.5）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
     00-governance.json)
-      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
+      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
     01-spec.md)
       printf '# %s Spec\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     02-code-impact-analysis.md)
@@ -2668,23 +2668,25 @@ baseline_write() { # <change-dir> <json>
 tc_section_exists() { # <section-id>
   local sec="$1"
   [[ -n "$sec" && "$sec" != "-" ]] || return 1
-  grep -qE "^SECTIONS=.*[[:space:]]${sec}[),]|^section_${sec//-/_}\(\)" \
-    "$repo_root/tests/run-tests.sh" 2>/dev/null
+  # v3.91.1 (CHG-127 self-audit): the TC index resolves up to 300 TC rows, and a
+  # per-row `grep` of the 280 KB runner cost ~2.7 s — over the <=1 s plan budget
+  # (final-plan N4). Load the section set once and test membership in memory.
+  tc_sections_load
+  case " $TC_SEC_SET " in *" $sec "*) return 0 ;; esac
+  return 1
 }
 
-tc_expand() { # <TC-spec> -> one id per line (ranges expanded)
-  local spec="$1" a b n
-  case "$spec" in
-    *~*)
-      a="${spec%%~*}"; b="${spec#*~}"
-      a="${a#TC-}"; b="${b#TC-}"
-      case "$a$b" in *[!0-9]*) printf '%s\n' "$spec"; return 0 ;; esac
-      [[ "$b" -ge "$a" ]] || { printf '%s\n' "$spec"; return 0; }
-      n="$a"
-      while [[ "$n" -le "$b" ]]; do printf 'TC-%s\n' "$n"; n=$(( n + 1 )); done
-      ;;
-    *) printf '%s\n' "$spec" ;;
-  esac
+TC_SEC_SET=""
+TC_SEC_LOADED=""
+tc_sections_load() {
+  [[ -z "$TC_SEC_LOADED" ]] || return 0
+  TC_SEC_LOADED=1
+  local f="$repo_root/tests/run-tests.sh" ids=""
+  [[ -f "$f" ]] || return 0
+  ids=$(sed -n 's/^SECTIONS=(\(.*\))/\1/p' "$f" 2>/dev/null | head -1 || true)
+  ids="$ids $(grep -oE '^section_[A-Za-z0-9_]+\(\)' "$f" 2>/dev/null \
+    | sed 's/^section_//;s/()$//' | tr '\n' ' ' || true)"
+  TC_SEC_SET=$(printf '%s' "$ids" | tr -s '[:space:]' ' ')
 }
 
 tc_emit() { # <rows-file> <tc> <source> <section|-> <file|->
@@ -2706,29 +2708,80 @@ tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_T
   raw=$(mktemp 2>/dev/null) || { TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
   agg=$(mktemp 2>/dev/null) || { rm -f "$raw"; TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
 
+  # v3.91.1 (CHG-127 self-audit): S1/S3 used to spawn ~4 processes per matrix
+  # row (300 rows ≈ 2 s), which broke the <=1 s plan budget (final-plan N4).
+  # Both passes now run as one awk program over precomputed section/file sets.
+  local secset fileset tc_awk
+  tc_sections_load
+  secset=" $TC_SEC_SET "
+  fileset=" $( cd "$repo_root" 2>/dev/null && find tests scripts -type f 2>/dev/null | tr '\n' ' ' ) "
+  tc_awk='
+function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+function emit(tc,  n, i, a, b, sok, fok) {
+  n = split(ROWSEC, a, " ")
+  for (i = 1; i <= n; i++) {
+    if (a[i] == "") continue
+    sok = (index(secset, " " a[i] " ") > 0) ? "ok" : "missing"
+    print tc "\t" SRC "\t" a[i] "\t" sok "\t-\t-" >> out
+  }
+  n = split(ROWFIL, b, " ")
+  for (i = 1; i <= n; i++) {
+    if (b[i] == "") continue
+    fok = (index(fileset, " " b[i] " ") > 0) ? "ok" : "missing"
+    print tc "\t" SRC "\t-\t-\t" b[i] "\t" fok >> out
+  }
+  if (ROWSEC == "" && ROWFIL == "") {
+    if (mode == "04" && ROWMETHOD != "" && ROWMETHOD != "-") print tc "\tmanual\t-\t-\t-\t-" >> out
+    else print tc "\t" SRC "\t-\t-\t-\t-" >> out
+  }
+}
+function scan(line,  tmp, tok) {
+  ROWSEC = ""; ROWFIL = ""; ROWMETHOD = ""
+  tmp = line
+  while (match(tmp, /T[0-9]+[a-z]?/)) {
+    tok = substr(tmp, RSTART, RLENGTH)
+    if (index(" " ROWSEC " ", " " tok " ") == 0) ROWSEC = ROWSEC (ROWSEC == "" ? "" : " ") tok
+    tmp = substr(tmp, RSTART + RLENGTH)
+  }
+  tmp = line
+  while (match(tmp, /(tests|scripts)\/[A-Za-z0-9._\/-]+\.(sh|py|js|ts|java|go|rb)/)) {
+    tok = substr(tmp, RSTART, RLENGTH)
+    if (index(" " ROWFIL " ", " " tok " ") == 0) ROWFIL = ROWFIL (ROWFIL == "" ? "" : " ") tok
+    tmp = substr(tmp, RSTART + RLENGTH)
+  }
+  if (mode == "04") ROWMETHOD = trim($5)
+}
+function expand(spec,  p, a, b, i) {
+  p = index(spec, "~")
+  if (p == 0) { emit(spec); return }
+  a = substr(spec, 1, p - 1); b = substr(spec, p + 1)
+  sub(/^TC-/, "", a); sub(/^T/, "", a)
+  sub(/^TC-/, "", b); sub(/^T/, "", b)
+  if (a !~ /^[0-9]+$/ || b !~ /^[0-9]+$/ || b + 0 < a + 0) { emit(spec); return }
+  for (i = a + 0; i <= b + 0; i++) emit("TC-" i)
+}
+BEGIN { SRC = (mode == "04" ? "04" : "01.5") }
+{
+  if (mode == "04") {
+    if ($0 !~ /^\|[[:space:]]*TC-[0-9]/) next
+    if (!match($0, /TC-[0-9]+(~(TC-)?[0-9]+)?/)) next
+    spec = substr($0, RSTART, RLENGTH)
+    scan($0)
+    expand(spec)
+  } else {
+    if ($0 !~ /TC-[0-9]+/) next
+    scan($0)
+    tmp = $0; seentc = ""
+    while (match(tmp, /TC-[0-9]+/)) {
+      tok = substr(tmp, RSTART, RLENGTH)
+      if (index(" " seentc " ", " " tok " ") == 0) { seentc = seentc (seentc == "" ? "" : " ") tok; emit(tok) }
+      tmp = substr(tmp, RSTART + RLENGTH)
+    }
+  }
+}'
+
   # S1: 04 matrix rows (TC id + landing section/file)
-  if [[ -s "$f04" ]]; then
-    while IFS= read -r line; do
-      spec=$(printf '%s' "$line" | sed -E 's/^\|[[:space:]]*(TC-[0-9]+(~TC?-?[0-9]+)?).*/\1/')
-      [[ "$spec" == TC-* ]] || continue
-      secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u | tr '\n' ' ' || true)
-      fil=$(printf '%s' "$line" | grep -oE '(tests|scripts)/[A-Za-z0-9._/-]+\.(sh|py|js|ts|java|go|rb)' | sort -u | tr '\n' ' ' || true)
-      # A row whose evidence is manual (release / full suite / review) still
-      # satisfies Q2 "script OR manual evidence"; only a row with NO landing at
-      # all is unresolved.
-      method=$(printf '%s' "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$5); print $5}')
-      for tc in $(tc_expand "$spec"); do
-        if [[ -n "$secs" || -n "$fil" ]]; then
-          for s in $secs; do tc_emit "$raw" "$tc" 04 "$s" "-"; done
-          for f in $fil; do tc_emit "$raw" "$tc" 04 "-" "$f"; done
-        elif [[ -n "$method" && "$method" != "-" ]]; then
-          tc_emit "$raw" "$tc" manual "-" "-"
-        else
-          tc_emit "$raw" "$tc" 04 "-" "-"
-        fi
-      done
-    done <<< "$(grep -E '^\|[[:space:]]*TC-[0-9]+' "$f04" 2>/dev/null || true)"
-  fi
+  [[ -s "$f04" ]] && awk -F'|' -v mode=04 -v secset="$secset" -v fileset="$fileset" -v out="$raw" "$tc_awk" "$f04" || true
 
   # S2: test scripts referenced by 04/01.5 that declare TC ids themselves
   files=$( { grep -oE '(tests|scripts)/[A-Za-z0-9._/-]+\.(sh|py|js|ts|java|go|rb)' "$f04" "$f15" 2>/dev/null || true; } \
@@ -2741,18 +2794,7 @@ tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_T
   done
 
   # S3: RTVM matrix declares TC rows even when 04 has not caught up yet
-  if [[ -s "$f15" ]]; then
-    while IFS= read -r line; do
-      secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u | tr '\n' ' ' || true)
-      for tc in $(printf '%s' "$line" | grep -oE 'TC-[0-9]+' | sort -u); do
-        if [[ -n "$secs" ]]; then
-          for s in $secs; do tc_emit "$raw" "$tc" 01.5 "$s" "-"; done
-        else
-          tc_emit "$raw" "$tc" 01.5 "-" "-"
-        fi
-      done
-    done <<< "$(grep -E 'TC-[0-9]+' "$f15" 2>/dev/null || true)"
-  fi
+  [[ -s "$f15" ]] && awk -F'|' -v mode=15 -v secset="$secset" -v fileset="$fileset" -v out="$raw" "$tc_awk" "$f15" || true
 
   awk -F'\t' '
     {
@@ -2841,11 +2883,26 @@ plan_section_value() { # <section> -> TC count from tests/tc-index.tsv (empty = 
   awk -F'\t' -v s="$1" 'NR>1 && $3==s {n++} END{print n+0}' "$f" 2>/dev/null
 }
 
-plan_section_wasted3() { # <section> -> 0 when its last 3 ledger rows are all `wasted` (G6)
-  local lg="$repo_root/.agent-state/cost-ledger.tsv" last
-  [[ -s "$lg" ]] || return 1
-  last=$(awk -F'\t' -v s="$1" '$2=="sec" && $3==s && NF>=11 {print $11}' "$lg" | tail -3)
-  [[ "$(printf '%s\n' "$last" | grep -c '^wasted$' || true)" -eq 3 ]]
+plan_wasted_sections() { # -> csv of sections whose last 3 ledger rows are all `wasted` (G6)
+  # v3.91.1 (CHG-127 self-audit): one awk pass instead of one awk per candidate
+  # section (8 sections ≈ 0.22 s of the 1 s plan budget).
+  local lg="$repo_root/.agent-state/cost-ledger.tsv"
+  [[ -s "$lg" ]] || return 0
+  awk -F'\t' '
+    $2=="sec" && NF>=11 {
+      id=$3
+      if (!(id in seen)) { seen[id]=1; order[++n]=id }
+      hist[id]=hist[id] "|" $11
+    }
+    END {
+      out=""
+      for (i=1;i<=n;i++) {
+        id=order[i]; m=split(hist[id], a, "|"); k=0; w=0
+        for (j=m; j>=2 && k<3; j--) { k++; if (a[j]=="wasted") w++ }
+        if (k==3 && w==3) out=out (out?",":"") id
+      }
+      print out
+    }' "$lg" 2>/dev/null || true
 }
 
 plan_resolution_rate() { # <change-dir> — tc=<resolved>/<declared> over the three-source union
@@ -2994,8 +3051,17 @@ plan_judges_json() { # <change-dir> [changed-csv] -> JSON fragment (no outer bra
 }
 
 plan_diff_hash() { # -> sha256 hex (empty on failure)
-  { git -C "$repo_root" diff HEAD 2>/dev/null; git -C "$repo_root" diff --cached 2>/dev/null; } \
-    | shasum -a 256 2>/dev/null | awk '{print $1}' || true
+  # v3.91.1 (CHG-127 self-audit): `git diff HEAD` sees tracked edits only, so a
+  # NEW untracked file added after `plan` left the decision looking fresh (G3
+  # hole). Include untracked paths + their blob digests.
+  {
+    git -C "$repo_root" diff HEAD 2>/dev/null || true
+    git -C "$repo_root" ls-files --others --exclude-standard 2>/dev/null \
+      | while IFS= read -r _p; do
+          [[ -n "$_p" ]] || continue
+          printf '?? %s %s\n' "$_p" "$(git -C "$repo_root" hash-object -- "$_p" 2>/dev/null || echo -)"
+        done || true
+  } | shasum -a 256 2>/dev/null | awk '{print $1}' || true
 }
 
 plan_json() { # <id> -> one-line decision JSON (no writes)
@@ -3007,13 +3073,13 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   # v3.91.0 (CHG-127, G6): a section that wasted the last 3 runs (asserts=0 rc=0)
   # leaves the recommendation — capability is kept, it is just no longer selected.
   if [[ -n "$secs" && "$secs" != "FULL" ]]; then
+    wasted_csv=$(plan_wasted_sections)
     kept=""
     for s2 in $secs; do
-      if plan_section_wasted3 "$s2"; then
-        wasted_csv="${wasted_csv}${wasted_csv:+,}$s2"
-      else
-        kept="${kept}${kept:+ }$s2"
-      fi
+      case ",$wasted_csv," in
+        *",$s2,"*) ;;                                  # kept as capability, no longer recommended
+        *) kept="${kept}${kept:+ }$s2" ;;
+      esac
     done
     secs="$kept"
   fi
@@ -3228,8 +3294,30 @@ plan_explain() { # <id> <decision-json>
   echo "plan: ledger=${repo_root}/.agent-state/cost-ledger.tsv (absent => prior 20s/section)"
 }
 
+# v3.91.1 (CHG-127 self-audit): the real suite wall time already lives in the
+# cost ledger; `$SECONDS` only measures how long THIS `stop` call ran, so a CPI
+# computed from it could never fire (a 120 s prediction vs a 1 s stop call).
+last_suite_actual_s() { # <since-iso|empty> -> cost_s of the last real suite run, empty when none
+  local since="${1:-}" lg="$repo_root/.agent-state/cost-ledger.tsv" rc="$repo_root/.agent-state/last-suite-receipt.json" v="" kind ga
+  # v3.91.1: a full-run receipt is the authoritative wall time when it belongs to
+  # this session; nested `-T auto` child runs also append ledger rows (1-2 s), so
+  # the ledger fallback takes the MAX of the session's run rows, not the last one.
+  if [[ -s "$rc" ]]; then
+    kind=$(sed -n 's/.*"kind":"\([^"]*\)".*/\1/p' "$rc" 2>/dev/null | head -1)
+    ga=$(sed -n 's/.*"generated_at":"\([^"]*\)".*/\1/p' "$rc" 2>/dev/null | head -1)
+    if [[ "$kind" == "full" ]] && { [[ -z "$since" ]] || [[ -z "$ga" ]] || [[ "$ga" > "$since" ]]; }; then
+      v=$(sed -n 's/.*"wall_time_s":\([0-9]*\).*/\1/p' "$rc" 2>/dev/null | head -1)
+    fi
+  fi
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  [[ -s "$lg" ]] || return 0
+  v=$(awk -F'\t' -v s="$since" \
+    '($2=="run"||$2=="run-full") && $5 ~ /^[0-9]+$/ && (s=="" || $1>=s) {if($5+0>max) max=$5+0} END{if(max>0) print max}' "$lg" 2>/dev/null || true)
+  printf '%s' "$v"
+}
+
 record_suite_suggestion() { # <change-id> — R2 advice line + 05 record; never blocks
-  local id="$1" d mode reason dec actual f cpi
+  local id="$1" d mode reason dec actual actual_src f cpi s_started s_marker
   plan_enabled || return 0
   d=$(change_dir "$id"); [[ -d "$d" ]] || return 0
   mode="${AGENT_GUARD_SUITE_MODE:-adopt}"
@@ -3258,12 +3346,13 @@ record_suite_suggestion() { # <change-id> — R2 advice line + 05 record; never 
     return 0   # suggestion printed; 05 block already recorded for this session
   fi
   if [[ -s "$f" ]]; then
-    actual="${SECONDS:-0}"
+    actual=$(last_suite_actual_s "${s_started:-}")
+    if [[ -n "$actual" ]]; then actual_src="ledger"; else actual="${SECONDS:-0}"; actual_src="elapsed"; fi
     {
       printf '\n## 套件模式（引擎建议，R2）\n\n'
       printf -- '- suite_mode=%s\n' "$mode"
       printf -- '- chosen=%s predicted_s=%s budget_s=%s\n' "${chosen:--}" "${pred:-0}" "${budget:-120}"
-      printf -- '- actual_s=%s（本次 stop 调用墙钟；长跑在 CI）\n' "$actual"
+      printf -- '- actual_s=%s（来源=%s：ledger=本次会话最近一次套件墙钟，elapsed=本次 stop 调用）\n' "$actual" "$actual_src"
       if [[ "$mode" == "down" ]]; then printf -- '- down_reason=%s\n' "$reason"; fi
     } >> "$f" 2>/dev/null || echo "agent-gate: WARN — cannot append suite mode to $f (P1-3)" >&2
     # v3.91.0 (CHG-127, G18): cost self-feedback — over budget by actual, or
@@ -3273,7 +3362,7 @@ record_suite_suggestion() { # <change-id> — R2 advice line + 05 record; never 
       mkdir -p "$repo_root/.agent-state/retro" 2>/dev/null || true
       cpi=$(awk -v p="$pred" -v a="$actual" 'BEGIN{ if (a>0) printf "%.2f", p/a; else printf "n/a" }')
       {
-        printf 'CHG %s :: actual_s=%s predicted_s=%s CPI=%s :: %s\n' "$id" "$actual" "$pred" "$cpi" \
+        printf 'CHG %s :: actual_s=%s predicted_s=%s CPI=%s source=%s :: %s\n' "$id" "$actual" "$pred" "$cpi" "$actual_src" \
           "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"
         printf 'FU suggestion :: review why the estimate missed and whether the section set was too wide\n'
       } >> "$repo_root/.agent-state/retro/$id.md" 2>/dev/null || true
@@ -3750,7 +3839,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.91.1" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -3796,7 +3885,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.91.1","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -4247,7 +4336,16 @@ case "$command" in
     [[ -z "$e69msg" ]] || die "GATE-E69: $e69msg"
     if [[ "$scaffold" = 1 ]]; then
       : "${srisk:=L1}"
-      scaffold_change "$id" "$srisk"; exit 0
+      scaffold_change "$id" "$srisk"
+      # v3.91.1 (CHG-127 self-audit): `--scaffold` deliberately does not activate
+      # the change. It used to leave a STALE pointer silently in place, so a later
+      # `stop`/`preflight` consumed the wrong change (observed: CHG-125 was still
+      # active while CHG-127 was being tested). Visible, not silent.
+      _sc_cur=$(tr -d '[:space:]' < "$active_file" 2>/dev/null || true)
+      if [[ -n "$_sc_cur" && "$_sc_cur" != "$id" ]]; then
+        echo "agent-gate: WARN — active change is still $_sc_cur; stop/preflight will consume THAT change until you run 'scripts/agent-gate begin $id' (or 'scripts/agent-gate end')" >&2
+      fi
+      exit 0
     fi
     # FU-015 (BUG-003): a change dir carrying a changelog is a CLOSED change —
     # re-opening it would let a new change write into a read-only artifact set

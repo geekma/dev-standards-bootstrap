@@ -1127,6 +1127,9 @@ if [[ "$upgrade" == true ]]; then
   # v3.90.5 (CHG-126): what this upgrade changes in decision consumption.
   echo "upgrade-behavior: stop/preflight now consume plan.decision (E142-E146); missing decision is WARN-only unless AGENT_GUARD_PLAN_STRICT=1"
   echo "upgrade-behavior: --stage close <N> records stage history + filled-at ordering (AGENT_GUARD_STAGE_CLOSE=0 opts out); baseline/tc-index are on-demand"
+  # v3.91.0/.1 (CHG-127): nested decision consumption + profile schema.
+  echo "upgrade-behavior: decision gains nested artifacts/stages/masters + CAB deferred/wasted + must rules; stale diff (E147) or uncovered must (E148) is WARN-only unless AGENT_GUARD_PLAN_STRICT=1"
+  echo "upgrade-behavior: profile gains schema_version + nine scenario keys; an existing profile block only receives missing keys (user values never rewritten)"
 fi
 
 cat <<EOF

@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.91.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.91.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -208,7 +208,11 @@ Command reference (invoked by the above; manual runs are for debugging):
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
 | `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md`, `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing verification command (L0: 04.5/05 may be §1.1 single-line declarations, v3.44.0); changelog REQ ids must be backfilled in `01.5-rtvm-matrix.md` (Gate 4 closure) |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff and runs the real verification command |
-| `metrics` | Read-only pipeline metrics as JSON Lines — observations only; aggregates the gate-friction ledger (die codes → counts, v3.43.0) |
+| `plan <change-id> [--explain\|--dry-run]` / `plan --refresh-profile` | Read-only adaptive decision engine (v3.90.2+, hardened in v3.91.0): reads the profile + diff + cost ledger and writes `decision` into `00-governance.json` (sections, predicted seconds, CAB `deferred`/`wasted`, nested artifacts/stages/masters, `must`, TC resolution rate). `--explain` prints the cost/coverage account; `--refresh-profile` reports missing profile keys. Off switch: `AGENT_GUARD_ADAPT=0` |
+| `status` | Prints the effective enforcement face — runtime, hook-protocol family, layers, `enforcement=hook\|handshake`, handshake presence and the current model/context window (v3.91.0) |
+| `resume <change-id>` | Restores a shifted session from `handoff.md` + `decision` and prints the next steps; read-only, usage error is `GATE-E149` |
+| `baseline <change-id> [--write]` / `tc-index <change-id> [--write]` | P0-0 five-number baseline snapshot and P1-2 three-source TC index (04 matrix + script self-declarations + RTVM); the index is a target-repo cache, never a contract artifact |
+| `metrics` | Read-only pipeline metrics as JSON Lines — observations only; aggregates the gate-friction ledger (die codes → counts, v3.43.0) and, since v3.91.0, adoption/wasted/stale/handshake/review-independence columns |
 
 **File provenance**: the coding record must carry a `<!-- provenance -->` block produced by `scripts/stamp-provenance.sh <change-id>` — author, committer, commit, host, platform and UTC time are read from the running environment, so they cannot be typed by hand. `--all` stamps every `*.md` artifact of the change directory (the governance JSON is deliberately excluded); since v3.41.0 the pre-commit hook runs it automatically, and v3.42.0 adds `--trace` — the changelog's §4 traceability ids are derived from the `01.5-rtvm-matrix.md` instead of hand-typed. The gate checks block shape and producer; truthfulness of `author` itself is *not* machine-verifiable, and the design says so. No retroactive stamping: history is never back-filled, because back-filling would forge `generated_at` — the very thing the block exists to prevent.
 
@@ -376,7 +380,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.91.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.91.1 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -499,7 +503,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.91.0 | **Last Updated:** 2026-10-26 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.91.1 | **Last Updated:** 2026-10-26 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

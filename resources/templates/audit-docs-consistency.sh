@@ -929,5 +929,12 @@ if mkdir -p "$(dirname "$_lg")" 2>/dev/null; then
     "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
     "${since_ref:-full}" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)" \
     "${SECONDS:-0}" "$fail" "$_out" "$_rk" >> "$_lg" 2>/dev/null || true
+  # v3.91.1 (CHG-127 self-audit, final-plan §2.2): header + last 500 rows.
+  _ln=$(wc -l < "$_lg" 2>/dev/null | tr -d ' ')
+  case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac
+  if [[ "$_ln" -gt 501 ]]; then
+    awk 'NR==1 {print; next} {a[NR]=$0} END {s=NR-499; if (s<2) s=2; for (i=s; i<=NR; i++) print a[i]}' \
+      "$_lg" > "$_lg.rot" 2>/dev/null && mv -f "$_lg.rot" "$_lg" 2>/dev/null || rm -f "$_lg.rot" 2>/dev/null
+  fi
 fi
 [[ "$fail" -eq 0 ]]
