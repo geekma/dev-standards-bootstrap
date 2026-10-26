@@ -231,6 +231,9 @@
 | GATE-E144 | `decision.chosen` 的测试节在 05 无证据且未声明 coverage gap（strict） | agent-gate.sh::coverage_gap_check()（v3.90.5，CHG-126，P2-3） |
 | GATE-E145 | 总册 `filled-at stage=M` 晚于当前关闭阶段或晚于该阶段关闭时间（迟到回填） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
 | GATE-E146 | 下一阶段首条 Observation 未引用上一阶段回填的总册锚点（漏读） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
+| GATE-E147 | decision 的 `diff_hash` 与现算 diff 不一致且 `PLAN_STRICT=1`（stale 判定） | agent-gate.sh::plan_consume_check()（v3.91.0，CHG-127，G3） |
+| GATE-E148 | `decision.must[]` 非空但 `chosen` 不是 FULL 且 `PLAN_STRICT=1`（硬规则未覆盖） | agent-gate.sh::plan_consume_check()（v3.91.0，CHG-127，G12） |
+| GATE-E149 | `resume` 子命令用法错误（缺变更号） | agent-gate.sh::resume 分支（v3.91.0，CHG-127，G17） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

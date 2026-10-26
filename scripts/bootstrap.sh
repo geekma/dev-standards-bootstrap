@@ -823,12 +823,13 @@ write_profile_section() { # <yml> <target>
     grep -qE '^[[:space:]]+schema:[[:space:]]*2' "$y" 2>/dev/null && return 0
     nfiles=$(find "$t" -type f -not -path '*/.git/*' -not -path '*/.agent-state/*' 2>/dev/null | wc -l | tr -d ' ')
     case "$nfiles" in ''|*[!0-9]*) nfiles=0 ;; esac
-    local _pf_add=0 _pf_addb=0 _pf_tmp _pf_added=""
-    grep -qE '^[[:space:]]+files:' "$y" 2>/dev/null || { _pf_add=1; _pf_added="files"; }
+    local _pf_add=0 _pf_addb=0 _pf_adds=0 _pf_tmp _pf_added=""
+    grep -qE '^[[:space:]]+schema_version:' "$y" 2>/dev/null || { _pf_adds=1; _pf_added="schema_version"; }
+    grep -qE '^[[:space:]]+files:' "$y" 2>/dev/null || { _pf_add=1; _pf_added="${_pf_added}${_pf_added:+,}files"; }
     grep -qE '^[[:space:]]+budgets:' "$y" 2>/dev/null || { _pf_addb=1; _pf_added="${_pf_added}${_pf_added:+,}budgets"; }
-    if [[ "$_pf_add" == "1" || "$_pf_addb" == "1" ]]; then
+    if [[ "$_pf_adds" == "1" || "$_pf_add" == "1" || "$_pf_addb" == "1" ]]; then
       _pf_tmp=$(mktemp 2>/dev/null) || return 0
-      awk -v nf="$nfiles" -v addf="$_pf_add" -v addb="$_pf_addb" '
+      awk -v nf="$nfiles" -v addf="$_pf_add" -v addb="$_pf_addb" -v adds="$_pf_adds" '
         { line[NR]=$0 }
         END {
           p=0
@@ -841,6 +842,7 @@ write_profile_section() { # <yml> <target>
             else break
           }
           for (i=1; i<=e; i++) print line[i]
+          if (adds==1) print "  schema_version: 1"
           if (addf==1) print "  files: " nf
           if (addb==1) print "  budgets: {inner_s: 10, close_s: 120, ci_s: 1800}"
           for (i=e+1; i<=NR; i++) print line[i]
@@ -862,17 +864,47 @@ write_profile_section() { # <yml> <target>
   if [[ "$nfiles" -lt 200 ]]; then size="small"; elif [[ "$nfiles" -lt 2000 ]]; then size="medium"; else size="large"; fi
   if [[ -n "${detected:-}" ]]; then tests="detected"; elif [[ -d "$t/tests" || -d "$t/test" ]]; then tests="present-no-command"; fi
   [[ -d "$t/.github/workflows" ]] && ci="github-actions"
+  # v3.91.0 (CHG-127, G7/G8): the nine scenario dimensions. Technical facts are
+  # detected (printed once, user may override); business/compliance facts stay
+  # declared and default to `unknown` + WARN — never guessed.
+  local ai="false" arch="unknown" ui="none" renv="unknown" topo="single" assets="none"
+  if { grep -rqE 'openai|anthropic|langchain|llama_index|llama-cpp' \
+        "$t/package.json" "$t/requirements.txt" "$t/pyproject.toml" "$t/go.mod" 2>/dev/null; } \
+      || [[ -d "$t/prompt" || -d "$t/prompts" ]] \
+      || { [[ -f "$t/.env.example" ]] && grep -qE 'OPENAI|ANTHROPIC|MODEL_API|LLM_' "$t/.env.example" 2>/dev/null; }; then ai="true"; fi
+  [[ -d "$t/packages" || -f "$t/pnpm-workspace.yaml" || -f "$t/lerna.json" || -f "$t/turbo.json" ]] && topo="monorepo"
+  [[ -f "$t/.gitmodules" ]] && topo="multi-repo"
+  [[ -d "$t/services" || -d "$t/apps" ]] && arch="services"
+  [[ -f "$t/serverless.yml" || -f "$t/serverless.yaml" ]] && arch="serverless"
+  [[ -d "$t/src/components" || -d "$t/frontend" || -d "$t/web" ]] && ui="spa"
+  { grep -qE '"(react|vue|svelte|next|nuxt)"' "$t/package.json" 2>/dev/null; } && ui="spa"
+  [[ -f "$t/Dockerfile" || -f "$t/docker-compose.yml" ]] && renv="container"
+  [[ -d "$t/k8s" || -d "$t/deploy/k8s" ]] && renv="kubernetes"
+  [[ -d "$t/tests" || -d "$t/test" ]] && assets="tests"
   {
     printf '\n# v3.90.2 (CHG-124, P1-4): project profile — detected once, edit freely.\n'
     printf 'profile:\n'
+    printf '  schema_version: 1\n'
     printf '  language: %s\n' "$lang"
     printf '  size: %s\n' "$size"
     printf '  files: %s\n' "$nfiles"
     printf '  tests: %s\n' "$tests"
     printf '  ci: %s\n' "$ci"
+    printf '  ai_project: %s\n' "$ai"
+    printf '  architecture: %s\n' "$arch"
+    printf '  ui: %s\n' "$ui"
+    printf '  runtime_env: %s\n' "$renv"
+    printf '  repo_topology: %s\n' "$topo"
+    printf '  assets: %s\n' "$assets"
+    printf '  business_complexity: unknown\n'
+    printf '  delivery: unknown\n'
+    printf '  org: unknown\n'
     printf '  budgets: {inner_s: 10, close_s: 120, ci_s: 1800}\n'
   } >> "$y" 2>/dev/null || { echo "WARN         could not append profile: to $y (P1-4)" >&2; return 0; }
-  echo "auto-wired   profile: written to .agent-governance.yml (language=$lang size=$size tests=$tests ci=$ci) — edit freely; existing blocks are never rewritten"
+  echo "auto-wired   profile: written to .agent-governance.yml (language=$lang size=$size tests=$tests ci=$ci ai=$ai arch=$arch ui=$ui topo=$topo) — edit freely; existing blocks are never rewritten"
+  if [[ "$ai" == "true" ]]; then
+    echo "NOTE         LLM link detected → §2.9 prompt/幻觉/成本专项 applies; business_complexity/delivery/org are DECLARED fields (currently unknown) — fill them in profile:" >&2
+  fi
 }
 
 yml_key_value() { # file key

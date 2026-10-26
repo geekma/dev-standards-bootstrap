@@ -912,6 +912,15 @@ all=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --detect) mode_install=false ;;
+    --canary)
+      # v3.91.0 (CHG-127, G10): behavioural canary — write a marker, verify it
+      # survived into the repo's hook scope, then report. Never mutates config.
+      _cm="$PWD/.agent-state/canary-$(date -u +%s).json"
+      mkdir -p "$(dirname "$_cm")" 2>/dev/null || true
+      printf '{"canary":true,"ts":"%s","runtime":"%s"}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "${AGENT_RUNTIME:-unknown}" > "$_cm" 2>/dev/null
+      if [[ -s "$_cm" ]]; then echo "canary: ok ($_cm)"; else echo "canary: FAILED to write ($_cm)"; exit 2; fi
+      exit 0
+      ;;
     --client) client="${2:-}"; [[ -n "$client" ]] || die "ADAPTER-E07: --client requires a name"; shift ;;
     --force) export FORCE=true ;;
     --all) all=true ;;

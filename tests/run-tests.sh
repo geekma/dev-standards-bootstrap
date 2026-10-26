@@ -97,11 +97,31 @@ check_output() { # name pattern actual_output -- pass if pattern matches
 LEDGER_FILE="${AGENT_GUARD_COST_LEDGER:-$ROOT/.agent-state/cost-ledger.tsv}"
 NEW_REPO_SETUP_S=0
 
-ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit>
+ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [outcome]
+  local rk mid mwin
   mkdir -p "$(dirname "$LEDGER_FILE")" 2>/dev/null || return 0
-  [[ -s "$LEDGER_FILE" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n' > "$LEDGER_FILE" 2>/dev/null || return 0
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+  # v3.91.0 (CHG-127, G1): the 13-column schema. The historical 8 columns keep
+  # their positions (readers stay compatible); asserts/rc/outcome/repo_key/
+  # model_id/ctx_window are appended. Old 8-column rows are migrated in place.
+  rk="$(id -un 2>/dev/null || echo user)@$(hostname 2>/dev/null || echo host)/$(basename "$ROOT")"
+  if [[ -s "$LEDGER_FILE" ]] && ! head -1 "$LEDGER_FILE" | grep -q 'asserts'; then
+    awk -F'\t' -v rk="$rk" 'BEGIN{OFS="\t"}
+      NR==1 {print "ts","kind","id","suite_key","cost_s","setup_s","cache","exit","asserts","rc","outcome","repo_key","model_id","ctx_window"; next}
+      { o=($8=="0"?"green":"red"); if ($6=="0" && $8=="0") o="wasted"; print $0,"-1",$8,o,rk,"","" }' \
+      "$LEDGER_FILE" > "$LEDGER_FILE.mig" 2>/dev/null && mv -f "$LEDGER_FILE.mig" "$LEDGER_FILE"
+  fi
+  [[ -s "$LEDGER_FILE" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$LEDGER_FILE" 2>/dev/null || return 0
+  mid=""; mwin=""
+  if [[ -s "$ROOT/.agent-state/model-profile.json" ]]; then
+    mid=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$ROOT/.agent-state/model-profile.json" | head -1)
+    mwin=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$ROOT/.agent-state/model-profile.json" | head -1)
+  fi
+  local a_="${7:--1}" out="${8:-}"
+  [[ -n "$out" ]] || { [[ "$6" == "0" ]] && out="green" || out="red"; }
+  if [[ "$a_" == "0" && "$6" == "0" ]]; then out="wasted"; fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "${SUITE_KEY:-}" "$3" "$4" "$5" "$6" \
+    "$a_" "$6" "$out" "$rk" "$mid" "$mwin" \
     >> "$LEDGER_FILE" 2>/dev/null \
     || { printf 'warning: could not append to %s (non-fatal)\n' "$LEDGER_FILE" >&2; return 0; }
 }
@@ -142,8 +162,12 @@ new_repo() {
   local _nr_t0
   _nr_t0=$(date +%s)
   NEW_REPO_SETUP_S=0
-  REPO=$(mktemp -d "${TMPDIR:-/tmp}/agent-gate-test.XXXXXX")
-  cd "$REPO"
+  REPO=$(mktemp -d "${TMPDIR:-/tmp}/agent-gate-test.XXXXXX") \
+    || { echo "FATAL: new_repo could not create a temp dir (refusing to touch the source repo)" >&2; return 1; }
+  [[ -d "$REPO" ]] \
+    || { echo "FATAL: new_repo temp dir '$REPO' is not a directory" >&2; return 1; }
+  cd "$REPO" \
+    || { echo "FATAL: new_repo could not cd into '$REPO' (refusing to write in $PWD)" >&2; return 1; }
   git init -q
   git config user.email test@example.invalid
   git config user.name test
@@ -2902,11 +2926,11 @@ if [[ -s "$GT82" ]]; then
   cp "$GT82" scripts/agent-gate
   chmod +x scripts/agent-gate
   seed_artifacts CHG-960 L1 claude/s-82
-  mkdir -p "$ROOT/tests"
+  mkdir -p tests
   cp "$ROOT/tests/run-tests.sh" tests/run-tests.sh 2>/dev/null || true
   # tracked governance-face change so the resolver has something to map
   printf 'x\n' > scripts/session-gate.sh
-  git add scripts/session-gate.sh >/dev/null 2>&1
+  git add scripts/session-gate.sh tests/run-tests.sh >/dev/null 2>&1
   git commit -qm seed >/dev/null 2>&1
   printf 'y\n' >> scripts/session-gate.sh
   # wall-clock is integer seconds and load-sensitive: take the best of 3 runs
@@ -2961,10 +2985,39 @@ if [[ -s "$GT82" ]]; then
   report "T82 tc-index --write persists the cache" 0 "$([[ -s tests/tc-index.tsv ]] && echo 0 || echo 1)"
   report "T82 tc-index names its source" 1 "$(grep -c '^TC-9999' tests/tc-index.tsv 2>/dev/null || true)"
   check_output "T82 decision carries the four judges" '"artifacts".*"reviews".*"stages".*"masters"' "$(cat docs/changes/CHG-960/00-governance.json)"
-  check_output "T82 L1 judges are lean" '"stages":"staged,stop"' "$(cat docs/changes/CHG-960/00-governance.json)"
-  sed 's/"risk_level":"L1"/"risk_level":"L2"/' docs/changes/CHG-960/00-governance.json > .gov.tmp && mv .gov.tmp docs/changes/CHG-960/00-governance.json
+  check_output "T82 L1 judges are lean" '"stage_list":"intent,test,delivery"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G5 stages carry the skipped set" '"skipped":\["' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G11 artifacts carry universe/depth/conditional" '"artifacts":{"universe":15,"depth":{.*},"conditional":{' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G11 project masters carry fill/na" '"project_masters":{"rows":"P00..P12","fill":\["P10"\],"na":\["P00"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G12 must is present (empty is legal)" '"must":\[' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G6 wasted list is present" '"wasted":\[' "$(cat docs/changes/CHG-960/00-governance.json)"
+  # G13: a `fix` change routes around spec/design (structural table, not keywords)
+  sed 's/"risk_level":"L1"/"risk_level":"L2","change_type":"fix"/' docs/changes/CHG-960/00-governance.json > .gov.tmp && mv .gov.tmp docs/changes/CHG-960/00-governance.json
   scripts/agent-gate plan CHG-960 >/dev/null 2>&1
-  check_output "T82 L2 judges require the full stages" '"stages":"spec,design,testplan,staged,stop"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G13 fix skips spec/design" '"skipped":\["spec","design"\]' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 G13 fix keeps diagnosis" '"path":\["intent","diagnosis"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  sed 's/"risk_level":"L2","change_type":"fix"/"risk_level":"L2"/' docs/changes/CHG-960/00-governance.json > .gov.tmp && mv .gov.tmp docs/changes/CHG-960/00-governance.json
+  scripts/agent-gate plan CHG-960 >/dev/null 2>&1
+  check_output "T82 L2 judges require the full stages" '"stage_list":"intent,spec,design,testplan,code,test,review,delivery"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  # G2: an impossible budget defers sections instead of silently overrunning.
+  # Freeze the fixture first: leftover temp/docs files would make `-T auto`
+  # fall back to FULL and the CAB face would never be exercised.
+  git add -A >/dev/null 2>&1; git commit -qm t82cab >/dev/null 2>&1 || true
+  printf 'z\n' >> scripts/session-gate.sh
+  out=$(AGENT_GUARD_BUDGET_CLOSE_S=1 scripts/agent-gate plan CHG-960 --dry-run 2>&1)
+  check_output "T82 G2 tight budget defers sections" '"deferred":\[\{"id":"T' "$out"
+  # G6: three consecutive wasted rows remove a section from the recommendation
+  mkdir -p .agent-state
+  { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
+    for i in 1 2 3; do
+      printf '2026-01-0%sT00:00:00Z\tsec\tT26\t-\t20\t0\tnone\t0\t0\t0\twasted\tfixture@host/repo\t\t\n' "$i"
+    done; } > .agent-state/cost-ledger.tsv
+  out=$(scripts/agent-gate plan CHG-960 --dry-run 2>&1)
+  check_output "T82 G6 three wasted rows drop the section" '"wasted":\["T26"\]' "$out"
+  # G1: all three ledger writers carry the same in-place 8 -> 13 migration.
+  check_output "T82 G1 runner migrates old ledger rows" '"asserts","rc","outcome","repo_key","model_id","ctx_window"; next' "$(sed -n '/^ledger_append()/,/^}/p' tests/run-tests.sh)"
+  check_output "T82 G1 audit migrates old ledger rows" '"asserts","rc","outcome","repo_key","model_id","ctx_window"; next' "$(cat "$ROOT/resources/templates/audit-docs-consistency.sh")"
+  check_output "T82 G1 gate migrates old ledger rows" '"asserts","rc","outcome","repo_key","model_id","ctx_window"; next' "$(cat "$ROOT/resources/templates/agent-gate.sh")"
   out=$(AGENT_GUARD_PLAN_AI_MASTERS="P10" \
     AGENT_GUARD_PLAN_AI_BASIS="fixture change is documented and risks no runtime surface" \
     AGENT_GUARD_PLAN_AI_REVIEWER="WorkBuddy / test-model / ses-t82-ai" \
@@ -2990,6 +3043,11 @@ if [[ -s "$BS82" ]]; then
     && bash "$ROOT/scripts/bootstrap.sh" --guard . >/dev/null 2>&1 ); p82_rc=$?
   report "T82 bootstrap guard exits 0" 0 "$p82_rc"
   report "T82 profile section written once" 0 "$(( $(grep -c '^profile:' "$P82/.agent-governance.yml" 2>/dev/null || true) - 1 ))"
+  check_output "T82 G9 profile carries schema_version" '^  schema_version: 1$' "$(cat "$P82/.agent-governance.yml")"
+  check_output "T82 G7 profile carries ai_project" '^  ai_project: false$' "$(cat "$P82/.agent-governance.yml")"
+  report "T82 G8 profile carries the nine detected dimensions" 9 \
+    "$(awk '/^profile:/{p=1;next} p && /^[^ ]/{exit} p && /^  (ai_project|architecture|ui|runtime_env|repo_topology|assets|size|language|tests):/{n++} END{print n+0}' "$P82/.agent-governance.yml")"
+  check_output "T82 G8 declared dimensions default to unknown" '^  business_complexity: unknown$' "$(cat "$P82/.agent-governance.yml")"
   ( cd "$P82" && bash "$ROOT/scripts/bootstrap.sh" --guard . >/dev/null 2>&1 )
   report "T82 profile not duplicated on re-run" 0 "$(( $(grep -c '^profile:' "$P82/.agent-governance.yml" || true) - 1 ))"
   check_output "T82 upgrade report names the switch" 'AGENT_GUARD_ADAPT=0' "$(sed -n '/upgrade-behavior/p' "$ROOT/scripts/bootstrap.sh")"
@@ -3007,6 +3065,7 @@ if [[ -s "$BS82" ]]; then
   check_output "T82 old profile keeps the user language" '^  language: python$' "$(cat "$P82b/.agent-governance.yml")"
   report "T82 old profile gains files" 1 "$(grep -c '^  files:' "$P82b/.agent-governance.yml" 2>/dev/null || true)"
   report "T82 old profile gains budgets" 1 "$(grep -c '^  budgets:' "$P82b/.agent-governance.yml" 2>/dev/null || true)"
+  report "T82 G9 old profile gains schema_version" 1 "$(grep -c '^  schema_version:' "$P82b/.agent-governance.yml" 2>/dev/null || true)"
   rm -rf "$P82b"
 fi
 
@@ -3106,17 +3165,55 @@ check_output "T83 E144 names the code" 'GATE-E144' "$out"
 printf -- '- decision-gap: coverage T83 — fixture gap\n' >> docs/changes/CHG-970/09-changelog.md
 out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
 report "T83 declared coverage gap is accepted" 0 "$(printf '%s' "$out" | grep -c 'GATE-E144' || true)"
-printf '> filled-at stage=3 change=CHG-970\n' >> docs/project/P05-task-plan.md
-out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E145 late backfill" 2 "$?"
+# G4: the final-plan `[adapt]` line is an accepted alias for the gap declaration.
+sed 's/^- decision-gap: coverage T83 — fixture gap$/- [adapt] coverage T83 :: fixture gap :: T83 evidence/' \
+  docs/changes/CHG-970/09-changelog.md > .adapt83.tmp && mv .adapt83.tmp docs/changes/CHG-970/09-changelog.md
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
+report "T83 G4 [adapt] line clears E144" 0 "$(printf '%s' "$out" | grep -c 'GATE-E144' || true)"
+printf '<!-- filled-at stage=3 chg=CHG-970 by=impl -->\n' >> docs/project/P05-task-plan.md
+out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E145 P05 filled ahead of close 2" 2 "$?"
 check_output "T83 E145 names the code" 'GATE-E145' "$out"
 sed '/filled-at stage=3/d' docs/project/P05-task-plan.md > .p05.tmp && mv .p05.tmp docs/project/P05-task-plan.md
-printf '> filled-at stage=1 change=CHG-970\n' >> docs/project/P01-requirements-master.md
-out=$(scripts/agent-gate --stage close 1 2>&1); report "T83 close stage 1 records P01" 0 "$?"
+printf '<!-- filled-at stage=2 chg=CHG-970 by=impl -->\n' >> docs/project/P01-requirements-master.md
+out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 close stage 2 records P01" 0 "$?"
 printf -- 'Observation: 已核对 00-04（未读回填）\n' >> docs/changes/CHG-970/09-changelog.md
-out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E146 unread backfill" 2 "$?"
+out=$(scripts/agent-gate --stage close 3 2>&1); report "T83 E146 unread backfill" 2 "$?"
 check_output "T83 E146 names the code" 'GATE-E146' "$out"
 sed 's/Observation: 已核对 00-04（未读回填）/Observation: 已读 P01 增量并继续/' docs/changes/CHG-970/09-changelog.md > .o83.tmp && mv .o83.tmp docs/changes/CHG-970/09-changelog.md
-out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 read-back Observation clears E146" 0 "$?"
+out=$(scripts/agent-gate --stage close 3 2>&1); report "T83 read-back Observation clears E146" 0 "$?"
+# v3.91.0 (CHG-127): G3 stale / G10 status+canary / G12 must / G15–G19 observability
+out=$(scripts/agent-gate status 2>&1); report "T83 G10 status exits 0" 0 "$?"
+check_output "T83 G10 status names enforcement" 'enforcement=' "$out"
+cp "$ROOT/resources/templates/install-hook-adapter.sh" scripts/install-hook-adapter 2>/dev/null || true
+out=$(bash scripts/install-hook-adapter --canary 2>&1); report "T83 G10 canary exits 0" 0 "$?"
+check_output "T83 G10 canary writes a receipt" 'canary: ok' "$out"
+out=$(scripts/agent-gate resume CHG-970 2>&1); report "T83 G17 resume exits 0" 0 "$?"
+check_output "T83 G17 resume prints next steps" 'resume: next:' "$out"
+out=$(scripts/agent-gate resume 2>&1 || true); check_output "T83 G17 resume usage dies E149" 'GATE-E149' "$out"
+out=$(scripts/agent-gate metrics 2>&1)
+check_output "T83 G15 metrics carry adoption" '"adoption_rate":' "$out"
+check_output "T83 G16 metrics carry wasted/stale/handshake/independence" '"wasted_rate":.*"stale_decisions":.*"handshake":.*"review_independent":' "$out"
+report "T83 G18 retro line carries CPI" 1 "$(grep -c 'CPI=' "$GT83" || true)"
+report "T83 G19 session-gate prints the handoff action" 2 "$(grep -c 'handoff：水位' "$ROOT/resources/templates/session-gate.sh" || true)"
+# G3: a decision whose diff_hash no longer matches the live diff is stale (strict).
+git add -A >/dev/null 2>&1; git commit -qm t83base >/dev/null 2>&1
+scripts/agent-gate plan CHG-970 >/dev/null 2>&1
+printf 'x\n' >> docs/changes/CHG-970/01-spec.md
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 G3 stale decision dies E147" 1 "$?"
+check_output "T83 G3 names the code" 'GATE-E147' "$out"
+git checkout -- docs/changes/CHG-970/01-spec.md >/dev/null 2>&1 || true
+# G12: a declared hard rule with a narrowed chosen is a contract violation (strict).
+cat > docs/changes/CHG-970/00-governance.json <<'EOF'
+{"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","stage_list":"test,delivery","artifact_list":"05-test-results.md,09-changelog.md","must":["H7"],"reviews":"min=1;independent=true","masters":""}}
+EOF
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 G12 must rule without FULL dies E148" 1 "$?"
+check_output "T83 G12 names the code" 'GATE-E148' "$out"
+# 2026-10-27 user ruling: the AI may narrow a must rule WITH evidence (judgment=ai).
+cat > docs/changes/CHG-970/00-governance.json <<'EOF'
+{"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","judgment":"ai","stage_list":"test,delivery","artifact_list":"05-test-results.md,09-changelog.md","must":["H7"],"reviews":"min=1;independent=true","masters":""}}
+EOF
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
+report "T83 G12 AI judgment narrows a must rule" 0 "$(printf '%s' "$out" | grep -c 'GATE-E148' || true)"
 # ---- TC-1555: self-bootstrap VERIFIED WITH CHG-124's real artifacts (copy only) ----
 S83=$(mktemp -d "${TMPDIR:-/tmp}/selfboot.XXXXXX")
 mkdir -p "$S83/scripts" "$S83/docs/changes"
@@ -7847,7 +7944,7 @@ if [[ "$JOBS" -ge 2 ]]; then
     _se=$(cat "${TMPDIR:-/tmp}/suite-${_s}.$$.sec" 2>/dev/null || echo 0)
     _ss=$(cat "${TMPDIR:-/tmp}/suite-${_s}.$$.setup" 2>/dev/null || echo 0)
     printf '[done] %s %ss\n' "$_s" "$_se"
-    ledger_append sec "$_s" "$_se" "$_ss" none 0
+    ledger_append sec "$_s" "$_se" "$_ss" none 0 "$(( p + f ))"
     _TIMINGS+=("${_s}:${_se}:${_ss}")
     rm -f "$_sf" "${TMPDIR:-/tmp}/suite-${_s}.$$.sec" "${TMPDIR:-/tmp}/suite-${_s}.$$.setup"
   done
@@ -7856,10 +7953,12 @@ else
   for _s in "${SECTIONS[@]}"; do
     if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
       _t0=$(date +%s); NEW_REPO_SETUP_S=0
+      _p0=$pass; _f0=$fail
       "section_${_s//-/_}"
+      _p=$(( pass - _p0 )); _f=$(( fail - _f0 ))
       _el=$(( $(date +%s) - _t0 ))
       printf '[done] %s %ss\n' "$_s" "$_el"
-      ledger_append sec "$_s" "$_el" "${NEW_REPO_SETUP_S:-0}" none 0
+      ledger_append sec "$_s" "$_el" "${NEW_REPO_SETUP_S:-0}" none 0 "$(( _p + _f ))"
       _TIMINGS+=("${_s}:${_el}:${NEW_REPO_SETUP_S:-0}")
       progress_write running
     fi
@@ -7882,9 +7981,9 @@ if [[ "$fail" -eq 0 ]]; then progress_write done; else progress_write failed; fi
 # Ledger aggregate row. v3.90.3 (CHG-125, FU-964): only an untargeted (full) run
 # is tagged `run-full`; `-T` partial runs stay `run` and never feed the p50.
 if [[ ${#WANTED[@]} -eq 0 ]]; then
-  ledger_append run-full "${JOBS}" "$SECONDS" 0 none "$fail"
+  ledger_append run-full "${JOBS}" "$SECONDS" 0 none "$fail" "$(( pass + fail ))"
 else
-  ledger_append run "${JOBS}" "$SECONDS" 0 none "$fail"
+  ledger_append run "${JOBS}" "$SECONDS" 0 none "$fail" "$(( pass + fail ))"
 fi
 # v3.90.3 (CHG-125, FU-960): local portability scan (the real dual-implementation
 # run happens in the CI OS matrix; this flag proves the assertion surface has no

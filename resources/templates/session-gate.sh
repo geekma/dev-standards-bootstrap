@@ -273,6 +273,13 @@ sg_cost_line() { # one human-readable cost line for status/idle (never fails)
   tin=$(stat_get tokens_in); tout=$(stat_get tokens_out); wall=$(sg_wall_s)
   printf -- '- 成本：model=%s 窗口=%s（source=%s）已用≈%s%%（%s）tokens_in=%s/%s out=%s（%s）墙钟=%ss\n' \
     "${model:-unknown}" "$win" "${src:-unknown}" "$pct" "$lvl" "$tin" "$used" "$tout" "${SG_EXEC_SRC_SHOWN:-$(stat_get_s exec_source)}" "$wall"
+  # v3.91.0 (CHG-127, G19): cost-driven switch — H2/H3 must name the handoff action.
+  case "$lvl" in
+    H2|H3)
+      printf -- '- handoff：水位 %s（%s%%）——在阶段边界写 docs/changes/<CHG>/handoff.md 并换新会话（§2.9.6/§17.3）；AGENT_GUARD_ALLOW_OVER_WATER=1 须在 09 登记\n' "$lvl" "$pct" ;;
+    H1)
+      printf -- '- handoff：水位 %s（%s%%）——准备 handoff 文档，下个阶段边界换挡（§2.9.6/§17.3）\n' "$lvl" "$pct" ;;
+  esac
 }
 
 # v3.73.0（CHG-096，REQ-1102）：仓库根 .agent-governance.yml 声明的「锚定全量形态」

@@ -915,10 +915,19 @@ echo "$pass passed, $fail failed"
 # ledger row (columns unchanged; write failure never changes the verdict).
 _lg="$ROOT/.agent-state/cost-ledger.tsv"
 if mkdir -p "$(dirname "$_lg")" 2>/dev/null; then
-  [[ -s "$_lg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n' > "$_lg" 2>/dev/null || true
-  printf '%s\taudit\t%s\t%s\t%s\t0\tnone\t%s\n' \
+  # v3.91.0 (CHG-127, G1): 13-column schema; the first 8 stay compatible.
+  _rk="$(id -un 2>/dev/null || echo user)@$(hostname 2>/dev/null || echo host)/$(basename "$ROOT")"
+  if [[ -s "$_lg" ]] && ! head -1 "$_lg" | grep -q 'asserts'; then
+    awk -F'\t' -v rk="$_rk" 'BEGIN{OFS="\t"}
+      NR==1 {print "ts","kind","id","suite_key","cost_s","setup_s","cache","exit","asserts","rc","outcome","repo_key","model_id","ctx_window"; next}
+      { o=($8=="0"?"green":"red"); if ($6=="0" && $8=="0") o="wasted"; print $0,"-1",$8,o,rk,"","" }' \
+      "$_lg" > "$_lg.mig" 2>/dev/null && mv -f "$_lg.mig" "$_lg"
+  fi
+  [[ -s "$_lg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$_lg" 2>/dev/null || true
+  _out="green"; [[ "$fail" -eq 0 ]] || _out="red"
+  printf '%s\taudit\t%s\t%s\t%s\t0\tnone\t%s\t-1\t%s\t%s\t%s\t\t\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
     "${since_ref:-full}" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)" \
-    "${SECONDS:-0}" "$fail" >> "$_lg" 2>/dev/null || true
+    "${SECONDS:-0}" "$fail" "$_out" "$_rk" >> "$_lg" 2>/dev/null || true
 fi
 [[ "$fail" -eq 0 ]]
