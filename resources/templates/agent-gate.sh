@@ -2473,20 +2473,33 @@ plan_section_cost() { # <section> -> p50-ish seconds from the ledger (last 5 row
   printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
 }
 
-plan_resolution_rate() { # <change-dir> — tc=<parsed>/<total> (TC → 落点列 → 存在的节)
-  local d="$1" f="$1/04-test-scripts.md" total=0 parsed=0 line land sec unp=""
+plan_resolution_rate() { # <change-dir> — tc=<resolved>/<declared> over ROWS THAT NAME A SECTION
+  # Why rows: 04 in this repo separates the case matrix (TC + method) from a
+  # 落点清单 (TC spec → section). Only the latter can carry Tnn tokens; matrix
+  # rows without a section are not "unresolved", they simply do not claim one.
+  # Ranges (`TC-1~2`) count as their expanded size so the denominator is honest.
+  local d="$1" f="$1/04-test-scripts.md" total=0 parsed=0 line spec n _hit sec unp=""
   [[ -s "$f" ]] || { printf 'tc=0/0'; return 0; }
-  total=$(grep -cE '^\|[[:space:]]*TC-[0-9]+' "$f" 2>/dev/null || true)
   while IFS= read -r line; do
     [[ -n "$line" ]] || continue
-    # 落点 = last-but-one column is unreliable; scan the whole row for a Tnn token.
-    sec=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | head -1 || true)
-    if [[ -n "$sec" ]] \
-       && grep -qE "^SECTIONS=.*[[:space:]]${sec}[),]|^section_${sec//-/_}\(\)" "$repo_root/tests/run-tests.sh" 2>/dev/null; then
-      parsed=$(( parsed + 1 ))
-    else
-      unp="$unp $(printf '%s' "$line" | grep -oE 'TC-[0-9]+' | head -1)"
-    fi
+    # size of the TC spec in column 1 (single id or range)
+    spec=$(printf '%s' "$line" | sed -E 's/^\|[[:space:]]*(TC-[0-9]+(~[0-9]+)?).*/\1/')
+    [[ "$spec" == TC-* ]] || continue
+    # Rows that name no section are not "unresolved" — they make no such claim.
+    _secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u || true)
+    [[ -n "$_secs" ]] || continue
+    n=1
+    case "$spec" in
+      *~*) n=$(( ${spec#*~} - $(printf '%s' "$spec" | sed -E 's/TC-([0-9]+)~[0-9]+/\1/') + 1 )) ;;
+    esac
+    total=$(( total + n ))
+    _hit=0
+    for sec in $_secs; do
+      if grep -qE "^SECTIONS=.*[[:space:]]${sec}[),]|^section_${sec//-/_}\(\)" "$repo_root/tests/run-tests.sh" 2>/dev/null; then
+        _hit=1; break
+      fi
+    done
+    if [[ "$_hit" == "1" ]]; then parsed=$(( parsed + n )); else unp="$unp $spec"; fi
   done <<< "$(grep -E '^\|[[:space:]]*TC-[0-9]+' "$f" 2>/dev/null || true)"
   printf 'tc=%s/%s%s' "$parsed" "$total" "${unp:+ unresolved:${unp# }}"
 }
