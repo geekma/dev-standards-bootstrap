@@ -806,6 +806,37 @@ rewrite_yml_key() { # file key value
 # Read one flat key's current value out of the installed config (same parse as
 # rewrite_yml_key — kept in ONE place so the guard below cannot drift from the
 # writer it guards).
+# v3.90.2 (CHG-124, P1-4): project profile section. Written only when the target
+# yml has no `profile:` block at all — an existing block is never edited (key-wise
+# merge in the user's favour), and detection reuses facts already on disk.
+write_profile_section() { # <yml> <target>
+  local y="$1" t="$2" lang="unknown" size="unknown" tests="none" ci="none" nfiles
+  [[ -f "$y" ]] || return 0
+  grep -qE '^profile:' "$y" 2>/dev/null && return 0
+  if [[ -f "$t/package.json" ]]; then lang="node"
+  elif [[ -f "$t/go.mod" ]]; then lang="go"
+  elif [[ -f "$t/pom.xml" || -f "$t/build.gradle" ]]; then lang="java"
+  elif [[ -f "$t/pyproject.toml" || -f "$t/requirements.txt" ]]; then lang="python"
+  elif [[ -f "$t/Cargo.toml" ]]; then lang="rust"
+  fi
+  nfiles=$(find "$t" -type f -not -path '*/.git/*' -not -path '*/.agent-state/*' 2>/dev/null | wc -l | tr -d ' ')
+  case "$nfiles" in ''|*[!0-9]*) nfiles=0 ;; esac
+  if [[ "$nfiles" -lt 200 ]]; then size="small"; elif [[ "$nfiles" -lt 2000 ]]; then size="medium"; else size="large"; fi
+  if [[ -n "${detected:-}" ]]; then tests="detected"; elif [[ -d "$t/tests" || -d "$t/test" ]]; then tests="present-no-command"; fi
+  [[ -d "$t/.github/workflows" ]] && ci="github-actions"
+  {
+    printf '\n# v3.90.2 (CHG-124, P1-4): project profile — detected once, edit freely.\n'
+    printf 'profile:\n'
+    printf '  language: %s\n' "$lang"
+    printf '  size: %s\n' "$size"
+    printf '  files: %s\n' "$nfiles"
+    printf '  tests: %s\n' "$tests"
+    printf '  ci: %s\n' "$ci"
+    printf '  budgets: {inner_s: 10, close_s: 120, ci_s: 1800}\n'
+  } >> "$y" 2>/dev/null || { echo "WARN         could not append profile: to $y (P1-4)" >&2; return 0; }
+  echo "auto-wired   profile: written to .agent-governance.yml (language=$lang size=$size tests=$tests ci=$ci) — edit freely; existing blocks are never rewritten"
+}
+
 yml_key_value() { # file key
   local f="$1" k="$2"
   [[ -f "$f" ]] || return 0
@@ -857,6 +888,13 @@ apply_path_overrides
 # CHG-012: guard auto-wiring — after install, wire everything that can be
 # wired without asking. Respect existing user config; never overwrite.
 auto_wire_guard() {
+  # v3.90.2 (CHG-124, P1-4): profile detection runs for every guard install,
+  # independent of path overrides (it used to hang off the PATHS_CUSTOM branch).
+  if [[ ! -f "$GOV_YML" ]]; then
+    mkdir -p "$(dirname "$GOV_YML")"
+    cp "$SKILL_ROOT/resources/templates/agent-governance.yml" "$GOV_YML" 2>/dev/null || true
+  fi
+  write_profile_section "$GOV_YML" "$target"
   # 1) hooksPath: three states — unset -> set; already <githooks> -> skip;
   #    something else -> DO NOT touch, print manual hint (OQ-1).
   if [[ -d "$target/.git" ]] && command -v git >/dev/null 2>&1; then
@@ -990,6 +1028,15 @@ case " $layers " in
   *" guard "*) auto_wire_guard ;;
 esac
 [[ "$upgrade" == true ]] && echo "upgrade: governance files synced to carried version; live/user files untouched"
+# v3.90.2 (CHG-124, P1-5): behaviour-change report — what this upgrade changes in
+# decision defaults, and the single switch back to the old behaviour. Print only;
+# never edits the target.
+if [[ "$upgrade" == true ]]; then
+  echo "upgrade-behavior: decision engine on (read-only) — begin now prints a plan line and stop prints a suggestion"
+  echo "upgrade-behavior: AGENT_GUARD_ADAPT=0 keeps the pre-v3.90.2 behaviour (no plan, no suggestion, no E131 warn)"
+  echo "upgrade-behavior: full_suite counts business regressions only; unknown runtime --detect exits 3 (v3.90.1)"
+  echo "upgrade-behavior: stop appends one cost line + one suite-mode block to 05/09 (append-only; no artifact added)"
+fi
 
 cat <<EOF
 

@@ -2886,6 +2886,72 @@ report "T26c AGENT_GUARD_RUNTIME_PROBE=0 restores legacy exit 0" 0 "$r18_rc"
 rm -rf "$R18"
 
 }
+section_T82() {
+# ------------------------------------------------ T82 判定引擎 v0（v3.90.2，CHG-124 P1）
+new_repo
+GT82="$ROOT/resources/templates/agent-gate.sh"
+BS82="$ROOT/scripts/bootstrap.sh"
+if [[ -s "$GT82" ]]; then
+  cp "$GT82" scripts/agent-gate
+  chmod +x scripts/agent-gate
+  seed_artifacts CHG-960 L1 claude/s-82
+  mkdir -p "$ROOT/tests"
+  cp "$ROOT/tests/run-tests.sh" tests/run-tests.sh 2>/dev/null || true
+  # tracked governance-face change so the resolver has something to map
+  printf 'x\n' > scripts/session-gate.sh
+  git add scripts/session-gate.sh >/dev/null 2>&1
+  git commit -qm seed >/dev/null 2>&1
+  printf 'y\n' >> scripts/session-gate.sh
+  t82a=$(date +%s)
+  out=$(scripts/agent-gate plan CHG-960 --dry-run 2>&1); rc=$?
+  t82b=$(date +%s)
+  report "T82 plan --dry-run exits 0" 0 "$rc"
+  report "T82 plan --dry-run writes nothing" 0 "$(grep -c '\"decision\"' docs/changes/CHG-960/00-governance.json || true)"
+  report "T82 plan runs under 1s" 0 "$(( t82b - t82a > 1 ? 1 : 0 ))"
+  out=$(scripts/agent-gate plan CHG-960 >/dev/null 2>&1); rc=$?
+  report "T82 plan writes a decision" 0 "$rc"
+  # review #1: a SECOND write must not corrupt the JSON (key stripped fully)
+  scripts/agent-gate plan CHG-960 >/dev/null 2>&1
+  report "T82 second plan keeps exactly one decision key" 0 "$(( $(grep -o '\"decision\"' docs/changes/CHG-960/00-governance.json | wc -l | tr -d ' ') - 1 ))"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' docs/changes/CHG-960/00-governance.json >/dev/null 2>&1
+    report "T82 governance JSON stays valid after re-plan" 0 $?
+  else
+    echo "SKIP T82 JSON validity: python3 absent"
+  fi
+  report "T82 intent block appended once" 0 "$(( $(grep -c '^## 自适应判定' docs/changes/CHG-960/00-intent.md || true) - 1 ))"
+  check_output "T82 decision carries engine+chosen+budget" '"engine_version":"adapt/v0"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  check_output "T82 decision keeps change_id" '"change_id":"CHG-960"' "$(cat docs/changes/CHG-960/00-governance.json)"
+  out=$(scripts/agent-gate plan CHG-960 --explain 2>&1)
+  check_output "T82 explain prints resolution rate" 'resolution_rate=' "$out"
+  out=$(AGENT_GUARD_ADAPT=0 scripts/agent-gate plan CHG-960 2>&1)
+  check_output "T82 ADAPT=0 disables plan" 'plan disabled' "$out"
+  out=$(scripts/agent-gate plan CHG-999 2>&1 || true)
+  check_output "T82 bad change id dies E136" 'GATE-E136' "$out"
+  # E131 pins: warn-only wording + both markers
+  check_output "T82 E131 is a WARN, not a die" 'WARN GATE-E131' "$(sed -n '/^e131_dogfood_check()/,/^}/p' "$GT82")"
+  check_output "T82 E131 checks dogfood-next" 'dogfood-next' "$(sed -n '/^e131_dogfood_check()/,/^}/p' "$GT82")"
+  check_output "T82 suite mode writes to 05" 'suite_mode=' "$(sed -n '/^record_suite_suggestion()/,/^}/p' "$GT82")"
+  check_output "T82 down without reason falls back" 'falling back to adopt' "$(sed -n '/^record_suite_suggestion()/,/^}/p' "$GT82")"
+else
+  echo "SKIP T82: agent-gate absent — 跳过判定引擎 golden cases"
+fi
+if [[ -s "$BS82" ]]; then
+  P82=$(mktemp -d "${TMPDIR:-/tmp}/prof.XXXXXX")
+  # let bootstrap create the yml itself (the previous fixture pre-seeded a
+  # partial yml, which made it abort before the writer — vacuous assertion).
+  ( cd "$P82" && git init -q . && git config user.email t@e.invalid && git config user.name t \
+    && echo x > README.md && git add README.md && git commit -qm i \
+    && bash "$ROOT/scripts/bootstrap.sh" --guard . >/dev/null 2>&1 ); p82_rc=$?
+  report "T82 bootstrap guard exits 0" 0 "$p82_rc"
+  report "T82 profile section written once" 0 "$(( $(grep -c '^profile:' "$P82/.agent-governance.yml" 2>/dev/null || true) - 1 ))"
+  ( cd "$P82" && bash "$ROOT/scripts/bootstrap.sh" --guard . >/dev/null 2>&1 )
+  report "T82 profile not duplicated on re-run" 0 "$(( $(grep -c '^profile:' "$P82/.agent-governance.yml" || true) - 1 ))"
+  check_output "T82 upgrade report names the switch" 'AGENT_GUARD_ADAPT=0' "$(sed -n '/upgrade-behavior/p' "$ROOT/scripts/bootstrap.sh")"
+  rm -rf "$P82"
+fi
+
+}
 section_T27() {
 # ------------------------------------------------ T27 pre-commit auto-stamp (v3.40.0)
 new_repo
@@ -3967,7 +4033,7 @@ section_T50() {
   # CHG-111: tail recalibrated T66→T67 (六不变量机校节 joins; TC-1424~1432).
   # CHG-113: tail recalibrated T67→T68; CHG-115: T68→T73b (基线/事实/编排/前置/变异/汇总六节 joins).
   # CHG-117: tail recalibrated T76→T81 (无账门/编辑硬拦/G16/阶段门/阶段感知五节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T81 ]] && echo 0 || echo 1)"
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T82 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -7338,7 +7404,7 @@ report "T81 TC-1494c BATCH member source edit resolves the batch 04" 0 "$t81_rc"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82)
 
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
@@ -7370,13 +7436,14 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     tests/.suite-baseline|tests/.audit-baseline) printf 'T51' ;;
     README.md|README.zh-CN.md)         printf 'T51' ;;
     .github/*)                         printf 'T73b' ;;
+    .claude-plugin/*)                  printf 'T48' ;;
     resources/DEVELOPMENT_STANDARDS.md) printf 'T11 T14 T15 T20 T21 T31 T38 T40 T43 T48 T55 T63 T64 T67' ;;
     resources/AGENTS.md)               printf 'T26c T40 T43 T48 T55 T63 T64' ;;
     resources/STANDARDS_CHANGELOG.md)  printf 'T15 T40 T48' ;;
     SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
     resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
     resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49 T78' ;;
-    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78' ;;
+    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78 T82' ;;
     scripts/session-gate.sh|scripts/lib-suite-lock.sh) printf 'T26 T26b T41 T57' ;;
     tests/*)                           printf 'T50 T51 T75 T76' ;;
     resources/templates/stamp-provenance.sh)        printf 'T16 T17 T17b' ;;

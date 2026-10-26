@@ -25,7 +25,7 @@ friction_append() { # <code> <kind: DIE|BYPASS> <reason>
     >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
 }
 
-# v3.90.1 (CHG-123, P0-7): error messages are the documentation — four elements
+# v3.90.2 (CHG-123, P0-7): error messages are the documentation — four elements
 # (expected / allowed / fix / ref) live in ONE hint table instead of being
 # copy-pasted into 100+ die sites. Only failure time pays the tokens; a message
 # that already carries its own four elements keeps them untouched.
@@ -46,7 +46,7 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
 
 die() {
   echo "agent-gate: $*" >&2
-  # v3.90.1 (CHG-123, P0-7): append the four elements unless the message already
+  # v3.90.2 (CHG-123, P0-7): append the four elements unless the message already
   # carries them (new codes like E132/E134 do). Zero standing cost: only a
   # FAILING gate prints these lines.
   local _code4="${1%%:*}"
@@ -2366,7 +2366,7 @@ append_verify_evidence() { # <line>（单行；调用端负责折叠换行）
   return 0
 }
 
-# v3.90.1 (CHG-123, P0-15): execution-cost record — one append-only line in the
+# v3.90.2 (CHG-123, P0-15): execution-cost record — one append-only line in the
 # change's 09, written once per (change, session start). The gate only READS the
 # runtime ledgers written by session-gate.sh; estimated values are labelled and
 # never feed any exit-2 decision.
@@ -2415,13 +2415,271 @@ record_cost_line() { # <change-id> [verdict]
   wmin=$(( wall / 60 ))
   dev="n/a（基线缺失见 05）"
   {
-    printf '\n#### 本次执行成本（P0-15，v3.90.1）\n\n'
+    printf '\n#### 本次执行成本（P0-15，v3.90.2）\n\n'
     printf -- '- %s | stage=%s | wall_min=%s | tokens_in/out=%s/%s（%s） | tool_calls=%s | 预算偏差=%s | verdict=%s\n' \
       "$id" "$stage" "$wmin" "$tin" "$tout" "$src" "$calls" "$dev" "$verdict"
   } >> "$f" 2>/dev/null \
     || { echo "agent-gate: WARN — cannot append cost line to $f (P0-15)" >&2; return 0; }
   printf '{"change":"%s","session":"%s","recorded_at":"%s"}\n' "$id" "$started" "$ts" > "$marker" 2>/dev/null || true
   echo "agent-gate: cost line recorded in $f (P0-15: wall ${wmin}min, tokens ${tin}/${tout} $src, calls ${calls})"
+}
+
+# v3.90.2 (CHG-124, P1-1~P1-3): read-only decision engine. R2 = ADVISE ONLY:
+# nothing here may exit 2 for a coverage judgement, and AGENT_GUARD_ADAPT=0 turns
+# the whole face off (byte-identical to v3.90.2 behaviour).
+plan_enabled() { [[ "${AGENT_GUARD_ADAPT:-1}" != "0" ]]; }
+
+plan_changed_csv() { # staged+unstaged+untracked, governance-face only, CSV for run-tests
+  { git -C "$repo_root" diff --name-only HEAD 2>/dev/null
+    git -C "$repo_root" diff --cached --name-only 2>/dev/null
+    git -C "$repo_root" ls-files --others --exclude-standard 2>/dev/null
+  } | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+plan_sections() { # single source: the runner's own -T auto resolver (no 4th map)
+  local out
+  out=$(AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_AUTO_DIFF="$(plan_changed_csv)" \
+    bash "$repo_root/tests/run-tests.sh" -T auto 2>/dev/null \
+    | sed -n 's/^auto-resolve-only:[[:space:]]*//p' | tail -1 || true)
+  case "$out" in NONE) printf '' ;; *) printf '%s' "$out" ;; esac
+}
+
+plan_run_cost() { # whole-run p50 from ledger kind=run; empty when absent
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" vals
+  [[ -s "$lg" ]] || return 0
+  vals=$(awk -F'\t' '$2=="run" && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
+  [[ -n "$vals" ]] || return 0
+  printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
+}
+
+plan_section_cost() { # <section> -> p50-ish seconds from the ledger (last 5 rows); empty when absent
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" sec="$1" vals
+  [[ -s "$lg" ]] || return 0
+  vals=$(awk -F'\t' -v s="$sec" '$2=="sec" && $3==s && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
+  [[ -n "$vals" ]] || return 0
+  printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
+}
+
+plan_resolution_rate() { # <change-dir> -> resolved/total TC rows (best-effort, gaps over guesses)
+  local d="$1" f="$d/04-test-scripts.md" total=0 parsed=0
+  [[ -s "$f" ]] || { printf '0/0'; return 0; }
+  total=$(grep -cE '^\|[[:space:]]*TC-[0-9]+' "$f" 2>/dev/null || true)
+  parsed=$(grep -cE '^\|[[:space:]]*TC-[0-9]+.*\|[[:space:]]*(脚本|人工|[^|]*tests/|[^|]*\.sh)' "$f" 2>/dev/null || true)
+  printf '%s/%s' "$parsed" "$total"
+}
+
+plan_json() { # <id> -> one-line decision JSON (no writes)
+  local id="$1" d secs budget pred src per gap="" rate diffh now
+  d=$(change_dir "$id")
+  secs=$(plan_sections)
+  budget="${AGENT_GUARD_BUDGET_CLOSE_S:-120}"
+  [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
+  pred=0; src="prior"
+  if [[ "$secs" == "FULL" ]]; then
+    pred=$(plan_run_cost)
+    if [[ -z "$pred" || "$pred" -lt 60 ]]; then pred=300; src="prior-full"; else src="ledger-full"; fi
+  else
+    local hit=0
+    for per in $secs; do
+      local c; c=$(plan_section_cost "$per")
+      if [[ -n "$c" ]]; then pred=$(( pred + c )); hit=$(( hit + 1 )); else pred=$(( pred + 20 )); fi
+    done
+    if [[ "$hit" -eq 0 ]]; then src="prior"; elif [[ "$hit" -eq $(printf '%s\n' $secs | grep -c .) ]]; then src="ledger"; else src="mixed"; fi
+  fi
+  [[ -n "$secs" ]] && [[ "$src" != "prior" ]] || true
+  [[ -n "$secs" ]] || src="no-map"
+  rate=$(plan_resolution_rate "$d")
+  if [[ -n "$secs" ]]; then
+    local dang=""
+    if [[ -s "$d/04-test-scripts.md" ]]; then
+      dang=$(grep -oE 'tests/[A-Za-z0-9._/-]+\.sh' "$d/04-test-scripts.md" 2>/dev/null | sort -u | while IFS= read -r _p; do
+        [[ -f "$repo_root/$_p" ]] || printf '%s ' "$_p"
+      done)
+    fi
+    [[ -z "$dang" ]] || gap='[{"id":"tc-dangling","why":"04 references missing script(s): '"${dang% }"'","substitute":"add the script or correct the 落点"}]'
+  else
+    gap='[{"id":"no-section-map","why":"no tracked governance-face change (docs-only or empty diff)","substitute":"run the full suite before release"}]'
+  fi
+  diffh=$( { git -C "$repo_root" diff HEAD 2>/dev/null; git -C "$repo_root" diff --cached 2>/dev/null; } | shasum -a 256 2>/dev/null | awk '{print $1}' || true)
+  [[ -n "$diffh" ]] || diffh="unavailable"
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s}' \
+    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}"
+}
+
+plan_strip_decision() { # <file> — drop a top-level "decision":{...} key with brace matching
+  awk '
+  { s = s $0 }
+  END {
+    k = index(s, "\"decision\"")
+    if (k > 0) {
+      n = length(s); depth = 0; sv = 0; ev = 0
+      for (i = k; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (c == "{") { if (depth == 0) sv = i; depth++ }
+        else if (c == "}") { depth--; if (depth == 0) { ev = i; break } }
+      }
+      if (sv > 0 && ev > 0) {
+        # Remove the KEY NAME as well as its value: keeping `"decision":` would
+        # make the next write emit `"decision":,"decision":{…}` (review #1).
+        before = substr(s, 1, k - 1); after = substr(s, ev + 1)
+        sub(/,[[:space:]]*$/, "", before)
+        sub(/^[[:space:]]*,/, "", after)
+        s = before after
+      }
+    }
+    print s
+  }' "$1"
+}
+
+plan_write_json() { # <file> <decision-json> — append-only key, validated before replace
+  local f="$1" dec="$2" tmp base
+  [[ -s "$f" ]] || return 1
+  base=$(plan_strip_decision "$f")
+  tmp="$f.$$"
+  printf '%s' "$base" | sed 's/[[:space:]]*$//' | sed 's/}[[:space:]]*$//' > "$tmp"
+  printf ',%s}\n' "\"decision\":$dec" >> "$tmp"
+  # structural validation: balanced braces/quotes, real JSON parse when python3
+  # is available (belt and braces), decision readable back, change_id preserved.
+  local o q qq
+  o=$(tr -cd '{' < "$tmp" | wc -c | tr -d ' ')
+  q=$(tr -cd '}' < "$tmp" | wc -c | tr -d ' ')
+  qq=$(tr -cd '"' < "$tmp" | wc -c | tr -d ' ')
+  if [[ "$o" != "$q" ]] || [[ $(( qq % 2 )) -ne 0 ]] \
+     || ! grep -q '"decision"' "$tmp" || ! grep -q '"change_id"' "$tmp" \
+     || [[ "$(grep -o '"decision"' "$tmp" | wc -l | tr -d ' ')" != "1" ]]; then
+    rm -f "$tmp"
+    echo "agent-gate: WARN — decision not written: rebuilt $f failed structural validation (P1-1)" >&2
+    return 1
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1 || {
+      rm -f "$tmp"
+      echo "agent-gate: WARN — decision not written: rebuilt $f is not valid JSON (P1-1)" >&2
+      return 1
+    }
+  fi
+  mv -f "$tmp" "$f"
+}
+
+plan_append_intent() { # <change-dir> <decision-json>
+  local f="$1/00-intent.md" dec="$2" chosen pred src rate budget
+  [[ -s "$f" ]] || return 0
+  grep -q '^## 自适应判定' "$f" 2>/dev/null && return 0   # append once; JSON is the refreshed copy
+  chosen=$(printf '%s' "$dec" | sed -n 's/.*"chosen":"\([^"]*\)".*/\1/p')
+  pred=$(printf '%s' "$dec" | sed -n 's/.*"predicted_s":\([0-9]*\).*/\1/p')
+  src=$(printf '%s' "$dec" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')
+  rate=$(printf '%s' "$dec" | sed -n 's/.*"resolution_rate":"\([^"]*\)".*/\1/p')
+  budget=$(printf '%s' "$dec" | sed -n 's/.*"budget_s":\([0-9]*\).*/\1/p')
+  {
+    printf '\n## 自适应判定（引擎生成，R2 只建议）\n\n'
+    printf -- '- 建议测试：%s\n' "${chosen:-（无映射）}"
+    printf -- '- 预计耗时：%s s（预算 %s s，source=%s）\n' "${pred:-0}" "${budget:-120}" "${src:-prior}"
+    printf -- '- TC 解析率：%s；gap 见 decision.gaps\n' "${rate:-0/0}"
+    printf -- '- 关闭：`AGENT_GUARD_ADAPT=0`；重算：`scripts/agent-gate plan %s`\n' "$(basename "$1")"
+  } >> "$f"
+}
+
+plan_log() { # <id> <decision-json>
+  local lg="$repo_root/.agent-state/adapt-decisions.tsv" chosen pred budget src id="$1" dec="$2"
+  chosen=$(printf '%s' "$dec" | sed -n 's/.*"chosen":"\([^"]*\)".*/\1/p')
+  pred=$(printf '%s' "$dec" | sed -n 's/.*"predicted_s":\([0-9]*\).*/\1/p')
+  budget=$(printf '%s' "$dec" | sed -n 's/.*"budget_s":\([0-9]*\).*/\1/p')
+  src=$(printf '%s' "$dec" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')
+  mkdir -p "$(dirname "$lg")" 2>/dev/null || return 0
+  [[ -s "$lg" ]] || printf 'ts\tchange\tchosen\tpredicted_s\tbudget_s\tsource\taccepted\n' > "$lg" 2>/dev/null || return 0
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t-\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$id" "${chosen:--}" "${pred:-0}" "${budget:-120}" "${src:-prior}" >> "$lg" 2>/dev/null || true
+}
+
+plan_explain() { # <id> <decision-json>
+  local id="$1" dec="$2" secs per c rate d fullc
+  d=$(change_dir "$id")
+  secs=$(plan_sections); rate=$(plan_resolution_rate "$d")
+  echo "plan: changed files = $(plan_changed_csv | tr ',' '\n' | grep -c . )"
+  if [[ "$secs" == "FULL" ]]; then
+    fullc=$(plan_run_cost)
+    echo "plan: chosen = FULL suite (runner reported a correctness-sensitive change: runner self-edit or unmapped file)"
+    if [[ -n "$fullc" && "$fullc" -ge 60 ]]; then echo "  - whole-run p50: ${fullc}(ledger) s"; else echo "  - whole-run p50: 300(prior) s"; fi
+  else
+    echo "plan: chosen sections = ${secs:-（none）}"
+    for per in $secs; do
+      c=$(plan_section_cost "$per")
+      if [[ -n "$c" ]]; then echo "  - $per: ${c}(ledger) s"; else echo "  - $per: 20(prior) s"; fi
+    done
+  fi
+  echo "plan: resolution_rate=$rate gaps=$(printf '%s' "$dec" | sed -n 's/.*"gaps":\(.*\)}$/\1/p')"
+  echo "plan: ledger=${repo_root}/.agent-state/cost-ledger.tsv (absent => prior 20s/section)"
+}
+
+record_suite_suggestion() { # <change-id> — R2 advice line + 05 record; never blocks
+  local id="$1" d mode reason dec actual f
+  plan_enabled || return 0
+  d=$(change_dir "$id"); [[ -d "$d" ]] || return 0
+  mode="${AGENT_GUARD_SUITE_MODE:-adopt}"
+  reason="${AGENT_GUARD_SUITE_DOWN_REASON:-}"
+  case "$mode" in adopt|up) ;; down)
+    if [[ -z "$reason" ]]; then
+      echo "agent-gate: WARN — AGENT_GUARD_SUITE_MODE=down without AGENT_GUARD_SUITE_DOWN_REASON; falling back to adopt (P1-3)" >&2
+      mode="adopt"
+    fi ;;
+    *) echo "agent-gate: WARN — unknown AGENT_GUARD_SUITE_MODE='$mode'; falling back to adopt" >&2; mode="adopt" ;;
+  esac
+  dec=$(plan_json "$id")
+  local chosen pred budget
+  chosen=$(printf '%s' "$dec" | sed -n 's/.*"chosen":"\([^"]*\)".*/\1/p')
+  pred=$(printf '%s' "$dec" | sed -n 's/.*"predicted_s":\([0-9]*\).*/\1/p')
+  budget=$(printf '%s' "$dec" | sed -n 's/.*"budget_s":\([0-9]*\).*/\1/p')
+  echo "agent-gate: plan 建议 节=${chosen:-（无映射）} predicted_s=${pred:-0} 预算=${budget:-120}s 模式=$mode（采纳/升档/降档：AGENT_GUARD_SUITE_MODE；降档须 AGENT_GUARD_SUITE_DOWN_REASON）"
+  f="$d/05-test-results.md"
+  s_started=""
+  [[ -s "$repo_root/.agent-state/session-started.json" ]] \
+    && s_started=$(sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1 || true)
+  s_marker="$repo_root/.agent-state/suite-mode.json"
+  if [[ -n "$s_started" && -s "$s_marker" ]] \
+     && grep -qF "\"change\":\"$id\"" "$s_marker" 2>/dev/null \
+     && grep -qF "\"session\":\"$s_started\"" "$s_marker" 2>/dev/null; then
+    return 0   # suggestion printed; 05 block already recorded for this session
+  fi
+  if [[ -s "$f" ]]; then
+    actual="${SECONDS:-0}"
+    {
+      printf '\n## 套件模式（引擎建议，R2）\n\n'
+      printf -- '- suite_mode=%s\n' "$mode"
+      printf -- '- chosen=%s predicted_s=%s budget_s=%s\n' "${chosen:--}" "${pred:-0}" "${budget:-120}"
+      printf -- '- actual_s=%s（本次 stop 调用墙钟；长跑在 CI）\n' "$actual"
+      if [[ "$mode" == "down" ]]; then printf -- '- down_reason=%s\n' "$reason"; fi
+    } >> "$f" 2>/dev/null || echo "agent-gate: WARN — cannot append suite mode to $f (P1-3)" >&2
+  fi
+  printf '{"change":"%s","session":"%s","mode":"%s"}\n' "$id" "${s_started:-unknown}" "$mode" > "$s_marker" 2>/dev/null || true
+  plan_log "$id" "$dec" >/dev/null 2>&1 || true
+}
+
+e131_dogfood_check() { # <change-dir> — R2: WARN only (R3 hard-rejects)
+  local d="$1" f
+  [[ "${AGENT_GUARD_ADAPT:-1}" != "0" ]] || return 0
+  f="$d/09-changelog.md"
+  [[ -s "$f" ]] || return 0
+  if ! grep -q '\[dogfood\]' "$f" 2>/dev/null; then
+    echo "agent-gate: WARN GATE-E131: $f has no [dogfood] line — record what last round's capability was verified, with 05 evidence (R2 warn; R3 will reject)" >&2
+  fi
+  if ! grep -q '\[dogfood-next\]' "$f" 2>/dev/null; then
+    echo "agent-gate: WARN GATE-E131: $f has no [dogfood-next] line — leave capability/command/expected for the next round (R2 warn; R3 will reject)" >&2
+  fi
+}
+
+plan_run() { # <id> <dry|write> [explain] — the only side-effecting entry point
+  local id="$1" mode="$2" expl="${3:-}" d dec
+  d=$(change_dir "$id")
+  dec=$(plan_json "$id")
+  [[ "$expl" == "explain" ]] && plan_explain "$id" "$dec"
+  echo "plan: $dec"
+  if [[ "$mode" == "write" ]]; then
+    if plan_write_json "$d/00-governance.json" "$dec"; then
+      plan_append_intent "$d" "$dec"
+      plan_log "$id" "$dec"
+    fi
+  fi
 }
 
 validate_stop() {
@@ -3077,7 +3335,7 @@ case "$command" in
         fi
       fi
     fi
-    # v3.90.1 (CHG-123, P0-1): handshake visibility — a session with no
+    # v3.90.2 (CHG-123, P0-1): handshake visibility — a session with no
     # handshake runs on the L0 baseline only. Soft WARN in R1 (never blocks);
     # the hard requirement belongs to the R2/R3 trains.
     if ! ls "$repo_root"/.agent-state/runtime/*.json >/dev/null 2>&1; then
@@ -3101,6 +3359,12 @@ case "$command" in
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     echo "agent-gate: active change is $id"
+    # v3.90.2 (CHG-124, P1-1): decision is generated by default at begin (the
+    # mandatory waypoint) so it is actually read instead of being an opt-in
+    # nobody calls. `AGENT_GUARD_ADAPT=0` removes the line entirely.
+    if plan_enabled; then
+      plan_run "$id" write | sed -n 's/^plan: /agent-gate: plan: /p' || true
+    fi
     ;;
   end)
     rm -f "$active_file"
@@ -3237,7 +3501,7 @@ case "$command" in
     exit 1
     ;;
   cost-line)
-    # v3.90.1 (CHG-123, P0-15): diagnostic subcommand (same family as metrics /
+    # v3.90.2 (CHG-123, P0-15): diagnostic subcommand (same family as metrics /
     # verify-channel). `--stage stop` calls the same writer automatically.
     cid="${2:-}"; cdir=""
     [[ -n "$cid" ]] && cdir=$(change_dir "$cid")
@@ -3247,7 +3511,7 @@ case "$command" in
     record_cost_line "$cid" manual
     ;;
   session-start)
-    # v3.90.1 (CHG-123, P0-1): session handshake — the L0 baseline every agent can
+    # v3.90.2 (CHG-123, P0-1): session handshake — the L0 baseline every agent can
     # produce (no hook surface required). Runtime/model/window are self-reported;
     # missing capabilities stay explicit instead of being guessed.
     ss_dir="$repo_root/.agent-state/runtime"
@@ -3273,6 +3537,24 @@ case "$command" in
       || echo "agent-gate: WARN — cannot write session handshake under $ss_dir (P0-1)" >&2
     echo "agent-gate: session handshake recorded ($ss_dir/$ss_sid.json): runtime=$ss_rt model=$ss_model window=$ss_win ($ss_src)"
     ;;
+  plan)
+    # v3.90.2 (CHG-124, P1-1/P1-2): read-only decision. R2 never blocks on the
+    # advice itself; a bad invocation is still a usage error (E136).
+    pcid="${2:-}"; pmode="${3:-}"; pdir=""
+    [[ -n "$pcid" ]] && pdir=$(change_dir "$pcid")
+    if [[ -z "$pcid" || ! -d "$pdir" || ( -n "$pmode" && "$pmode" != "--dry-run" && "$pmode" != "--explain" ) ]]; then
+      die "GATE-E136: usage: scripts/agent-gate plan <change-id> [--dry-run|--explain] (got '${pcid:-<none>}' '${pmode:-}') — expected an existing change; allowed: --dry-run (no writes) / --explain (print cost basis); fix: pass a real change id; ref: CHG-124 P1-1 / ADAPT=0 disables this face"
+    fi
+    if ! plan_enabled; then
+      echo "agent-gate: plan disabled (AGENT_GUARD_ADAPT=0) — no decision generated (P1-1)"
+    else
+      case "$pmode" in
+        --dry-run) plan_run "$pcid" dry ;;
+        --explain) plan_run "$pcid" dry explain ;;
+        *)         plan_run "$pcid" write ;;
+      esac
+    fi
+    ;;
   metrics)
     emit_metrics
     ;;
@@ -3297,7 +3579,7 @@ case "$command" in
       spec|design|testplan)
         stage_gate_check "$stage" ;;
       staged) validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change 2>/dev/null || true); [[ -n "$cost_cid" ]] && record_cost_line "$cost_cid" stop; record_delivery stop ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change 2>/dev/null || true); [[ -n "$cost_cid" ]] && record_cost_line "$cost_cid" stop; [[ -n "$cost_cid" ]] && record_suite_suggestion "$cost_cid"; [[ -n "$cost_cid" ]] && e131_dogfood_check "$(change_dir "$cost_cid")"; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -3321,8 +3603,9 @@ Usage:
   scripts/agent-gate begin <change-id>
   scripts/agent-gate end
   scripts/agent-gate metrics
-  scripts/agent-gate session-start          # v3.90.1: write the session handshake (runtime/model/window, P0-1)
-  scripts/agent-gate cost-line <change-id>        # v3.90.1: append the execution-cost line to 09 (P0-15)
+  scripts/agent-gate session-start          # v3.90.2: write the session handshake (runtime/model/window, P0-1)
+  scripts/agent-gate plan <change-id> [--dry-run|--explain]  # v3.90.2: read-only test-scope decision (P1-1/P1-2)
+  scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
   scripts/agent-gate --stage staged

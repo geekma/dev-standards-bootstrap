@@ -215,6 +215,7 @@
 | GATE-E133 | 治理记录 JSON 括号/引号不配对 | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E134 | 治理记录 JSON 同行 `}{` 拼接（缺逗号） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E135 | 治理记录 change_id 无法回读成完整对象（截断/重叠） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
+| GATE-E136 | `plan` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::plan 分支（v3.90.2，CHG-124，P1-1） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |
