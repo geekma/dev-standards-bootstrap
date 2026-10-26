@@ -1092,6 +1092,9 @@ if [[ "$upgrade" == true ]]; then
   echo "upgrade-behavior: AGENT_GUARD_ADAPT=0 keeps the pre-v3.90.2 behaviour (no plan, no suggestion, no E131 warn)"
   echo "upgrade-behavior: full_suite counts business regressions only; unknown runtime --detect exits 3 (v3.90.1)"
   echo "upgrade-behavior: stop appends one cost line + one suite-mode block to 05/09 (append-only; no artifact added)"
+  # v3.90.5 (CHG-126): what this upgrade changes in decision consumption.
+  echo "upgrade-behavior: stop/preflight now consume plan.decision (E142-E146); missing decision is WARN-only unless AGENT_GUARD_PLAN_STRICT=1"
+  echo "upgrade-behavior: --stage close <N> records stage history + filled-at ordering (AGENT_GUARD_STAGE_CLOSE=0 opts out); baseline/tc-index are on-demand"
 fi
 
 cat <<EOF

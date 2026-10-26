@@ -2909,12 +2909,19 @@ if [[ -s "$GT82" ]]; then
   git add scripts/session-gate.sh >/dev/null 2>&1
   git commit -qm seed >/dev/null 2>&1
   printf 'y\n' >> scripts/session-gate.sh
-  t82a=$(date +%s)
-  out=$(scripts/agent-gate plan CHG-960 --dry-run 2>&1); rc=$?
-  t82b=$(date +%s)
+  # wall-clock is integer seconds and load-sensitive: take the best of 3 runs
+  # (the target is still <=1 s; a single loaded run must not fail the assertion).
+  t82_best=99
+  for _t82_i in 1 2 3; do
+    t82a=$(date +%s)
+    out=$(scripts/agent-gate plan CHG-960 --dry-run 2>&1); rc=$?
+    t82b=$(date +%s)
+    _t82_d=$(( t82b - t82a ))
+    [[ "$_t82_d" -lt "$t82_best" ]] && t82_best="$_t82_d"
+  done
   report "T82 plan --dry-run exits 0" 0 "$rc"
   report "T82 plan --dry-run writes nothing" 0 "$(grep -c '\"decision\"' docs/changes/CHG-960/00-governance.json || true)"
-  report "T82 plan runs under 1s" 0 "$(( t82b - t82a > 1 ? 1 : 0 ))"
+  report "T82 plan runs under 1s (best of 3)" 0 "$(( t82_best > 1 ? 1 : 0 ))"
   out=$(scripts/agent-gate plan CHG-960 >/dev/null 2>&1); rc=$?
   report "T82 plan writes a decision" 0 "$rc"
   # review #1: a SECOND write must not corrupt the JSON (key stripped fully)
@@ -3099,11 +3106,11 @@ check_output "T83 E144 names the code" 'GATE-E144' "$out"
 printf -- '- decision-gap: coverage T83 — fixture gap\n' >> docs/changes/CHG-970/09-changelog.md
 out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
 report "T83 declared coverage gap is accepted" 0 "$(printf '%s' "$out" | grep -c 'GATE-E144' || true)"
-printf '> filled-at stage=3\n' >> docs/project/P05-task-plan.md
+printf '> filled-at stage=3 change=CHG-970\n' >> docs/project/P05-task-plan.md
 out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E145 late backfill" 2 "$?"
 check_output "T83 E145 names the code" 'GATE-E145' "$out"
 sed '/filled-at stage=3/d' docs/project/P05-task-plan.md > .p05.tmp && mv .p05.tmp docs/project/P05-task-plan.md
-printf '> filled-at stage=1\n' >> docs/project/P01-requirements-master.md
+printf '> filled-at stage=1 change=CHG-970\n' >> docs/project/P01-requirements-master.md
 out=$(scripts/agent-gate --stage close 1 2>&1); report "T83 close stage 1 records P01" 0 "$?"
 printf -- 'Observation: 已核对 00-04（未读回填）\n' >> docs/changes/CHG-970/09-changelog.md
 out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 E146 unread backfill" 2 "$?"

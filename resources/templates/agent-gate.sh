@@ -2702,7 +2702,7 @@ tc_emit() { # <rows-file> <tc> <source> <section|-> <file|->
 
 tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_TOTAL / TC_INDEX_DANGLING
   local d="$1" f04="$1/04-test-scripts.md" f15="$1/01.5-rtvm-matrix.md"
-  local raw agg line spec secs fil tc s f files fp
+  local raw agg line spec secs fil method tc s f files fp
   raw=$(mktemp 2>/dev/null) || { TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
   agg=$(mktemp 2>/dev/null) || { rm -f "$raw"; TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
 
@@ -2713,10 +2713,16 @@ tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_T
       [[ "$spec" == TC-* ]] || continue
       secs=$(printf '%s' "$line" | grep -oE 'T[0-9]+[a-z]?' | sort -u | tr '\n' ' ' || true)
       fil=$(printf '%s' "$line" | grep -oE '(tests|scripts)/[A-Za-z0-9._/-]+\.(sh|py|js|ts|java|go|rb)' | sort -u | tr '\n' ' ' || true)
+      # A row whose evidence is manual (release / full suite / review) still
+      # satisfies Q2 "script OR manual evidence"; only a row with NO landing at
+      # all is unresolved.
+      method=$(printf '%s' "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$5); print $5}')
       for tc in $(tc_expand "$spec"); do
         if [[ -n "$secs" || -n "$fil" ]]; then
           for s in $secs; do tc_emit "$raw" "$tc" 04 "$s" "-"; done
           for f in $fil; do tc_emit "$raw" "$tc" 04 "-" "$f"; done
+        elif [[ -n "$method" && "$method" != "-" ]]; then
+          tc_emit "$raw" "$tc" manual "-" "-"
         else
           tc_emit "$raw" "$tc" 04 "-" "-"
         fi
@@ -2755,6 +2761,7 @@ tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_T
       srcs[tc]=srcs[tc] (srcs[tc]?" ":"") src
       if (sok=="ok" && sec!="-" && bestsec[tc]=="") bestsec[tc]=sec
       if (fok=="ok" && fil!="-" && bestfil[tc]=="") bestfil[tc]=fil
+      if (src=="manual") ok[tc]=1
       if ((sec!="-" && sok=="ok") || (fil!="-" && fok=="ok")) ok[tc]=1
       if ((sec!="-" && sok!="ok") || (fil!="-" && fok!="ok")) dang[tc]=1
     }
@@ -3143,27 +3150,25 @@ stage_history_last() { # <change> <field> [stage] -> last matching value
     $2==c && (w=="" || $3==w) { v=$fld } END { if (v!="") print v }' "$hf"
 }
 
-stage_backfilled() { # <d> <stage> -> csv of Pxx backfilled at this stage
-  local d="$1" n="$2" out="" p f pdir="$docs_dir/project"
+stage_backfilled() { # <d> <stage> <change> -> csv of Pxx backfilled at this stage FOR THIS CHANGE
+  # v3.90.5: project masters are repo-global. A `filled-at` line must name the
+  # change it belongs to, otherwise CHG-A's stage-1 marker would leak into
+  # CHG-B's stage-2 close (and every [x] row in 09 would be re-attributed on
+  # every close). The 09 checklist is deliberately NOT used here.
+  local d="$1" n="$2" cid="$3" out="" p f pdir="$docs_dir/project"
   if [[ -d "$pdir" ]]; then
     for f in "$pdir"/P*.md; do
       [[ -s "$f" ]] || continue
-      grep -qE "filled-at[[:space:]]+stage=${n}([^0-9]|$)" "$f" 2>/dev/null || continue
+      grep -qE "filled-at[[:space:]]+stage=${n}[[:space:]]+change=${cid}([^A-Za-z0-9_-]|$)" "$f" 2>/dev/null || continue
       p=$(basename "$f"); p="${p%%-*}"
       out="${out}${out:+,}$p"
     done
-  fi
-  if [[ -s "$d/09-changelog.md" ]]; then
-    while IFS= read -r p; do
-      [[ "$out" == *"$p"* ]] && continue
-      out="${out}${out:+,}$p"
-    done <<< "$(sed -nE 's/^- \[x\] (P[0-9]{2}).*已回填.*/\1/p' "$d/09-changelog.md" 2>/dev/null | sort -u)"
   fi
   printf '%s' "${out:-none}"
 }
 
 stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 ordering
-  local id="$1" argn="${2:-}" d os reason f rec n prev late pt hts p first missing=""
+  local id="$1" argn="${2:-}" d os reason f rec n prev late line at hts p first missing=""
   stage_close_enabled || { echo "agent-gate: stage close disabled (AGENT_GUARD_STAGE_CLOSE=0)"; return 0; }
   d=$(change_dir "$id")
   reason=""
@@ -3187,16 +3192,20 @@ stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 o
   late=""
   for f in "$docs_dir"/project/P*.md; do
     [[ -s "$f" ]] || continue
-    pt=$(sed -nE 's/^generated_at:[[:space:]]*([^[:space:]]+).*/\1/p' "$f" 2>/dev/null | head -1)
+    # Only THIS change's marker counts; `at=` is the per-change time (provenance
+    # `generated_at` is file-global and would compare across changes).
+    line=$(grep -E "filled-at[[:space:]]+stage=[1-8][[:space:]]+change=${id}([^A-Za-z0-9_-]|$)" "$f" 2>/dev/null | head -1 || true)
+    [[ -n "$line" ]] || continue
     local fa
-    fa=$(sed -nE 's/.*filled-at[[:space:]]+stage=([1-8]).*/\1/p' "$f" 2>/dev/null | head -1)
+    fa=$(printf '%s' "$line" | sed -nE 's/.*stage=([1-8]).*/\1/p')
+    at=$(printf '%s' "$line" | sed -nE 's/.*[[:space:]]at=([^[:space:]]+).*/\1/p')
     [[ -n "$fa" ]] || continue
     p=$(basename "$f"); p="${p%%-*}"
     if [[ "$fa" -gt "$n" ]]; then late="$late $p(stage=$fa>N=$n)"; continue; fi
     hts=$(stage_history_last "$id" 4 "$fa")
-    if [[ -n "$pt" && -n "$hts" && "$pt" > "$hts" ]]; then late="$late $p(stamped=$pt>closed[$fa]=$hts)"; fi
+    if [[ -n "$at" && -n "$hts" && "$at" > "$hts" ]]; then late="$late $p(at=$at>closed[$fa]=$hts)"; fi
   done
-  [[ -z "$late" ]] || die "GATE-E145: $id stage $n late backfill:$late — expected: a master is filled at the stage that needs it (filled-at stage=M with M<=N and stamped before that stage closed); allowed: re-open the stage and fill it there; fix: move the content to the correct stage and update filled-at; ref: CHG-126 P2-5 / Q7"
+  [[ -z "$late" ]] || die "GATE-E145: $id stage $n late backfill:$late — expected: a master is filled at the stage that needs it (filled-at stage=M change=$id with M<=N and at= not after that stage closed); allowed: re-open the stage and fill it there; fix: move the content to the correct stage and update the marker; ref: CHG-126 P2-5 / Q7"
 
   # B) the next stage must read what the previous stage backfilled.
   prev=$(stage_history_last "$id" 5 "$(( n - 1 ))")
@@ -3208,7 +3217,7 @@ stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 o
     [[ -z "$missing" ]] || die "GATE-E146: $id stage $n did not read the previous stage's backfill:$missing — expected: the first Observation after '阶段 $(( n - 1 )) 关闭' names every backfilled master; allowed: an Observation line quoting the anchors; fix: add the read-back Observation, then re-run; ref: CHG-126 P2-5 / Q7"
   fi
 
-  rec=$(stage_backfilled "$d" "$n")
+  rec=$(stage_backfilled "$d" "$n" "$id")
   f="$repo_root/.agent-state/stage-close.json"
   mkdir -p "$(dirname "$f")" 2>/dev/null || true
   hf="$repo_root/.agent-state/stage-close.tsv"
