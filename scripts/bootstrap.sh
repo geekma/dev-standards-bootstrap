@@ -697,7 +697,10 @@ run_layer() {
       # v3.35.0（§1.3）：项目级总册 13 册 + 评审记录模板骨架 → <docs>/templates/project/，
       # 首次变更时由用户复制到 <docs>/project/ 并回填现状（begin 机校 13 册在位；P12 产品
       # 上下文册 v3.67.0，活文档回填）。
-      mkdir -p "$DOCS_DIR/templates/project/reviews"
+      # v3.91.9 (CHG-127): no standalone mkdir here — install_file already creates
+      # every parent dir under $target. A bare "$DOCS_DIR/..." mkdir wrote docs/
+      # into the CALLER'S cwd (relative DOCS_DIR), which made a source-repo audit
+      # "see" a docs/ tree it did not have and hard-failed A6a/b/c in CI.
       for p in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md P12-product-context.md reviews/_template.review.md; do
         install_file - "$DOCS_DIR/templates/project/$p" "resources/templates/project/$p"
       done
@@ -711,7 +714,7 @@ run_layer() {
       # 不计入八件基数；new-change 仅在命中 UI 变更时复制）；正式沟通稿模板随 --core 下发。
       # v3.70.0（CHG-045）：形状件 4——01.5-rtvm-matrix/05-test-results/07-review-report/
       # 09-changelog（DS 形状移出法的承接点；new-change 不默认脚手架，作者按需复制）。
-      mkdir -p "$DOCS_DIR/templates/entry"
+      # v3.91.9 (CHG-127): see the project/ note above — install_file owns the dirs.
       for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 03.6-ui-spec.md 04-test-scripts.md 01.5-rtvm-matrix.md 05-test-results.md 07-review-report.md 09-changelog.md; do
         install_file - "$DOCS_DIR/templates/entry/$e" "resources/templates/entry/$e"
       done

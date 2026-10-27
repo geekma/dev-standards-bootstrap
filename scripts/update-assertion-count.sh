@@ -225,8 +225,14 @@ fi
 # count matched" (BUG-004). The audit writes every executed assertion name;
 # this syncs the sorted set. Drift (names added/dropped without re-sync) → red.
 AUDIT_ASSERTIONS="$ROOT/tests/.audit-assertions"
-AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names"
+# v3.91.9 (CHG-127): key the completed-run names file by repo root. A bare
+# /tmp/audit-executed-names is shared by every checkout on the host, so running
+# the audit in one project made another project's A3 report phantom drift.
+AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names.$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
 if [[ -f "$AUDIT_NAMES_LAST" ]]; then
+  # v3.91.9 (CHG-127): docs/private-dependent assertions now keep one stable
+  # name in both environments (the audit echoes SKIP separately), so the set
+  # comparison is environment-invariant and needs no normalization here.
   tmp_names=$(mktemp)
   sort -u "$AUDIT_NAMES_LAST" > "$tmp_names" 2>/dev/null || true
   if [[ -f "$AUDIT_ASSERTIONS" ]] && diff -q "$tmp_names" "$AUDIT_ASSERTIONS" >/dev/null 2>&1; then

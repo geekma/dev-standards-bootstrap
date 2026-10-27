@@ -24,6 +24,11 @@
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# v3.91.9 (CHG-127): snapshot the docs face BEFORE any fixture runs. A5 used to
+# create <docs>/templates in the caller's cwd (bootstrap bug, fixed in the same
+# batch), which flipped this flag to "present" mid-run and hard-failed A6a/b/c in
+# a fresh checkout. Taking the snapshot first makes the SKIP decision honest.
+A6_DOCS_ABSENT=0; [[ -d "$ROOT/docs" ]] || A6_DOCS_ABSENT=1
 STD="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 AGENTS="$ROOT/resources/AGENTS.md"
 METH="$ROOT/resources/METHODOLOGY.md"
@@ -51,7 +56,7 @@ failed_names=()
 # the generator to compare names — reading a half-filled run file would report
 # drift against a complete baseline on every single run.
 AUDIT_NAMES_RUN="${TMPDIR:-/tmp}/audit-run-names.$$"
-AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names"
+AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names.$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
 : > "$AUDIT_NAMES_RUN" 2>/dev/null || true
 AUDIT_ASSERTIONS_BASELINE="$ROOT/tests/.audit-assertions"
 
@@ -565,20 +570,21 @@ REPO_BUGS="$ROOT/docs/bugs"
 # CI checkout has no private ledger. Treat that as an explicit SKIP, not a soft pass:
 # the old SOFT bucket made A6a/b/c warn forever and leaked into A3/A10, which hid real
 # numeric drift. Local runs (docs/ present) and target repos stay hard.
-A6_DOCS_ABSENT=0; [[ -d "$ROOT/docs" ]] || A6_DOCS_ABSENT=1
+# (Flag is snapshotted at the top of this script — see the v3.91.9 note there.)
 
 # A6a bugfix-log.md 存在且含真实 BUG 条目（非占位模板）
 # v3.56.1：A6 族断言依赖 docs/ 磁盘态，而源仓裁定 docs/* 忽略（CHG-017/FU-032，
 # .gitignore:37 注释）→ CI checkout 永远缺这些文件，A6a/b/c 结构性必红——并入
 # REQ-965 soft 桶（CI 降警，本地恒硬），与 A3/A3c/A10 同款。
 if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
-  report "A6a SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  echo "SKIP A6a: docs/ absent in a fresh source checkout (CHG-017; not a pass)"
+  report "A6a repo bugfix-log has real BUG entries (docs-dependent)" 1 1
 elif [[ -f "$REPO_BFLOG" ]]; then
   bug_count=$(grep -cE '^### BUG-[0-9]' "$REPO_BFLOG" || true)
-  report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
+  report "A6a repo bugfix-log has real BUG entries (docs-dependent)" 1 \
     "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
 else
-  report "A6a repo bugfix-log exists" 1 0
+  report "A6a repo bugfix-log has real BUG entries (docs-dependent)" 1 0
 fi
 
 # A6b docs/changes/ 下每个 CHG 目录至少含 00-intent.md（门禁 1 最低要求）
@@ -592,9 +598,10 @@ else
   chg_missing_intent=1
 fi
 if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
-  report "A6b SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  echo "SKIP A6b: docs/ absent in a fresh source checkout (CHG-017; not a pass)"
+  report "A6b every CHG dir has 00-intent.md (docs-dependent)" 0 0
 else
-  report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
+  report "A6b every CHG dir has 00-intent.md (docs-dependent)" 0 "$chg_missing_intent"
 fi
 
 # A6c docs/changes/ 下 CHG 编号连续递增（CHG-001, CHG-002, ... 无跳号）
@@ -620,7 +627,8 @@ chg_nums=$( { basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/n
   | awk '{printf "%d\n", $1}' | sort -nu)
 a6c_ran=0
 if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
-  report "A6c SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  echo "SKIP A6c: docs/ absent in a fresh source checkout (CHG-017; not a pass)"
+  report "A6c CHG numbering continuous (docs-dependent)" 0 0
   a6c_ran=1
 elif [[ -n "$chg_nums" ]]; then
   chg_prev=0
@@ -632,10 +640,10 @@ elif [[ -n "$chg_nums" ]]; then
     fi
     chg_prev=$n
   done
-  report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
+  report "A6c CHG numbering continuous (docs-dependent)" 0 "$chg_gap"
   a6c_ran=1
 else
-  report "A6c CHG numbering continuous (no gaps)" 1 0
+  report "A6c CHG numbering continuous (docs-dependent)" 1 0
   a6c_ran=1
 fi
 # BUG-004 放大器守卫：A10 基线只记**断言总数**、不记**断言名** → 任一断言被"整块
@@ -1796,9 +1804,10 @@ if [[ -f "$a56_priv_file" ]]; then
   for a56_p in $a56_priv_tags; do
     grep -qF "$a56_p" "$a56_priv_file" || { echo "A56: private discipline $a56_p is missing from .opencode/AGENTS.md" >&2; a56_priv_bad=$(( a56_priv_bad + 1 )); }
   done
-  report "A56 the six private execution disciplines are on disk (CHG-115/116)" 0 "$a56_priv_bad"
+  report "A56 private execution disciplines present on the local-only face (docs/private-dependent)" 0 "$a56_priv_bad"
 else
-  report "A56 private disciplines are a local-only file (absent here = a clean clone, nothing to check) (CHG-115)" 1 1
+  echo "SKIP A56: private local-only face absent (clean clone, nothing to check)"
+  report "A56 private execution disciplines present on the local-only face (docs/private-dependent)" 1 1
 fi
 # The discipline tags are assembled from parts: a literal copy of a tag inside
 # this tracked file would otherwise match itself and report a phantom leak.
@@ -1895,6 +1904,9 @@ report "A43 layering single-source — narrative carries no tool vocabulary; poi
 # 位置必须在**全部断言执行完之后、A10 之前**（放前面会与后续断言的集合差 200 条）。
 # A10/A10b 自身的名字排除在比较之外（A10 在本块之后才执行）。
 if [[ -f "$AUDIT_ASSERTIONS_BASELINE" ]]; then
+  # v3.91.9 (CHG-127): docs/private-dependent assertions keep ONE stable name in
+  # both environments (the SKIP fact is echoed as its own line), so this set
+  # comparison needs no environment-specific normalization.
   a10b_cur=$(grep -vE '^A10b? ' "$AUDIT_NAMES_RUN" 2>/dev/null | sort -u || true)
   a10b_exp=$(grep -vE '^A10b? ' "$AUDIT_ASSERTIONS_BASELINE" 2>/dev/null | sort -u || true)
   a10b_d=$(comm -3 <(printf '%s\n' "$a10b_cur") <(printf '%s\n' "$a10b_exp") 2>/dev/null | wc -l | tr -d ' ')
