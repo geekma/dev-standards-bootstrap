@@ -3808,12 +3808,12 @@ unverified_req_check() { # <id> — E154: unverified RTVM REQs must be declared 
     status=$(printf '%s' "$row" | awk -F'|' '{for(i=NF;i>=2;i--){gsub(/^[ \t]+|[ \t]+$/,"",$i); if($i!=""){print $i; exit}}}')
     case "$status" in *✅*|*PASS*|*Pass*|*pass*|*已验*|*通过*) ;; *) unverified="${unverified}${unverified:+ }$req" ;; esac
   done
+  # v3.92.2: the contract only bites when something is actually unverified.
+  # All-✅ changes (and fixtures with no REQ rows) have nothing to declare.
+  [[ -n "$unverified" ]] || return 0
   section=$(awk '/^#{3,4}[[:space:]]*未验证 REQ 清单/{f=1;next} f&&/^#{1,4}[[:space:]]/{exit} f{print}' "$log" 2>/dev/null)
   if [[ -z "$section" ]]; then
-    e154="09-changelog.md has no 『未验证 REQ 清单』 section (must list: ${unverified:-无})"
-  elif [[ -z "$unverified" ]]; then
-    grep -qE '^[[:space:]]*-[[:space:]]*无([[:space:]]|$|[（(])' <<< "$section" \
-      || e154="『未验证 REQ 清单』 must say 『无』 when every REQ is verified"
+    e154="09-changelog.md has no 『未验证 REQ 清单』 section (must list: $unverified)"
   else
     for req in $unverified; do
       grep -qF "$req" <<< "$section" || missing="${missing}${missing:+ }$req"
