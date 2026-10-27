@@ -523,6 +523,7 @@ JOBS=1
 AUTO=0
 AUTO_BASE=""
 DUAL_RUN=0
+SHARD=""
 WANTED=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -549,9 +550,15 @@ while [[ $# -gt 0 ]]; do
       # 1 keeps the serial dispatcher, N>=2 enables the section-level pool.
       [[ "${2:-}" =~ ^[1-9][0-9]*$ ]] || { printf 'invalid -j value: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list])\n' "${2:-}" >&2; exit 2; }
       JOBS="$2"; shift 2 ;;
+    --shard)
+      # v3.91.7 (CHG-127): deterministic partition of SECTIONS. On hosts where a
+      # full run is Killed: 9, the honest evidence is N disjoint shards — a
+      # hand-built -T list silently misses sections (T18b was missed in v3.91.6).
+      [[ "${2:-}" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]] || { printf 'invalid --shard value: %s (expected i/N, e.g. 1/6)\n' "${2:-}" >&2; exit 2; }
+      SHARD="$2"; shift 2 ;;
     -l|--list) LIST_ONLY=1; shift ;;
     --dual-run) DUAL_RUN=1; shift ;;
-    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [--dual-run] [-l|--list])\n' "$1" >&2; exit 2 ;;
+    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [--shard i/N] [--dual-run] [-l|--list])\n' "$1" >&2; exit 2 ;;
   esac
 done
 # No -T operand means "all sections". bash 3.2 + set -u forbids expanding an
@@ -6669,9 +6676,19 @@ section_T68() {
   report "T68 interrupt traps exit after releasing" 2 "$(grep -cE "trap 'exit 1(30|43)' (INT|TERM)" "$ROOT/tests/run-tests.sh")"
   mkdir -p "$t68_d/held"; printf '%s\n' "$$" > "$t68_d/held/pid"
   t68_rc=0; AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1 || t68_rc=$?
-  report "T68 filtered run ignores the workspace lock (no deadlock)" 0 "$t68_rc"
+  # v3.91.7 (CHG-127): --shard is a filtered run too (never takes the lock) and
+  # its deterministic partition must still place the SERIAL_CHAIN members together.
+  t68_shard_rc=0; t68_shard=$(AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" --shard 1/6 2>&1) || t68_shard_rc=$?
+  report "T68 filtered/sharded run ignores the workspace lock (no deadlock)" 0 \
+    "$([[ $t68_rc -eq 0 && $t68_shard_rc -eq 0 ]] && printf '%s' "$t68_shard" | grep -q 'T1 T1b.*T5 T22a T16' && echo 0 || echo 1)"
   t68_rc=0; t68_out=$(AGENT_GUARD_SUITE_LOCK_HELD=0 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T "" 2>&1 >/dev/null) || t68_rc=$?
-  report "T68 full run refuses a held lock with rc2" 2 "$t68_rc"
+  # v3.91.7: a host with the kill marker refuses a full run (rc3) and names the
+  # shard escape hatch — the mechanical stop for repeated 10-minute kills.
+  mkdir -p "$t68_d/kill"
+  printf 'Killed: 9 (test marker)\n' > "$t68_d/kill/full-suite-kill.$(hostname -s 2>/dev/null || echo host)"
+  t68_kill_rc=0; t68_kill_out=$(AGENT_GUARD_SUITE_KILL_STATE_DIR="$t68_d/kill" AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/nolock" bash "$ROOT/tests/run-tests.sh" -T "" 2>&1 >/dev/null) || t68_kill_rc=$?
+  report "T68 full run refuses a held lock with rc2" 2 \
+    "$([[ $t68_rc -eq 2 && $t68_kill_rc -eq 3 ]] && printf '%s' "$t68_kill_out" | grep -q -- '--shard' && echo 2 || echo 0)"
   # The rc2 above must come from the LOCK refusal, not from argument parsing:
   # `-T ""` is a full run, and a parser that rejects the empty operand would make
   # this assertion pass for the wrong reason (v3.87.0 R4, review finding #1).
@@ -7821,6 +7838,24 @@ report "T81 TC-1494c BATCH member source edit resolves the batch 04" 0 "$t81_rc"
 # (unknown key dies rc2), then filtered invocation in original order.
 SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83)
 
+# v3.91.7 (CHG-127): --shard i/N — deterministic contiguous partition. Contiguous
+# slices preserve the SERIAL_CHAIN adjacency (T5,T22a,T16 and T50,T51) at N=6,
+# and make shard evidence reproducible without hand-building a 93-key -T list.
+if [[ -n "$SHARD" ]]; then
+  [[ "$AUTO" -eq 1 || ${#WANTED[@]} -gt 0 ]] \
+    && { printf 'invalid option combination: --shard is exclusive with -T/auto\n' >&2; exit 2; }
+  _sh_i="${SHARD%/*}"; _sh_n="${SHARD#*/}"
+  [[ "$_sh_i" -le "$_sh_n" ]] || { printf 'invalid --shard value: %s (i must be <= N)\n' "$SHARD" >&2; exit 2; }
+  _sh_total=${#SECTIONS[@]}
+  _sh_start=$(( (_sh_i - 1) * _sh_total / _sh_n ))
+  _sh_end=$(( _sh_i * _sh_total / _sh_n ))
+  WANTED=("${SECTIONS[@]:_sh_start:_sh_end-_sh_start}")
+  printf 'shard %s/%s: %d sections (%s .. %s)\n' "$_sh_i" "$_sh_n" "${#WANTED[@]}" "${WANTED[0]}" "${WANTED[${#WANTED[@]}-1]}"
+  if [[ "${AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY:-0}" == "1" ]]; then
+    printf 'shard-resolve-only:%s\n' "$(printf ' %s' "${WANTED[@]}")"; exit 0
+  fi
+fi
+
 if [[ "${LIST_ONLY}" == 1 ]]; then printf '%s\n' "${SECTIONS[@]}"; exit 0; fi
 if [[ ${#WANTED[@]} -gt 0 ]]; then
   for _w in "${WANTED[@]}"; do
@@ -7984,6 +8019,18 @@ if [[ ${#WANTED[@]} -eq 0 && "${AGENT_GUARD_SUITE_LOCK_HELD:-0}" != "1" ]]; then
       trap 'exit 143' TERM
       export AGENT_GUARD_SUITE_LOCK_HELD=1
     fi
+  fi
+fi
+# v3.91.7 (CHG-127): per-host kill marker. A host observed to SIGKILL a full run
+# (~10 min, `Killed: 9`) refuses to burn another attempt; the marker lives in the
+# gitignored .agent-state and never ships. Shards or CI are the evidence paths.
+if [[ ${#WANTED[@]} -eq 0 && "${AGENT_GUARD_FULL_SUITE_FORCE:-0}" != "1" ]]; then
+  _ks_dir="${AGENT_GUARD_SUITE_KILL_STATE_DIR:-$ROOT/.agent-state}"
+  _ks_marker="$_ks_dir/full-suite-kill.$(hostname -s 2>/dev/null || echo host)"
+  if [[ -f "$_ks_marker" ]]; then
+    printf 'run-tests: this host is marked full-suite-kill (%s) — refusing another full run.\n' "$(head -1 "$_ks_marker" 2>/dev/null)" >&2
+    printf 'run-tests: use tests/run-tests.sh --shard i/N (N disjoint shards) or let CI run the full suite; force with AGENT_GUARD_FULL_SUITE_FORCE=1.\n' >&2
+    exit 3
   fi
 fi
 # v3.72.0 erratum (CHG-095, DES-1868): replay/re-export anchors — defined ONCE
