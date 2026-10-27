@@ -5,7 +5,7 @@
 # same shape as a repo that uses this skill WITHOUT GitHub / WITHOUT CI.
 #
 # Usage:
-#   tests/fresh-clone-check.sh [--sections "T1,T2"] [--check]
+#   tests/fresh-clone-check.sh [--sections "T1,T2"] [--check] [--ledger-check]
 #     default sections: AGENT_GUARD_FRESH_CLONE_SECTIONS, else the `-T auto` resolution
 #     receipt: .agent-state/fresh-clone-receipt.json (agent-gate E149 consumes it)
 #   --check : validate the existing receipt only (no run)
@@ -14,6 +14,7 @@ ROOT_DEFAULT=$(cd "$(dirname "$0")/.." && pwd)
 opt_root=""
 sections="${AGENT_GUARD_FRESH_CLONE_SECTIONS:-}"
 check_only=0
+ledger_check=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --sections)
@@ -23,12 +24,28 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "fresh-clone-check: --root needs a value" >&2; exit 2; }
       opt_root="$2"; shift 2 ;;
     --check) check_only=1; shift ;;
+    --ledger-check) ledger_check=1; shift ;;
     -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "fresh-clone-check: unknown option '$1' (supported: --sections --root --check)" >&2; exit 2 ;;
   esac
 done
 ROOT="${opt_root:-$ROOT_DEFAULT}"
 RECEIPT="${AGENT_GUARD_FRESH_CLONE_RECEIPT:-$ROOT/.agent-state/fresh-clone-receipt.json}"
+# v3.92.1 (CHG-128 batch 2): receipt history — repeated full-chain verification is
+# the costliest waste we have observed. Every generation appends one row; a second
+# receipt for the SAME change without a recorded reason is announced (never blocks).
+HISTORY="${AGENT_GUARD_FRESH_CLONE_HISTORY:-$ROOT/.agent-state/fresh-clone-history.tsv}"
+CHANGE=$(tr -d '[:space:]' < "$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null)" 2>/dev/null || true)
+CHANGE_LOG=""
+[[ -n "$CHANGE" ]] && CHANGE_LOG=$(ls -d "$ROOT/docs/changes/$CHANGE" 2>/dev/null | head -1)
+
+ledger_dupes() { # -> count of prior receipts for the same change
+  [[ -n "$CHANGE" && -f "$HISTORY" ]] || { echo 0; return 0; }
+  awk -F'\t' -v c="$CHANGE" '$2 == c' "$HISTORY" 2>/dev/null | wc -l | tr -d ' '
+}
+ledger_reason_present() {
+  [[ -n "$CHANGE_LOG" ]] && grep -q '^- fresh-clone re-run:' "$CHANGE_LOG/09-changelog.md" 2>/dev/null
+}
 
 if [[ "$check_only" -eq 1 ]]; then
   [[ -s "$RECEIPT" ]] || { echo "fresh-clone-check: no receipt at $RECEIPT — run without --check" >&2; exit 1; }
@@ -43,6 +60,16 @@ if [[ "$check_only" -eq 1 ]]; then
     exit 1
   fi
   echo "fresh-clone-check: receipt green for $head (tree $rt)"
+  exit 0
+fi
+
+if [[ "$ledger_check" -eq 1 ]]; then
+  n=$(ledger_dupes)
+  if [[ "$n" -ge 2 ]] && ! ledger_reason_present; then
+    echo "fresh-clone-check: WARN — ${CHANGE:-<no active change>} has $n receipts and no '- fresh-clone re-run: <reason>' line in 09 (G-ENV discipline: generate once at close-out; record a reason when re-running)" >&2
+    exit 1
+  fi
+  echo "fresh-clone-check: ledger clean for ${CHANGE:-<no active change>} ($n prior receipts)"
   exit 0
 fi
 
@@ -61,6 +88,8 @@ esac
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/fresh-clone.XXXXXX") || { echo "fresh-clone-check: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$tmp"' EXIT INT TERM
+start_s=$(date +%s)
+prior=$(ledger_dupes)
 # v3.92.0: copy the TRACKED working tree (not `git archive HEAD`) so the check
 # covers the pending change before it is committed — same set a clone gets after
 # the commit lands. Untracked files stay out (they never reach a clone / CI).
@@ -97,4 +126,12 @@ printf '{"head":"%s","archive_sha":"%s","tree_sha":"%s","audit_rc":%s,"audit_pas
   > "$RECEIPT"
 
 echo "fresh-clone-check: audit ${audit_pass}/${audit_fail} rc=$audit_rc · suite ${passed}/${failed} rc=$suite_rc · sections=$sections"
+# v3.92.1: one ledger row per generation; repeated use is announced, never blocked.
+wall_s=$(( $(date +%s) - start_s ))
+rc=0; [[ "$audit_rc" -eq 0 && "$suite_rc" -eq 0 ]] || rc=1
+mkdir -p "$(dirname "$HISTORY")" 2>/dev/null || true
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$now" "${CHANGE:-<none>}" "$head" "$tree_sha" "$sections" "$wall_s" "$rc" >> "$HISTORY" 2>/dev/null || true
+if [[ "$prior" -ge 1 ]] && ! ledger_reason_present; then
+  echo "fresh-clone-check: WARN — ${CHANGE:-<no active change>} already has $prior receipt(s); repeated full-chain verification is the costliest waste — record '- fresh-clone re-run: <reason>' in 09「重要上下文」, or generate once at close-out (AGENTS 纪律 7)" >&2
+fi
 [[ "$audit_rc" -eq 0 && "$suite_rc" -eq 0 ]]

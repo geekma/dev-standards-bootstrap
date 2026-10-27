@@ -6449,6 +6449,10 @@ section_T64() {
 
 section_T65() {
 # ------------------------------------------------ T65 preflight 交付形状探针 + verify 睡眠防护 + 遥测失联兜底（v3.82.0，CHG-109/REQ-1160）
+# v3.92.1: this section asserts the caffeinate WRAPPER itself, so an ambient
+# AGENT_GUARD_CAFFEINATE=0 (used on hosts where the real binary aborts) must not
+# suppress it — the fixture stub is the thing under test.
+unset AGENT_GUARD_CAFFEINATE
 # TC↔REQ 映射：TC-1411→REQ-1160（preflight 收齐 stop 侧交付形状锚、零副作用），
 # TC-1412→REQ-1160（verify 通道 caffeinate 包裹），TC-1413→REQ-1160（begin 遥测失联黄灯）。
 # 实证驱动：目标会话 5 轮格式返工 ×16min verify（4 轮可避免）——形状反馈必须秒级；
@@ -6518,7 +6522,9 @@ rm -f .agent-state/t65-ran .agent-state/t65-caf-calls
 mkdir -p src && echo y > src/t65.js
 t65_stop_out=$(PATH="$PWD/.oc-t65bin:$PATH" AGENT_GUARD_VERIFY_COMMAND='touch .agent-state/t65-ran' scripts/agent-gate --stage stop 2>&1)
 report "T65 TC-1412 verify runs wrapped via caffeinate stub" 1 "$([[ -e .agent-state/t65-ran ]] && echo 1 || echo 0)"
-report "T65 TC-1412 stub call log carries -dims (wrap proof)" 1 "$(grep -c -- '-dims' .agent-state/t65-caf-calls 2>/dev/null || printf 0)"
+# v3.92.1: the probe (`caffeinate -dims true`) adds one call before the wrapped
+# verify, so the proof is "at least one -dims call", not an exact count.
+report "T65 TC-1412 stub call log carries -dims (wrap proof)" 1 "$([[ "$(grep -c -- '-dims' .agent-state/t65-caf-calls 2>/dev/null || printf 0)" -ge 1 ]] && echo 1 || echo 0)"
 rm -rf .oc-t65bin .agent-state/t65-caf-calls
 # TC-1413：begin 遥测失联黄灯（软）——water 新鲜 + stats 缺失 → 黄灯；stats 新鲜 → 静默。
 # 新 id 走完整 begin（E86 已由夹具豁免放行；E72 不触发——八件套无 09）。
@@ -7973,6 +7979,15 @@ printf '{"head":"%s","tree_sha":"deadbeef","audit_rc":0,"suite_rc":0}\n' "$(git 
 out=$(bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --check 2>&1); report "T84 fresh-clone --check rejects a stale receipt" 1 "$?"
 out=$(bash "$ROOT/tests/fresh-clone-check.sh" --sections FULL 2>&1); report "T84 fresh-clone refuses an auto-resolved FULL" 2 "$?"
 check_output "T84 fresh-clone FULL refusal points at sections" 'full runs belong to CI' "$out"
+
+# ⑭ 收据台账（v3.92.1）：同变更多次生成且无理由 → WARN；登记理由 → 干净
+printf '%s\tCHG-1200\thead1\tt1\tT1\t1\t0\n%s\tCHG-1200\thead2\tt2\tT1\t1\t0\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/fresh-clone-history.tsv
+out=$(AGENT_GUARD_FRESH_CLONE_HISTORY="$PWD/.agent-state/fresh-clone-history.tsv" bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --ledger-check 2>&1); t84_rc=$?
+report "T84 ledger warns on repeated receipts without a reason" 1 "$t84_rc"
+check_output "T84 ledger points at the reason line" 'fresh-clone re-run' "$out"
+printf -- '- fresh-clone re-run: verified after the T50 tail fix\n' >> docs/changes/CHG-1200/09-changelog.md
+out=$(AGENT_GUARD_FRESH_CLONE_HISTORY="$PWD/.agent-state/fresh-clone-history.tsv" bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --ledger-check 2>&1); report "T84 ledger accepts a recorded reason" 0 "$?"
 }
 
 SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84)

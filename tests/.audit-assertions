@@ -414,7 +414,7 @@ A48 rescore workflow push paths list nine installed anchors (CHG-102)
 A48 run-tests honors the receipt path override (CHG-113)
 A48 SKILL never names a shipped script with a .sh suffix (CHG-102)
 A48 source dogfood entry ships and parses (CHG-113)
-A48 standards body ratchet (CHG-107; recalibrated v3.92.0 CHG-128 +1.5KiB for the five delivery gates)
+A48 standards body ratchet (CHG-107; recalibrated v3.92.1 CHG-128 +timing/caffeinate clauses)
 A48 suite usage line exposes -j (CHG-103)
 A48 suite-lock lib sources cleanly
 A48 update-assertion-count honors the receipt path override (CHG-113)
@@ -516,6 +516,7 @@ A58c DS documents the environment gate
 A58d AGENTS documents the fresh-clone/CI equivalence
 A58e pre-push carries the G-FEED hint
 A58f CHANGELOG carries the v3.92.0 row
+A58g fresh-clone history ledger is declared
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06-delivery-summary.md
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06.5-deployment-config.md
 A6a repo bugfix-log has real BUG entries (docs-dependent)

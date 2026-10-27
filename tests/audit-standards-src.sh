@@ -1488,7 +1488,7 @@ at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/sc
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body ratchet (CHG-107; recalibrated v3.92.0 CHG-128 +1.5KiB for the five delivery gates)" 1 "$([[ "$std_bytes" -le 170500 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; recalibrated v3.92.1 CHG-128 +timing/caffeinate clauses)" 1 "$([[ "$std_bytes" -le 170700 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -1538,7 +1538,7 @@ at_least "A52 preflight wires the back shape face (CHG-109)" 1 "$GATE_TPL" 'p_ru
 at_least "A52 round-ledger write documented stop-lane-only (CHG-109)" 1 "$GATE_TPL" 'round-ledger write stays'
 at_least "A52 preflight usage discloses the widened face (CHG-109)" 1 "$GATE_TPL" 'v3.82.0 adds the delivery shape face'
 at_least "A52 verify channel wraps in caffeinate when available (CHG-109)" 1 "$GATE_TPL" 'caffeinate -dims bash -lc'
-at_least "A52 darwin missing-caffeinate warning stays loud (CHG-109)" 1 "$GATE_TPL" 'WARNING: caffeinate not found'
+at_least "A52 darwin missing-caffeinate warning stays loud (CHG-109)" 1 "$GATE_TPL" 'WARNING: caffeinate unavailable or disabled'
 at_least "A52 begin carries the telemetry-liveness backstop (CHG-109)" 2 "$GATE_TPL" 'YELLOW liveness'
 at_least "A52 hook adapter carries the post-wiring self-proof (CHG-109)" 2 "$ROOT/resources/templates/install-hook-adapter.sh" 'self-proof'
 at_least "A52 AGENTS entry step discloses the widened probe (CHG-109)" 1 "$AGENTS" 'v3.82.0 起并收 stop 侧交付形状面'
@@ -1907,6 +1907,7 @@ report "A58c DS documents the environment gate" 1 "$(grep -cE 'fresh-clone|环�
 report "A58d AGENTS documents the fresh-clone/CI equivalence" 1 "$(grep -c 'fresh clone / 无 CI 仓必须全绿' "$AGENTS" 2>/dev/null || true)"
 report "A58e pre-push carries the G-FEED hint" 1 "$(grep -c 'G-FEED tip' "$ROOT/resources/templates/pre-push" 2>/dev/null || true)"
 report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(grep -c '| v3.92.0 |' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true)"
+report "A58g fresh-clone history ledger is declared" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-history.tsv' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
 
 # ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
 # 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`
