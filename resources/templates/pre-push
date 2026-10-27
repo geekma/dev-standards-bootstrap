@@ -6,4 +6,9 @@ set -euo pipefail
 # with the change it justifies. Without an upstream, the gate degrades to an
 # empty diff (no-op) instead of blocking the very first push.
 base="$(git rev-parse -q --verify '@{upstream}' 2>/dev/null || echo HEAD)"
+# v3.91.7 (CHG-127): shift hygiene before the branch gate. Pre-commit only WARNS
+# (T55 TC-1257), so without this line a push can bypass the handoff requirement
+# entirely. `--stage shift` is cheap (no suite) and fails open when no change was
+# delivered in this session.
+scripts/agent-gate --stage shift
 scripts/agent-gate --stage ci --base "$base"

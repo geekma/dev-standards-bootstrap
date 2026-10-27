@@ -5246,8 +5246,15 @@ printf '{"delivered_at":"%s","change":"CHG-1072","stage":"stop","session":""}\n'
 cp "$ROOT/scripts/stamp-provenance.sh" scripts/stamp-provenance.sh
 out=$(bash "$ROOT/resources/templates/pre-commit" 2>&1 || true)
 check_output "T55 TC-1257 pre-commit emits the SHIFT REMINDER" "SHIFT REMINDER" "$out"
-bash "$ROOT/resources/templates/pre-commit" >/dev/null 2>&1
-report "T55 TC-1257 pre-commit reminder does not block the commit (rc=0)" 0 $?
+pre_rc=0; bash "$ROOT/resources/templates/pre-commit" >/dev/null 2>&1 || pre_rc=$?
+# v3.91.7 (CHG-127): pre-commit stays warning-only, but `--stage shift` (called
+# by pre-push) must hard-fail E112 without handoff and pass once it lands.
+printf '{"started_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-started.json
+shift_rc=0; AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate --stage shift >/dev/null 2>&1 || shift_rc=$?
+printf '# handoff\n' > docs/changes/CHG-1072/handoff.md
+shift_ok=0; AGENT_GUARD_ALLOW_NO_SHIFT=0 scripts/agent-gate --stage shift >/dev/null 2>&1 || shift_ok=$?
+report "T55 TC-1257 pre-commit reminder does not block (rc=0); shift gate red→green" 0 \
+  "$([[ $pre_rc -eq 0 && $shift_rc -eq 2 && $shift_ok -eq 0 ]] && echo 0 || echo 1)"
 # ④b CHG-093（v3.71.0 erratum，REQ-1093/1094）：E111 扫描面收敛活跃变更 + 非法 smoke_paths ERE 拦截
 new_repo
 seed_begin CHG-1080 L1 claude/s-1
@@ -5322,7 +5329,8 @@ report "T55 TC-1258 DS carries the config-observability clause" 1 "$(grep -c '�
 report "T55 TC-1258 playbook carries the four-gate detail" 1 "$(grep -c '交付四门细则' "$ROOT/resources/STAGE_PLAYBOOK.md")"
 report "T55 TC-1258 playbook carries the no-parallel red line" 1 "$(grep -c '禁并行集成测试' "$ROOT/resources/STAGE_PLAYBOOK.md")"
 report "T55 TC-1258 AGENTS carries the no-parallel discipline" 1 "$(grep -c '禁并行集成测试' "$ROOT/resources/AGENTS.md")"
-report "T55 TC-1258 pre-commit carries the shift reminder" 1 "$(grep -c 'SHIFT REMINDER' "$ROOT/resources/templates/pre-commit")"
+report "T55 TC-1258 pre-commit carries the reminder and pre-push the shift gate" 1 \
+  "$([[ $(grep -c 'SHIFT REMINDER' "$ROOT/resources/templates/pre-commit") -ge 1 && $(grep -c -- '--stage shift' "$ROOT/resources/templates/pre-push") -ge 1 ]] && echo 1 || echo 0)"
 report "T55 TC-1258 04 entry template carries the landing section" 1 "$(grep -c 'TC 落点清单' "$ROOT/resources/templates/entry/04-test-scripts.md")"
 report "T55 TC-1258 governance yml carries the smoke key" 1 "$(grep -c 'smoke_command:' "$ROOT/resources/templates/agent-governance.yml")"
 report "T55 TC-1258 registry indexes the four new codes" 4 "$(grep -cE 'GATE-E11[0-3] \|' "$ROOT/resources/CLAUSE_REGISTRY.md")"

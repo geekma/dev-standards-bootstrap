@@ -1054,6 +1054,27 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
 # demo-script replay evidence (E103), per-UJ runtime evidence (E104), review
 # journey evidence (E107), waiver transitivity (E108). Prints upstream-error
 # counters on success (all-zero is a danger signal — playbook stage 8).
+# v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — closes the GATE-E89
+# blind spot (E89 fires only at begin; same-change long sessions never re-run
+# begin). v3.91.7 (CHG-127): extracted into a single function so `--stage shift`
+# (pre-push) reuses the SAME die site — push no longer bypasses handoff.
+shift_gate_check() { # <change-id> — E112 single die site
+  local id="$1" d lastd lc l_started l_delivered
+  d=$(change_dir "$id")
+  lastd="$repo_root/.agent-state/last-delivery.json"
+  [[ -s "$lastd" && ! -s "$d/handoff.md" ]] || return 0
+  grep -qE '^[[:space:]]*-[[:space:]]*\*\*换挡声明\*\*(：|:).+' "$d/09-changelog.md" 2>/dev/null && return 0
+  [[ "${AGENT_GUARD_ALLOW_NO_SHIFT:-}" == "1" ]] && return 0
+  [[ -s "$repo_root/.agent-state/session-started.json" ]] || return 0
+  lc=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+  [[ "$lc" == "$id" ]] || return 0
+  l_started=$(sed -n 's/.*"started_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1)
+  l_delivered=$(sed -n 's/.*"delivered_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+  [[ -n "$l_started" && -n "$l_delivered" ]] || return 0
+  [[ "$l_delivered" > "$l_started" ]] || return 0
+  die "GATE-E112: change $id was delivered earlier in this session but has neither handoff.md nor a 09 「换挡声明」 line — shift the session (write handoff), record the declaration, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification in 09 (standards §2.9.6, v3.71.0)"
+}
+
 validate_dimensional_stop() { # <change-dir>
   local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row bhv="" n_bhv="" n_wv=""
   [[ -s "$spec" ]] || return 0
@@ -1132,30 +1153,12 @@ EOF
     [[ -z "$e110" ]] \
       || die "GATE-E110: $e110 (standards §2.5 stage 7, v3.71.0)"
   fi
-  # v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — closes the GATE-E89
-  # blind spot (E89 fires only at begin; same-change long sessions never re-run
-  # begin). A re-delivery of a change already delivered IN THIS SESSION, without
-  # handoff evidence, is blocked: write docs/changes/<id>/handoff.md, or record
-  # - **换挡声明**：未到换挡点（<理由>） in 09, or escape via
-  # AGENT_GUARD_ALLOW_NO_SHIFT=1 (same key as E89; the discipline layer still
-  # owes the 09 registration). First delivery passes: record_delivery writes
-  # the marker AFTER validate_stop, and stale/absent markers fail open (E89
-  # semantics).
-  local lastd lc l_started l_delivered
-  lastd="$repo_root/.agent-state/last-delivery.json"
-  if [[ -s "$lastd" && ! -s "$d/handoff.md" ]] \
-     && ! grep -qE '^[[:space:]]*-[[:space:]]*\*\*换挡声明\*\*(：|:).+' "$d/09-changelog.md" 2>/dev/null \
-     && [[ "${AGENT_GUARD_ALLOW_NO_SHIFT:-}" != "1" ]] \
-     && [[ -s "$repo_root/.agent-state/session-started.json" ]]; then
-    lc=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
-    if [[ "$lc" == "$id" ]]; then
-      l_started=$(sed -n 's/.*"started_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1)
-      l_delivered=$(sed -n 's/.*"delivered_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
-      if [[ -n "$l_started" && -n "$l_delivered" ]] && [[ "$l_delivered" > "$l_started" ]]; then
-        die "GATE-E112: change $id was delivered earlier in this session but has neither handoff.md nor a 09 「换挡声明」 line — shift the session (write handoff), record the declaration, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification in 09 (standards §2.9.6, v3.71.0)"
-      fi
-    fi
-  fi
+  # v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — extracted to
+  # shift_gate_check so `--stage shift` (pre-push) shares the same E112 die site.
+  local _sg_id
+  _sg_id=$(active_change_quiet)
+  [[ -n "$_sg_id" ]] || _sg_id=$(basename "$d")
+  shift_gate_check "$_sg_id"
   # v3.71.0 (CHG-046, REQ-1091): TC-landing gate — blocks "test planning posing
   # as tests" (external-project retro: 04 promised ~25 test files, zero materialized).
   # v3.89.0 (CHG-117, DES-1960): the row-level scan moved into tc_landing_check
@@ -4008,7 +4011,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.7" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.91.8" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4054,7 +4057,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.7","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.91.8","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -4965,6 +4968,19 @@ case "$command" in
       # check-mode predicates).
       spec|design|testplan)
         stage_gate_check "$stage" ;;
+      shift)
+        # v3.91.7 (CHG-127): cheap pre-push handoff gate. Pre-commit deliberately
+        # only WARNS (T55 TC-1257), so without this branch a push can bypass E112
+        # entirely (no pre-push hook in the source repo). No suite, no delivery
+        # shape: shift hygiene only.
+        sh_id=$(active_change_quiet)
+        [[ -n "$sh_id" ]] || sh_id=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/last-delivery.json" 2>/dev/null | head -1)
+        if [[ -z "$sh_id" ]]; then
+          echo "agent-gate: shift gate skipped (no delivered change)"
+        else
+          shift_gate_check "$sh_id"
+          echo "agent-gate: shift gate green ($sh_id)"
+        fi ;;
       close)
         # v3.90.5: `--stage close <N>` closes a numbered stage; a non-numeric
         # argument keeps the historical meaning (explicit change id).
@@ -5003,6 +5019,7 @@ Usage:
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
+  scripts/agent-gate --stage shift               # v3.91.7: pre-push handoff gate (E112, no suite)
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop               # v3.83.0: successful-verify receipt cache (key = version+cmd+tree-fingerprint+change-id, TTL 30min, rc=0 only; repos whose tests read external mutable state set AGENT_GUARD_VERIFY_CACHE=0)
   scripts/agent-gate --stage ci [--base ref]
