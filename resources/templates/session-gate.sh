@@ -278,6 +278,10 @@ sg_cost_line() { # one human-readable cost line for status/idle (never fails)
   tin=$(stat_get tokens_in); tout=$(stat_get tokens_out); wall=$(sg_wall_s)
   local esrc pct_show lvl_show
   esrc="${SG_EXEC_SRC_SHOWN:-$(stat_get_s exec_source)}"
+  # v3.91.2 erratum: a legacy stats file may still say `estimated` while carrying
+  # zero tokens and zero context characters — that is "unmeasurable", not an
+  # estimate. Trust the live facts, not the stored label.
+  if [[ "$esrc" == "estimated" && "${used:-0}" -eq 0 ]]; then esrc="unavailable"; fi
   pct_show="${pct}%"; lvl_show="$lvl"
   # v3.91.2: no fabricated "estimated" numbers — say it is unmeasurable.
   if [[ "$esrc" == "unavailable" ]]; then pct_show="不可测"; lvl_show="unavailable（H 级别待模型/用量可测后再算）"; fi

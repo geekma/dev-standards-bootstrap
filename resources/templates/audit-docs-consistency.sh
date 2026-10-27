@@ -933,7 +933,12 @@ if mkdir -p "$(dirname "$_lg")" 2>/dev/null; then
   _ln=$(wc -l < "$_lg" 2>/dev/null | tr -d ' ')
   case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac
   if [[ "$_ln" -gt 501 ]]; then
-    awk 'NR==1 {print; next} {a[NR]=$0} END {s=NR-499; if (s<2) s=2; for (i=s; i<=NR; i++) print a[i]}' \
+    # v3.91.2 erratum: never prune `run-full` rows — they are the whole-run cost
+    # baseline that `plan` consumes.
+    awk 'NR==1 {print; next}
+         $2=="run-full" {rf[++n]=$0; next}
+         {a[++m]=$0}
+         END { for (i=1;i<=n;i++) print rf[i]; s=(m>500?m-499:1); for (i=s;i<=m;i++) print a[i] }' \
       "$_lg" > "$_lg.rot" 2>/dev/null && mv -f "$_lg.rot" "$_lg" 2>/dev/null || rm -f "$_lg.rot" 2>/dev/null
   fi
 fi

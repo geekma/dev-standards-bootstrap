@@ -130,7 +130,13 @@ ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [out
   _ln=$(wc -l < "$LEDGER_FILE" 2>/dev/null | tr -d ' ')
   case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac
   if [[ "$_ln" -gt 501 ]]; then
-    awk 'NR==1 {print; next} {a[NR]=$0} END {s=NR-499; if (s<2) s=2; for (i=s; i<=NR; i++) print a[i]}' \
+    # v3.91.2 erratum: keep every `run-full` row. Pruning them silently erased
+    # the whole-run p50 (plan fell back to the 300 s prior) — the retention rule
+    # must never destroy the cost-learning baseline.
+    awk 'NR==1 {print; next}
+         $2=="run-full" {rf[++n]=$0; next}
+         {a[++m]=$0}
+         END { for (i=1;i<=n;i++) print rf[i]; s=(m>500?m-499:1); for (i=s;i<=m;i++) print a[i] }' \
       "$LEDGER_FILE" > "$LEDGER_FILE.rot" 2>/dev/null && mv -f "$LEDGER_FILE.rot" "$LEDGER_FILE" 2>/dev/null || rm -f "$LEDGER_FILE.rot" 2>/dev/null
   fi
 }

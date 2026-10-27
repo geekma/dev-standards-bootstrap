@@ -3632,7 +3632,11 @@ plan_mark_accepted() { # <id> <yes|no|gap>
 
 coverage_gap_check() { # <change-id> <change-dir> <chosen>
   local cid="$1" cdir="$2" chosen="$3" diffs="" sec f05
-  [[ "$chosen" == "FULL" || -z "$chosen" ]] && return 0
+  # v3.91.2 erratum: a FULL decision is adopted by definition (there is no
+  # narrower set to compare against). Without this, `accepted` stayed "-" for
+  # every full run and the adoption metric could never be computed.
+  if [[ "$chosen" == "FULL" ]]; then plan_mark_accepted "$cid" yes; return 0; fi
+  [[ -z "$chosen" ]] && return 0
   f05="$cdir/05-test-results.md"
   [[ -s "$f05" ]] || return 0
   for sec in $(printf '%s' "$chosen" | tr ',' ' '); do
@@ -3889,7 +3893,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.2" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.91.3" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -3935,7 +3939,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.2","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.91.3","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
