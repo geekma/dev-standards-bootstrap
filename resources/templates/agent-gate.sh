@@ -3183,7 +3183,9 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   fi
   [[ -n "$secs" ]] && [[ "$src" != "prior" ]] || true
   [[ -n "$secs" ]] || src="no-map"
-  rate=$(plan_resolution_rate "$d")
+  # v3.91.6: resolution rate is informational; for a FULL decision it cannot
+  # change the outcome, so the expensive three-source scan is skipped (N4 <=1 s).
+  rate=""
   local judgment="engine" j_reviewer="" j_basis=""
   if [[ -n "${AGENT_GUARD_SUITE_AI_SECTIONS:-}" && -n "${AGENT_GUARD_SUITE_AI_BASIS:-}" \
         && -n "${AGENT_GUARD_SUITE_AI_REVIEWER:-}" ]]; then
@@ -3256,6 +3258,7 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
     done <<< "$ranked"
   fi
   if [[ -n "$deferred" ]]; then deferred="[$deferred]"; else deferred="[]"; fi
+  if [[ "$secs" == "FULL" ]]; then rate="skipped(full)"; else rate=$(plan_resolution_rate "$d"); fi
   diffh=$(plan_diff_hash)
   [[ -n "$diffh" ]] || diffh="unavailable"
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
