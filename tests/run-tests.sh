@@ -3741,7 +3741,10 @@ fi
 }
 section_T37() {
 # ------------------------------------------------ T37 L0 最小集三态（v3.44.0，REQ-962）
-if [[ -x scripts/agent-gate ]]; then
+# v3.91.9 (CHG-127): resolve through GATE_SRC (templates), not the untracked
+# installed copy — a fresh checkout skipped this whole block (7 assertions),
+# which made the CI run 1552 vs the committed 1559 baseline.
+if [[ -s "$GATE_SRC" ]]; then
   t37_stamp() { for pf in docs/changes/$1/*.md; do
     { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "$pf"; } > "$pf.tmp" && mv "$pf.tmp" "$pf"; done; }
   t37_fill() { # id -> declaration-only 04.5/05 + minimal delivery set
