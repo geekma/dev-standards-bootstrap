@@ -7988,6 +7988,17 @@ report "T84 ledger warns on repeated receipts without a reason" 1 "$t84_rc"
 check_output "T84 ledger points at the reason line" 'fresh-clone re-run' "$out"
 printf -- '- fresh-clone re-run: verified after the T50 tail fix\n' >> docs/changes/CHG-1200/09-changelog.md
 out=$(AGENT_GUARD_FRESH_CLONE_HISTORY="$PWD/.agent-state/fresh-clone-history.tsv" bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --ledger-check 2>&1); report "T84 ledger accepts a recorded reason" 0 "$?"
+
+# ⑮ E154 未验证 REQ 清单（v3.92.2）：⬜ REQ 必须被 09 逐条声明，否则拒
+printf '# spec\n- REQ-001: x\n- REQ-002: y\n' > docs/changes/CHG-1200/01-spec.md
+printf '# RTVM\n| REQ | 简述 | DES | 方案 | TASK | CHG | TC | 方法 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n| REQ-001 | x | DES-001 | d | T-001 | c | TC-001 | m | ✅ PASS |\n| REQ-002 | y | DES-002 | d | T-002 | c | TC-002 | m | ⬜ |\n' > docs/changes/CHG-1200/01.5-rtvm-matrix.md
+out=$(scripts/agent-gate --stage rtvm 2>&1); report "T84 E154 missing 未验证 REQ 清单 is refused" 2 "$?"
+check_output "T84 E154 names the code" 'GATE-E154' "$out"
+printf '\n#### 未验证 REQ 清单\n- 无\n' >> docs/changes/CHG-1200/09-changelog.md
+out=$(scripts/agent-gate --stage rtvm 2>&1)
+check_output "T84 E154 undeclared unverified REQ is refused" 'GATE-E154' "$out"
+printf -- '- REQ-002：本期仅落 action 字段；样本/六类枚举/溯源待到 FU-128-1\n' >> docs/changes/CHG-1200/09-changelog.md
+out=$(scripts/agent-gate --stage rtvm 2>&1); report "T84 E154 declared unverified REQ passes" 0 "$?"
 }
 
 SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84)

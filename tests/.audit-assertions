@@ -414,7 +414,7 @@ A48 rescore workflow push paths list nine installed anchors (CHG-102)
 A48 run-tests honors the receipt path override (CHG-113)
 A48 SKILL never names a shipped script with a .sh suffix (CHG-102)
 A48 source dogfood entry ships and parses (CHG-113)
-A48 standards body ratchet (CHG-107; recalibrated v3.92.1 CHG-128 +timing/caffeinate clauses)
+A48 standards body ratchet (CHG-107; recalibrated v3.92.2 CHG-128 +unverified-REQ clause)
 A48 suite usage line exposes -j (CHG-103)
 A48 suite-lock lib sources cleanly
 A48 update-assertion-count honors the receipt path override (CHG-113)
@@ -482,7 +482,7 @@ A54 AGENTS states the never-read-full rule (CHG-113)
 A54 README en states 15 rules (CHG-113)
 A54 README zh states 15 rules (CHG-113)
 A54b README source-audit counts match the baseline (CHG-113)
-A55 DS section4 and entry/09 carry the fourteen canonical section headings (CHG-114)
+A55 DS section4 and entry/09 carry the fifteen canonical section headings (CHG-114)
 A55 DS section4 carries no inline changelog template copy (CHG-114)
 A55 DS section4 extraction non-empty (CHG-114)
 A55 DS section4 names entry/09-changelog.md as the sole shape authority (CHG-114)
@@ -517,6 +517,7 @@ A58d AGENTS documents the fresh-clone/CI equivalence
 A58e pre-push carries the G-FEED hint
 A58f CHANGELOG carries the v3.92.0 row
 A58g fresh-clone history ledger is declared
+A58h unverified-REQ declaration face is shipped
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06-delivery-summary.md
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06.5-deployment-config.md
 A6a repo bugfix-log has real BUG entries (docs-dependent)

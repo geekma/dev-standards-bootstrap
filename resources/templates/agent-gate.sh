@@ -3319,7 +3319,7 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   # scope is only valid with the user's recorded choice; empty is explicit.
   local scope
   scope=$(printf '%s' "${AGENT_GUARD_SCOPE_CONFIRM:-}" | tr -d '\n\r"')
-  # v3.92.1 (CHG-128, REQ-1281): change-scope budget is a FACT in the decision —
+  # v3.92.2 (CHG-128, REQ-1281): change-scope budget is a FACT in the decision —
   # the gate never decides for the user; it only makes overrun visible so the
   # user-confirmation contract can be enforced at consumption time (E152).
   local sc_batches sc_core sc_over sc_verdict sb st
@@ -3726,7 +3726,7 @@ plan_decision_value() { # <d> <key>
     "$d/00-governance.json" 2>/dev/null | head -1
 }
 
-# ── v3.92.1 (CHG-128): 四道交付门（环境/证据/独立/范围）──────────────────────
+# ── v3.92.2 (CHG-128): 四道交付门（环境/证据/独立/范围）──────────────────────
 # 判定与证据分离：本文件只**验证据**，不执行测试（执行归 tests/fresh-clone-check.sh）。
 # 被测核心路径可由 AGENT_GUARD_CORE_PATHS 覆盖（目标仓可声明自己的核心面）。
 gate_core_paths() {
@@ -3795,6 +3795,39 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
     fi
   fi
 }
+unverified_req_check() { # <id> — E154: unverified RTVM REQs must be declared in 09 (no silent downgrade)
+  local id="$1" d spec rtvm log req row status unverified="" missing="" section e154=""
+  d=$(change_dir "$id" 2>/dev/null) || return 0
+  [[ -d "$d" ]] || return 0
+  spec="$d/01-spec.md"; rtvm="$d/01.5-rtvm-matrix.md"; log="$d/09-changelog.md"
+  [[ -f "$spec" && -f "$rtvm" && -f "$log" ]] || return 0
+  for req in $(grep -oE 'REQ-[0-9]+' "$spec" | sort -u); do
+    row=$(grep -E "^\|[[:space:]]*$req[[:space:]]*\|" "$rtvm" | head -1)
+    [[ -n "$row" ]] || continue
+    # Verification state = LAST non-empty column (the template's 验证状态 column).
+    status=$(printf '%s' "$row" | awk -F'|' '{for(i=NF;i>=2;i--){gsub(/^[ \t]+|[ \t]+$/,"",$i); if($i!=""){print $i; exit}}}')
+    case "$status" in *✅*|*PASS*|*Pass*|*pass*|*已验*|*通过*) ;; *) unverified="${unverified}${unverified:+ }$req" ;; esac
+  done
+  section=$(awk '/^#{3,4}[[:space:]]*未验证 REQ 清单/{f=1;next} f&&/^#{1,4}[[:space:]]/{exit} f{print}' "$log" 2>/dev/null)
+  if [[ -z "$section" ]]; then
+    e154="09-changelog.md has no 『未验证 REQ 清单』 section (must list: ${unverified:-无})"
+  elif [[ -z "$unverified" ]]; then
+    grep -qE '^[[:space:]]*-[[:space:]]*无([[:space:]]|$|[（(])' <<< "$section" \
+      || e154="『未验证 REQ 清单』 must say 『无』 when every REQ is verified"
+  else
+    for req in $unverified; do
+      grep -qF "$req" <<< "$section" || missing="${missing}${missing:+ }$req"
+    done
+    [[ -z "$missing" ]] || e154="unverified REQ(s) not declared: $missing"
+  fi
+  [[ -n "$e154" ]] || return 0
+  if [[ "${AGENT_GUARD_RTVM_UNVERIFIED:-1}" != "1" ]]; then
+    echo "agent-gate: WARN — $id $e154 (AGENT_GUARD_RTVM_UNVERIFIED=0; record the reason in 09「重要上下文」)" >&2
+    return 0
+  fi
+  die "GATE-E154: $id $e154 — expected: every REQ whose 01.5 验证状态 is not ✅ listed in 09 (write 『无』 when none); allowed: AGENT_GUARD_RTVM_UNVERIFIED=0 with the reason recorded in 09「重要上下文」; fix: add/fix the 『未验证 REQ 清单』 section; ref: CHG-128 REQ-1284"
+}
+
 scope_overrun_check() { # <id> — E152 (over-budget scope without the user's recorded choice)
   local id="$1" d verdict
   d=$(change_dir "$id" 2>/dev/null) || return 0
@@ -3919,7 +3952,7 @@ plan_consume_check() { # <id>
       && die "GATE-E148: $id $e148 — expected: chosen=FULL, or an AI judgment WITH user confirmation (AGENT_GUARD_SUITE_AI_* + AGENT_GUARD_SCOPE_CONFIRM); allowed: re-plan after the user chooses (adopt/up/down) or run FULL; fix: ask the user, then re-plan and run the chosen set; ref: CHG-127 G12 / 2026-10-27 rulings"
     echo "agent-gate: WARN — $id $e148 (E148 in strict)" >&2
   fi
-  # v3.92.1 (CHG-128, REQ-1281): scope budget is consumed with the same decision.
+  # v3.92.2 (CHG-128, REQ-1281): scope budget is consumed with the same decision.
   scope_overrun_check "$id"
 
   # Hard floor 1: required artifacts exist.
@@ -4108,7 +4141,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.92.1" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.92.2" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4143,7 +4176,7 @@ validate_stop() {
     # -dims keeps display/idle/disk awake for the whole child). Non-darwin
     # hosts without the binary run the command unchanged; darwin without it
     # gets a loud warning instead of a silent exposure.
-    # v3.92.1 (CHG-128 batch 2): probe before wrapping — on hosts where
+    # v3.92.2 (CHG-128 batch 2): probe before wrapping — on hosts where
     # caffeinate itself aborts (observed on macOS 27 beta: SIGABRT/OBJC),
     # wrapping would kill the verify and leave the caller with a dead session.
     # `AGENT_GUARD_CAFFEINATE=0` opts out explicitly (record the reason in 09).
@@ -4160,7 +4193,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.92.1","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.92.2","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -4700,7 +4733,7 @@ case "$command" in
       if [[ ! -s "$vstats_file" ]]; then
         echo "agent-gate: YELLOW liveness: session is active (water file present) but $vstats_file is missing/empty — hook adapter likely not loaded; check client logs and run scripts/session-gate status (v3.82.0, REQ-1160)"
       else
-        # v3.92.1 (CHG-127): GNU stat first — BSD-first silently degraded on Linux
+        # v3.92.2 (CHG-127): GNU stat first — BSD-first silently degraded on Linux
         # (GNU `stat -f %m` is filesystem mode, prints a non-numeric token → no warn).
         vstats_mtime=$(gate_mtime "$vstats_file")
         if [[ -n "$vstats_mtime" ]] && [[ $(( $(date +%s) - vstats_mtime )) -gt 600 ]]; then
@@ -5074,16 +5107,22 @@ case "$command" in
       spec|design|testplan)
         stage_gate_check "$stage" ;;
       core)
-        # v3.92.1 (CHG-128): stateless explicit validation of the environment /
-        # evidence / independence gates (E149/E150/E151) for the active change.
+        # v3.92.2 (CHG-128): stateless explicit validation of the environment /
+        # evidence / independence gates (E150/E151/E153) for the active change.
         cc_id=$(active_change)
         core_gate_check "$cc_id"
         echo "agent-gate: core gate green ($cc_id)" ;;
       scope)
-        # v3.92.1 (CHG-128): stateless explicit validation of the scope budget (E152).
+        # v3.92.2 (CHG-128): stateless explicit validation of the scope budget (E152).
         sc_id=$(active_change)
         scope_overrun_check "$sc_id"
         echo "agent-gate: scope gate green ($sc_id)" ;;
+      rtvm)
+        # v3.92.2 (CHG-128 batch 3): stateless E154 — every unverified RTVM REQ
+        # must be declared in 09 (silent scope reduction becomes a signed claim).
+        rt_id=$(active_change)
+        unverified_req_check "$rt_id"
+        echo "agent-gate: rtvm gate green ($rt_id)" ;;
       shift)
         # v3.91.7 (CHG-127): cheap pre-push handoff gate. Pre-commit deliberately
         # only WARNS (T55 TC-1257), so without this branch a push can bypass E112
@@ -5102,8 +5141,8 @@ case "$command" in
         # argument keeps the historical meaning (explicit change id).
         if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
         else stage_close_check "${1:-$(active_change)}"; fi ;;
-      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
+      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -5135,8 +5174,9 @@ Usage:
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
-  scripts/agent-gate --stage core   # v3.92.1: stateless E149/E150/E151 (environment + red→green + independence)
-  scripts/agent-gate --stage scope  # v3.92.1: stateless E152 (change-scope budget)
+  scripts/agent-gate --stage core   # v3.92.2: stateless E150/E151/E153 (environment + red→green + independence)
+  scripts/agent-gate --stage scope  # v3.92.2: stateless E152 (change-scope budget)
+  scripts/agent-gate --stage rtvm   # v3.92.2: stateless E154 (unverified RTVM REQs must be declared)
   scripts/agent-gate --stage shift               # v3.91.7: pre-push handoff gate (E112, no suite)
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop               # v3.83.0: successful-verify receipt cache (key = version+cmd+tree-fingerprint+change-id, TTL 30min, rc=0 only; repos whose tests read external mutable state set AGENT_GUARD_VERIFY_CACHE=0)

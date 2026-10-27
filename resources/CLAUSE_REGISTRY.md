@@ -236,6 +236,7 @@
 | GATE-E150 | 被测核心变更的 05 缺 `red_repro:`/`green_after:` 两行（或占位） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1279） |
 | GATE-E151 | `verification_owner` 缺失或等于 `implementation_owner`（被测核心变更） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1280） |
 | GATE-E152 | `scope_overrun=over` 且无用户确认的 scope（变更范围预算） | agent-gate.sh::scope_overrun_check()（v3.92.0，CHG-128，REQ-1281） |
+| GATE-E154 | 09 缺「未验证 REQ 清单」或漏列 01.5 验证状态非 ✅ 的 REQ（静默降级） | agent-gate.sh::unverified_req_check()（v3.92.2，CHG-128，REQ-1284） |
 | GATE-E153 | 被测核心变更缺 fresh-clone receipt 或 receipt 陈旧/红（环境等价） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1278） |
 | GATE-E149 | `resume` 子命令用法错误（缺变更号） | agent-gate.sh::resume 分支（v3.91.0，CHG-127，G17） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |

@@ -1488,7 +1488,7 @@ at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/sc
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body ratchet (CHG-107; recalibrated v3.92.1 CHG-128 +timing/caffeinate clauses)" 1 "$([[ "$std_bytes" -le 170700 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; recalibrated v3.92.2 CHG-128 +unverified-REQ clause)" 1 "$([[ "$std_bytes" -le 171200 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -1606,12 +1606,13 @@ a55_expect_heads=$(printf '%s\n' \
   '#### 角色签署与独立性（门禁 5）' \
   '#### 执行记录（ReAct，§2.16.2 铁律）' \
   '#### 变更执行检查清单（§3 归档落点；唯一权威在 §3）' \
+  '#### 未验证 REQ 清单' \
   '#### 未动项' \
   '#### 重要上下文' \
   '#### 发布与回滚记录（进入发布时必填，§2.7）' | sort)
 a55_ds_heads=$(printf '%s\n' "$a55_s4" | grep '^#### ' | sed 's/[[:space:]]*$//' | sort)
 a55_tpl_heads=$(grep '^#### ' "$a55_tpl" | sed 's/[[:space:]]*$//' | sort)
-report "A55 DS section4 and entry/09 carry the fourteen canonical section headings (CHG-114)" 1 \
+report "A55 DS section4 and entry/09 carry the fifteen canonical section headings (CHG-114)" 1 \
   "$([[ "$a55_ds_heads" == "$a55_expect_heads" && "$a55_tpl_heads" == "$a55_expect_heads" ]] && echo 1 || echo 0)"
 a55_row_seq=$(sed -nE 's/^- \[ \] (P[0-9]{2}) .*/\1/p' "$a55_tpl" | tr '\n' ' ')
 a55_expect_row_seq='P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12 '
@@ -1908,6 +1909,7 @@ report "A58d AGENTS documents the fresh-clone/CI equivalence" 1 "$(grep -c 'fres
 report "A58e pre-push carries the G-FEED hint" 1 "$(grep -c 'G-FEED tip' "$ROOT/resources/templates/pre-push" 2>/dev/null || true)"
 report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(grep -c '| v3.92.0 |' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true)"
 report "A58g fresh-clone history ledger is declared" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-history.tsv' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
+report "A58h unverified-REQ declaration face is shipped" 1 "$([[ $(grep -c 'GATE-E154' "$GATE_TPL") -ge 1 && $(grep -c '未验证 REQ 清单' "$ROOT/resources/templates/entry/09-changelog.md") -ge 1 ]] && echo 1 || echo 0)"
 
 # ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
 # 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`
