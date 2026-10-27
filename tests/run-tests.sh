@@ -2993,6 +2993,13 @@ if [[ -s "$GT82" ]]; then
   scripts/agent-gate tc-index CHG-960 --write >/dev/null 2>&1
   report "T82 tc-index --write persists the cache" 0 "$([[ -s tests/tc-index.tsv ]] && echo 0 || echo 1)"
   report "T82 tc-index names its source" 1 "$(grep -c '^TC-9999' tests/tc-index.tsv 2>/dev/null || true)"
+  # v3.91.2: ledger retention — header + at most 500 data rows.
+  { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
+    _ri=0; while [[ "$_ri" -lt 505 ]]; do _ri=$(( _ri + 1 )); printf '2026-01-01T00:00:00Z\tsec\tT1\tx\t1\t0\tnone\t0\t1\t0\tgreen\tr\tm\t128\n'; done; } > .ledger-rot.tsv
+  AGENT_GUARD_COST_LEDGER="$PWD/.ledger-rot.tsv" bash "$ROOT/tests/run-tests.sh" -T T41 >/dev/null 2>&1 || true
+  report "T82 ledger keeps header + last 500 rows" 1 "$([[ "$(wc -l < .ledger-rot.tsv 2>/dev/null | tr -d ' ')" -le 501 ]] && echo 1 || echo 0)"
+  report "T82 ledger rotation keeps the header" 1 "$(grep -c '^ts' .ledger-rot.tsv 2>/dev/null || true)"
+  rm -f .ledger-rot.tsv
   check_output "T82 decision carries the four judges" '"artifacts".*"reviews".*"stages".*"masters"' "$(cat docs/changes/CHG-960/00-governance.json)"
   check_output "T82 L1 judges are lean" '"stage_list":"intent,test,delivery"' "$(cat docs/changes/CHG-960/00-governance.json)"
   check_output "T82 G5 stages carry the skipped set" '"skipped":\["' "$(cat docs/changes/CHG-960/00-governance.json)"
@@ -3204,6 +3211,7 @@ check_output "T83 G15 metrics carry adoption" '"adoption_rate":' "$out"
 check_output "T83 G16 metrics carry wasted/stale/handshake/independence" '"wasted_rate":.*"stale_decisions":.*"handshake":.*"review_independent":' "$out"
 report "T83 G18 retro line carries CPI" 1 "$(grep -c 'CPI=' "$GT83" || true)"
 report "T83 G19 session-gate prints the handoff action" 2 "$(grep -c 'handoff：水位' "$ROOT/resources/templates/session-gate.sh" || true)"
+report "T83 G19 token metering never fabricates 0/0" 1 "$(grep -c "printf 'unavailable'" "$ROOT/resources/templates/session-gate.sh" || true)"
 # G3: a decision whose diff_hash no longer matches the live diff is stale (strict).
 git add -A >/dev/null 2>&1; git commit -qm t83base >/dev/null 2>&1
 scripts/agent-gate plan CHG-970 >/dev/null 2>&1
@@ -3211,6 +3219,14 @@ printf 'x\n' >> docs/changes/CHG-970/01-spec.md
 out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 G3 stale decision dies E147" 1 "$?"
 check_output "T83 G3 names the code" 'GATE-E147' "$out"
 git checkout -- docs/changes/CHG-970/01-spec.md >/dev/null 2>&1 || true
+# v3.91.2: a NEW untracked file after `plan` invalidates the decision too —
+# `git diff HEAD` alone used to miss it (silent stale).
+scripts/agent-gate plan CHG-970 >/dev/null 2>&1
+printf 'z\n' > .t83-untracked.zzz
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 G3 stale covers a new untracked file" 1 "$?"
+check_output "T83 G3 untracked names the code" 'GATE-E147' "$out"
+rm -f .t83-untracked.zzz
+scripts/agent-gate plan CHG-970 >/dev/null 2>&1
 # G12: a declared hard rule with a narrowed chosen is a contract violation (strict).
 cat > docs/changes/CHG-970/00-governance.json <<'EOF'
 {"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","stage_list":"test,delivery","artifact_list":"05-test-results.md,09-changelog.md","must":["H7"],"reviews":"min=1;independent=true","masters":""}}
@@ -5336,7 +5352,10 @@ section_T57() {
   t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 2 2>&1)
   t57_c=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 1 2>&1)
   report "T57 TC-1274 -j2 T56 pass count matches serial" "$(printf '%s\n' "$t57_a" | grep -c '^ok ')" "$(printf '%s\n' "$t57_b" | grep -c '^ok ')"
-  report "T57 TC-1274 -j1 is byte-equivalent to serial (modulo wall-time)" "$(printf '%s\n' "$t57_a" | grep -v '^wall-time: ')" "$(printf '%s\n' "$t57_c" | grep -v '^wall-time: ')"
+  # v3.91.2 (CHG-127 self-audit): `[done] T56 Ns` is a TIMING line (it varies by
+  # ±2 s); comparing it byte-wise made this assertion flaky. Compare the verdict
+  # face only.
+  report "T57 TC-1274 -j1 is byte-equivalent to serial (modulo wall-time)" "$(printf '%s\n' "$t57_a" | grep -vE '^(\[done\]|wall-time: )')" "$(printf '%s\n' "$t57_c" | grep -vE '^(\[done\]|wall-time: )')"
   # TC-1275: 源层卫生钉（:3417 label 语义 + T56 friction -f 守卫 + stderr 无噪声）
   # TC-1275 钉用 -F + 引号拼接断开字面（T51 自匹配三连教训），只命中 T48 label 行
   report "T57 TC-1275 T48 label carries the superseded-row semantics" 1 "$(grep -cF 'v3.70.0 row exists (superseded by current '"top)" "$ROOT/tests/run-tests.sh")"
@@ -5347,8 +5366,10 @@ section_T57() {
   rm -rf "$t57_dir"
   rm -f "$t57_tmp/t57-receipt.real" "$t57_tmp/t57-receipt.seeded" "$t57_tmp/t57-red.real"
   # TC-1279: helper 提升后的顺序无关性持久钉（T19 单跑须全绿；嵌套 ≈8s 可接受）
+  # v3.91.2: T19 gained assertions, so the old hard-coded "9 passed" pin was stale
+  # (the full suite had not run since). Assert "all green", not a frozen count.
   out=$(bash "$ROOT/tests/run-tests.sh" -T T19 2>&1 || true)
-  report "T57 TC-1279 T19 standalone passes after hoisting (order-independence)" 1 "$(printf '%s\n' "$out" | grep -cE '^9 passed, 0 failed')"
+  report "T57 TC-1279 T19 standalone passes after hoisting (order-independence)" 1 "$(printf '%s\n' "$out" | grep -cE '^[0-9]+ passed, 0 failed$')"
   # TC-1280: CHG-500 续仓链（T5→T22a→T16）经 SERIAL_CHAIN 在 -j 下串行保续，须全绿
   out=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a,T16 -j 2 2>&1 || true)
   report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 "$(( $(printf '%s\n' "$out" | grep -cE '^FAIL ') > 0 || $(printf '%s\n' "$out" | grep -cE '^ok ') < 51 ? 1 : 0 ))"
@@ -7765,6 +7786,14 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     scripts/*|resources/templates/*.sh) printf 'T19 T30 T41' ;;
     docs/*)                            return 2 ;;  # 变更产物/评审记录：不影响治理工具，无需套件
     MAINTAINER.md)                     return 2 ;;
+    # v3.91.2 (CHG-127 self-audit, replay evidence): non-governance repo assets
+    # (screenshots, licences, editor config, root docs) cannot change the suite's
+    # behaviour. They used to be "unmapped" → FULL, which inflated the fallback
+    # rate that final-plan P0-12 caps at 30%.
+    screenshots/*|cover-image/*|LICENSE|LICENSE.*|.gitignore|.gitattributes) return 2 ;;
+    .vscode/*|.claude/*|.opencode/*|.workbuddy/*|.workbuddy-ai/*) return 2 ;;
+    AGENTS.md|CLAUDE.md|GEMINI.md)      return 2 ;;
+    *.md)                              return 2 ;;  # root narrative docs (README/SKILL matched above)
     .agent-state/*|.workbuddy-ai/*)    return 2 ;;
     # v3.90.1 (CHG-123, P0-12): unmapped governance-face paths fall back to the
     # same-domain core section triple instead of a FULL run (historical 77%

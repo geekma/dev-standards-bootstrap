@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v3.91.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v3.91.2-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -364,6 +364,7 @@ dev-standards-bootstrap/
 │   ├── mutation-check.sh                   # 源层专用（不下发）：检查器自证——四类固定变异必须让快检查器变红，且只发生在一次性副本里
 │   ├── ci-summary.sh                       # 源层专用（不下发）：渲染 CI 运行汇总，并把 tests/.suite-baseline 与收据 passed 数硬对齐
 │   ├── batch-metrics.sh                    # 源层专用（不下发）：每批次成本台账（轮次 / 编辑 / 轮询 / 整跑 / 墙钟）落到 .agent-state
+│   ├── replay-plan.sh                      # 源层专用（不下发，v3.91.2）：只读回放历史变更 diff 过今天的 `-T auto` 解析器，对照 05 记录的实测节——报 FULL 回落率与假阴
 │   ├── lib-source-facts.sh                 # 源层专用（不下发）：上述六个工具共用的只读事实助手
 │   ├── setup-branch-protection.sh          # 源层专用（不下发）：打印必需检查的 gh api 载荷（默认 dry-run）；`--apply` 才改远端
 │   ├── lib-suite-tree-fingerprint.sh       # 共享库：套件树指纹，收据键控用（由 --guard 随 tests/run-tests.sh 安装）
@@ -380,7 +381,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.91.1（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v3.91.2（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -503,7 +504,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v3.91.1 | **最后更新：** 2026-10-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v3.91.2 | **最后更新：** 2026-10-26 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

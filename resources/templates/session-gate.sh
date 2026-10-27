@@ -219,11 +219,16 @@ sg_h_level() { # <pct> -> H0/H1/H2/H3 (H1 >=60, H2 >=75, H3 >=90)
   else printf 'H0'; fi
 }
 
-sg_exec_source() { # measured only when BOTH token counts are supplied explicitly
+sg_exec_source() { # measured | estimated | unavailable
+  # v3.91.2 (CHG-127 self-audit): final-plan §17.2 says "不可测就标不可测，禁造假".
+  # `estimated` used to be printed even when NOTHING was measured and no context
+  # characters existed — that is a fabricated number, not an estimate.
   if [[ -n "$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" "")" && -n "$(sg_positive_int "${AGENT_GUARD_TOKENS_OUT:-}" "")" ]]; then
     printf 'measured'
-  else
+  elif [[ "$(sg_positive_int "$(stat_get context_chars)" 0)" -gt 0 ]]; then
     printf 'estimated'
+  else
+    printf 'unavailable'
   fi
 }
 
@@ -271,8 +276,13 @@ sg_cost_line() { # one human-readable cost line for status/idle (never fails)
   [[ "$used" -gt 0 ]] || used=$(( $(sg_positive_int "$(stat_get context_chars)" 0) / 4 ))
   pct=$(sg_used_pct "$used" "$win"); lvl=$(sg_h_level "$pct")
   tin=$(stat_get tokens_in); tout=$(stat_get tokens_out); wall=$(sg_wall_s)
-  printf -- '- 成本：model=%s 窗口=%s（source=%s）已用≈%s%%（%s）tokens_in=%s/%s out=%s（%s）墙钟=%ss\n' \
-    "${model:-unknown}" "$win" "${src:-unknown}" "$pct" "$lvl" "$tin" "$used" "$tout" "${SG_EXEC_SRC_SHOWN:-$(stat_get_s exec_source)}" "$wall"
+  local esrc pct_show lvl_show
+  esrc="${SG_EXEC_SRC_SHOWN:-$(stat_get_s exec_source)}"
+  pct_show="${pct}%"; lvl_show="$lvl"
+  # v3.91.2: no fabricated "estimated" numbers — say it is unmeasurable.
+  if [[ "$esrc" == "unavailable" ]]; then pct_show="不可测"; lvl_show="unavailable（H 级别待模型/用量可测后再算）"; fi
+  printf -- '- 成本：model=%s 窗口=%s（source=%s）已用≈%s（%s）tokens_in=%s/%s out=%s（%s）墙钟=%ss\n' \
+    "${model:-unknown}" "$win" "${src:-unknown}" "$pct_show" "$lvl_show" "$tin" "$used" "$tout" "$esrc" "$wall"
   # v3.91.0 (CHG-127, G19): cost-driven switch — H2/H3 must name the handoff action.
   case "$lvl" in
     H2|H3)
