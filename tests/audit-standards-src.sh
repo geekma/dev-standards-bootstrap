@@ -1488,7 +1488,7 @@ at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/sc
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body ratchet (CHG-107; recalibrated v3.91.6 CHG-127 +717B for the stage input contract)" 1 "$([[ "$std_bytes" -le 168650 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; recalibrated v3.92.0 CHG-128 +1.5KiB for the five delivery gates)" 1 "$([[ "$std_bytes" -le 170500 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -1734,7 +1734,7 @@ for a56_s in $a56_secs; do
     || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
 done
 report "A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)" 0 "$a56_sec_bad"
-at_least_unique "A56 golden section T83 closes the SECTIONS registry (CHG-125 tail)" "$a56_suite" '^SECTIONS=.* T83)'
+at_least_unique "A56 golden section T84 closes the SECTIONS registry (CHG-125 tail)" "$a56_suite" '^SECTIONS=.* T84)'
 
 # The SKIP string alone is a vacuous pin: a section can put its first assertions
 # above the guard and still print the string. In a target-repo layout (only
@@ -1897,6 +1897,16 @@ done
 a43_ptr=$(grep -cE 'behavior-extract.sh` 头注释|behavior-extract.sh 头注释' "$ROOT/resources/STAGE_PLAYBOOK.md" 2>/dev/null || true)
 [[ "$a43_ptr" -ge 1 ]] || { a43_bad=1; echo "A43 layering: playbook lacks the single-source pointer" >&2; }
 report "A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)" 0 "$a43_bad"
+
+# ── PART A58: 五道交付门承载面（v3.92.0，CHG-128）────────────────────────────
+# 门不是"说了就存在"：判定面（4 个 E 码）、证据面（fresh-clone 工具）、文档面
+# （DS/AGENTS）、反馈面（pre-push）、版本面（CHANGELOG）必须同时在位。
+report "A58a gate carries E150/E151/E152/E153" 4 "$(grep -oE 'GATE-E(150|151|152|153)' "$GATE_TPL" | sort -u | wc -l | tr -d ' ')"
+report "A58b fresh-clone tool emits a receipt" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-receipt.json' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
+report "A58c DS documents the environment gate" 1 "$(grep -cE 'fresh-clone|环境等价' "$STD" 2>/dev/null || true)"
+report "A58d AGENTS documents the fresh-clone/CI equivalence" 1 "$(grep -c 'fresh clone / 无 CI 仓必须全绿' "$AGENTS" 2>/dev/null || true)"
+report "A58e pre-push carries the G-FEED hint" 1 "$(grep -c 'G-FEED tip' "$ROOT/resources/templates/pre-push" 2>/dev/null || true)"
+report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(grep -c '| v3.92.0 |' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true)"
 
 # ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
 # 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`

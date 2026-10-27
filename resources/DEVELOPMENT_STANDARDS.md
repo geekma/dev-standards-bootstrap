@@ -906,6 +906,8 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 4. **评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）**：事故/缺陷经 `scripts/eval-cases` 派生为**评测集**（运行时生成物，禁入库、禁手编），由 `scripts/eval-rescore` 打分，收据绑定治理面内容哈希——漂移即旧分作废、复核后经 `--update-baseline` 重建基线。**优先级序**：真缺陷召回优先于轮次下降。
 5. **判定消费与回填时序**：stop/preflight 消费 `plan.decision`——嵌套 `artifacts/stages/project_masters` + `change.type` 路由（只收窄风险下限）+ `must` 非空且 AI 未判定收窄即 FULL；硬项缺失 `E143`、strict 缺 decision `E142`、`chosen` 与 05 差集 `E144`、stale `diff_hash` `E147`、`must` 未覆盖且无 AI 判定 `E148`；软项默认 WARN + 09 `[adapt]`/`decision-gap`；总册 `filled-at stage=N chg=<CHG>` 须等于 §5.5 映射阶段（`revision` 豁免）：未来阶段/`at` 晚于关闭 `E145`，下阶段首条 Observation 未引用回填锚点 `E146`。
 
+6. **环境等价与交付质量门（v3.92.0，CHG-128，REQ-1278~1282）**：①**G-ENV**：命中被测核心（套件/审计/门禁/安装器/计数器的实现文件；清单唯一权威=`agent-gate` 的 `gate_core_paths`，可用 `AGENT_GUARD_CORE_PATHS` 覆盖）时，`staged/stop` 必须消费 `.agent-state/fresh-clone-receipt.json`（由 `tests/fresh-clone-check.sh` 在 tracked-only 快照上产生：`head==HEAD`、`audit_rc=0`、`suite_rc=0`），缺/陈旧/红即 `E153`；`AGENT_GUARD_FRESH_CLONE=0` 降级须在 09「重要上下文」登记理由。②**G-CORE**：05 须含 `red_repro:` 与 `green_after:` 两行（占位符不算），缺即 `E150`。③**G-IND**：`verification_owner` 须存在且 ≠ `implementation_owner`，缺/相同即 `E151`；`AGENT_GUARD_ALLOW_SELF_VERIFY=1` 须登记理由。④**G-SCOPE**：`plan.decision.scope_overrun` 记录批次数与核心文件数（事实，不由门替用户决定）；`verdict=over` 且无 `scope_confirmed` 即 `E152`；阈值 `AGENT_GUARD_SCOPE_MAX_BATCHES/CORE_FILES`（默认 5/10），`AGENT_GUARD_SCOPE_OVERRUN=0` 降为 WARN。⑤**G-FEED**：`pre-push` 对非 main 的 GitHub 分支打印 draft PR 提示（不阻塞、不联网）。显式自查入口：`agent-gate --stage core`（E150/E151/E153）与 `--stage scope`（E152）。**无 CI / 非 GitHub 仓**：G-ENV 即为每批验收面，不依赖远端。
+
 #### 2.17.5 管线度量（metrics）
 
 1. `agent-gate metrics` 以 JSON Lines 输出每个变更的时序（`intent_ts`…`changelog_ts` 六点与 `intent_to_*` 五段间隔）、`delivery_ready`（05+07+09 三件齐备才为 true）、`expert_sessions`（署名节任务 ID 去重计数，只观测）、`artifact_files`/`artifact_bytes`（变更目录 `*.md` 件数与字节量，治理 JSON 不计；批次内各成员同值，**跨成员不得求和**）、`review_rounds`/`review_rounds_over_limit`/`findings_total`/`findings_dismissed`/`dismissal_rate`（v3.74.0，读自 `.agent-state/review-rounds.tsv` 与 07「发现处置」表）、`findings_introduced`/`findings_pre_existing`（v3.75.0，读 07「来源」列；缺列=null）。用于规范瘦身决策数据化（§2.17 引言）；**字段全集与口径唯一权威=`agent-gate` 头注释**。
@@ -1090,4 +1092,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v3.91.9 | 更新时间：2026-10-27 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v3.92.0 | 更新时间：2026-10-27 | 全局维护责任人：geekma (geekma@gmail.com)*

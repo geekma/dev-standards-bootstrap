@@ -3319,8 +3319,18 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   # scope is only valid with the user's recorded choice; empty is explicit.
   local scope
   scope=$(printf '%s' "${AGENT_GUARD_SCOPE_CONFIRM:-}" | tr -d '\n\r"')
-  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s","scope_confirmed":"%s","deferred":%s,"wasted":%s,%s}' \
-    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis" "$scope" "$deferred" "$(json_arr "$wasted_csv")" "$judges"
+  # v3.92.0 (CHG-128, REQ-1281): change-scope budget is a FACT in the decision —
+  # the gate never decides for the user; it only makes overrun visible so the
+  # user-confirmation contract can be enforced at consumption time (E152).
+  local sc_batches sc_core sc_over sc_verdict sb st
+  sc_batches=$(grep -cE '^#{3,4}[[:space:]]*第([0-9]|一|二|三|四|五|六|七|八|九|十|百)+批' "$d/09-changelog.md" 2>/dev/null || true); sc_batches=${sc_batches:-0}
+  sc_core=$(core_changed_files | wc -l | tr -d ' '); sc_core=${sc_core:-0}
+  sb=${AGENT_GUARD_SCOPE_MAX_BATCHES:-5}; st=${AGENT_GUARD_SCOPE_MAX_CORE_FILES:-10}
+  sc_verdict="ok"
+  if [[ "$sc_batches" -gt "$sb" ]] || [[ "$sc_core" -gt "$st" ]]; then sc_verdict="over"; fi
+  sc_over="{\"batches\":$sc_batches,\"core_files\":$sc_core,\"threshold_batches\":$sb,\"threshold_core_files\":$st,\"verdict\":\"$sc_verdict\"}"
+  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s","scope_confirmed":"%s","deferred":%s,"wasted":%s,%s,"scope_overrun":%s}' \
+    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis" "$scope" "$deferred" "$(json_arr "$wasted_csv")" "$judges" "$sc_over"
 }
 
 plan_strip_decision() { # <file> — drop a top-level "decision":{...} key with brace matching
@@ -3716,6 +3726,91 @@ plan_decision_value() { # <d> <key>
     "$d/00-governance.json" 2>/dev/null | head -1
 }
 
+# ── v3.92.0 (CHG-128): 四道交付门（环境/证据/独立/范围）──────────────────────
+# 判定与证据分离：本文件只**验证据**，不执行测试（执行归 tests/fresh-clone-check.sh）。
+# 被测核心路径可由 AGENT_GUARD_CORE_PATHS 覆盖（目标仓可声明自己的核心面）。
+gate_core_paths() {
+  printf '%s' "${AGENT_GUARD_CORE_PATHS:-^(tests/run-tests\.sh|tests/audit-standards-src\.sh|scripts/bootstrap\.sh|scripts/update-assertion-count\.sh|resources/templates/agent-gate\.sh)$}"
+}
+core_changed_files() { # -> newline list of core files in worktree/index/last commit
+  { git -C "$repo_root" diff --name-only 2>/dev/null
+    git -C "$repo_root" diff --name-only --cached 2>/dev/null
+    git -C "$repo_root" diff --name-only HEAD~1 2>/dev/null; } \
+    | awk 'NF' | sort -u | grep -E "$(gate_core_paths)" 2>/dev/null || true
+}
+tracked_tree_sha() { # -> content hash of the tracked working tree (receipt freshness)
+  ( cd "$repo_root" && git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' )
+}
+core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 independence
+  local id="$1" d core f
+  d=$(change_dir "$id" 2>/dev/null) || return 0
+  [[ -d "$d" ]] || return 0
+  core=$(core_changed_files)
+  [[ -n "$core" ]] || return 0
+  local core_list
+  core_list=$(printf '%s' "$core" | tr '\n' ' ')
+
+  # E153: fresh-clone receipt (environment equivalence). ONE die site per code (T41).
+  if [[ "${AGENT_GUARD_FRESH_CLONE:-1}" == "1" ]]; then
+    local r rc_head rc_audit rc_suite rc_tree want_head want_tree e153=""
+    r="$repo_root/.agent-state/fresh-clone-receipt.json"
+    want_head=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo none)
+    want_tree=$(tracked_tree_sha)
+    if [[ ! -s "$r" ]]; then
+      e153="no fresh-clone receipt ($core_list)"
+    else
+      rc_head=$(sed -n 's/.*"head":"\([^"]*\)".*/\1/p' "$r" | head -1)
+      rc_tree=$(sed -n 's/.*"tree_sha":"\([^"]*\)".*/\1/p' "$r" | head -1)
+      rc_audit=$(sed -n 's/.*"audit_rc":\([0-9-]*\).*/\1/p' "$r" | head -1)
+      rc_suite=$(sed -n 's/.*"suite_rc":\([0-9-]*\).*/\1/p' "$r" | head -1)
+      [[ "$rc_tree" == "$want_tree" && "$rc_audit" == "0" && "$rc_suite" == "0" ]] \
+        || e153="stale/red receipt (tree=$rc_tree want=$want_tree head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+    fi
+    [[ -z "$e153" ]] || die "GATE-E153: $id $e153 — expected: .agent-state/fresh-clone-receipt.json whose tree_sha matches the current tracked tree, with audit_rc=0, suite_rc=0; allowed: AGENT_GUARD_FRESH_CLONE=0 with the reason recorded in 09「重要上下文」; fix: bash tests/fresh-clone-check.sh --sections <affected list>; ref: CHG-128 REQ-1278"
+  else
+    echo "agent-gate: WARN — fresh-clone gate skipped by AGENT_GUARD_FRESH_CLONE=0 ($id, core: $core_list; record the reason in 09「重要上下文」)" >&2
+  fi
+
+  # E150: red→green evidence in 05 (shape only; truth is vouched for by the independent reviewer).
+  f="$d/05-test-results.md"
+  local e150="" have_red=0 have_green=0
+  grep -qE '^[[:space:]]*red_repro:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_red=1
+  grep -qE '^[[:space:]]*green_after:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_green=1
+  if [[ "$have_red" -eq 0 || "$have_green" -eq 0 ]]; then
+    e150="lacks red_repro:/green_after: evidence"
+  elif grep -qE '^[[:space:]]*(red_repro|green_after):.*(FILL|待填|<)' "$f" 2>/dev/null; then
+    e150="red→green lines are placeholders"
+  fi
+  [[ -z "$e150" ]] || die "GATE-E150: $id $e150 in $f — expected: a 'red_repro: <cmd> -> <FAIL/rc>' line AND a 'green_after: <cmd> -> <rc0>' line with real values; allowed: AGENT_GUARD_CORE_PATHS narrowing only if the change truly has no core edit; fix: reproduce the red before fixing and record both lines; ref: CHG-128 REQ-1279"
+
+  # E151: verification owner must differ from the implementer (core changes only).
+  local vo io
+  vo=$(plan_decision_value "$d" verification_owner)
+  io=$(plan_decision_value "$d" implementation_owner)
+  if [[ -z "$vo" || "$vo" == "$io" ]]; then
+    if [[ "${AGENT_GUARD_ALLOW_SELF_VERIFY:-0}" == "1" ]]; then
+      echo "agent-gate: WARN — self-verification allowed by AGENT_GUARD_ALLOW_SELF_VERIFY=1 ($id; record the reason in 09「重要上下文」)" >&2
+    else
+      die "GATE-E151: $id verification_owner='${vo:-<empty>}' must differ from implementation_owner='${io:-<empty>}' for a core change — expected: an independent verifier name in 00-governance.json; allowed: AGENT_GUARD_ALLOW_SELF_VERIFY=1 with the reason recorded in 09「重要上下文」; fix: assign verification_owner (≠ implementation_owner) or take the exemption; ref: CHG-128 REQ-1280"
+    fi
+  fi
+}
+scope_overrun_check() { # <id> — E152 (over-budget scope without the user's recorded choice)
+  local id="$1" d verdict
+  d=$(change_dir "$id" 2>/dev/null) || return 0
+  [[ -d "$d" ]] || return 0
+  verdict=$(sed -n 's/.*"scope_overrun":{[^}]*"verdict":"\([^"]*\)".*/\1/p' "$d/00-governance.json" 2>/dev/null | head -1)
+  [[ "$verdict" == "over" ]] || return 0
+  local scope
+  scope=$(plan_decision_value "$d" scope_confirmed)
+  [[ -n "$scope" ]] && return 0
+  if [[ "${AGENT_GUARD_SCOPE_OVERRUN:-1}" != "1" ]]; then
+    echo "agent-gate: WARN — $id is over the change-scope budget and has no user-confirmed scope (AGENT_GUARD_SCOPE_OVERRUN=0; record the reason in 09「重要上下文」)" >&2
+    return 0
+  fi
+  die "GATE-E152: $id is over the change-scope budget (see scope_overrun in 00-governance.json) and has no user-confirmed scope — expected: the user's recorded choice (AGENT_GUARD_SCOPE_CONFIRM='<user>@<ISO>') or a split change; allowed: AGENT_GUARD_SCOPE_OVERRUN=0 (WARN only, recorded in 09); fix: ask the user to confirm or split, then re-run plan; ref: CHG-128 REQ-1281"
+}
+
 plan_gap_declared() { # <09> <prefix>
   local log="$1" pfx="$2"
   # v3.91.0 (CHG-127, G4): the final-plan format `- [adapt] <item> :: <reason> ::
@@ -3824,6 +3919,8 @@ plan_consume_check() { # <id>
       && die "GATE-E148: $id $e148 — expected: chosen=FULL, or an AI judgment WITH user confirmation (AGENT_GUARD_SUITE_AI_* + AGENT_GUARD_SCOPE_CONFIRM); allowed: re-plan after the user chooses (adopt/up/down) or run FULL; fix: ask the user, then re-plan and run the chosen set; ref: CHG-127 G12 / 2026-10-27 rulings"
     echo "agent-gate: WARN — $id $e148 (E148 in strict)" >&2
   fi
+  # v3.92.0 (CHG-128, REQ-1281): scope budget is consumed with the same decision.
+  scope_overrun_check "$id"
 
   # Hard floor 1: required artifacts exist.
   if [[ -n "$arts" ]]; then
@@ -4011,7 +4108,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.9" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.92.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4057,7 +4154,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.9","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.92.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -4597,7 +4694,7 @@ case "$command" in
       if [[ ! -s "$vstats_file" ]]; then
         echo "agent-gate: YELLOW liveness: session is active (water file present) but $vstats_file is missing/empty — hook adapter likely not loaded; check client logs and run scripts/session-gate status (v3.82.0, REQ-1160)"
       else
-        # v3.91.9 (CHG-127): GNU stat first — BSD-first silently degraded on Linux
+        # v3.92.0 (CHG-127): GNU stat first — BSD-first silently degraded on Linux
         # (GNU `stat -f %m` is filesystem mode, prints a non-numeric token → no warn).
         vstats_mtime=$(gate_mtime "$vstats_file")
         if [[ -n "$vstats_mtime" ]] && [[ $(( $(date +%s) - vstats_mtime )) -gt 600 ]]; then
@@ -4970,6 +5067,17 @@ case "$command" in
       # check-mode predicates).
       spec|design|testplan)
         stage_gate_check "$stage" ;;
+      core)
+        # v3.92.0 (CHG-128): stateless explicit validation of the environment /
+        # evidence / independence gates (E149/E150/E151) for the active change.
+        cc_id=$(active_change)
+        core_gate_check "$cc_id"
+        echo "agent-gate: core gate green ($cc_id)" ;;
+      scope)
+        # v3.92.0 (CHG-128): stateless explicit validation of the scope budget (E152).
+        sc_id=$(active_change)
+        scope_overrun_check "$sc_id"
+        echo "agent-gate: scope gate green ($sc_id)" ;;
       shift)
         # v3.91.7 (CHG-127): cheap pre-push handoff gate. Pre-commit deliberately
         # only WARNS (T55 TC-1257), so without this branch a push can bypass E112
@@ -4988,8 +5096,8 @@ case "$command" in
         # argument keeps the historical meaning (explicit change id).
         if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
         else stage_close_check "${1:-$(active_change)}"; fi ;;
-      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
+      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -5021,6 +5129,8 @@ Usage:
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
+  scripts/agent-gate --stage core   # v3.92.0: stateless E149/E150/E151 (environment + red→green + independence)
+  scripts/agent-gate --stage scope  # v3.92.0: stateless E152 (change-scope budget)
   scripts/agent-gate --stage shift               # v3.91.7: pre-push handoff gate (E112, no suite)
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop               # v3.83.0: successful-verify receipt cache (key = version+cmd+tree-fingerprint+change-id, TTL 30min, rc=0 only; repos whose tests read external mutable state set AGENT_GUARD_VERIFY_CACHE=0)

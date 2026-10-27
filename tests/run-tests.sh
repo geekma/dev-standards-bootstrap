@@ -7870,7 +7870,111 @@ report "T81 TC-1494c BATCH member source edit resolves the batch 04" 0 "$t81_rc"
 }
 
 # (unknown key dies rc2), then filtered invocation in original order.
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83)
+section_T84() {
+# ------------------------------------------------ T84 交付门：环境/证据/独立/范围/反馈（v3.92.0，CHG-128）
+# TC↔REQ：TC-10000/10001→REQ-1278（fresh-clone receipt），TC-10002→REQ-1279（red→green），
+# TC-10003→REQ-1280（verification_owner），TC-10004→REQ-1281（scope budget），
+# TC-10005→REQ-1282（pre-push G-FEED hint）。
+export AGENT_GUARD_CORE_PATHS='^core\.txt$'
+new_repo
+mkdir -p docs/changes/CHG-1200 .agent-state
+printf '.agent-state/\n' > .gitignore   # 收据不进 tracked 树（否则写入即自指，tree_sha 永不匹配）
+printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r"}\n' > docs/changes/CHG-1200/00-governance.json
+printf '# 05\n' > docs/changes/CHG-1200/05-test-results.md
+mkdir -p "$(dirname "$(git rev-parse --git-path agent-governance/active-change)")"
+printf 'CHG-1200\n' > "$(git rev-parse --git-path agent-governance/active-change)"
+echo core > core.txt
+git add -A >/dev/null 2>&1 && git commit -qm t84-core >/dev/null 2>&1
+echo dirty >> core.txt   # live core change (worktree)
+# receipt 必须绑定当前 tracked 树（head + tree_sha），与 gate 的 E153 判定同口径
+t84_receipt() {
+  printf '{"head":"%s","tree_sha":"%s","audit_rc":0,"suite_rc":0}\n' \
+    "$(git rev-parse HEAD)" "$(git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}')" \
+    > .agent-state/fresh-clone-receipt.json
+}
+
+# ① E149 缺 receipt
+out=$(scripts/agent-gate --stage core 2>&1); report "T84 E153 missing fresh-clone receipt is refused" 2 "$?"
+check_output "T84 E153 names the code" 'GATE-E153' "$out"
+# ② 绿 receipt → E150（缺 red→green）
+t84_receipt
+out=$(scripts/agent-gate --stage core 2>&1); report "T84 E153 green receipt passes, E150 then refuses" 2 "$?"
+check_output "T84 E150 names the code" 'GATE-E150' "$out"
+# ③ placeholder 也算缺
+printf 'red_repro: FILL\n' >> docs/changes/CHG-1200/05-test-results.md
+t84_receipt
+out=$(scripts/agent-gate --stage core 2>&1)
+check_output "T84 E150 placeholder alone is refused" 'GATE-E150' "$out"
+# ④ 真两行（覆盖占位）→ E151（无 verification_owner）
+printf '# 05\nred_repro: cmd -> FAIL rc1\ngreen_after: cmd -> 0\n' > docs/changes/CHG-1200/05-test-results.md
+t84_receipt
+out=$(scripts/agent-gate --stage core 2>&1); report "T84 E150 complete evidence passes, E151 then refuses" 2 "$?"
+check_output "T84 E151 names the code" 'GATE-E151' "$out"
+# ⑤ 同主体仍拒
+printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r","verification_owner":"a"}\n' > docs/changes/CHG-1200/00-governance.json
+t84_receipt
+out=$(scripts/agent-gate --stage core 2>&1)
+check_output "T84 E151 same owner is refused" 'GATE-E151' "$out"
+# ⑥ 独立主体 → 绿
+printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r","verification_owner":"v"}\n' > docs/changes/CHG-1200/00-governance.json
+t84_receipt
+out=$(scripts/agent-gate --stage core 2>&1); report "T84 core gate green with receipt + evidence + independent owner" 0 "$?"
+# ⑦ 豁免：自验证开关（无 verification_owner）→ 绿 + WARN
+printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r"}\n' > docs/changes/CHG-1200/00-governance.json
+t84_receipt
+out=$(AGENT_GUARD_ALLOW_SELF_VERIFY=1 scripts/agent-gate --stage core 2>&1); report "T84 E151 self-verify exemption passes" 0 "$?"
+check_output "T84 exemption is announced" 'ALLOW_SELF_VERIFY' "$out"
+# ⑧ 树变化（tracked 内容改动）→ E153（tree_sha 为唯一绑定：盖章只动未跟踪 docs）
+printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r","verification_owner":"v"}\n' > docs/changes/CHG-1200/00-governance.json
+git add -A >/dev/null 2>&1 && git commit -qm t84-next >/dev/null 2>&1
+echo more >> core.txt
+out=$(scripts/agent-gate --stage core 2>&1)
+check_output "T84 E153 stale receipt is refused" 'GATE-E153' "$out"
+# ⑨ 关闭开关 → 降级 WARN 且放行
+out=$(AGENT_GUARD_FRESH_CLONE=0 scripts/agent-gate --stage core 2>&1); report "T84 E153 fresh-clone switch degrades to WARN" 0 "$?"
+check_output "T84 degradation is announced" 'AGENT_GUARD_FRESH_CLONE=0' "$out"
+
+# ⑩ E152：超预算且无用户确认 → 拒；有确认/未超预算 → 绿
+printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r","verification_owner":"v","decision":{"chosen":"FULL","scope_confirmed":"","scope_overrun":{"batches":9,"core_files":2,"threshold_batches":5,"threshold_core_files":10,"verdict":"over"}}}\n' > docs/changes/CHG-1200/00-governance.json
+out=$(scripts/agent-gate --stage scope 2>&1); report "T84 E152 over-budget without confirmation is refused" 2 "$?"
+check_output "T84 E152 names the code" 'GATE-E152' "$out"
+sed -i '' 's/"scope_confirmed":""/"scope_confirmed":"user@2026-10-27T00:00:00Z"/' docs/changes/CHG-1200/00-governance.json 2>/dev/null \
+  || sed -i 's/"scope_confirmed":""/"scope_confirmed":"user@2026-10-27T00:00:00Z"/' docs/changes/CHG-1200/00-governance.json
+out=$(scripts/agent-gate --stage scope 2>&1); report "T84 E152 user-confirmed scope passes" 0 "$?"
+sed -i '' 's/"verdict":"over"/"verdict":"ok"/' docs/changes/CHG-1200/00-governance.json 2>/dev/null \
+  || sed -i 's/"verdict":"over"/"verdict":"ok"/' docs/changes/CHG-1200/00-governance.json
+out=$(AGENT_GUARD_SCOPE_OVERRUN=0 scripts/agent-gate --stage scope 2>&1); report "T84 E152 not-over verdict stays green" 0 "$?"
+# ⑪ plan 把批次事实写进 decision（new_repo 默认 ADAPT=0，plan 用例须显式开启，同 T82）
+export AGENT_GUARD_ADAPT=1
+printf '#### 第一批：a\n#### 第二批：b\n#### 第三批：c\n#### 第四批：d\n#### 第五批：e\n#### 第六批：f\n' > docs/changes/CHG-1200/09-changelog.md
+out=$(AGENT_GUARD_SCOPE_MAX_BATCHES=5 scripts/agent-gate plan CHG-1200 --dry-run 2>&1)
+check_output "T84 plan records the batch count as a fact" '"scope_overrun":{"batches":6,"core_files":' "$out"
+check_output "T84 plan marks the overrun verdict" '"verdict":"over"' "$out"
+
+# ⑫ G-FEED：非 main + GitHub 远端 → 提示；main / 无远端 → 静默
+git remote add origin https://github.com/example/t84.git
+git checkout -q -b feature/t84 2>/dev/null || true
+out=$(bash "$ROOT/resources/templates/pre-push" 2>&1 || true)
+check_output "T84 G-FEED hints a draft PR on a non-main GitHub branch" 'G-FEED tip' "$out"
+git checkout -q main 2>/dev/null || git checkout -q -b main
+out=$(bash "$ROOT/resources/templates/pre-push" 2>&1 || true)
+report "T84 G-FEED stays silent on main" 0 "$(printf '%s' "$out" | grep -c 'G-FEED tip')"
+git checkout -q feature/t84 2>/dev/null || true
+git remote remove origin
+out=$(bash "$ROOT/resources/templates/pre-push" 2>&1 || true)
+report "T84 G-FEED stays silent without a GitHub remote" 0 "$(printf '%s' "$out" | grep -c 'G-FEED tip')"
+
+# ⑬ fresh-clone-check --check：绿/陈旧/FULL 拒绝
+t84_receipt
+out=$(bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --check 2>&1); report "T84 fresh-clone --check accepts a green receipt" 0 "$?"
+check_output "T84 fresh-clone --check names the head" 'receipt green for' "$out"
+printf '{"head":"%s","tree_sha":"deadbeef","audit_rc":0,"suite_rc":0}\n' "$(git rev-parse HEAD)" > .agent-state/fresh-clone-receipt.json
+out=$(bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --check 2>&1); report "T84 fresh-clone --check rejects a stale receipt" 1 "$?"
+out=$(bash "$ROOT/tests/fresh-clone-check.sh" --sections FULL 2>&1); report "T84 fresh-clone refuses an auto-resolved FULL" 2 "$?"
+check_output "T84 fresh-clone FULL refusal points at sections" 'full runs belong to CI' "$out"
+}
+
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84)
 
 # v3.91.7 (CHG-127): --shard i/N — deterministic contiguous partition. Contiguous
 # slices preserve the SERIAL_CHAIN adjacency (T5,T22a,T16 and T50,T51) at N=6,
