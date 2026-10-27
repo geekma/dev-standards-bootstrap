@@ -1,12 +1,12 @@
 ---
 name: dev-standards-bootstrap
-version: 3.91.4
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.91.4，低于此版本即需升级。
+version: 3.91.5
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.91.5，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
 
-> **当前携带版本：v3.91.4**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+> **当前携带版本：v3.91.5**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
 >
 > **自查是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章。低于上方版本号就该升级——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。也可直接 `bash scripts/bootstrap.sh --check <目标仓库>` 看三处版本比对。
 
@@ -40,7 +40,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
    - **核心层**：跨文档审计 `<tests>/audit-docs-consistency.sh`（**G1–G16** + A 组盖章互证；逐组定义以脚本头注释为唯一权威、`resources/AGENTS.md` 锚点表为人类索引；`--only-fail` 只打 FAIL 与空转声明）、`03.6-ui-spec.md` 为条件产物（`ui_change: true` 时必需，v3.67.0）、`METHODOLOGY.md` + `methodologies/`（6 册：`development` / `data-structures` / `state-trigger-audit` / `expert-capabilities` / `project-masters` / `review-intelligence`）、项目总册骨架 `<docs>/templates/project/`、阶段手册 `<docs>/STAGE_PLAYBOOK.md`、文档地图 `<docs>/README.md`、条款注册表 `<docs>/CLAUSE_REGISTRY.md`。
    - **强制包层**：Git Hook 三闸门（`pre-commit`/`pre-push`/`commit-msg`）、`<scripts>/agent-gate`（含 `preflight` 预检与 `metrics` 度量）、`<scripts>/session-gate.sh` + `<scripts>/install-hook-adapter`（按客户端自适应接线）、`<scripts>/behavior-extract.sh`、评测资产（`eval-cases`/`eval-rescore`，实验性）、阅读包生成器 `<scripts>/generate-reading-pack.sh`（按变更类型从条款注册表生成阅读切片，v3.46.0）、`.agent-governance.yml`、`.github/workflows/agent-governance.yml`、治理自测 `<tests>/run-tests.sh`。**精确清单与版本标记以 `bash scripts/bootstrap.sh --help` 为唯一权威**，本节只给能力地图。
    - **缺陷文档组**模板为**六件套**（`bug-diagnosis.md` / `bug-impact.md` / `bug-test-plan.md` / `bug-matrix.md` / `bug-config.md` / `bug-tasks.md`），落 `<docs>/bugs/_templates/`；编码记录模板 `coding-record.md` 在变更起编时落 `<docs>/changes/<变更号>/04.5-coding-record.md`。
-   - **变更起编时**（非安装期）再从模板生成 per-change 产物：`00-intent.md` → `<docs>/changes/<变更号>/00-intent.md`、`governance-state.json` → `00-governance.json`（须由用户/编排者填真实风险等级与执行主体）。同一天的多个 L0/L1 变更可改落 `<docs>/changes/BATCH-YYYYMMDD/`（见「变更批次」节）。00-intent 必填目录落位声明（GATE-E86），非 L0 的 00.5 沟通稿须含五要素锚点（v3.60.0，权威见 DS §1.1/§2.17.2d）。入口八件之外，**`03.6-ui-spec.md` 为条件产物**——`01-spec` 声明 `ui_change: true` 时必需（v3.67.0）；**形状件 4**（`01.5-rtvm-matrix.md` / `05-test-results.md` / `07-review-report.md` / `09-changelog.md`，v3.70.0 CHG-045）同落 `templates/entry/`——DS 对应节的模板形状唯一权威，作者按交付阶段复制，new-change 不默认脚手架。
+   - **变更起编时**（非安装期）再从模板生成 per-change 产物：`00-intent.md` → `<docs>/changes/<变更号>/00-intent.md`、`governance-state.json` → `00-governance.json`（须由用户/编排者填真实风险等级与执行主体）。同一天的多个 L0/L1 变更可改落 `<docs>/changes/BATCH-YYYYMMDD/`（见「变更批次」节）。00-intent 必填目录落位声明（GATE-E86），非 L0 的 00.5 沟通稿须含五要素锚点（v3.60.0，权威见 DS §1.1/§2.17.2d）。入口八件之外，**`01.5-rtvm-matrix.md` 由 `new-change` 脚手架一并生成**（占位行不豁免填写：spec/design/tasks/testplan 各自交付时回填对应维度，阶段门机检），**`03.6-ui-spec.md` 为条件产物**——`01-spec` 声明 `ui_change: true` 时必需（v3.67.0）；**形状件 05/07/09**（v3.70.0 CHG-045）同落 `templates/entry/`——DS 对应节的模板形状唯一权威，作者按交付阶段复制。
 4. **仍需用户在托管平台完成的事**（安装器会打印指引，但改不了平台设置）：把 `agent-governance` 与项目测试设为 Required Check、禁止直推受保护分支、为 L3 配置 CODEOWNERS / 人工审批。本地 Hook 可被绕过——**受保护分支的 CI 才是跨客户端的最终信任边界**。
 
 4.5 **Skill 版本更新**（用户说"更新 / 升级 dev-standards-bootstrap"，或检测到目标仓规范页脚版本低于本 Skill 携带版本）：
@@ -100,6 +100,6 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 版本同步
 
-- **当前携带版本 v3.91.4**（见规范页脚，页脚是唯一权威源）。
+- **当前携带版本 v3.91.5**（见规范页脚，页脚是唯一权威源）。
 - **版本号三载体**：frontmatter `version:`、`description` 尾注、正文顶部横幅——升级规范时**页脚 + 三处一起改**，漏改即审计红；平台事实论证（frontmatter 无 `version` 字段等）以 `MAINTAINER.md` §6 为权威（源仓维护者文件，不随 Skill 下发，目标仓无此文件），本文件不复述。
 - **改本 Skill 本身的人**（改脚本 / 改规范 / 改模板 / 动断言）请读 **`MAINTAINER.md`**（源仓维护者文件，不随 Skill 下发，目标仓无此文件）：文件角色表、改哪里必须同时改哪里的联动表、两道自测试的用法与顺序、断言数生成器、审计的 PART A/B 分区、逐版本升级推送清单。**装规范的人不需要读它。**

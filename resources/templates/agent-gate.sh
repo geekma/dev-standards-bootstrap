@@ -501,6 +501,10 @@ scaffold_body() { # <doc> <id> <risk> <placement>
       printf '# %s Modification Plan\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     03.5-tasks.md)
       printf '# %s Tasks\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
+    01.5-rtvm-matrix.md)
+      # v3.91.5: the RTVM is scaffolded (the matrix is a contract artifact), but
+      # placeholders do NOT satisfy the stage gates — each stage must fill its row.
+      printf '# %s RTVM 矩阵（四维闭环总表）\n\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 / 脚本 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n| <REQ-xxx> | <!-- FILL: 需求简述 --> | <DES-xxx> | <!-- FILL: 设计方案 --> | <T-xxx> | <CHG-xxx> / <!-- FILL: 文件:行号 --> | <TC-xxx> | <!-- FILL: 命令 --> | <!-- FILL: PASS/FAIL --> |\n\n> 回填时机（v3.91.5 机检）：spec 交付填 REQ；design 交付填 DES；tasks 交付填 TASK；testplan 交付填 TC。后补即被阶段门拒绝。\n' "$id" ;;
     04-test-scripts.md)
       printf '# %s Test Scripts\n\n场景：%s <!-- FILL: 场景名 -->。\n\n| 编号 | TC | SC | 覆盖维度 | 命令 | 期望 | REQ | 来源 |\n|---|---|---|---|---|---|---|---|\n| T1 | %s | %s | <!-- FILL --> | <!-- FILL --> | <!-- FILL --> | %s | 本次引入 |\n\n## TC 落点清单（REQ-1091，v3.71.0）\n\n- %s → <!-- FILL: 文件/节 -->\n' "$id" "$nxt_sc" "$nxt_tc" "$nxt_sc" "$nxt_req" "$nxt_tc" ;;
   esac
@@ -520,7 +524,7 @@ scaffold_change() { # <id> <risk> — generate the eight begin-stage artifacts
   fi
   mkdir -p "$d"
   local created=0 appended=0
-  for doc in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+  for doc in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 01.5-rtvm-matrix.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
     target="$d/$doc"
     body=$(scaffold_body "$doc" "$id" "$risk" "$placement")
     t121=""
@@ -919,6 +923,22 @@ entry_gate_docs_present() { # <id> — narrowed begin face (v3.89.0, DES-1960)
   required_docs_present "$1" entry
 }
 
+# v3.91.5 (2026-10-27 user directive): stage delivery, not post-hoc backfill.
+# A stage gate may only open when the PREVIOUS stage's deliverables are actually
+# on disk — including the RTVM row it owes. Placeholder shapes (<REQ-xxx>) do
+# not count; only numbered ids do.
+rtvm_has() { # <file> <REQ|DES|T|TC> -> 0 when a numbered id of that dimension exists
+  local f="$1" dim="$2"
+  [[ -s "$f" ]] || return 1
+  case "$dim" in
+    REQ) grep -qE '(^|[|`[:space:]])`?REQ-[0-9]+' "$f" 2>/dev/null ;;
+    DES) grep -qE '(^|[|`[:space:]])`?DES-[0-9]+' "$f" 2>/dev/null ;;
+    T)   grep -qE '(^|[|`[:space:]])`?T-[0-9]+([^A-Za-z0-9]|$)' "$f" 2>/dev/null ;;
+    TC)  grep -qE '(^|[|`[:space:]])`?TC-[0-9]+' "$f" 2>/dev/null ;;
+    *) return 0 ;;
+  esac
+}
+
 stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anchors only
   local stage="$1" id d gaps
   id=$(active_change)
@@ -934,6 +954,12 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
         || stage_gate_fail "G-规格门 (spec)" "REQ numbering has $gaps gap(s) inside the file's own min..max range" "continuous REQ rows in 01-spec (no gaps, standards §1.2)"
       ;;
     design)
+      # v3.91.5: design may not start before the REQUIREMENTS are on disk and
+      # their RTVM row is backfilled (no "design first, write REQ later").
+      [[ -s "$d/01-spec.md" ]] && grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
+        || stage_gate_fail "G-设计门 (design)" "01-spec.md missing/empty or carries no REQ- numbering — requirements must exist before design" "01-spec REQ rows written at the spec stage"
+      rtvm_has "$d/01.5-rtvm-matrix.md" REQ \
+        || stage_gate_fail "G-设计门 (design)" "01.5-rtvm-matrix.md missing or has no REQ row — backfill the RTVM at spec delivery, not at the end" "01.5 row carrying REQ-xxx, filled when the spec stage closed"
       [[ -s "$d/02-code-impact-analysis.md" && -s "$d/03-modification-plan.md" ]] \
         || stage_gate_fail "G-设计门 (design)" "02-code-impact-analysis.md / 03-modification-plan.md missing or empty" "02 (业务影响/风险/回滚策略) + 03 (选型比较 + 既有范式关系)"
       [[ -s "$d/03.5-tasks.md" ]] \
@@ -950,6 +976,14 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
         || stage_gate_fail "G-设计门 (design)" "03 missing 既有范式关系 section or declaration" "the 03 既有范式关系 section (E122 anchor)"
       ;;
     testplan)
+      # v3.91.5: the test plan may not start before design + tasks are delivered,
+      # and their RTVM dimensions (DES/T) are already backfilled.
+      [[ -s "$d/02-code-impact-analysis.md" && -s "$d/03-modification-plan.md" && -s "$d/03.5-tasks.md" ]] \
+        || stage_gate_fail "G-测试门 (testplan)" "02/03/03.5 missing or empty — the design stage was not delivered" "02 + 03 + 03.5 filled before the test plan"
+      rtvm_has "$d/01.5-rtvm-matrix.md" DES \
+        || stage_gate_fail "G-测试门 (testplan)" "01.5 has no DES row — design was not backfilled to the RTVM" "01.5 DES-xxx row filled at design delivery"
+      rtvm_has "$d/01.5-rtvm-matrix.md" T \
+        || stage_gate_fail "G-测试门 (testplan)" "01.5 has no TASK (T-xxx) row — tasks were not backfilled to the RTVM" "01.5 T-xxx row filled at task delivery"
       [[ -s "$d/04-test-scripts.md" ]] \
         || stage_gate_fail "G-测试门 (testplan)" "docs/changes/$id/04-test-scripts.md missing" "04 用例矩阵 (TC-xxx + 覆盖维度) + TC 落点清单"
       grep -qE "TC-[0-9]+" "$d/04-test-scripts.md" \
@@ -3519,6 +3553,20 @@ stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 o
   [[ "$n" =~ ^[1-8]$ ]] || n=$(( $(stage_history_last "$id" 3) + 1 ))
   [[ "$n" -ge 1 && "$n" -le 8 ]] || n=1
 
+  # v3.91.5 (2026-10-27 user directive): closing a stage CERTIFIES that stage's
+  # RTVM dimension is already backfilled. Late "fill the matrix at the end" is
+  # rejected here, at the stage boundary, not only at stop.
+  case "$n" in
+    2) rtvm_has "$d/01.5-rtvm-matrix.md" REQ \
+         || stage_gate_fail "G-RTVM门 (stage 2)" "01.5 has no REQ row — the spec stage was not backfilled" "01.5 REQ-xxx row, filled before closing stage 2" ;;
+    3) rtvm_has "$d/01.5-rtvm-matrix.md" DES \
+         || stage_gate_fail "G-RTVM门 (stage 3)" "01.5 has no DES row — the design stage was not backfilled" "01.5 DES-xxx row, filled before closing stage 3"
+       rtvm_has "$d/01.5-rtvm-matrix.md" T \
+         || stage_gate_fail "G-RTVM门 (stage 3)" "01.5 has no TASK (T-xxx) row — the task stage was not backfilled" "01.5 T-xxx row, filled before closing stage 3" ;;
+    4) rtvm_has "$d/01.5-rtvm-matrix.md" TC \
+         || stage_gate_fail "G-RTVM门 (stage 4)" "01.5 has no TC row — the test-plan stage was not backfilled" "01.5 TC-xxx row, filled before closing stage 4" ;;
+  esac
+
   # A) late backfill: a master marked for a FUTURE stage, or stamped after that
   # stage already closed, is evidence of "fill it all at the end" (Q7 forbids it).
   late=""
@@ -3701,23 +3749,24 @@ plan_consume_check() { # <id>
   reviews=$(plan_decision_value "$d" reviews)
   # v3.91.0 (CHG-127, G12): a declared hard rule (or H7) must be covered by a
   # FULL run; a narrowed selection with must rules is a contract violation.
-  local must_csv chosen_now judgment_now scope_now
+  local must_csv chosen_now judgment_now scope_now e148=""
   must_csv=$(sed -n 's/.*"must":\[\([^]]*\)\].*/\1/p' "$d/00-governance.json" 2>/dev/null | tr -d '"' | tr ',' '\n' | grep -E '^H[0-9]+$' | tr '\n' ',' | sed 's/,$//' || true)
   chosen_now=$(plan_decision_value "$d" chosen)
   judgment_now=$(plan_decision_value "$d" judgment)
   scope_now=$(plan_decision_value "$d" scope_confirmed)
-  # v3.91.4 (2026-10-27 二次裁定): AI may PROPOSE a narrowed scope, but the TIME
-  # decision belongs to the user. An `judgment=ai` decision without a recorded
-  # user confirmation is therefore incomplete — same code, stronger condition.
+  # v3.91.4/v3.91.5: TWO contract violations share ONE die site (T41):
+  #   (a) judgment=ai without the user's recorded confirmation;
+  #   (b) must rules not covered while judgment is not AI.
   if [[ "$judgment_now" == "ai" && -z "$scope_now" ]]; then
-    [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
-      && die "GATE-E148: $id AI-narrowed scope has no user confirmation — expected: decision.scope_confirmed='<user>@<ISO>' (set AGENT_GUARD_SCOPE_CONFIRM before plan); allowed: re-plan after the user chooses (adopt/up/down), or keep judgment=engine with FULL; fix: ask the user, then re-plan; ref: 2026-10-27 ruling / §3.1"
-    echo "agent-gate: WARN — AI scope without user confirmation for $id (E148 in strict)" >&2
+    e148="AI-narrowed scope has no user confirmation (decision.scope_confirmed is empty; set AGENT_GUARD_SCOPE_CONFIRM before plan)"
   fi
   if [[ -n "$must_csv" && "$chosen_now" != "FULL" && "$judgment_now" != "ai" ]]; then
+    e148="${e148:+$e148; }hard rule(s) $must_csv require a FULL run but chosen='$chosen_now' and judgment is not AI"
+  fi
+  if [[ -n "$e148" ]]; then
     [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
-      && die "GATE-E148: $id hard rule(s) $must_csv require a FULL run but decision.chosen='$chosen_now' and judgment is not AI — expected: chosen=FULL, or an AI scope judgment WITH user confirmation (AGENT_GUARD_SUITE_AI_* + AGENT_GUARD_SCOPE_CONFIRM); allowed: re-plan with evidence after the user chooses, or run FULL; fix: re-plan and run the chosen set; ref: CHG-127 G12 / 2026-10-27 ruling"
-    echo "agent-gate: WARN — hard rule(s) $must_csv not covered by chosen='$chosen_now' (G12)" >&2
+      && die "GATE-E148: $id $e148 — expected: chosen=FULL, or an AI judgment WITH user confirmation (AGENT_GUARD_SUITE_AI_* + AGENT_GUARD_SCOPE_CONFIRM); allowed: re-plan after the user chooses (adopt/up/down) or run FULL; fix: ask the user, then re-plan and run the chosen set; ref: CHG-127 G12 / 2026-10-27 rulings"
+    echo "agent-gate: WARN — $id $e148 (E148 in strict)" >&2
   fi
 
   # Hard floor 1: required artifacts exist.
@@ -3906,7 +3955,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.4" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.91.5" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -3952,7 +4001,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.4","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.91.5","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi

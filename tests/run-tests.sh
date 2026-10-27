@@ -272,6 +272,14 @@ EOF
 # spec
 - REQ-001: sample requirement
 EOF
+  # v3.91.5: the RTVM row is a STAGE deliverable, so every fixture change carries
+  # the full chain (REQ→DES→T→TC) from the moment it is seeded.
+  cat > "$d/01.5-rtvm-matrix.md" <<EOF
+# RTVM
+| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 | 验证状态 |
+|---|---|---|---|---|---|---|---|---|
+| REQ-001 | r | DES-001 | d | T-001 | $id / f:1 | TC-001 | cmd | ✅ PASS |
+EOF
   cat > "$d/02-code-impact-analysis.md" <<'EOF'
 # impact
 ## 业务影响
@@ -451,6 +459,8 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
   : > "$d/00-governance.json"
   : > "$d/00.5-communication.md"
   : > "$d/01-spec.md"
+  # v3.91.5: the shared batch RTVM carries one row per member (REQ→DES→T→TC).
+  printf '# RTVM\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n' > "$d/01.5-rtvm-matrix.md"
   : > "$d/02-code-impact-analysis.md"
   : > "$d/03-modification-plan.md"
   : > "$d/03.5-tasks.md"
@@ -463,8 +473,9 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
     printf '## %s\nREQ-901: r\n' "$id" >> "$d/01-spec.md"
     printf '## %s\n### 业务影响\n### 风险\n### 回滚策略\n延伸发现：未发现\n历史相似检索：未命中（x）\n' "$id" >> "$d/02-code-impact-analysis.md"
     printf '## %s\nDES-901 备选方案对比\n- **既有范式关系**：未命中（纯新增无同族实现）\n' "$id" >> "$d/03-modification-plan.md"
-    printf '## %s\n直接实施\n' "$id" >> "$d/03.5-tasks.md"
+    printf '## %s\n直接实施 T-901\n' "$id" >> "$d/03.5-tasks.md"
     printf '## %s\nTC-901 SC-901 覆盖维度\n' "$id" >> "$d/04-test-scripts.md"
+    printf '| REQ-901 | r | DES-901 | d | T-901 | %s / f:1 | TC-901 | cmd | ✅ PASS |\n' "$id" >> "$d/01.5-rtvm-matrix.md"
   done
 }
 
@@ -3203,6 +3214,15 @@ out=$(scripts/agent-gate --stage close 3 2>&1); report "T83 E146 unread backfill
 check_output "T83 E146 names the code" 'GATE-E146' "$out"
 sed 's/Observation: 已核对 00-04（未读回填）/Observation: 已读 P01 增量并继续/' docs/changes/CHG-970/09-changelog.md > .o83.tmp && mv .o83.tmp docs/changes/CHG-970/09-changelog.md
 out=$(scripts/agent-gate --stage close 3 2>&1); report "T83 read-back Observation clears E146" 0 "$?"
+# v3.91.5 (user directive): no stage may open before the previous stage's RTVM row
+# exists — verified live, not just by reading the checker source.
+mv docs/changes/CHG-970/01.5-rtvm-matrix.md .t83-rtvm.bak
+out=$(scripts/agent-gate --stage design 2>&1); report "T83 G-RTVM design blocks without the RTVM REQ row" 2 "$?"
+check_output "T83 G-RTVM names E126" 'GATE-E126' "$out"
+mv .t83-rtvm.bak docs/changes/CHG-970/01.5-rtvm-matrix.md
+mv docs/changes/CHG-970/01.5-rtvm-matrix.md .t83-rtvm.bak
+out=$(scripts/agent-gate --stage close 2 2>&1); report "T83 G-RTVM close 2 blocks without the RTVM REQ row" 2 "$?"
+mv .t83-rtvm.bak docs/changes/CHG-970/01.5-rtvm-matrix.md
 # v3.91.0 (CHG-127): G3 stale / G10 status+canary / G12 must / G15–G19 observability
 out=$(scripts/agent-gate status 2>&1); report "T83 G10 status exits 0" 0 "$?"
 check_output "T83 G10 status names enforcement" 'enforcement=' "$out"
