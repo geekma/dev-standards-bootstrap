@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.88.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.92.2-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -87,7 +87,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
 | **Release Integrity + Evidence Reuse** | One version authority (`scripts/release.sh check\|bump`) verifies every carrier and rewrites only declared sites; CI runs the full suite once, uploads a tree-keyed receipt, and reuses it for hard audit gates; a workspace suite lock admits one full run at a time and reclaims dead owners |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1308 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1594 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -201,13 +201,18 @@ Command reference (invoked by the above; manual runs are for debugging):
 
 | Command | Purpose |
 |---|---|
-| `begin <change-id>` / `end` | Activate or clear the active change; requires the eight change artifacts and validates governance state (risk level, distinct execution owners; L3 additionally the three `release_authorized_by`-family authorization fields) plus A-layer content markers |
+| `begin <change-id>` / `end` | Activate or clear the active change; the **entry gate** validates the three entry artifacts (00-intent / 00-governance / 00.5) plus governance state (risk level, distinct execution owners; L3 additionally the three `release_authorized_by`-family authorization fields) and A-layer markers; the 01–04 artifact checks run at the stateless stage gates |
+| `--stage spec\|design\|testplan` | Stateless stage gates read disk anchors only — spec: 01 REQ anchors + gap-free numbering; design: 02 three-dimensional impact/rollback + 03 option comparison/existing-paradigm + 03.5 tasks; testplan: 04 TC matrix + TC landing list. Idempotent, no stage-state file; `AGENT_GUARD_STAGE_GATES=0` restores the legacy full begin check (default on = new semantics) |
 | `--stage pre-write` | Validates the active change before an agent writes source code; fails closed if the target path cannot be parsed from hook input |
 | `--stage staged` | Staged source changes must ship with matching change artifacts, otherwise the commit is rejected |
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
 | `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md`, `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing verification command (L0: 04.5/05 may be §1.1 single-line declarations, v3.44.0); changelog REQ ids must be backfilled in `01.5-rtvm-matrix.md` (Gate 4 closure) |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff and runs the real verification command |
-| `metrics` | Read-only pipeline metrics as JSON Lines — observations only; aggregates the gate-friction ledger (die codes → counts, v3.43.0) |
+| `plan <change-id> [--explain\|--dry-run]` / `plan --refresh-profile` | Read-only adaptive decision engine (v3.90.2+, hardened in v3.91.0): reads the profile + diff + cost ledger and writes `decision` into `00-governance.json` (sections, predicted seconds, CAB `deferred`/`wasted`, nested artifacts/stages/masters, `must`, TC resolution rate). The decision is a **proposal**: the agent must show the card plus three options (adopt / up / down) and the user chooses; a narrowed AI scope is only valid with `AGENT_GUARD_SCOPE_CONFIRM` recorded as `decision.scope_confirmed`. `--explain` prints the cost/coverage account; `--refresh-profile` reports missing profile keys. Off switch: `AGENT_GUARD_ADAPT=0` |
+| `status` | Prints the effective enforcement face — runtime, hook-protocol family, layers, `enforcement=hook\|handshake`, handshake presence and the current model/context window (v3.91.0) |
+| `resume <change-id>` | Restores a shifted session from `handoff.md` + `decision` and prints the next steps; read-only, usage error is `GATE-E149` |
+| `baseline <change-id> [--write]` / `tc-index <change-id> [--write]` | P0-0 five-number baseline snapshot and P1-2 three-source TC index (04 matrix + script self-declarations + RTVM); the index is a target-repo cache, never a contract artifact |
+| `metrics` | Read-only pipeline metrics as JSON Lines — observations only; aggregates the gate-friction ledger (die codes → counts, v3.43.0) and, since v3.91.0, adoption/wasted/stale/handshake/review-independence columns |
 
 **File provenance**: the coding record must carry a `<!-- provenance -->` block produced by `scripts/stamp-provenance.sh <change-id>` — author, committer, commit, host, platform and UTC time are read from the running environment, so they cannot be typed by hand. `--all` stamps every `*.md` artifact of the change directory (the governance JSON is deliberately excluded); since v3.41.0 the pre-commit hook runs it automatically, and v3.42.0 adds `--trace` — the changelog's §4 traceability ids are derived from the `01.5-rtvm-matrix.md` instead of hand-typed. The gate checks block shape and producer; truthfulness of `author` itself is *not* machine-verifiable, and the design says so. No retroactive stamping: history is never back-filled, because back-filling would forge `generated_at` — the very thing the block exists to prevent.
 
@@ -314,12 +319,12 @@ Any change that fails any gate is **blocked from merge to main**.
 
 ## Governance Details
 
-- **Execution-side token discipline (v3.24.0/v3.25.0; recalibrated to 15 rules in this version)**: the shipped `AGENTS.md` carries a **15-rule** "Agent execution resource discipline" section (piped filtering / single-pass grep / locate-then-window reads / delegated exploration / no-match ≠ pass / parallel batches / targeted verification / stateful mock isolation / no parallel integration tests / long-task waiting / environment-attribution resume / call batching / tail-incremental reads / frozen-tree parallel dispatch / phased minimal read set); §2.9.6 session-context discipline (one topic per session, handoff beyond 50 turns or on topic switch); §2.5 minimal-expression artifact shapes with a ≤40-line soft cap — targeting cache_read (= context level × turns). **Read-set rule**: DS is never read in full; read it in phases per discipline 15 (this version removes the old rule 1 vs rule 15 contradiction).
+- **Execution-side token discipline**: the shipped `AGENTS.md` carries a **15-rule** "Agent execution resource discipline" section, plus §2.9.6 session-context discipline and §2.5 minimal-expression shapes with a ≤40-line soft cap — targeting cache_read (= context level × turns). **Sole authority for the rule text, numbering and read-set rule: the shipped `AGENTS.md` section**; this README deliberately does not restate it.
 - **Same-day change batches (v3.18.0; defaulted in v3.24.0; sequence clarified in v3.61.2)**: the **first L0/L1** change (or defect) of the day creates `<docs>/changes/BATCH-YYYYMMDD/` immediately; later same-day L0/L1 changes join it via section anchors instead of opening their own directories. Only the directory is relaxed — artifact filenames are unchanged, bundled changes are told apart by a `## <change-id>` section anchor, and the batch's change set is read from the authoritative roster in `00-governance.json` (never inferred from headings). The risk ceiling is not relaxed: **L2/L3 must live in their own directory**, and the gate refuses an L2/L3 record found inside a batch (per the governance roster).
 - **Defect groups join daily batches by default (v3.35.0, flat since v3.36.0)**: the first same-day defect creates one flat `docs/bugs/BATCH-YYYYMMDD/` directory and later same-day defects join it — six files named exactly as before, told apart by `## BUG-xxx` section anchors, same-day appends land in the same files (per-defect subdirectories remain a legal legacy form). The append-only `docs/bugfix-log.md` index (one dated row per bug) stays the day-level retrieval layer, and a defect's change-track entry (`BUG-*`) may still join a change batch like any other change.
-- **Methodology selection (M0–M3)**: `docs/METHODOLOGY.md` is the sole authority for which methodologies are allowed at which level; `docs/methodologies/development.md`, `docs/methodologies/data-structures.md`, `docs/methodologies/state-trigger-audit.md`, `docs/methodologies/expert-capabilities.md` and `docs/methodologies/project-masters.md` carry the per-item engineering rationale (SOLID/DRY applicability, weak-typing ban, implicit state/trigger-link three-way traversal, expert theory toolboxes). `docs/STAGE_PLAYBOOK.md` carries the operational detail migrated from DS §2.5 / §2.16.6 (clause authority stays in DS, v3.61.0).
+- **Methodology selection (M0–M3)**: `docs/METHODOLOGY.md` is the sole authority for which methodologies are allowed at which level; `docs/methodologies/development.md`, `docs/methodologies/data-structures.md`, `docs/methodologies/state-trigger-audit.md`, `docs/methodologies/expert-capabilities.md`, `docs/methodologies/project-masters.md` and `docs/methodologies/review-intelligence.md` carry the per-item engineering rationale (SOLID/DRY applicability, weak-typing ban, implicit state/trigger-link three-way traversal, expert theory toolboxes, AI review intelligence + runtime/model selection). `docs/STAGE_PLAYBOOK.md` carries the operational detail migrated from DS §2.5 / §2.16.6 (clause authority stays in DS, v3.61.0).
 - **Self-evolution**: skills derived from this one (declaring `derived_from: dev-standards-bootstrap`) live and evolve independently, and every installer/upgrade write path skips them; `--force` does not override that. `bash scripts/bootstrap.sh --derived-report` lists them.
-- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` (G1 version chain / G2 numbering continuity + globally unique change UID / G3 archive sync / G4 bugfix cross-registration / G5 RTVM backfill / G6 required sections / G7 batch self-consistency / G8 defect six-file existence / G9 project masters presence+self-attestation+backfill ledger+out-of-table feature-dir reviews sweep / G10 deprecation-marker sweep — a deprecation marker must carry its replaced-by version pointer (v3.41.0) / G11 UJ↔REQ coverage / G12 five-party evidence / G13 three-dimensional cross-check / G14 source cross-check / G15 source-artifact mapping closure / A-group provenance cross-checks) runs in CI or locally; failed items are the backfill list.
+- **Cross-document consistency audit**: `bash tests/audit-docs-consistency.sh` runs the **G1–G16** invariant groups plus the A-group provenance cross-checks (definition authority: the script header; human index: the anchor table in `resources/AGENTS.md`) in CI or locally; failed items are the backfill list. This README does not re-enumerate the groups.
 
 ## Repository Structure
 
@@ -359,6 +364,7 @@ dev-standards-bootstrap/
 │   ├── mutation-check.sh                   # Source-layer only (NOT shipped): checker self-test — four fixed mutations must turn the fast checkers red, inside throwaway copies only
 │   ├── ci-summary.sh                       # Source-layer only (NOT shipped): renders the CI run summary and hard-gates tests/.suite-baseline against the receipt's passed count
 │   ├── batch-metrics.sh                    # Source-layer only (NOT shipped): per-batch cost ledger (turns / edits / polls / full-suite runs / wall time) in .agent-state
+│   ├── replay-plan.sh                      # Source-layer only (NOT shipped): read-only replay of historical change diffs through today's `-T auto` resolver vs the sections 05 records — reports FULL-fallback rate and false negatives
 │   ├── lib-source-facts.sh                 # Source-layer only (NOT shipped): shared read-only fact helpers used by the six tools above
 │   ├── setup-branch-protection.sh          # Source-layer only (NOT shipped): prints the gh api payload for the required check (dry run); `--apply` mutates the remote
 │   ├── lib-suite-tree-fingerprint.sh       # Shared library: suite tree fingerprint used by receipt keying (installed with tests/run-tests.sh by --guard)
@@ -375,7 +381,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.88.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.92.2 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -385,11 +391,12 @@ dev-standards-bootstrap/
     │   ├── state-trigger-audit.md           # State/trigger-link audit: 6 lessons + 6-step checklist + 3 anti-patterns (v3.4.0)
     │   ├── expert-capabilities.md           # Expert capability profiles: 9 core + product-usability expert + 3 conditional experts (theory / breadth / experience / adaptation; v3.67.0 adds the UX/UAT card)
     │   └── project-masters.md               # Project master set detail layer: 13 masters, sections, backfill/annotation semantics (v3.35.0; v3.67.0 adds P12 product-context master)
+    │   └── review-intelligence.md           # AI review contract: project context, domain capability, runtime detection, model-cost consent, independence
     └── templates/
         ├── docs-readme.md                  # One-page docs map (v3.37.0): five layers, roles, update timing (→ <docs>/README.md)
         ├── communication.md                 # Communication-first gate artifact (v3.52.0): round-1 communication draft + user overall confirmation record (→ docs/changes/<id>/00.5-communication.md)
         ├── project                           # Project master set (v3.67.0): 13 SDLC masters P00–P12 + review-record template (→ docs/templates/project/)
-        ├── entry                             # Change-entry skeletons (v3.67.0): the eight begin-required artifacts + conditional 03.6-ui-spec.md + shape templates 01.5/05/07/09 (v3.70.0 CHG-045, → docs/templates/entry/)
+        ├── entry                             # Change-entry skeletons (v3.67.0): the eight entry templates (begin validates the three entry artifacts; 01–04 are checked by the stage gates) + conditional 03.6-ui-spec.md + shape templates 01.5/05/07/09 (v3.70.0 CHG-045, → docs/templates/entry/)
         ├── new-change.sh                   # Change-entry scaffolder (v3.43.0): dedicated-dir vs same-day-batch resolution (→ scripts/new-change)
         ├── CLAUDE.md                       # One-line import for Claude Code
         ├── PULL_REQUEST_TEMPLATE.md        # GitHub PR template with gate self-check
@@ -403,6 +410,7 @@ dev-standards-bootstrap/
         ├── bug-diagnosis.md, bug-impact.md, bug-test-plan.md, bug-matrix.md, bug-config.md, bug-tasks.md  # Six-file defect document set (→ docs/bugs/_templates/)
         ├── 06.5-deployment-config.md       # Deployment/config/DB record template (→ docs/; must declare "未命中，不适用" when not hit)
         ├── 06-delivery-summary.md          # Delivery summary + FU ledger template (→ docs/; four mandatory sections per §2.5 stage 9.5)
+        ├── review-models.json              # Review-model catalog example (→ .agent-review-models.example.json; rename to .agent-review-models.json to activate tiers/consent)
         ├── audit-docs-consistency.sh       # Cross-doc consistency audit: version chain / numbering continuity / checklist sync / bugfix cross-registration / RTVM backfill / change-batch self-consistency (copied to tests/)
         ├── governance-state.json           # Template for each change's 00-governance.json (NOT shipped — the agent writes it per change)
         ├── agent-governance.yml            # Team-reviewable governance config record (copied to .agent-governance.yml)
@@ -456,8 +464,8 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 641) |
-| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1308 golden-case assertions) in throwaway git repos; bash + git only |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 659) |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1594 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
 **There is no soft mode and no double run in CI.** golden-case runs the suite once with `-j 4` under a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`, so a regression fails loudly instead of drifting into the job timeout) and uploads `.agent-state/last-suite-receipt.json` for human forensics. source-audit no longer consumes that artifact: A3/A3c/A10 read the **committed baselines** and run as hard gates (no `AGENT_GUARD_AUDIT_SOFT`), which is also why it needs no dependency on the suite job and runs in parallel with it. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
@@ -496,7 +504,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.88.0 | **Last Updated:** 2026-10-21 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.92.2 | **Last Updated:** 2026-10-27 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

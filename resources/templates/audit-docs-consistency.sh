@@ -33,9 +33,12 @@
 #      13 册在位/自证/评审成对/最新变更回填清单；功能目录（01-spec 或 01.5 信号）内出现
 #      reviews/ 即红（FU-105：评审唯一落点=变更轨 07 + 总册 reviews/，表外默认禁止）
 #   G11 UJ↔REQ 双向覆盖 / G12 五方证据（v3.67.0，§2.5 阶段 1/8）：仅 `ui_change: true`
-#   G15 来源物映射闭合（v3.84.0 CHG-111，N2）：仅 01-spec「外部来源物」声明非未命中的变更参与
 #      的变更参与——缺 UJ-xxx 或 03.6-ui-spec.md 即红（G11）；07 缺「用户可用性验收」或
 #      「建议人类走查（非阻塞）」行即红（G12）。非界面变更不参与（条件门，不追溯既往）。
+#   G15 来源物映射闭合（v3.84.0 CHG-111，N2）：仅 01-spec「外部来源物」声明非未命中的变更参与
+#   G16 未入账改动检测（v3.89.0 CHG-117，§2.17.2b 信号③）：本地仓 git status -uall 源码路径面，
+#      无活跃变更且无当日缺陷组 → FAIL 点名；干净/非 git → 显式空转声明（--only-fail 不打印，
+#      DES-1959）；排除面与 gate is_code_path 同表同源（三处互钉，见 G16 块注释）
 #   G13 三维对照族（v3.68.0，CHG-043，§2.5 阶段 1/2/4/7/8）：G13a 事件流切分 / G13b 数据流
 #      规格表 / G13c+G14d 拆除豁免登记簿 / G13d 否定测试抽查 / G13e 评审运行时走查 / G13f 逐 UJ
 #      运行痕迹——执法点=agent-gate begin（E99/E100/E105/E106）与 stop（E101–E104/E107/E108），
@@ -75,14 +78,42 @@ set -uo pipefail
 
 ROOT=""
 only_fail=0
-for _a in "$@"; do
-  if [[ "$_a" == "--only-fail" ]]; then
-    only_fail=1
-  else
-    ROOT="$_a"
-  fi
+since_ref=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --only-fail) only_fail=1 ;;
+    # v3.90.1 (CHG-123, P0-4): incremental audit. It NEVER silently narrows a
+    # real audit: when the changed set misses this audit's subject files the run
+    # is a declared no-op; when it touches them the FULL audit still runs.
+    --since)
+      since_ref="${2:-}"
+      [[ -n "$since_ref" ]] || { echo "audit: --since requires a ref (usage: --since <ref>)" >&2; exit 2; }
+      shift ;;
+    *) ROOT="$1" ;;
+  esac
+  shift
 done
 ROOT="${ROOT:-$(pwd)}"
+
+if [[ -n "$since_ref" ]]; then
+  # An unresolvable ref must never read as "nothing changed" (review CHG-123 #3).
+  if ! git -C "$ROOT" rev-parse --verify -q "$since_ref^{commit}" >/dev/null 2>&1; then
+    echo "audit: --since ref '$since_ref' does not resolve — fix the ref, or omit the flag for a full audit" >&2
+    exit 2
+  fi
+  _changed=$( { git -C "$ROOT" diff --name-only "$since_ref"; git -C "$ROOT" ls-files --others --exclude-standard; } 2>/dev/null || true )
+  if [[ -z "$_changed" ]]; then
+    echo "since: no changed files (tracked or untracked) vs $since_ref — nothing to audit (declared no-op)"
+    exit 0
+  fi
+  _subject_hit=$(printf '%s\n' "$_changed" | grep -cE '^(README|SKILL|resources/|scripts/|tests/(run-tests|audit)|\.agent-governance\.yml)' || true)
+  if [[ "$_subject_hit" -eq 0 ]]; then
+    echo "since: $(printf '%s\n' "$_changed" | grep -c . ) changed file(s) vs $since_ref, none in this audit's subject (README/SKILL/resources/scripts/tests/yml) — declared no-op"
+    echo "since-uncovered: whole-repo sweeps (G-group inventory) were NOT run — use the full audit before release"
+    exit 0
+  fi
+  echo "since: $_subject_hit subject file(s) changed vs $since_ref — running the full audit (incremental narrowing is never silent)"
+fi
 
 # 路径根可配置（v3.15.0）：默认值 = 历史写死值，未配置即行为不变。
 # 解析优先级：环境变量 > .agent-governance.yml 的 paths.* > 内置默认。
@@ -113,6 +144,7 @@ BFLOG="$DOCS/bugfix-log.md"
 # 变更根（v3.18.0 批次审计用）：默认 = <docs>/changes，与门禁同一套解析规则。
 CHANGE_DIR="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
 CHANGES="$ROOT/$CHANGE_DIR"
+BUGS_DIR="${AGENT_GUARD_BUGS_ROOT:-$(cfg_path bugs_root "$DOCS_DIR/bugs")}"
 
 pass=0
 fail=0
@@ -813,7 +845,101 @@ else
   report "G15 source-mapping sweep VACUOUS SKIP — no 外部来源物 declarations (did NOT run; do not read this as a pass)" ok ok
 fi
 
+# ---------- G16 未入账改动检测（v3.89.0 CHG-117，REQ-1201，DES-1959） ----------
+# 本地仓（git rev-parse 成功）取 `git status --porcelain -uall` 的**源码路径面**
+# （-uall 列出未跟踪目录内容——折叠的 `?? dir/` 形态会把新目录里的源码文件藏住），
+# 判定三态：无账（无活跃变更、无当日缺陷组）→ FAIL 点名；干净 → 显式空转声明行；
+# 有账（活跃变更或当日缺陷组在场）→ 绿。
+# 【排除面同源钉】与 scripts/agent-gate is_code_path / scripts/session-gate.sh
+# sg_is_code_path **同表同源**——gate 不能被 source（其顶层有 git 与目录解析副作用），
+# 三处各留注释互钉：改任一侧的排除面/扩展名表，必须同步另两处。
+# 【--only-fail 语义】G16 的干净/非 git 声明行**不打印**（DES-1959：--only-fail 下
+# SKIP 态不打印）——与全局 report 的 skip 豁免规则相反（该规则的空转声明服务对象是
+# "没覆盖本仓"的组；G16 干净树是"查过且无事"的正态，session-gate start 的
+# --only-fail 面不需要它）。实现：声明行用不含 skip 子串的等价 ok 行，两态各恰一次
+# report 调用，执行计数与模式无关（A10 基线口径不受影响）。
+g16_re_escape() { printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g'; }
+g16_files=""
+g16_active=""
+g16_state="clean"   # clean | dirty | accounted | non-git
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  g16_docs_re=$(g16_re_escape "$DOCS_DIR")
+  g16_scripts_re=$(g16_re_escape "$(cfg_path scripts scripts)")
+  g16_tests_re=$(g16_re_escape "$(cfg_path tests tests)")
+  g16_githooks_re=$(g16_re_escape "$(cfg_path githooks .githooks)")
+  g16_files=$(git -C "$ROOT" status --porcelain -uall 2>/dev/null | cut -c4- \
+    | sed -E 's/.* -> //; s/^"//; s/"$//' \
+    | grep -vE "^(${g16_docs_re}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md)" \
+    | grep -vE "^(${g16_githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$)" \
+    | grep -E "\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$" || true)
+  g16_af="$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)"
+  # linked worktree 下 --git-path 返回绝对路径；普通仓为相对路径——两种形态都解析
+  if [[ -n "$g16_af" && "$g16_af" != /* ]]; then g16_af="$ROOT/$g16_af"; fi
+  if [[ -n "$g16_af" && -s "$g16_af" ]]; then
+    g16_active=$(tr -d '[:space:]' < "$g16_af" 2>/dev/null || true)
+  fi
+  if [[ -n "$g16_files" ]]; then
+    if [[ -n "$g16_active" ]] || [[ -d "$ROOT/$BUGS_DIR/BATCH-$(date -u +%Y%m%d)" ]]; then
+      g16_state="accounted"
+    else
+      g16_state="dirty"
+    fi
+  fi
+else
+  g16_state="non-git"
+fi
+if [[ "$g16_state" == "non-git" ]]; then
+  if [[ "$only_fail" -eq 1 ]]; then
+    report "G16 non-git worktree declaration (--only-fail suppressed face)" ok ok
+  else
+    report "G16 VACUOUS SKIP — not a git worktree (status face unavailable; did NOT run; do NOT read this as a pass)" ok ok
+  fi
+elif [[ "$g16_state" == "clean" ]]; then
+  if [[ "$only_fail" -eq 1 ]]; then
+    report "G16 clean-worktree declaration (--only-fail suppressed face)" ok ok
+  else
+    report "G16 VACUOUS SKIP — worktree has no source-path changes (clean tree; do NOT read this as a pass)" ok ok
+  fi
+elif [[ "$g16_state" == "accounted" ]]; then
+  report "G16 local source changes are accounted (active-change ${g16_active:-none} / same-day defect batch present; standards §2.17.2b)" 0 0
+else
+  report "G16 unaccounted source-path changes in the local worktree (no active change, no same-day defect batch — 修完不留痕; standards §2.17.2b signal ③, v3.89.0 CHG-117)" 0 1
+  echo "     G16 unaccounted files (first 10):"
+  printf '%s\n' "$g16_files" | head -10 | sed 's/^/       /'
+fi
+
 rm -f "$S3TMP"
 echo
 echo "$pass passed, $fail failed"
+# v3.90.3 (CHG-125, FU-959): audit is a measurable action too — one append-only
+# ledger row (columns unchanged; write failure never changes the verdict).
+_lg="$ROOT/.agent-state/cost-ledger.tsv"
+if mkdir -p "$(dirname "$_lg")" 2>/dev/null; then
+  # v3.91.0 (CHG-127, G1): 13-column schema; the first 8 stay compatible.
+  _rk="$(id -un 2>/dev/null || echo user)@$(hostname 2>/dev/null || echo host)/$(basename "$ROOT")"
+  if [[ -s "$_lg" ]] && ! head -1 "$_lg" | grep -q 'asserts'; then
+    awk -F'\t' -v rk="$_rk" 'BEGIN{OFS="\t"}
+      NR==1 {print "ts","kind","id","suite_key","cost_s","setup_s","cache","exit","asserts","rc","outcome","repo_key","model_id","ctx_window"; next}
+      { o=($8=="0"?"green":"red"); if ($6=="0" && $8=="0") o="wasted"; print $0,"-1",$8,o,rk,"","" }' \
+      "$_lg" > "$_lg.mig" 2>/dev/null && mv -f "$_lg.mig" "$_lg"
+  fi
+  [[ -s "$_lg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$_lg" 2>/dev/null || true
+  _out="green"; [[ "$fail" -eq 0 ]] || _out="red"
+  printf '%s\taudit\t%s\t%s\t%s\t0\tnone\t%s\t-1\t%s\t%s\t%s\t\t\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "${since_ref:-full}" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)" \
+    "${SECONDS:-0}" "$fail" "$_out" "$_rk" >> "$_lg" 2>/dev/null || true
+  # v3.91.1 (CHG-127 self-audit, final-plan §2.2): header + last 500 rows.
+  _ln=$(wc -l < "$_lg" 2>/dev/null | tr -d ' ')
+  case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac
+  if [[ "$_ln" -gt 501 ]]; then
+    # v3.91.2 erratum: never prune `run-full` rows — they are the whole-run cost
+    # baseline that `plan` consumes.
+    awk 'NR==1 {print; next}
+         $2=="run-full" {rf[++n]=$0; next}
+         {a[++m]=$0}
+         END { for (i=1;i<=n;i++) print rf[i]; s=(m>500?m-499:1); for (i=s;i<=m;i++) print a[i] }' \
+      "$_lg" > "$_lg.rot" 2>/dev/null && mv -f "$_lg.rot" "$_lg" 2>/dev/null || rm -f "$_lg.rot" 2>/dev/null
+  fi
+fi
 [[ "$fail" -eq 0 ]]

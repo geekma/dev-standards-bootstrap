@@ -24,6 +24,11 @@
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# v3.91.9 (CHG-127): snapshot the docs face BEFORE any fixture runs. A5 used to
+# create <docs>/templates in the caller's cwd (bootstrap bug, fixed in the same
+# batch), which flipped this flag to "present" mid-run and hard-failed A6a/b/c in
+# a fresh checkout. Taking the snapshot first makes the SKIP decision honest.
+A6_DOCS_ABSENT=0; [[ -d "$ROOT/docs" ]] || A6_DOCS_ABSENT=1
 STD="$ROOT/resources/DEVELOPMENT_STANDARDS.md"
 AGENTS="$ROOT/resources/AGENTS.md"
 METH="$ROOT/resources/METHODOLOGY.md"
@@ -43,6 +48,18 @@ fail=0
 warn=0
 failed_names=()
 
+# CHG-121 (batch 0): assertion-NAME set baseline. A total-only baseline cannot
+# tell "152 passed" from "a whole block never executed but the count matched"
+# (BUG-004). Every executed assertion appends its name; A10b compares the set.
+# Two files on purpose: the run-scoped file is filled while the audit executes,
+# the last-complete file is REPLACED only at the end. A3 (early in the run) asks
+# the generator to compare names — reading a half-filled run file would report
+# drift against a complete baseline on every single run.
+AUDIT_NAMES_RUN="${TMPDIR:-/tmp}/audit-run-names.$$"
+AUDIT_NAMES_LAST="${TMPDIR:-/tmp}/audit-executed-names.$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
+: > "$AUDIT_NAMES_RUN" 2>/dev/null || true
+AUDIT_ASSERTIONS_BASELINE="$ROOT/tests/.audit-assertions"
+
 # REQ-965 (v3.45.0): soft bucket — CI mode (AGENT_GUARD_AUDIT_SOFT=1) routes the
 # numeric-closure assertions (A3 count / A3c sync / A10 baseline) here: a miss
 # prints `warn`, never increments `fail`, and stays out of the A10 denominator.
@@ -52,6 +69,7 @@ SOFT="${AGENT_GUARD_AUDIT_SOFT:-}"
 
 report() { # name expected actual
   local name="$1" expected="$2" actual="$3"
+  printf '%s\n' "$name" >> "$AUDIT_NAMES_RUN" 2>/dev/null || true
   if [[ "$expected" == "$actual" ]]; then
     pass=$(( pass + 1 ))
     printf 'ok   %s\n' "$name"
@@ -68,6 +86,7 @@ report() { # name expected actual
 # soft threshold — the warn path masked this at v3.58.0 delivery).
 report_soft() { # name expected actual
   local name="$1" expected="$2" actual="$3"
+  printf '%s\n' "$name" >> "$AUDIT_NAMES_RUN" 2>/dev/null || true
   if [[ "$expected" == "$actual" ]]; then
     pass=$(( pass + 1 ))
     soft_pass=$(( soft_pass + 1 ))
@@ -78,8 +97,32 @@ report_soft() { # name expected actual
   fi
 }
 
-grep_count() { # file pattern -> count（basic grep）
+# CHG-119: **保持 BRE**（不改方言）。实测：把本 helper 整体切到 ERE 会改变
+# `^| GATE-E117 ` 这类「行首或字面」的交替语义（BRE 计数 1 → ERE 计数 227），
+# 波及 22 条 at_least_unique 结构性 pin —— 改一处 helper、毁一族断言。
+# 因此改为**逐条按需**改写：只把「依赖 GNU BRE 扩展（`\|` / `\(`）」的那几条
+# 换成跨实现一致的写法（ERE 交替 / -F 固定串），其余 250+ 条调用语义零变化。
+grep_count() { # file pattern -> count（basic grep = BRE）
   grep -c -- "$2" "$1" 2>/dev/null || true
+}
+
+# CHG-119: 字面串计数（-F）。当 pattern 的意图是**字面文本**（含 | [ ] 等正则元字符）
+# 时，正则表达它是脆弱的：ERE 里 | 是交替、[ 需写成 [[]、字面竖线需写成 [[|]]，
+# 而 [[|]] 在 BSD grep 的字符类解析里有歧义 → 同一 pattern 在不同实现下行为不同。
+# -F 固定串匹配零方言歧义，三类 grep 行为完全一致。
+grep_count_f() { # file literal -> count（fixed string）
+  grep -cF -- "$2" "$1" 2>/dev/null || true
+}
+
+at_least_f() { # name min file literal（固定串；语义见 grep_count_f）
+  local name="$1" min="$2" file="$3" literal="$4"
+  local c
+  c=$(grep_count_f "$file" "$literal")
+  if [[ "$c" -ge "$min" ]]; then
+    report "$name" ok ok
+  else
+    report "$name" ">=${min}" "$c"
+  fi
 }
 
 # 至少出现一次（关键词落点矩阵用；出现多处于语义无害）
@@ -87,6 +130,23 @@ at_least() { # name min file pattern
   local name="$1" min="$2" file="$3" pattern="$4"
   local c
   c=$(grep_count "$file" "$pattern")
+  if [[ "$c" -ge "$min" ]]; then
+    report "$name" ok ok
+  else
+    report "$name" ">=${min}" "$c"
+  fi
+}
+
+# CHG-119: ERE 版「至少出现一次」。**只给确实依赖 GNU BRE 扩展的断言用**——
+# BRE 的交替 `\|` 与分组 `\(` 在 busybox/toybox 下不被支持（当字面竖线 → 计数恒 0
+# → 假红）；ERE 的 `|` 与 `()` 是 POSIX 语法，三类 grep（GNU / BSD / toybox）行为一致。
+# 反面教训：不要把 grep_count 整体切到 ERE —— 那会改变 `^| GATE-E117 ` 这类
+# 「行首或字面」交替的语义（BRE 计数 1 → ERE 计数 227），一次改 helper 会毁 22 条
+# at_least_unique 结构性 pin。故采用逐条按需改写。
+at_least_e() { # name min file pattern（POSIX ERE）
+  local name="$1" min="$2" file="$3" pattern="$4"
+  local c
+  c=$(grep -cE -- "$pattern" "$file" 2>/dev/null || true)
   if [[ "$c" -ge "$min" ]]; then
     report "$name" ok ok
   else
@@ -203,6 +263,20 @@ for t in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-confi
   [[ -s "$TPL/$t" ]] && tpl6=$(( tpl6 + 1 ))
 done
 report "bug doc-set templates present (6 files)" 6 "$tpl6"
+
+# ---------- 阶段输入契约：交付触发点 / 背景输入 全覆盖（v3.91.6，CHG-127） ----------
+# PMP 要求下阶段输入=上阶段产出：模板自带标记，gate 再按阶段机检引用面。
+# 聚合断言（总数 == 带标记数）比逐个文件名断言更抗模板增删，且基线数字由生成器同步。
+tpl_md_total=$(find "$TPL" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+tpl_md_marked=$(grep -rl '交付触发点：' "$TPL" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
+report "all template md files declare 交付触发点 (CHG-127)" "$tpl_md_total" "$tpl_md_marked"
+tpl_bg_total=$(( $(find "$TPL/entry" "$TPL/project" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ') \
+  + $(find "$TPL" -maxdepth 1 -name 'bug-*.md' -type f 2>/dev/null | wc -l | tr -d ' ') ))
+tpl_bg_marked=$( { grep -rl '背景输入：' "$TPL/entry" "$TPL/project" --include='*.md' 2>/dev/null || true; grep -l '背景输入：' "$TPL"/bug-*.md 2>/dev/null || true; } | wc -l | tr -d ' ')
+report "stage/project/bug templates declare 背景输入 (CHG-127)" "$tpl_bg_total" "$tpl_bg_marked"
+at_least "DS carries the stage input contract (CHG-127)" 1 "$STD" '阶段输入契约'
+at_least "agent-gate enforces the marker contract (CHG-127)" 1 "$TPL/agent-gate.sh" 'delivery_markers_ok'
+at_least "scaffold emits delivery markers (CHG-127)" 1 "$TPL/agent-gate.sh" '交付触发点：变更立项时'
 
 # ---------- 关键词矩阵：最低文档集八类映射 + 编码记录 04.5 + 缺陷六件套（v3.7.0 引入） ----------
 at_least "keyword 最低文档集八类映射 in DEVELOPMENT_STANDARDS" 1 "$STD" "最低文档集八类映射"
@@ -496,20 +570,21 @@ REPO_BUGS="$ROOT/docs/bugs"
 # CI checkout has no private ledger. Treat that as an explicit SKIP, not a soft pass:
 # the old SOFT bucket made A6a/b/c warn forever and leaked into A3/A10, which hid real
 # numeric drift. Local runs (docs/ present) and target repos stay hard.
-A6_DOCS_ABSENT=0; [[ -d "$ROOT/docs" ]] || A6_DOCS_ABSENT=1
+# (Flag is snapshotted at the top of this script — see the v3.91.9 note there.)
 
 # A6a bugfix-log.md 存在且含真实 BUG 条目（非占位模板）
 # v3.56.1：A6 族断言依赖 docs/ 磁盘态，而源仓裁定 docs/* 忽略（CHG-017/FU-032，
 # .gitignore:37 注释）→ CI checkout 永远缺这些文件，A6a/b/c 结构性必红——并入
 # REQ-965 soft 桶（CI 降警，本地恒硬），与 A3/A3c/A10 同款。
 if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
-  report "A6a SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  echo "SKIP A6a: docs/ absent in a fresh source checkout (CHG-017; not a pass)"
+  report "A6a repo bugfix-log has real BUG entries (docs-dependent)" 1 1
 elif [[ -f "$REPO_BFLOG" ]]; then
   bug_count=$(grep -cE '^### BUG-[0-9]' "$REPO_BFLOG" || true)
-  report "A6a repo bugfix-log has real BUG entries (not placeholder)" 1 \
+  report "A6a repo bugfix-log has real BUG entries (docs-dependent)" 1 \
     "$([[ "$bug_count" -ge 2 ]] && echo 1 || echo 0)"
 else
-  report "A6a repo bugfix-log exists" 1 0
+  report "A6a repo bugfix-log has real BUG entries (docs-dependent)" 1 0
 fi
 
 # A6b docs/changes/ 下每个 CHG 目录至少含 00-intent.md（门禁 1 最低要求）
@@ -523,9 +598,10 @@ else
   chg_missing_intent=1
 fi
 if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
-  report "A6b SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  echo "SKIP A6b: docs/ absent in a fresh source checkout (CHG-017; not a pass)"
+  report "A6b every CHG dir has 00-intent.md (docs-dependent)" 0 0
 else
-  report "A6b every CHG dir has 00-intent.md (gate 1 minimum)" 0 "$chg_missing_intent"
+  report "A6b every CHG dir has 00-intent.md (docs-dependent)" 0 "$chg_missing_intent"
 fi
 
 # A6c docs/changes/ 下 CHG 编号连续递增（CHG-001, CHG-002, ... 无跳号）
@@ -551,7 +627,8 @@ chg_nums=$( { basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/n
   | awk '{printf "%d\n", $1}' | sort -nu)
 a6c_ran=0
 if [[ "$A6_DOCS_ABSENT" == 1 ]]; then
-  report "A6c SKIP — docs/ absent in a fresh source checkout (CHG-017; not a pass)" ok ok
+  echo "SKIP A6c: docs/ absent in a fresh source checkout (CHG-017; not a pass)"
+  report "A6c CHG numbering continuous (docs-dependent)" 0 0
   a6c_ran=1
 elif [[ -n "$chg_nums" ]]; then
   chg_prev=0
@@ -563,10 +640,10 @@ elif [[ -n "$chg_nums" ]]; then
     fi
     chg_prev=$n
   done
-  report "A6c CHG numbering continuous (no gaps)" 0 "$chg_gap"
+  report "A6c CHG numbering continuous (docs-dependent)" 0 "$chg_gap"
   a6c_ran=1
 else
-  report "A6c CHG numbering continuous (no gaps)" 1 0
+  report "A6c CHG numbering continuous (docs-dependent)" 1 0
   a6c_ran=1
 fi
 # BUG-004 放大器守卫：A10 基线只记**断言总数**、不记**断言名** → 任一断言被"整块
@@ -634,8 +711,8 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 # A9 规范条款存在性锚点（CHG-008 / FU-016）：防条款被静默移除
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
-# A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 164KB（167,936 字节）。
+# A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0、v3.43.0、v3.89.0 重校准）：治理内容演进时上界随之重校准
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 168KB（172,032 字节，v3.89.0 +4KiB 步进）。
 # v3.29.0（CHG-028）重校准 132KB → 140KB 的依据：§2.1 九专家行 + §2.2 分阶段专家评审矩阵为
 # 新增规范性内容（两轮措辞压缩后仍超 136KB 约 1.6KB），按 KiB 步进 +4KB；STANDARDS_CHANGELOG v3.29.0 行即依据。
 # v3.25.0（CHG-025）重校准 128KB → 132KB 的依据（按既有三个条件）：
@@ -679,14 +756,20 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 # v3.70.0 回转 172KB → 164KB（CHG-045，2026-10-13，用户"体积要控制"指令 + 配对减法纪律兑现）：
 #   CHG-045 存量法下沉实移 ~3.2KB（DS 170,823→167,610——盘点估值 13KB 偏高，可无语义损失
 #   移出的形状就这些；软警线 163,840B 常亮=下次结构增长的减法触发器）。A28/MAINTAINER 同步。
+# v3.89.0 重校准 164KB → 168KB 的依据（CHG-117，REQ-1199~1203，独立评审批 F5）：
+#   ① §2.17.2b 信号③专句 + §2.16.2 阶段门执法点 + §2.17 阶段门/无账门专段（含设计门补齐
+#      03.5）把 DS 推到 165,937 字节——旧软警 163,840B 之上、旧硬上界 167,936B 内余 1,999B；
+#   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.89.0 行；
+#   ③ 按 +4KB 步进重设为 168KB（172,032 字节），余量 6,095B——**不是**按当前体量贴合；
+#      软警线随上界 −4KiB = 167,936B。独立评审核回+8KB 步进放宽过多，此处兑现 +4KB。
 std_bytes=$(wc -c < "$STD" | tr -d ' ')
-report "A11 standards body size <= 164KB (FU-017, ratchet-down v3.70.0)" 1 "$([[ "$std_bytes" -le 167936 ]] && echo 1 || echo 0)"
-# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥163,840B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
+report "A11 standards body size <= 168KB (FU-017; ratchet-up v3.89.0 CHG-117, +4KiB step)" 1 "$([[ "$std_bytes" -le 172032 ]] && echo 1 || echo 0)"
+# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥167,936B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 163,840B)" 0 "$([[ "$std_bytes" -ge 163840 ]] && echo 1 || echo 0)"
+report_soft "A11s standards body approaching hard cap (soft warn >= 167,936B)" 0 "$([[ "$std_bytes" -ge 167936 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '164 KB / 167,936 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '168 KB / 172,032 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
@@ -697,10 +780,14 @@ at_least "A30 stage-6 dual clause" 1 "$STD" '延伸发现与历史相似检索�
 at_least "A30 discover-register-now clause" 1 "$STD" '会话内发现即登记'
 at_least "A30 erratum cites origin CHG" 1 "$STD" '显式引用原 CHG 号'
 at_least "A30 seven-element history field" 1 "$STD" '历史检索命中的 BUG/CHG 号'
-# A31 枚举面 pin（CHG-058/REQ-978）：G 组清单于双语 README+SKILL 在册（G10 同步漏更复发防线，A29 同族）+ bugfix-log 模板历史相似字段
-at_least "A31 G10 enumerated in EN README" 1 "$ROOT/README.md" 'G10'
-at_least "A31 G10 enumerated in zh README" 1 "$ROOT/README.zh-CN.md" 'G10'
-at_least "A31 audit-group enumeration in SKILL (G1-G14)" 1 "$ROOT/SKILL.md" 'G1–G14'
+# A31 枚举面 pin（CHG-058/REQ-978，CHG-120 改指）：G 组索引唯一权威=AGENTS 锚点表（G10 同步漏更复发防线，A29 同族）；
+# 双 README 自 CHG-120 起只留「G1–G16」指针、不再逐组枚举 —— pin 随实现改指唯一索引，同时钉住 README 的指针形态。
+at_least "A31 G10 enumerated in the AGENTS index" 1 "$ROOT/resources/AGENTS.md" 'G10'
+at_least "A31 EN README points at the single audit-group index" 1 "$ROOT/README.md" 'G1–G16'
+at_least "A31 zh README points at the single audit-group index" 1 "$ROOT/README.zh-CN.md" 'G1–G16'
+# CHG-118: pin 随实现更新——audit 实际已是 G1–G16（G15/G16 于 v3.84.0/v3.89.0 加入），
+# 旧 pin 'G1–G14' 是过期字面量，会在 SKILL 如实更新时误判为回退。
+at_least "A31 audit-group enumeration in SKILL (G1-G16)" 1 "$ROOT/SKILL.md" 'G1–G16'
 at_least "A31 bugfix-log template history field" 1 "$ROOT/resources/templates/bugfix-log.md" '历史相似'
 
 # A32 版本载体全链清单条款（CHG-061 / REQ-984，对等减法=§2.16.5 标准升级行退役合并）
@@ -1047,7 +1134,7 @@ at_least "A25 standards pins the flat anchor form" 1 "$STD" '## <BUG-xxx>'
 report "A25 gate resolves defect groups across both layouts" 1 "$(a17_at_least_1 "$(grep -c 'bug_group_dir' "$GATE_TPL" || true)")"
 report "A25 gate sweeps batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'BATCH-\*/BUG-\*/' "$GATE_TPL" || true)")"
 report "A25 gate sweeps flat anchor batches" 1 "$(a17_at_least_1 "$(grep -c 'anchored in more than one day batch' "$GATE_TPL" || true)")"
-report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'must join it into the day batch\|move it into the day batch' "$GATE_TPL" || true)")"
+report "A25 gate enforces the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -cE 'must join it into the day batch|move it into the day batch' "$GATE_TPL" || true)")"
 report "A25 gate begin checks the thirteen masters" 1 "$(a17_at_least_1 "$(grep -c 'validate_project_masters' "$GATE_TPL" || true)")"
 report "A25 gate stop checks the master backfill rows" 1 "$(a17_at_least_1 "$(grep -c 'validate_master_backfill' "$GATE_TPL" || true)")"
 report "A25 stamper resolves batched bug groups" 1 "$(a17_at_least_1 "$(grep -c 'defect group not found' "$STAMP_TPL" || true)")"
@@ -1298,7 +1385,7 @@ at_least "A46 rescore workflow calls the local script (CHG-099)" 1 "$ROOT/resour
 at_least "A46 gate carries the provenance gate (E117, CHG-099)" 1 "$GATE_TPL" 'GATE-E117'
 at_least "A46 gate soft-passes legacy 07 shapes (CHG-099)" 1 "$GATE_TPL" '发现处置表缺「来源」列'
 at_least "A46 gate counts finding provenance (CHG-099)" 1 "$GATE_TPL" 'finding_source_counts'
-at_least "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$GATE_TPL" 'findings_introduced\|findings_pre_existing'
+at_least_e "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$GATE_TPL" 'findings_introduced|findings_pre_existing'
 # v3.75.0 (CHG-099, 收尾整改 C-1)：pin 必须钉**真表头行**而非「本次引入|既有存量」字面——
 # 后者在模板的条件注释里本就出现，删掉真表头行后仍 ≥1 → 恒真断言（独立验证子代理 M2 变异未变红）。
 # 注意 `grep_count` 走 **BRE**（基础 grep）：`\|` 在 BRE 是**交替**不是字面管道——实测
@@ -1312,11 +1399,11 @@ at_least "A46 standards body carries the provenance column (CHG-099)" 1 "$STD" '
 at_least "A46 AGENTS carries the per-repo review-focus block (CHG-099)" 1 "$ROOT/resources/AGENTS.md" '本仓评审要点'
 at_least "A46 AGENTS block forbids a second authority (CHG-099)" 1 "$ROOT/resources/AGENTS.md" '禁止\*\*另建按仓评审文件'
 at_least "A46 registry indexes the new gate code (CHG-099)" 1 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E117 '
-at_least "A46 registry registers the new clauses (CHG-099)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R\(59\|60\|61\) '
-at_least "A46 bootstrap guard installs the eval layer (CHG-099)" 3 "$ROOT/scripts/bootstrap.sh" 'eval-cases\|eval-rescore\|github-reviewer-rescore'
+at_least_e "A46 registry registers the new clauses (CHG-099)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^[|] R(59|60|61) '
+at_least_e "A46 bootstrap guard installs the eval layer (CHG-099)" 3 "$ROOT/scripts/bootstrap.sh" 'eval-cases|eval-rescore|github-reviewer-rescore'
 # v3.75.0 收尾整改（独立评审 F-3）：安装侧三处 install_file 后的**卸载侧互锁**——既有 A26/A27
 # 先例要求 Tier 覆盖；漏卸会留下孤儿 workflow（每日 schedule 调已删脚本）。两条 pin 钉住三件。
-at_least "A46 uninstall removes the eval runtime scripts (CHG-099)" 2 "$ROOT/resources/templates/uninstall-standards.sh" 'eval-cases\|eval-rescore'
+at_least_e "A46 uninstall removes the eval runtime scripts (CHG-099)" 2 "$ROOT/resources/templates/uninstall-standards.sh" 'eval-cases|eval-rescore'
 at_least "A46 uninstall removes the rescore workflow (CHG-099)" 1 "$ROOT/resources/templates/uninstall-standards.sh" 'github-reviewer-rescore.yml'
 at_least "A46 SKILL names the eval layer (CHG-099)" 1 "$ROOT/SKILL.md" 'eval-cases'
 at_least "A46 README (EN) names the eval layer (CHG-099)" 1 "$ROOT/README.md" 'eval-cases'
@@ -1397,14 +1484,14 @@ report "A48 gate help no longer claims the 12-master range (CHG-102)" 0 "$(grep_
 at_least "A48 gate help names the 13-master range (CHG-102)" 1 "$GATE_TPL" 'P00\.\.P12'
 report "A48 gate source/template byte-identical (CHG-102; source-only face absent on fresh clone = SKIP, A44 semantics)" 0 "$([[ -f "$ROOT/scripts/agent-gate" ]] && { cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || echo 1; } || echo 0)"
 report "A48 SKILL never names a shipped script with a .sh suffix (CHG-102)" 0 "$(grep_count "$SKILL" 'install-hook-adapter.sh')"
-at_least "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent\|generate-reading-pack.sh'
+at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent|generate-reading-pack.sh'
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body did not grow past the v3.80.0 ratchet (CHG-107; growth requires explicit recalibration)" 1 "$([[ "$std_bytes" -le 167933 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; recalibrated v3.92.2 CHG-128 +unverified-REQ clause)" 1 "$([[ "$std_bytes" -le 171200 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
-at_least "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'begin <change-id> \[--risk L0\|L1\|L2\|L3\] \[--scaffold\]'
+at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
 at_least "A49 AGENTS carries the phase read-set discipline (CHG-107)" 1 "$AGENTS" '分阶段最小读集（v3.80.0'
 at_least_unique "A49 registry registers R65 (CHG-107)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R65 '
 at_least_unique "A49 DS carries the read-set pointer (CHG-107)" "$STD" '分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）'
@@ -1451,7 +1538,7 @@ at_least "A52 preflight wires the back shape face (CHG-109)" 1 "$GATE_TPL" 'p_ru
 at_least "A52 round-ledger write documented stop-lane-only (CHG-109)" 1 "$GATE_TPL" 'round-ledger write stays'
 at_least "A52 preflight usage discloses the widened face (CHG-109)" 1 "$GATE_TPL" 'v3.82.0 adds the delivery shape face'
 at_least "A52 verify channel wraps in caffeinate when available (CHG-109)" 1 "$GATE_TPL" 'caffeinate -dims bash -lc'
-at_least "A52 darwin missing-caffeinate warning stays loud (CHG-109)" 1 "$GATE_TPL" 'WARNING: caffeinate not found'
+at_least "A52 darwin missing-caffeinate warning stays loud (CHG-109)" 1 "$GATE_TPL" 'WARNING: caffeinate unavailable or disabled'
 at_least "A52 begin carries the telemetry-liveness backstop (CHG-109)" 2 "$GATE_TPL" 'YELLOW liveness'
 at_least "A52 hook adapter carries the post-wiring self-proof (CHG-109)" 2 "$ROOT/resources/templates/install-hook-adapter.sh" 'self-proof'
 at_least "A52 AGENTS entry step discloses the widened probe (CHG-109)" 1 "$AGENTS" 'v3.82.0 起并收 stop 侧交付形状面'
@@ -1519,12 +1606,13 @@ a55_expect_heads=$(printf '%s\n' \
   '#### 角色签署与独立性（门禁 5）' \
   '#### 执行记录（ReAct，§2.16.2 铁律）' \
   '#### 变更执行检查清单（§3 归档落点；唯一权威在 §3）' \
+  '#### 未验证 REQ 清单' \
   '#### 未动项' \
   '#### 重要上下文' \
   '#### 发布与回滚记录（进入发布时必填，§2.7）' | sort)
 a55_ds_heads=$(printf '%s\n' "$a55_s4" | grep '^#### ' | sed 's/[[:space:]]*$//' | sort)
 a55_tpl_heads=$(grep '^#### ' "$a55_tpl" | sed 's/[[:space:]]*$//' | sort)
-report "A55 DS section4 and entry/09 carry the fourteen canonical section headings (CHG-114)" 1 \
+report "A55 DS section4 and entry/09 carry the fifteen canonical section headings (CHG-114)" 1 \
   "$([[ "$a55_ds_heads" == "$a55_expect_heads" && "$a55_tpl_heads" == "$a55_expect_heads" ]] && echo 1 || echo 0)"
 a55_row_seq=$(sed -nE 's/^- \[ \] (P[0-9]{2}) .*/\1/p' "$a55_tpl" | tr '\n' ' ')
 a55_expect_row_seq='P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12 '
@@ -1647,7 +1735,7 @@ for a56_s in $a56_secs; do
     || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
 done
 report "A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)" 0 "$a56_sec_bad"
-at_least_unique "A56 golden section T76 closes the SECTIONS registry (CHG-116 tail)" "$a56_suite" '^SECTIONS=.* T76)'
+at_least_unique "A56 golden section T84 closes the SECTIONS registry (CHG-125 tail)" "$a56_suite" '^SECTIONS=.* T84)'
 
 # The SKIP string alone is a vacuous pin: a section can put its first assertions
 # above the guard and still print the string. In a target-repo layout (only
@@ -1717,9 +1805,10 @@ if [[ -f "$a56_priv_file" ]]; then
   for a56_p in $a56_priv_tags; do
     grep -qF "$a56_p" "$a56_priv_file" || { echo "A56: private discipline $a56_p is missing from .opencode/AGENTS.md" >&2; a56_priv_bad=$(( a56_priv_bad + 1 )); }
   done
-  report "A56 the six private execution disciplines are on disk (CHG-115/116)" 0 "$a56_priv_bad"
+  report "A56 private execution disciplines present on the local-only face (docs/private-dependent)" 0 "$a56_priv_bad"
 else
-  report "A56 private disciplines are a local-only file (absent here = a clean clone, nothing to check) (CHG-115)" 1 1
+  echo "SKIP A56: private local-only face absent (clean clone, nothing to check)"
+  report "A56 private execution disciplines present on the local-only face (docs/private-dependent)" 1 1
 fi
 # The discipline tags are assembled from parts: a literal copy of a tag inside
 # this tracked file would otherwise match itself and report a phantom leak.
@@ -1806,9 +1895,38 @@ for a43_f in "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$ROOT/resources/STAGE_P
   a43_n=$(grep -cE 'label\[for\]|hx-trigger|\[contenteditable\]|origin: <文件名>|data-action' "$a43_f" 2>/dev/null || true)
   [[ "$a43_n" -eq 0 ]] || { a43_bad=1; echo "A43 layering: $a43_f carries tool-vocabulary fingerprints ($a43_n hits)" >&2; }
 done
-a43_ptr=$(grep -c 'behavior-extract.sh` 头注释\|behavior-extract.sh 头注释' "$ROOT/resources/STAGE_PLAYBOOK.md" 2>/dev/null || true)
+a43_ptr=$(grep -cE 'behavior-extract.sh` 头注释|behavior-extract.sh 头注释' "$ROOT/resources/STAGE_PLAYBOOK.md" 2>/dev/null || true)
 [[ "$a43_ptr" -ge 1 ]] || { a43_bad=1; echo "A43 layering: playbook lacks the single-source pointer" >&2; }
 report "A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)" 0 "$a43_bad"
+
+# ── PART A58: 五道交付门承载面（v3.92.0，CHG-128）────────────────────────────
+# 门不是"说了就存在"：判定面（4 个 E 码）、证据面（fresh-clone 工具）、文档面
+# （DS/AGENTS）、反馈面（pre-push）、版本面（CHANGELOG）必须同时在位。
+report "A58a gate carries E150/E151/E152/E153" 4 "$(grep -oE 'GATE-E(150|151|152|153)' "$GATE_TPL" | sort -u | wc -l | tr -d ' ')"
+report "A58b fresh-clone tool emits a receipt" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-receipt.json' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
+report "A58c DS documents the environment gate" 1 "$(grep -cE 'fresh-clone|环境等价' "$STD" 2>/dev/null || true)"
+report "A58d AGENTS documents the fresh-clone/CI equivalence" 1 "$(grep -c 'fresh clone / 无 CI 仓必须全绿' "$AGENTS" 2>/dev/null || true)"
+report "A58e pre-push carries the G-FEED hint" 1 "$(grep -c 'G-FEED tip' "$ROOT/resources/templates/pre-push" 2>/dev/null || true)"
+report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(grep -c '| v3.92.0 |' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true)"
+report "A58g fresh-clone history ledger is declared" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-history.tsv' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
+report "A58h unverified-REQ declaration face is shipped" 1 "$([[ $(grep -c 'GATE-E154' "$GATE_TPL") -ge 1 && $(grep -c '未验证 REQ 清单' "$ROOT/resources/templates/entry/09-changelog.md") -ge 1 ]] && echo 1 || echo 0)"
+
+# ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
+# 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`
+# （93 处假绿的同型根因）。只有「断言名集合」相等才能证明该跑的都跑了。
+# 位置必须在**全部断言执行完之后、A10 之前**（放前面会与后续断言的集合差 200 条）。
+# A10/A10b 自身的名字排除在比较之外（A10 在本块之后才执行）。
+if [[ -f "$AUDIT_ASSERTIONS_BASELINE" ]]; then
+  # v3.91.9 (CHG-127): docs/private-dependent assertions keep ONE stable name in
+  # both environments (the SKIP fact is echoed as its own line), so this set
+  # comparison needs no environment-specific normalization.
+  a10b_cur=$(grep -vE '^A10b? ' "$AUDIT_NAMES_RUN" 2>/dev/null | sort -u || true)
+  a10b_exp=$(grep -vE '^A10b? ' "$AUDIT_ASSERTIONS_BASELINE" 2>/dev/null | sort -u || true)
+  a10b_d=$(comm -3 <(printf '%s\n' "$a10b_cur") <(printf '%s\n' "$a10b_exp") 2>/dev/null | wc -l | tr -d ' ')
+  report "A10b audit assertion-name set matches baseline (CHG-121)" 0 "$a10b_d"
+else
+  report "A10b audit assertion-name baseline exists (CHG-121; run update-assertion-count.sh)" 1 0
+fi
 
 if [[ -f "$AUDIT_BASELINE" ]]; then
   expected_total=$(cat "$AUDIT_BASELINE" | tr -d '[:space:]')
@@ -1830,6 +1948,9 @@ fi
 # runtime executed total (the old pre-report write recorded N-1 → 静态基线恒比
 # 运行时少一，正是 audit-baseline 差一的根因).
 printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
+# Only a COMPLETED run replaces the name set the generator compares against.
+sort -u "$AUDIT_NAMES_RUN" > "$AUDIT_NAMES_LAST.$$" 2>/dev/null && mv "$AUDIT_NAMES_LAST.$$" "$AUDIT_NAMES_LAST" 2>/dev/null || true
+rm -f "$AUDIT_NAMES_RUN" 2>/dev/null || true
 
 echo
 echo "$pass passed, $fail failed"

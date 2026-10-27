@@ -27,7 +27,7 @@
 | R03 | 缺陷六件套必含清单 | DEVELOPMENT_STANDARDS.md::复现步骤、完整调用链 | L0-bugfix | 硬 | 结构 |
 | R04 | 根因表与同族推演 | DEVELOPMENT_STANDARDS.md::**根因·同族推演（v3.4.0）** | L0-bugfix | 硬 | 结构 |
 | R05 | Bug 修复记录七要素 | DEVELOPMENT_STANDARDS.md::Bug 修复记录七要素 | L0-bugfix | 硬 | 结构 |
-| R06 | 缺陷发现入口（bug-autointent/交互三选项） | DEVELOPMENT_STANDARDS.md::#### 2.17.2b 缺陷发现入口扩展 | L0-bugfix | 硬 | 结构 |
+| R06 | 缺陷发现入口（bug-autointent/交互三选项/无账源码改动信号③——编辑时刻硬拦+交付边界 fail-closed+阶段感知谓词，v3.89.0） | DEVELOPMENT_STANDARDS.md::#### 2.17.2b 缺陷发现入口扩展 | L0-bugfix | 硬 | 结构 |
 | R07 | 诊断前必读总册 | DEVELOPMENT_STANDARDS.md::诊断前必读总册 | L0-bugfix | 硬 | 行为 |
 | R08 | TC 覆盖强制（修复必被 TC 覆盖） | DEVELOPMENT_STANDARDS.md::TC 覆盖强制 | L0-bugfix | 硬 | 行为 |
 | R09 | Bug 修复回填清单 | DEVELOPMENT_STANDARDS.md::#### Bug 修复回填清单 | L0-bugfix | 硬 | 结构 |
@@ -209,6 +209,36 @@
 | GATE-E118 | 验证通道 `ci.verification_command` 有值但形态非法（空值/未闭合引号/非法块指示符/多行裸标量/不在 `ci:` 段内）——fail-closed，不静默跳过 | agent-gate.sh::yml_scalar()/validate_stop()（v3.76.0） |
 | GATE-E120 | scaffold 拒绝非空专用目录——existing 产物会被同 id 遮蔽，换新变更号重跑（fail-closed，幂等保护） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
 | GATE-E121 | scaffold 拒绝对已携带本变更成员锚的产物重入——id 已物化，防双节污染（fail-closed） | agent-gate.sh::scaffold_change()（v3.80.0，CHG-107，REQ-1152） |
+| GATE-E125 | staged/stop 面存在源路径改动但无活跃变更、无同日缺陷批锚、无豁免 env（无账门 fail-closed） | agent-gate.sh::validate_unaccounted_changes()（v3.89.0，CHG-117） |
+| GATE-E126 | 阶段门（spec/design/testplan）未满足对应产物锚——无状态、幂等、按阶段补产物后复跑 | agent-gate.sh::stage_gate_fail()（v3.89.0，CHG-117） |
+| GATE-E132 | cost-line 子命令缺变更号或变更目录不存在（诊断入口参数错误） | agent-gate.sh::cost-line 分支（v3.90.1，CHG-123，P0-15） |
+| GATE-E133 | 治理记录 JSON 括号/引号不配对 | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
+| GATE-E134 | 治理记录 JSON 同行 `}{` 拼接（缺逗号） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
+| GATE-E135 | 治理记录 change_id 无法回读成完整对象（截断/重叠） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
+| GATE-E136 | `plan` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::plan 分支（v3.90.2，CHG-124，P1-1） |
+| GATE-E137 | 评审计划要求 deep/高成本模型但无用户确认（AI 不得自行选择） | agent-gate.sh::review_consent_check()（v3.90.4） |
+| GATE-E138 | `review-plan` 子命令用法错误（缺变更号 / 未知选项） | agent-gate.sh::review-plan 分支（v3.90.4） |
+| GATE-E139 | `review-plan --approve` 缺模型 id | agent-gate.sh::review-plan 分支（v3.90.4） |
+| GATE-E127 | 阶段关闭前置缺失（00.5 无确认 / 09 无子 Agent 放行） | agent-gate.sh::stage_close_check()（v3.90.3，CHG-125，P2-1） |
+| GATE-E128 | 09 声称阶段复核但 `reviews/P*.review.md` 缺失或为空 | agent-gate.sh::reviews_pair_check()（v3.90.3，CHG-125，P2-2） |
+| GATE-E129 | L2/L3 无用户整体确认却进入 staged 证据面 | agent-gate.sh::confirm_required_check()（v3.90.3，CHG-125，P2-3） |
+| GATE-E130 | L2/L3 无用户整体确认即 preflight | agent-gate.sh::confirm_required_check()（v3.90.3，CHG-125，P2-3） |
+| GATE-E131 | 09 缺自举两行（`[dogfood]` / `[dogfood-next]`） | agent-gate.sh::e131_dogfood_check()（v3.90.3，CHG-125，P2-4） |
+| GATE-E140 | `baseline` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::baseline 分支（v3.90.5，CHG-126，P0-0） |
+| GATE-E141 | `tc-index` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::tc-index 分支（v3.90.5，CHG-126，P1-2） |
+| GATE-E142 | stop/preflight 缺引擎 decision 且 `PLAN_STRICT=1`（存量默认只 WARN） | agent-gate.sh::plan_consume_check()（v3.90.5，CHG-126，P2-2） |
+| GATE-E143 | decision 的 artifacts/stages 硬项或 masters/reviews 软项缺失 | agent-gate.sh::plan_consume_check()（v3.90.5，CHG-126，P2-2） |
+| GATE-E144 | `decision.chosen` 的测试节在 05 无证据且未声明 coverage gap（strict） | agent-gate.sh::coverage_gap_check()（v3.90.5，CHG-126，P2-3） |
+| GATE-E145 | 总册 `filled-at stage=M` 晚于当前关闭阶段或晚于该阶段关闭时间（迟到回填） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
+| GATE-E146 | 下一阶段首条 Observation 未引用上一阶段回填的总册锚点（漏读） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
+| GATE-E147 | decision 的 `diff_hash` 与现算 diff 不一致且 `PLAN_STRICT=1`（stale 判定） | agent-gate.sh::plan_consume_check()（v3.91.0，CHG-127，G3） |
+| GATE-E148 | `decision.must[]` 非空但 `chosen` 不是 FULL 且 `PLAN_STRICT=1`（硬规则未覆盖） | agent-gate.sh::plan_consume_check()（v3.91.0，CHG-127，G12） |
+| GATE-E150 | 被测核心变更的 05 缺 `red_repro:`/`green_after:` 两行（或占位） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1279） |
+| GATE-E151 | `verification_owner` 缺失或等于 `implementation_owner`（被测核心变更） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1280） |
+| GATE-E152 | `scope_overrun=over` 且无用户确认的 scope（变更范围预算） | agent-gate.sh::scope_overrun_check()（v3.92.0，CHG-128，REQ-1281） |
+| GATE-E154 | 09 缺「未验证 REQ 清单」或漏列 01.5 验证状态非 ✅ 的 REQ（静默降级） | agent-gate.sh::unverified_req_check()（v3.92.2，CHG-128，REQ-1284） |
+| GATE-E153 | 被测核心变更缺 fresh-clone receipt 或 receipt 陈旧/红（环境等价） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1278） |
+| GATE-E149 | `resume` 子命令用法错误（缺变更号） | agent-gate.sh::resume 分支（v3.91.0，CHG-127，G17） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E77 | --stage commit-msg 用法错误（缺 message 文件） | agent-gate.sh::命令分发（case "$command"） |

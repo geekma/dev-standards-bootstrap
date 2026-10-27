@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "note": "可选评审模型清单。复制为 .agent-review-models.json 后按项目实际模型/CLI 填写；tier=deep 或 approval=true 的模型必须由用户确认（AGENT_REVIEW_USER_APPROVED=1 + review-plan --approve）。不填则默认 economy，无需确认。",
+  "models": [
+    {
+      "id": "example-economy-model",
+      "provider": "example-vendor",
+      "cli": "example-cli",
+      "tier": "economy",
+      "approval": false,
+      "strengths": ["code", "handoff"],
+      "note": "低/中成本默认评审；适合定向代码与衔接复核"
+    },
+    {
+      "id": "example-standard-model",
+      "provider": "example-vendor",
+      "cli": "example-cli",
+      "tier": "standard",
+      "approval": false,
+      "strengths": ["architecture", "code", "business", "handoff", "bug"],
+      "note": "标准档；适合 L2 架构/代码/缺陷评审"
+    },
+    {
+      "id": "example-deep-model",
+      "provider": "example-vendor",
+      "cli": "example-cli",
+      "tier": "deep",
+      "approval": true,
+      "strengths": ["architecture", "code", "ui", "business", "handoff", "bug"],
+      "note": "高成本强推理档；必须用户确认后才可用于 L3/高风险评审"
+    }
+  ]
+}

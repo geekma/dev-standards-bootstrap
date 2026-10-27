@@ -1,4 +1,6 @@
 # CHG-xxx 编码记录（Coding Record）
+> 交付触发点：阶段 5 每次源码改动伴随（04.5）；下游输入：05 测试、07 评审与 09
+
 
 <!-- provenance
 author: PENDING

@@ -1,4 +1,7 @@
 # P06 · 测试总册（Test Master：策略与脚本索引）
+> 交付触发点：测试策略/脚本索引变更时（testplan 阶段回填）；下游输入：04 测试计划与 05 执行
+> 背景输入：P01 需求 + P02 架构 + 既有 P06
+
 
 > **总册编号：P06** ｜ 落点：`docs/project/P06-test-master.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

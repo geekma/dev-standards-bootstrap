@@ -1,3 +1,5 @@
+> 交付触发点：发起 PR 时；下游输入：评审、CI 门禁与 P10 变更总日志
+
 ## 变更编号
 CHG-xxx（关联 `docs/<feature>/09-changelog.md`）
 

@@ -1,4 +1,7 @@
 # P05 · 任务计划册（Task Plan Master）
+> 交付触发点：任务计划/里程碑调整时；下游输入：03.5 任务拆解与开发排期
+> 背景输入：P01 需求 + P02 架构 + P09 风险
+
 
 > **总册编号：P05** ｜ 落点：`docs/project/P05-task-plan.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

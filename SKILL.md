@@ -1,18 +1,18 @@
 ---
 name: dev-standards-bootstrap
-version: 3.88.0
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.88.0，低于此版本即需升级。
+version: 3.92.2
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v3.92.2，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
 
-> **当前携带版本：v3.88.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+> **当前携带版本：v3.92.2**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
 >
 > **自查是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章。低于上方版本号就该升级——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。也可直接 `bash scripts/bootstrap.sh --check <目标仓库>` 看三处版本比对。
 
 ## 这个 Skill 做什么
 
-把一套团队开发治理规范（文档先行、测试先行、五道门禁、四维追踪矩阵、Agent 角色独立性、分阶段专家评审（§2.2 九专家）、风险分级、防遗漏防跳过）**一次性**接入任意代码仓库。自 v3.67.0 起含**用户体验体系**：阶段 1 项目上下文包（10 域）+ UJ 用户任务、阶段 3 条件产物 `03.6-ui-spec.md`（`ui_change: true` 时必需）、阶段 4 用户旅程 E2E 阈值、阶段 8 产品可用性专家 UAT 阻塞门。
+把一套团队开发治理规范（文档先行、测试先行、五道门禁、四维追踪矩阵、Agent 角色独立性、分阶段专家评审（§2.2 九专家）、风险分级、防遗漏防跳过）**一次性**接入任意代码仓库。自 v3.67.0 起含**用户体验体系**：阶段 1 项目上下文包（10 域）+ UJ 用户任务、阶段 3 条件产物 `03.6-ui-spec.md`（`ui_change: true` 时必需）、阶段 4 用户旅程 E2E 阈值、阶段 8 产品可用性专家 UAT 阻塞门。自本版起含**评审智能**：评审必须装载项目背景与专业能力、先探测目标仓被打开的 Agent 客户端再选执行体、高成本模型必须由用户确认（`scripts/agent-gate review-plan`；契约=`resources/methodologies/review-intelligence.md`）。
 
 `AGENTS.md` 是向 Agent 提供统一上下文的**上下文层**；可选的 `agent-gate` 在支持 Hook 的客户端写入前阻断，并由 Git / CI 对所有客户端兜底。装一次，以后每个新项目只需说一句"用 dev-standards-bootstrap 初始化这个仓库"。
 
@@ -37,10 +37,10 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
    - `--all` 是"用户说初始化"的**一条完成路径**（默认全量自动注入）。分层 flag（`--core` / `--claude` / `--ci` / `--guard` / `--pipeline`）**只在用户明确要求最小化安装或排障时**使用。
    - **各层的精确文件清单以 `bash scripts/bootstrap.sh --help` 为唯一权威源**，本文件不复制——同一份清单维护两处必然腐烂。
    - 安装器**幂等**、**失败即拒绝（fail-closed）**、目标已有不同内容时展示 diff 并要求 `--force` 才覆盖——这是"检测已有文件、绝不静默覆盖"红线的机器化兜底。`--all` 还会**自动接线**（`core.hooksPath` / 客户端适配器 / 验证命令探测），零手工。
-   - 核心层含跨文档一致性机器审计 `<tests>/audit-docs-consistency.sh`（十四组不变量 G1–G14 + A 组盖章互证，逐组定义以脚本头部注释与 `resources/AGENTS.md` 锚点表为唯一权威；支持 `--only-fail` 只打 FAIL 行与空转声明，存量红仓复跑免全量重放）；文档变更后或接入 CI 时运行，失败项即 §2.14 存量回填清单。核心层还含 `METHODOLOGY.md` 与 `methodologies/`（`development.md` / `data-structures.md` / `state-trigger-audit.md` / `expert-capabilities.md` / `project-masters.md`，v3.35.0 起含项目总册细节层）与项目总册骨架 `<docs>/templates/project/`（13 册+评审模板，v3.67.0）与阶段执行手册 `<docs>/STAGE_PLAYBOOK.md`（DS §2.5/§2.16.6 叙事细则载体，条款权威仍在 DS，v3.61.0）与一页文档地图 `<docs>/README.md`（五层职责+更新时机，v3.37.0）与条款注册表 `<docs>/CLAUSE_REGISTRY.md`（条款机器索引层，DS 仍是条款正文唯一叙事权威，v3.46.0）。
-   - 强制包层含 Git Hook 归因闸门（`pre-commit` / `pre-push` / `commit-msg`）、`<scripts>/agent-gate`（含 `check-confirm` 确认门探针与 `metrics` 只读度量）、`<scripts>/behavior-extract.sh`（HTML/JS 原型行为抽取器，G13/G14 源对照数据源，v3.68.0）、**评测资产层（实验性，依赖本地缺陷台账，未接外部评测框架）`<scripts>/eval-cases` + `<scripts>/eval-rescore` 与 `.github/workflows/github-reviewer-rescore.yml`（事故/回归派生评测集 + 覆盖比重打分 + 治理面哈希漂移即重跑，v3.75.0）**、**会话内执法 `<scripts>/session-gate.sh` + `<scripts>/install-hook-adapter`（按当前客户端自适应接线，v3.34.0；`check` 模式轮次超 `AGENT_GUARD_SESSION_TURN_LIMIT` 即工具级硬拦，v3.58.0；opencode 适配改四段式真加载验证 + dual-active 双 runtime 形状，v3.64.0）**、`.agent-governance.yml`、`.github/workflows/agent-governance.yml`（required-check 名 `agent-governance`）、阅读包生成器 `<scripts>/generate-reading-pack.sh`（按变更类型从条款注册表生成阅读切片，锚点 fail-closed，v3.46.0）与治理自测试 `<tests>/run-tests.sh`。
+   - **核心层**：跨文档审计 `<tests>/audit-docs-consistency.sh`（**G1–G16** + A 组盖章互证；逐组定义以脚本头注释为唯一权威、`resources/AGENTS.md` 锚点表为人类索引；`--only-fail` 只打 FAIL 与空转声明）、`03.6-ui-spec.md` 为条件产物（`ui_change: true` 时必需，v3.67.0）、`METHODOLOGY.md` + `methodologies/`（6 册：`development` / `data-structures` / `state-trigger-audit` / `expert-capabilities` / `project-masters` / `review-intelligence`）、项目总册骨架 `<docs>/templates/project/`、阶段手册 `<docs>/STAGE_PLAYBOOK.md`、文档地图 `<docs>/README.md`、条款注册表 `<docs>/CLAUSE_REGISTRY.md`。
+   - **强制包层**：Git Hook 三闸门（`pre-commit`/`pre-push`/`commit-msg`）、`<scripts>/agent-gate`（含 `preflight` 预检与 `metrics` 度量）、`<scripts>/session-gate.sh` + `<scripts>/install-hook-adapter`（按客户端自适应接线）、`<scripts>/behavior-extract.sh`、评测资产（`eval-cases`/`eval-rescore`，实验性）、阅读包生成器 `<scripts>/generate-reading-pack.sh`（按变更类型从条款注册表生成阅读切片，v3.46.0）、`.agent-governance.yml`、`.github/workflows/agent-governance.yml`、治理自测 `<tests>/run-tests.sh`。**精确清单与版本标记以 `bash scripts/bootstrap.sh --help` 为唯一权威**，本节只给能力地图。
    - **缺陷文档组**模板为**六件套**（`bug-diagnosis.md` / `bug-impact.md` / `bug-test-plan.md` / `bug-matrix.md` / `bug-config.md` / `bug-tasks.md`），落 `<docs>/bugs/_templates/`；编码记录模板 `coding-record.md` 在变更起编时落 `<docs>/changes/<变更号>/04.5-coding-record.md`。
-   - **变更起编时**（非安装期）再从模板生成 per-change 产物：`00-intent.md` → `<docs>/changes/<变更号>/00-intent.md`、`governance-state.json` → `00-governance.json`（须由用户/编排者填真实风险等级与执行主体）。同一天的多个 L0/L1 变更可改落 `<docs>/changes/BATCH-YYYYMMDD/`（见「变更批次」节）。00-intent 必填目录落位声明（GATE-E86），非 L0 的 00.5 沟通稿须含五要素锚点（v3.60.0，权威见 DS §1.1/§2.17.2d）。入口八件之外，**`03.6-ui-spec.md` 为条件产物**——`01-spec` 声明 `ui_change: true` 时必需（v3.67.0）；**形状件 4**（`01.5-rtvm-matrix.md` / `05-test-results.md` / `07-review-report.md` / `09-changelog.md`，v3.70.0 CHG-045）同落 `templates/entry/`——DS 对应节的模板形状唯一权威，作者按交付阶段复制，new-change 不默认脚手架。
+   - **变更起编时**（非安装期）再从模板生成 per-change 产物：`00-intent.md` → `<docs>/changes/<变更号>/00-intent.md`、`governance-state.json` → `00-governance.json`（须由用户/编排者填真实风险等级与执行主体）。同一天的多个 L0/L1 变更可改落 `<docs>/changes/BATCH-YYYYMMDD/`（见「变更批次」节）。00-intent 必填目录落位声明（GATE-E86），非 L0 的 00.5 沟通稿须含五要素锚点（v3.60.0，权威见 DS §1.1/§2.17.2d）。入口八件之外，**`01.5-rtvm-matrix.md` 由 `new-change` 脚手架一并生成**（占位行不豁免填写：spec/design/tasks/testplan 各自交付时回填对应维度，阶段门机检），**`03.6-ui-spec.md` 为条件产物**——`01-spec` 声明 `ui_change: true` 时必需（v3.67.0）；**形状件 05/07/09**（v3.70.0 CHG-045）同落 `templates/entry/`——DS 对应节的模板形状唯一权威，作者按交付阶段复制。
 4. **仍需用户在托管平台完成的事**（安装器会打印指引，但改不了平台设置）：把 `agent-governance` 与项目测试设为 Required Check、禁止直推受保护分支、为 L3 配置 CODEOWNERS / 人工审批。本地 Hook 可被绕过——**受保护分支的 CI 才是跨客户端的最终信任边界**。
 
 4.5 **Skill 版本更新**（用户说"更新 / 升级 dev-standards-bootstrap"，或检测到目标仓规范页脚版本低于本 Skill 携带版本）：
@@ -52,7 +52,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 5. **初始化第一个功能目录骨架**（可选，询问用户是否现在就开始第一个变更）：若用户已有具体功能，按规范 §1.1 在 `<docs>/<feature>/` 下创建空的 `01-spec.md` 骨架（仅标题与章节占位，**不臆造需求内容**）；变更管线入口 `00-intent.md`（§2.17）同样只创建骨架。
 
-6. **完成后回执**：列出本次实际写入 / 跳过的文件清单、启用的客户端适配器、以及仍需用户在托管平台配置的 Required Checks。**不得声称"所有工具均在改前强制受控"**——应说明 `AGENTS.md` 是上下文层，受保护分支的 CI 才是最终信任边界。若装了管线自动化，提示 `scripts/agent-gate metrics` 可输出管线度量（§2.17.5，仅作观察，不替代 DoD）。
+6. **完成后回执**：列出本次实际写入 / 跳过的文件清单、启用的客户端适配器、以及仍需用户在托管平台配置的 Required Checks。**不得声称"所有工具均在改前强制受控"**——应说明 `AGENTS.md` 是上下文层，受保护分支的 CI 才是最终信任边界。若装了管线自动化，提示 `scripts/agent-gate metrics` 可输出管线度量（§2.17.5，仅作观察，不替代 DoD）；按需可用 `scripts/agent-gate baseline <变更号> [--write]`（P0-0 五数基线）与 `tc-index <变更号> [--write]`（P1-2 三源 TC 索引）。**自适应判定默认在 `begin` 自动产出**（`scripts/agent-gate plan <变更号> [--explain|--dry-run]`，结果写 `00-governance.json` 的 `decision` 并由 `stop/preflight` 消费）；**判定默认不是判决**：AI 必须把判定卡（建议节 / 预计秒数 / 覆盖缺口 / 风险）展示给用户并给三选一（采纳 / 升档 / 降档），用户选定后以 `AGENT_GUARD_SCOPE_CONFIRM='<用户>@<ISO>'` 重新 plan 落 `scope_confirmed`；AI 不得代替用户决定耗时动作。`status` 打印生效执法层与当前模型/窗口，换挡后用 `resume <变更号>` 从 handoff 续接。
 
 ## 路径根可配置
 
@@ -76,17 +76,20 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 会话内执法
 
-执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start`：跑 `tests/audit-docs-consistency.sh --only-fail` 亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle`：跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter` 按客户端自适应生成，`--detect` 打印矩阵。**opencode 适配为四段式（v3.64.0，CHG-084）**：①探测 runtime 清单与版本（PATH CLI + Desktop 内置 CLI，`--version` 各自落盘）→ ②实时检索官方插件文档定契约（来源 URL 记入生成物契约头，不做版本→形状静态映射）→ ③生成形状候选 → ④**逐 runtime 沙箱真加载探测 + session-gate 功能标记仲裁，装毕对最终文件复验**——客户端自身 `failed to load plugin` 行 + 功能标记是唯一裁决，形状永不写死；无法确证契约即 fail-closed 拒装（ADAPTER-E11/E12），同机多 runtime 契约互斥时以主用 runtime 择形并显式告警（E13）。硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
+执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start` 跑审计亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle` 跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。接线由 `scripts/install-hook-adapter` 按客户端自适应生成，`--detect` 打印矩阵。**适配器契约（探测→文档→候选→真加载验证、失败码 ADAPTER-E11/E12/E13、opencode dual-active 形状）的唯一权威是 `resources/templates/install-hook-adapter` 头注释**；硬阻断仍由 Claude Stop hook 与 Git hooks/CI 承担。
 
 ## 变更批次（同日合并）
 
 **同一天**的多个 **L0/L1** 变更**默认共用** `<docs>/changes/BATCH-YYYYMMDD/`（v3.24.0 默认化）：
 
-- **只有目录被放宽，产物文件名一字不改**——仍是 15 件同名文件；同批变更用 `## <变更号>` 小节锚点分开。**L2/L3 不得入批**（削弱逐变更证据边界，门禁按记录逐条拒绝）。
-- **解析顺序**：独立 `<docs>/changes/<变更号>/`（永远优先）→ `AGENT_GUARD_CHANGE_DIR` → 含该锚点的 `BATCH-*/`。
-- **变更集合一律从权威名单读**（`00-governance.json` 的 `change_id`），**不从 `## <标题>` 反推**（v3.19.0 实测：反推会造幽灵变更、拒整批）；**批次小节标题一律写 `## <变更号>`**。
-- **治理记录格式无关**（v3.20.0）：`00-governance.json` 任意合法 JSON 写法等价（单行/多行/格式化皆可），读取器先压平再按顶层对象切分；记录须**扁平**（L3 三个 `release_authorized_*` 为扁平字符串字段）。
-- **闭环判定细一档**：共享 `09-changelog.md` 下"文件存在"≠"本变更已关闭"，改判本变更自己的锚点小节是否存在；`metrics` 每变更一行；审计 G7 逐批次核对（记录 ⊆ 锚点、风险 ∈ {L0,L1}、跨批次唯一）。
+- **只有目录被放宽**，产物文件名一字不改；同批变更用 `## <变更号>` 小节锚点分开；**L2/L3 不得入批**（门禁按治理记录逐条拒绝）。
+- **解析顺序与变更集合口径**（独立目录优先 → `AGENT_GUARD_CHANGE_DIR` → 批次；集合从 `00-governance.json` 的 `change_id` 读，**不从标题反推**）**唯一权威 = DS §1.1**。
+- **闭环判定**（"文件存在"≠"本变更已关闭"，改为本变更自己的锚点小节；`metrics` 每变更一行；记录 ⊆ 锚点、风险 ∈ {L0,L1}、跨批次唯一）**唯一权威 = 审计 G7**。
+- **治理记录格式无关**（任意合法 JSON 写法等价；读取器先压平再按顶层对象切分；记录须扁平）**唯一权威 = DS §1.1 与 `governance-state.json` 模板**。
+
+## 治理自测怎么跑
+
+`<tests>/run-tests.sh` 支持按变更选节（`-T auto` / `-T <节>`）、并行（`-j N`）、列节（`-l`）。**跑法分层的唯一权威**：目标仓见 `<docs>/AGENTS.md` 纪律 7，源仓见 `MAINTAINER.md` §3。一句话：改文档/模板/单脚本用 `-T auto`，只有改被测核心（`agent-gate` / `run-tests.sh` / `.agent-governance.yml`）才全量且收口一次。
 
 ## 红线
 
@@ -97,6 +100,6 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 版本同步
 
-- **当前携带版本 v3.88.0**（见规范页脚，页脚是唯一权威源）。
+- **当前携带版本 v3.92.2**（见规范页脚，页脚是唯一权威源）。
 - **版本号三载体**：frontmatter `version:`、`description` 尾注、正文顶部横幅——升级规范时**页脚 + 三处一起改**，漏改即审计红；平台事实论证（frontmatter 无 `version` 字段等）以 `MAINTAINER.md` §6 为权威（源仓维护者文件，不随 Skill 下发，目标仓无此文件），本文件不复述。
 - **改本 Skill 本身的人**（改脚本 / 改规范 / 改模板 / 动断言）请读 **`MAINTAINER.md`**（源仓维护者文件，不随 Skill 下发，目标仓无此文件）：文件角色表、改哪里必须同时改哪里的联动表、两道自测试的用法与顺序、断言数生成器、审计的 PART A/B 分区、逐版本升级推送清单。**装规范的人不需要读它。**

@@ -465,8 +465,23 @@ transform_src() { # src -> stdout
       -e "s|docs/|$DOCS_DIR/|g" \
       "$1"
 }
+# v3.91.6: the project-profile block appended to .agent-governance.yml is
+# USER-OWNED (write_profile_section never rewrites it). Re-installing therefore
+# compared "template" against "template + profile" and aborted as a CONFLICT
+# (T14 idempotency red since P1-4). Compare the managed part only.
+profile_stripped() { # <yml> — drop the profile block AND the blank line before it
+  awk '/^# v3\.90\.2 \(CHG-124, P1-4\): project profile/{exit} {l[NR]=$0; if (NF) last=NR}
+       END{for (i=1;i<=last;i++) print l[i]}' "$1"
+}
 same_as_src() { # src dest
-  if [[ "$PATHS_CUSTOM" == 1 ]]; then cmp -s <(transform_src "$1") "$2"; else cmp -s "$1" "$2"; fi
+  if [[ "$(basename "$1")" == "agent-governance.yml" && -f "$2" ]]; then
+    cmp -s <(if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1"; else cat "$1"; fi) \
+           <(profile_stripped "$2")
+  elif [[ "$PATHS_CUSTOM" == 1 ]]; then
+    cmp -s <(transform_src "$1") "$2"
+  else
+    cmp -s "$1" "$2"
+  fi
 }
 copy_src() { # src dest
   if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1" > "$2"; else cp "$1" "$2"; fi
@@ -676,13 +691,16 @@ run_layer() {
       install_file - "$DOCS_DIR/METHODOLOGY.md" resources/METHODOLOGY.md
       # v3.61.0（FU-911）：阶段执行手册（DS §2.5/§2.16.6 叙事细则载体，条款权威仍在 DS）。
       install_file - "$DOCS_DIR/STAGE_PLAYBOOK.md" resources/STAGE_PLAYBOOK.md
-      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md; do
+      for m in development.md data-structures.md state-trigger-audit.md expert-capabilities.md project-masters.md review-intelligence.md; do
         install_file - "$DOCS_DIR/methodologies/$m" "resources/methodologies/$m"
       done
       # v3.35.0（§1.3）：项目级总册 13 册 + 评审记录模板骨架 → <docs>/templates/project/，
       # 首次变更时由用户复制到 <docs>/project/ 并回填现状（begin 机校 13 册在位；P12 产品
       # 上下文册 v3.67.0，活文档回填）。
-      mkdir -p "$DOCS_DIR/templates/project/reviews"
+      # v3.91.9 (CHG-127): no standalone mkdir here — install_file already creates
+      # every parent dir under $target. A bare "$DOCS_DIR/..." mkdir wrote docs/
+      # into the CALLER'S cwd (relative DOCS_DIR), which made a source-repo audit
+      # "see" a docs/ tree it did not have and hard-failed A6a/b/c in CI.
       for p in P00-project-charter.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md P05-task-plan.md P06-test-master.md P07-test-verdicts.md P08-deployment-master.md P09-risk-register.md P10-change-ledger.md P11-decision-log.md P12-product-context.md reviews/_template.review.md; do
         install_file - "$DOCS_DIR/templates/project/$p" "resources/templates/project/$p"
       done
@@ -696,7 +714,7 @@ run_layer() {
       # 不计入八件基数；new-change 仅在命中 UI 变更时复制）；正式沟通稿模板随 --core 下发。
       # v3.70.0（CHG-045）：形状件 4——01.5-rtvm-matrix/05-test-results/07-review-report/
       # 09-changelog（DS 形状移出法的承接点；new-change 不默认脚手架，作者按需复制）。
-      mkdir -p "$DOCS_DIR/templates/entry"
+      # v3.91.9 (CHG-127): see the project/ note above — install_file owns the dirs.
       for e in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 03.6-ui-spec.md 04-test-scripts.md 01.5-rtvm-matrix.md 05-test-results.md 07-review-report.md 09-changelog.md; do
         install_file - "$DOCS_DIR/templates/entry/$e" "resources/templates/entry/$e"
       done
@@ -705,6 +723,9 @@ run_layer() {
       # 未命中时也必须存在并显式声明"未命中，不适用"——不能靠"不建文件"来表达不适用。
       install_file deployment-config "$DOCS_DIR/06.5-deployment-config.md" resources/templates/06.5-deployment-config.md
       install_file delivery-summary  "$DOCS_DIR/06-delivery-summary.md"     resources/templates/06-delivery-summary.md
+      # v3.90.4：评审模型清单示例（复制为 .agent-review-models.json 后生效；
+      # 不复制即默认 economy，无需用户确认）。
+      install_file review-models .agent-review-models.example.json resources/templates/review-models.json
       install_file - "$TESTS_DIR/audit-docs-consistency.sh" resources/templates/audit-docs-consistency.sh 755
       ;;
     claude)
@@ -806,6 +827,104 @@ rewrite_yml_key() { # file key value
 # Read one flat key's current value out of the installed config (same parse as
 # rewrite_yml_key — kept in ONE place so the guard below cannot drift from the
 # writer it guards).
+# v3.90.2 (CHG-124, P1-4): project profile section. Written only when the target
+# yml has no `profile:` block at all — an existing block is never edited (key-wise
+# merge in the user's favour), and detection reuses facts already on disk.
+write_profile_section() { # <yml> <target>
+  local y="$1" t="$2" lang="unknown" size="unknown" tests="none" ci="none" nfiles
+  [[ -f "$y" ]] || return 0
+  # v3.90.5 (CHG-126, P0-9/U-6): existing profile blocks are user-owned — never
+  # rewrite a value. Only *add* keys the install knows are missing (files/budgets),
+  # so an older install upgrades in place instead of duplicating the block.
+  # A user-declared `schema: 2` means "I manage this block myself" → untouched.
+  if grep -qE '^profile:' "$y" 2>/dev/null; then
+    grep -qE '^[[:space:]]+schema:[[:space:]]*2' "$y" 2>/dev/null && return 0
+    nfiles=$(find "$t" -type f -not -path '*/.git/*' -not -path '*/.agent-state/*' 2>/dev/null | wc -l | tr -d ' ')
+    case "$nfiles" in ''|*[!0-9]*) nfiles=0 ;; esac
+    local _pf_add=0 _pf_addb=0 _pf_adds=0 _pf_tmp _pf_added=""
+    grep -qE '^[[:space:]]+schema_version:' "$y" 2>/dev/null || { _pf_adds=1; _pf_added="schema_version"; }
+    grep -qE '^[[:space:]]+files:' "$y" 2>/dev/null || { _pf_add=1; _pf_added="${_pf_added}${_pf_added:+,}files"; }
+    grep -qE '^[[:space:]]+budgets:' "$y" 2>/dev/null || { _pf_addb=1; _pf_added="${_pf_added}${_pf_added:+,}budgets"; }
+    if [[ "$_pf_adds" == "1" || "$_pf_add" == "1" || "$_pf_addb" == "1" ]]; then
+      _pf_tmp=$(mktemp 2>/dev/null) || return 0
+      awk -v nf="$nfiles" -v addf="$_pf_add" -v addb="$_pf_addb" -v adds="$_pf_adds" '
+        { line[NR]=$0 }
+        END {
+          p=0
+          for (i=1; i<=NR; i++) if (line[i] ~ /^profile:[[:space:]]*$/) { p=i; break }
+          if (p==0) { for (i=1; i<=NR; i++) print line[i]; exit }
+          e=p
+          for (i=p+1; i<=NR; i++) {
+            if (line[i] ~ /^[[:space:]]+/) e=i
+            else if (line[i] ~ /^[[:space:]]*$/) continue
+            else break
+          }
+          for (i=1; i<=e; i++) print line[i]
+          if (adds==1) print "  schema_version: 1"
+          if (addf==1) print "  files: " nf
+          if (addb==1) print "  budgets: {inner_s: 10, close_s: 120, ci_s: 1800}"
+          for (i=e+1; i<=NR; i++) print line[i]
+        }' "$y" > "$_pf_tmp" 2>/dev/null \
+        && cat "$_pf_tmp" > "$y" 2>/dev/null
+      rm -f "$_pf_tmp"
+      echo "auto-wired   profile: added missing keys ($_pf_added) to existing block — user values kept"
+    fi
+    return 0
+  fi
+  if [[ -f "$t/package.json" ]]; then lang="node"
+  elif [[ -f "$t/go.mod" ]]; then lang="go"
+  elif [[ -f "$t/pom.xml" || -f "$t/build.gradle" ]]; then lang="java"
+  elif [[ -f "$t/pyproject.toml" || -f "$t/requirements.txt" ]]; then lang="python"
+  elif [[ -f "$t/Cargo.toml" ]]; then lang="rust"
+  fi
+  nfiles=$(find "$t" -type f -not -path '*/.git/*' -not -path '*/.agent-state/*' 2>/dev/null | wc -l | tr -d ' ')
+  case "$nfiles" in ''|*[!0-9]*) nfiles=0 ;; esac
+  if [[ "$nfiles" -lt 200 ]]; then size="small"; elif [[ "$nfiles" -lt 2000 ]]; then size="medium"; else size="large"; fi
+  if [[ -n "${detected:-}" ]]; then tests="detected"; elif [[ -d "$t/tests" || -d "$t/test" ]]; then tests="present-no-command"; fi
+  [[ -d "$t/.github/workflows" ]] && ci="github-actions"
+  # v3.91.0 (CHG-127, G7/G8): the nine scenario dimensions. Technical facts are
+  # detected (printed once, user may override); business/compliance facts stay
+  # declared and default to `unknown` + WARN — never guessed.
+  local ai="false" arch="unknown" ui="none" renv="unknown" topo="single" assets="none"
+  if { grep -rqE 'openai|anthropic|langchain|llama_index|llama-cpp' \
+        "$t/package.json" "$t/requirements.txt" "$t/pyproject.toml" "$t/go.mod" 2>/dev/null; } \
+      || [[ -d "$t/prompt" || -d "$t/prompts" ]] \
+      || { [[ -f "$t/.env.example" ]] && grep -qE 'OPENAI|ANTHROPIC|MODEL_API|LLM_' "$t/.env.example" 2>/dev/null; }; then ai="true"; fi
+  [[ -d "$t/packages" || -f "$t/pnpm-workspace.yaml" || -f "$t/lerna.json" || -f "$t/turbo.json" ]] && topo="monorepo"
+  [[ -f "$t/.gitmodules" ]] && topo="multi-repo"
+  [[ -d "$t/services" || -d "$t/apps" ]] && arch="services"
+  [[ -f "$t/serverless.yml" || -f "$t/serverless.yaml" ]] && arch="serverless"
+  [[ -d "$t/src/components" || -d "$t/frontend" || -d "$t/web" ]] && ui="spa"
+  { grep -qE '"(react|vue|svelte|next|nuxt)"' "$t/package.json" 2>/dev/null; } && ui="spa"
+  [[ -f "$t/Dockerfile" || -f "$t/docker-compose.yml" ]] && renv="container"
+  [[ -d "$t/k8s" || -d "$t/deploy/k8s" ]] && renv="kubernetes"
+  [[ -d "$t/tests" || -d "$t/test" ]] && assets="tests"
+  {
+    printf '\n# v3.90.2 (CHG-124, P1-4): project profile — detected once, edit freely.\n'
+    printf 'profile:\n'
+    printf '  schema_version: 1\n'
+    printf '  language: %s\n' "$lang"
+    printf '  size: %s\n' "$size"
+    printf '  files: %s\n' "$nfiles"
+    printf '  tests: %s\n' "$tests"
+    printf '  ci: %s\n' "$ci"
+    printf '  ai_project: %s\n' "$ai"
+    printf '  architecture: %s\n' "$arch"
+    printf '  ui: %s\n' "$ui"
+    printf '  runtime_env: %s\n' "$renv"
+    printf '  repo_topology: %s\n' "$topo"
+    printf '  assets: %s\n' "$assets"
+    printf '  business_complexity: unknown\n'
+    printf '  delivery: unknown\n'
+    printf '  org: unknown\n'
+    printf '  budgets: {inner_s: 10, close_s: 120, ci_s: 1800}\n'
+  } >> "$y" 2>/dev/null || { echo "WARN         could not append profile: to $y (P1-4)" >&2; return 0; }
+  echo "auto-wired   profile: written to .agent-governance.yml (language=$lang size=$size tests=$tests ci=$ci ai=$ai arch=$arch ui=$ui topo=$topo) — edit freely; existing blocks are never rewritten"
+  if [[ "$ai" == "true" ]]; then
+    echo "NOTE         LLM link detected → §2.9 prompt/幻觉/成本专项 applies; business_complexity/delivery/org are DECLARED fields (currently unknown) — fill them in profile:" >&2
+  fi
+}
+
 yml_key_value() { # file key
   local f="$1" k="$2"
   [[ -f "$f" ]] || return 0
@@ -857,6 +976,13 @@ apply_path_overrides
 # CHG-012: guard auto-wiring — after install, wire everything that can be
 # wired without asking. Respect existing user config; never overwrite.
 auto_wire_guard() {
+  # v3.90.2 (CHG-124, P1-4): profile detection runs for every guard install,
+  # independent of path overrides (it used to hang off the PATHS_CUSTOM branch).
+  if [[ ! -f "$GOV_YML" ]]; then
+    mkdir -p "$(dirname "$GOV_YML")"
+    cp "$SKILL_ROOT/resources/templates/agent-governance.yml" "$GOV_YML" 2>/dev/null || true
+  fi
+  write_profile_section "$GOV_YML" "$target"
   # 1) hooksPath: three states — unset -> set; already <githooks> -> skip;
   #    something else -> DO NOT touch, print manual hint (OQ-1).
   if [[ -d "$target/.git" ]] && command -v git >/dev/null 2>&1; then
@@ -904,15 +1030,46 @@ auto_wire_guard() {
   fi
   # 3) verification command autodetect: replace the placeholder only; user
   #    customizations are never touched. Env var keeps highest priority at runtime.
-  local yml="$target/.agent-governance.yml" detected=""
+  local yml="$target/.agent-governance.yml" detected="" detect_kind="" detect_warn=""
+  # B0-1 (2026-10-25): a detected command is only written when the repo actually
+  # HAS tests. Two real cases made this necessary:
+  #   · `mvn test` on a 22-module repo with zero src/test/java files compiles for
+  #     minutes and proves nothing (observed in a real target repo);
+  #   · `npm test` is very often the `npm init` placeholder that exits 1.
+  # Writing either is worse than writing nothing: "looks configured, runs nothing"
+  # is exactly the false-green the four-state channel was built to prevent.
+  _has_real_tests() { # <kind> -> 0 yes / 1 no
+    case "$1" in
+      mvn)  [ -n "$(find "$target" -maxdepth 6 -path '*/src/test/*' -name '*.java' -print -quit 2>/dev/null)" ] ;;
+      npm)  if grep -qE '"test"[[:space:]]*:[[:space:]]*"echo [^"]*no test specified' "$target/package.json" 2>/dev/null; then
+              return 1
+            fi
+            [ -n "$(find "$target" -maxdepth 5 \( -name '*.test.js' -o -name '*.spec.js' -o -name '*.test.ts' -o -name '*.spec.ts' -o -name '*.test.jsx' -o -name '*.test.tsx' \) -print -quit 2>/dev/null)" ] ;;
+      make) ! grep -qE 'run-tests\.sh|audit-docs-consistency' "$target/Makefile" 2>/dev/null ;;
+      go)   [ -n "$(find "$target" -maxdepth 6 -name '*_test.go' -print -quit 2>/dev/null)" ] ;;
+      py)   [ -n "$(find "$target" -maxdepth 5 \( -name 'test_*.py' -o -name '*_test.py' \) -print -quit 2>/dev/null)" ] ;;
+      *)    return 0 ;;
+    esac
+  }
   if [[ -f "$yml" ]] && grep -q '<replace-with-project-test-command>' "$yml"; then
-    if [[ -f "$target/package.json" ]] && grep -q '"test"[[:space:]]*:' "$target/package.json"; then detected="npm test"
-    elif [[ -f "$target/Makefile" ]] && grep -qE '^test[[:space:]]*:' "$target/Makefile"; then detected="make test"
-    elif [[ -f "$target/pom.xml" ]]; then detected="mvn test"
-    elif [[ -f "$target/go.mod" ]]; then detected="go test ./..."
-    elif [[ -f "$target/pyproject.toml" || -f "$target/pytest.ini" ]]; then detected="pytest -q"
-    elif [[ -f "$target/Cargo.toml" ]]; then detected="cargo test"
+    if [[ -f "$target/package.json" ]] && grep -q '"test"[[:space:]]*:' "$target/package.json"; then detected="npm test"; detect_kind=npm
+    elif [[ -f "$target/Makefile" ]] && grep -qE '^test[[:space:]]*:' "$target/Makefile"; then detected="make test"; detect_kind=make
+    elif [[ -f "$target/pom.xml" ]]; then detected="mvn test"; detect_kind=mvn
+    elif [[ -f "$target/go.mod" ]]; then detected="go test ./..."; detect_kind=go
+    elif [[ -f "$target/pyproject.toml" || -f "$target/pytest.ini" ]]; then detected="pytest -q"; detect_kind=py
+    elif [[ -f "$target/Cargo.toml" ]]; then detected="cargo test"; detect_kind=cargo
     fi
+    if [[ -n "$detected" ]] && ! _has_real_tests "$detect_kind"; then
+      detect_warn="detected '$detected' but found no real test files — placeholder kept (a command that runs nothing is worse than none)"
+      detected=""
+    fi
+    # Defence in depth: a governance self-test is never a verification command.
+    # It proves the gate works, not the product — and it is 25 minutes of noise.
+    case "$detected" in
+      *run-tests.sh*|*audit-docs-consistency*|*agent-gate*)
+        detect_warn="detected '$detected' points at a GOVERNANCE self-test, not project tests — placeholder kept"
+        detected="" ;;
+    esac
     if [[ -n "$detected" ]]; then
       tmpf=$(mktemp 2>/dev/null) || tmpf=""
       if [[ -n "$tmpf" ]]; then
@@ -926,7 +1083,12 @@ auto_wire_guard() {
         grep -q '<replace-with-project-test-command>' "$yml" && echo "NOTE         placeholder replacement FAILED — set ci.verification_command manually" >&2
       fi
     else
-      echo "NOTE         could not detect a test command — set ci.verification_command in .agent-governance.yml (or AGENT_GUARD_VERIFY_COMMAND)" >&2
+      if [[ -n "$detect_warn" ]]; then
+        echo "WARN         $detect_warn" >&2
+        echo "NOTE         set ci.verification_command only to a command that runs REAL project tests; a governance self-test (tests/run-tests.sh, tests/audit-*.sh) proves the gate works, not the product" >&2
+      else
+        echo "NOTE         could not detect a test command — set ci.verification_command in .agent-governance.yml (or AGENT_GUARD_VERIFY_COMMAND)" >&2
+      fi
     fi
   fi
   # 5) v3.76.0 (CHG-100, REQ-1120): 验证通道提示——本轮写入/重写了
@@ -949,11 +1111,44 @@ auto_wire_guard() {
   fi
   # 6) platform-side step cannot be automated via files — print exact hint.
   echo "manual       GitHub: mark 'agent-governance' workflow as a required check (repo Settings -> Branches -> Branch protection, or via gh api)"
+  # v3.90.3 (CHG-125, FU-958): engine self-check + runtime re-probe. Both are
+  # read-only and never block the install (a broken engine is a WARN here and a
+  # hard failure at the first gate run anyway).
+  if [[ -x "$SCRIPTS_DIR/agent-gate" ]]; then
+    if ( cd "$target" && "$SCRIPTS_DIR/agent-gate" metrics >/dev/null 2>&1 ); then
+      echo "engine self-check: agent-gate metrics ok ($SCRIPTS_DIR/agent-gate)"
+    else
+      echo "NOTE         engine self-check failed: $SCRIPTS_DIR/agent-gate metrics did not run from $target — reinstall or inspect it before relying on the gate" >&2
+    fi
+  fi
+  _adapter=""
+  for _c in "$SCRIPTS_DIR/install-hook-adapter" "$SCRIPTS_DIR/install-hook-adapter.sh"; do
+    [[ -x "$_c" ]] && _adapter="$_c" && break
+  done
+  if [[ -n "$_adapter" ]]; then
+    _rt_line=$( cd "$target" && "$_adapter" --detect 2>/dev/null | sed -n 's/^  runtime: //p' | head -1 )
+    echo "runtime re-probe: ${_rt_line:-unknown — declare AGENT_RUNTIME if detection cannot see the client}"
+  fi
 }
 case " $layers " in
   *" guard "*) auto_wire_guard ;;
 esac
 [[ "$upgrade" == true ]] && echo "upgrade: governance files synced to carried version; live/user files untouched"
+# v3.90.2 (CHG-124, P1-5): behaviour-change report — what this upgrade changes in
+# decision defaults, and the single switch back to the old behaviour. Print only;
+# never edits the target.
+if [[ "$upgrade" == true ]]; then
+  echo "upgrade-behavior: decision engine on (read-only) — begin now prints a plan line and stop prints a suggestion"
+  echo "upgrade-behavior: AGENT_GUARD_ADAPT=0 keeps the pre-v3.90.2 behaviour (no plan, no suggestion, no E131 warn)"
+  echo "upgrade-behavior: full_suite counts business regressions only; unknown runtime --detect exits 3 (v3.90.1)"
+  echo "upgrade-behavior: stop appends one cost line + one suite-mode block to 05/09 (append-only; no artifact added)"
+  # v3.90.5 (CHG-126): what this upgrade changes in decision consumption.
+  echo "upgrade-behavior: stop/preflight now consume plan.decision (E142-E146); missing decision is WARN-only unless AGENT_GUARD_PLAN_STRICT=1"
+  echo "upgrade-behavior: --stage close <N> records stage history + filled-at ordering (AGENT_GUARD_STAGE_CLOSE=0 opts out); baseline/tc-index are on-demand"
+  # v3.91.0/.1 (CHG-127): nested decision consumption + profile schema.
+  echo "upgrade-behavior: decision gains nested artifacts/stages/masters + CAB deferred/wasted + must rules; stale diff (E147) or uncovered must (E148) is WARN-only unless AGENT_GUARD_PLAN_STRICT=1"
+  echo "upgrade-behavior: profile gains schema_version + nine scenario keys; an existing profile block only receives missing keys (user values never rewritten)"
+fi
 
 cat <<EOF
 

@@ -1,0 +1,660 @@
+1.1 declared prefix count == table rows
+1.2 numbering rule lists all prefixes
+1.2 order checklist row includes SC
+2.15 table has 00-governance row
+2.15 table has 00-intent row
+2.16.4 self-check includes SC
+2.16.5 table has pipeline-entry row
+2.17 dual-root convention present
+2.17 governance definition present
+A1 pipeline scaffolds every gate-required artifact (minus entry files)
+A10 audit executed-count matches baseline (FU-022)
+A10b audit assertion-name set matches baseline (CHG-121)
+A11 layered reading map present (FU-018)
+A11 standards body size <= 168KB (FU-017; ratchet-up v3.89.0 CHG-117, +4KiB step)
+A11s standards body approaching hard cap (soft warn >= 167,936B)
+A12 change dynamic constraints present (REQ-058)
+A12 root-cause classification present (REQ-057)
+A13 bootstrap auto-wires hooksPath (CHG-012)
+A13 gate reads yml verification fallback (CHG-012)
+A13 golden dialect matrix covers the declared dialect (CHG-100)
+A13 legacy sed channel parser is gone (CHG-100)
+A13 single channel reader is defined once (CHG-100)
+A14 bootstrap upgrade mode present (CHG-013)
+A15 bootstrap self-update present (CHG-014)
+A16 gate anti-tamper guard present (CHG-015)
+A16 upgrade blocks on dirty target (CHG-015)
+A17 .github is NOT configurable (platform-fixed location)
+A17 audit script resolves the docs root from config
+A17 compliance script resolves the docs root from config
+A17 contract names stay out of the configurable block
+A17 gate path defaults are the historical values
+A17 gate resolves path roots from config
+A17 installer exposes --docs-dir
+A17 installer persists non-default roots into the config
+A17 installer substitutes in-template path references
+A17 live-skip keys are logical, not literal paths (D6)
+A17 shipped config declares the four configurable roots
+A17 standards documents the configurable roots
+A17 standards documents the non-configurable set
+A18 changelog template declares skill ownership
+A18 derived markers are parsed from frontmatter only
+A18 every write path skips derived dirs
+A18 installer exposes --derived-report
+A18 installer exposes --self-update
+A18 installer exposes a read-only --check mode
+A18 installer pins path roots into the shipped config (idempotency)
+A18 installer refuses to install into a derived skill
+A18 MAINTAINER.md exists (maintainer notes live outside the payload)
+A18 MAINTAINER.md is NOT in the installer copy list
+A18 SKILL.md declares the derived_from contract
+A18 standards documents the changelog ownership
+A18 standards documents the self-evolution contract
+A18 upgrade preserves an explicit layer selection (D4)
+A18 upgrade refuses to clobber local changelog rows (D5)
+A19 coding-record template carries the placeholder block
+A19 coding-record template placeholder is stamped PENDING
+A19 gate checks the ISO shape of generated_at
+A19 gate extracts the provenance block
+A19 gate rejects a missing block
+A19 gate rejects a placeholder block
+A19 gate requires the four mandatory fields
+A19 gate requires the script as producer
+A19 gate treats the stamper as a governance tool (no install deadlock)
+A19 gate validates every artifact's provenance (CHG-026)
+A19 installer --help lists the stamper in the guard layer
+A19 installer lands the stamper in the guard layer
+A19 installer substitutes the stamper path in templates
+A19 privacy switch is env-overridable (CLI > env > yml)
+A19 provenance stamper ships in the payload
+A19 shipped config declares the provenance section
+A19 shipped config defaults include_email to true
+A19 SKILL.md tells the agent to stamp provenance
+A19 stamper gives an actionable next step when the record is absent
+A19 stamper honours the privacy switch
+A19 stamper never fabricates: unknown fallbacks
+A19 stamper redacts the email when asked
+A19 stamper replaces the block wholesale (idempotent)
+A19 stamps appear only on the active or closed changes (v3.22.0 semantics)
+A19 standards documents the provenance requirement
+A2 code-extension list identical in gate and compliance.sh
+A20 AGENTS.md states the batch rule in the gate steps
+A20 audit and gate share one anchor shape
+A20 audit documents WHY the reverse direction was dropped
+A20 audit reads the roster as the batch's authoritative id set
+A20 batch attribution does not fall back to heading scanning first
+A20 batch change set comes from the roster, not from headings
+A20 batch closure is this change's own anchor, not the shared file
+A20 batch provenance risk is member-independent (max of the batch)
+A20 batches are L0/L1 only (refused on the record, not on the path)
+A20 changelog carries the v3.18.0 entry
+A20 diff attribution reads a batch file's governance roster
+A20 G7 checks change ids are unique across batches
+A20 G7 checks every declared change has an entry section
+A20 G7 checks records are a subset of the anchors
+A20 G7 re-checks the L0/L1 ceiling
+A20 gate extracts anchors with a single sed shape
+A20 gate has ONE definition of a section anchor
+A20 gate has ONE place that reads the batch roster
+A20 gate honours AGENT_GUARD_CHANGE_DIR
+A20 gate maps a directory to every change it carries
+A20 gate recognises a batch directory by name
+A20 gate resolves batch directories
+A20 gate scans BATCH-* directories
+A20 gate splits the resolver's local declaration (bash 3.2)
+A20 governance records are scoped per change (one record per change id)
+A20 governance state is scoped to this change's own record
+A20 metrics emits one row per change, not per directory
+A20 SKILL.md documents the batch layout
+A20 stamper attests the batch and lists its members
+A20 stamper resolves the batch directory too
+A20 stamper splits the resolver's local declaration (bash 3.2)
+A20 standards documents the change batch
+A20 template audit grew a G7 batch group
+A20 template audit offers --only-fail with skip-line exemption
+A21 changelog carries the v3.20.0 entry
+A21 gate flattens a governance record before matching
+A21 gate splits sibling records on top-level object boundaries
+A21 golden suite covers a pretty-printed record end-to-end
+A21 golden suite pins that a sibling's risk cannot leak
+A21 MAINTAINER documents the record-reader coupling
+A21 shipped governance template is the multi-line shape
+A21 SKILL.md documents the format-agnostic record reader
+A21 the batch one-line convention survives as a style rule
+A21 the record reader is documented as no longer line-oriented
+A21 the template was NOT collapsed to one line (fix the reader, not the data)
+A22 audit declares a G2 vacuous skip instead of skipping silently
+A22 audit declares the G3/G5/G6 vacuous skip separately from G2
+A22 audit detects units by positive signal
+A22 changelog carries the v3.21.0 entry
+A22 G2 covers the change track as well as the feature track
+A22 G3/G5/G6 are scoped to living docs only
+A22 golden suite pins that in-prose refs do not widen the span
+A22 golden suite pins the change-dir REQ gap end-to-end
+A22 MAINTAINER documents the audit-unit scoping
+A22 numbering baseline is the file's own min, not 1
+A22 numbering counts definition-shaped occurrences only
+A22 the audit header documents the frozen-history scoping
+A22b G4 newest BUG is selected by registration date
+A22b G7 excludes the batch container record from members
+A22b legacy allowlists stay visible in output
+A22b source mode falls back to resources/AGENTS.md pointer target
+A22b source repo audits against shipped standards (no blanket SKIP)
+A23 golden suite covers --all end-to-end
+A23 golden suite covers the one-command installer
+A23 install.sh auto-detects install vs upgrade
+A23 install.sh documents the one-liner
+A23 install.sh exists in the source layer
+A23 install.sh keeps the offline path (--from)
+A23 install.sh never overwrites a dirty skill checkout
+A23 install.sh stays a thin delegate to bootstrap
+A23 MAINTAINER documents the install.sh role
+A23 project CHANGELOG.md removed — sole history is STANDARDS_CHANGELOG (CHG-050)
+A23 README en points at install.sh
+A23 README zh points at install.sh
+A23 stamper --all targets every md artifact
+A23 stamper documents why the governance JSON is excluded
+A23 stamper exposes the --all mode
+A24 quick-start surface is git-tracked (CHG-020)
+A25 adapter counts chat.message turns
+A25 AGENTS discipline 10 long-task wait present (REQ-1100)
+A25 AGENTS discipline 11 carries both attribution criteria (TC-1285)
+A25 AGENTS discipline 11 env-attribution present (REQ-1101)
+A25 audit carries G9 masters checks
+A25 audit sweeps batched bug groups
+A25 audit sweeps flat anchor batches
+A25 audit sweeps out-of-table feature-dir reviews
+A25 audit sweeps pointer-less deprecated clauses
+A25 changelog version rows >= 8 (derived floor, no per-version pins)
+A25 changelog version rows strictly descending (continuity, dups fail)
+A25 claude adapter forwards telemetry hooks
+A25 docs map shipped by bootstrap core
+A25 docs map template exists
+A25 entry 03.5 template carries the input contract
+A25 entry templates exist (8 core + conditional 03.6 + shape 4, CHG-045)
+A25 entry templates shipped by bootstrap core
+A25 gate begin blocks on unresolved session red
+A25 gate begin checks the thirteen masters
+A25 gate begin reads the session water level
+A25 gate die messages carry error codes
+A25 gate enforces the bug day-batch default
+A25 gate enforces the review-input field
+A25 gate resolves defect groups across both layouts
+A25 gate resolves the P3 defect channel
+A25 gate stop checks the master backfill rows
+A25 gate sweeps batched bug groups
+A25 gate sweeps flat anchor batches
+A25 gate water refusal names the escape hatch
+A25 golden pins the artifact cost metrics
+A25 golden pins the auto-stamp suite
+A25 golden pins the G10 sweep
+A25 golden pins the out-of-table reviews sweep
+A25 golden pins the P3 channel
+A25 golden pins the red gate
+A25 golden pins the scaffolder
+A25 golden pins the telemetry suite
+A25 golden pins the uninstall suite
+A25 golden pins the wait/full-suite telemetry suite
+A25 golden pins the water gate
+A25 golden suite pins begin masters check
+A25 golden suite pins the bug day-batch default
+A25 golden suite pins the flat bug batch form
+A25 golden suite pins the master backfill gate
+A25 governance template declares full_test_patterns (commented default-off)
+A25 methodology defines review-record shape
+A25 methodology defines the thirteen masters
+A25 metrics emits artifact cost fields
+A25 opencode plugin is a thin forwarder
+A25 pre-commit stamps provenance automatically
+A25 project-masters methodology file exists
+A25 review-record template exists
+A25 scaffolder shipped by bootstrap guard
+A25 scaffolder template exists
+A25 session-gate carries the full-test threshold env (REQ-1102)
+A25 session-gate carries the sleep-poll threshold env (REQ-1100)
+A25 session-gate counts full_suite
+A25 session-gate counts sleep_polls
+A25 session-gate maintains the water file
+A25 shape templates present + bootstrap-registered (4: 01.5/05/07/09)
+A25 stamper resolves batched bug groups
+A25 standards §1.3 defines the master set
+A25 standards flattens the bug batch (v3.36.0)
+A25 standards pins every-change backfill
+A25 standards pins first-change initialization
+A25 standards pins the bug diagnosis master-reading clause
+A25 standards pins the flat anchor form
+A25 standards pins the TC-coverage clause for bug fixes
+A25 standards reverses the v3.22.0 no-batch decision
+A25 telemetry lives in the session-gate common layer
+A25 thirteen master templates exist
+A25 uninstaller self-removes on real run
+A25 uninstaller ships with bootstrap guard
+A26 audit derives changelog continuity from SLOG (REQ-964)
+A26 audit G5 asserts 01.5 REQ subset of 01-spec (REQ-956)
+A26 bootstrap --guard carries bug-autointent (REQ-958)
+A26 bug-autointent exists with rate-limit window (REQ-958)
+A26 gate carries L0 minimal-set carve-out (REQ-962)
+A26 gate die writes friction ledger (REQ-960)
+A26 gate rejects declaration-only stubs off L0 (REQ-962)
+A26 golden T33 anchors trace derivation (REQ-955)
+A26 golden T37 anchors L0 minimal-set states (REQ-962)
+A26 regression workflow template exists (REQ-958)
+A26 session-gate emits defect-signal interactive options (REQ-959)
+A26 stamp-provenance implements derive_trace_block (REQ-955)
+A26 stamp-provenance wires --trace arg (REQ-955)
+A26 standards declare 15-artifact contract (REQ-963/CHG-064)
+A26 standards retire 08-supplement into 09 (REQ-963)
+A26 standards split L0/L1 non-placeholder sets (REQ-962)
+A26 uninstall Tier1 covers bug-autointent (REQ-958)
+A27 AGENTS routes reading pack (REQ-971)
+A27 bootstrap core ships registry (REQ-971)
+A27 bootstrap guard ships generator (REQ-969)
+A27 gate exempts generator from code-path (REQ-969)
+A27 golden T39 anchors registry capability (REQ-970)
+A27 golden T40 anchors generator capability (REQ-969)
+A27 registry schema and authority declaration (REQ-968)
+A27 standards define registry clause (REQ-971)
+A27 uninstall covers generator (REQ-969)
+A27 uninstall covers registry (REQ-971)
+A28 maintainer 5.1 bound sentence matches A11
+A29 SKILL core layer lists clause registry
+A29 SKILL guard layer lists reading-pack generator
+A3 claimed assertion count == generator runtime count (CHG-019)
+A3 README assertion-count claims are a single consistent number
+A30 discover-register-now clause
+A30 erratum cites origin CHG
+A30 seven-element history field
+A30 stage-2 历史相似检索 clause
+A30 stage-2 延伸发现 clause
+A30 stage-6 dual clause
+A31 audit-group enumeration in SKILL (G1-G16)
+A31 bugfix-log template history field
+A31 EN README points at the single audit-group index
+A31 G10 enumerated in the AGENTS index
+A31 zh README points at the single audit-group index
+A32 carrier full-chain clause present
+A32 retired 2.16.5 row absent
+A33 AGENTS.md carries managed markers
+A33 bootstrap ships merge_managed
+A34 bootstrap manifest path pinned
+A34 bootstrap ships manifest user-modified detection
+A36 AGENTS carries the staged-review hard directive
+A36 standards pins stage-8 backfill-check row (v3.53.0)
+A36 standards pins the bug-track machine checkpoint (FU-902)
+A36 standards pins the staged-review clause (v3.53.0, REQ-993)
+A37 gate checks history-similarity search (v3.54.0, REQ-998)
+A38 gate checks review-report signature+task id (v3.56.0, REQ-1005)
+A39 03.6-ui-spec template exists
+A39 audit carries the G11 UJ coverage criterion
+A39 audit carries the G12 five-party criterion
+A39 gate begin requires the P12 master
+A39 gate carries E90 (UJ required)
+A39 gate carries E96 (usability UAT)
+A39 gate defines the UX conditional lane
+A39 gate reads the ui_change declaration
+A39 P12 product-context template exists
+A39 registry GATE-E rows == template die codes (CHG-080/REQ-1021)
+A39 schema registers the UX clauses (R44-R50)
+A39 standards pins the bare-key ban
+A39 standards pins the usability UAT section
+A3c README assertion claims match generated count (FU-005/009)
+A4 compliance.sh fails closed on an unknown baseline
+A4 compliance.sh has no hardcoded origin/* default baseline
+A4 compliance.sh resolves its baseline dynamically
+A4 governance workflow has no literal branch fallback
+A40 context-pack trigger face is conditional
+A40 context-pack trigger face names ui_change
+A40 entry template carries the miss declaration form
+A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)
+A40 P12 domain-6 whole-domain N/A allowed
+A41 provenance block-tail blank-run canary (REQ-1027)
+A42 payload genericity — no single-project markers (user hard gate 2026-10-12)
+A43 layering single-source — narrative carries no tool vocabulary; pointer present (user hard gate 2026-10-13)
+A44 local-copy drift vs template (private face == public face, CHG-097)
+A45 07 template carries the conditional cap-disposition line (CHG-098)
+A45 07 template carries the disposition section (CHG-098)
+A45 07 template marks its example row as a placeholder (CHG-098)
+A45 cap-disposition predicate requires a filled line, not a bare word (CHG-098)
+A45 disposition tally skips template placeholder rows (CHG-098)
+A45 gate carries the disposition gates (E114/E115, CHG-098)
+A45 gate carries the round-cap gate (E116, CHG-098)
+A45 gate derives review rounds from the ledger (CHG-098)
+A45 gate exposes the round-limit knob (CHG-098)
+A45 golden suite registers the T59 section (CHG-098)
+A45 metrics emits the dismissal rate (CHG-098)
+A45 registry indexes the new gate codes (CHG-098)
+A45 registry registers the new clauses (CHG-098)
+A45 standards body carries the convergence clause (CHG-098)
+A45 standards body carries the disposition clause (CHG-098)
+A45 standards body carries the new metric fields (CHG-098)
+A46 07 template pins the literal provenance header row (CHG-099)
+A46 AGENTS block forbids a second authority (CHG-099)
+A46 AGENTS carries the per-repo review-focus block (CHG-099)
+A46 bootstrap guard installs the eval layer (CHG-099)
+A46 bug template requires the capture layer (CHG-099)
+A46 eval-cases declares the --verify contract (CHG-099)
+A46 eval-cases derives the capture layer (CHG-099)
+A46 eval-cases documents the runtime-only discipline (CHG-099)
+A46 eval-cases script ships (CHG-099)
+A46 eval-rescore binds the governance-face hash (CHG-099)
+A46 eval-rescore keeps the null-score contract (CHG-099)
+A46 eval-rescore scopes out approval binding (CHG-099)
+A46 eval-rescore script ships (CHG-099)
+A46 gate carries the provenance gate (E117, CHG-099)
+A46 gate counts finding provenance (CHG-099)
+A46 gate soft-passes legacy 07 shapes (CHG-099)
+A46 golden suite registers the T62 section (CHG-101)
+A46 metrics emits the finding-provenance fields (CHG-099)
+A46 README (EN) names the eval layer (CHG-099)
+A46 README (zh) names the eval layer (CHG-099)
+A46 registry indexes the new gate code (CHG-099)
+A46 registry registers the new clauses (CHG-099)
+A46 rescore workflow calls the local script (CHG-099)
+A46 rescore workflow ships with a schedule (CHG-099)
+A46 SKILL names the eval layer (CHG-099)
+A46 standards body carries the eval-asset clause (CHG-099)
+A46 standards body carries the incident review duty (CHG-099)
+A46 standards body carries the provenance column (CHG-099)
+A46 standards body carries the written priority order (CHG-099)
+A46 uninstall removes the eval runtime scripts (CHG-099)
+A46 uninstall removes the rescore workflow (CHG-099)
+A47 bootstrap snapshots the yml before the layers (CHG-100)
+A47 bootstrap warns when the channel is paused (CHG-100)
+A47 channel evidence writer is defined once (CHG-100)
+A47 channel fingerprint carries the yml digest (CHG-100)
+A47 channel probe is exposed as a read-only subcommand (CHG-100)
+A47 channel state writer is defined once (CHG-100)
+A47 E118 die site is unique in the gate (CHG-100)
+A47 evidence append preserves the 05 mtime (CHG-100)
+A47 evidence lines are replaced, not appended unboundedly (CHG-100)
+A47 golden section T62 is registered once (CHG-101)
+A47 no BRE alternation with an empty branch (CHG-100)
+A47 reader/probe carry the misplaced-key detail (CHG-100)
+A47 registry indexes the new gate code (CHG-100)
+A47 registry registers the new clause row (CHG-100)
+A47 session-gate channel line is defined once (CHG-100)
+A47 skip-verify behaviour is pinned (CHG-100)
+A47 skipped runs never write the channel state (CHG-100)
+A47 standards enumerates the four states correctly (CHG-100)
+A47 stop lane rejects an unparsable channel with rc 2 (CHG-100)
+A47 suite clears the red archive on a full green run (CHG-100)
+A47 the BRE tripwire ignores ERE counts (CHG-100)
+A47 yml template declares the dialect block once (CHG-100)
+A48 AGENTS carries the call-batching discipline (CHG-101)
+A48 AGENTS carries the parallel-dispatch discipline (CHG-102)
+A48 AGENTS carries the tail-incremental-read discipline (CHG-101)
+A48 aggregator fails on any non-success dependency (CHG-102)
+A48 aggregator needs both parallel jobs (CHG-102)
+A48 aggregator runs unconditionally (CHG-102)
+A48 bootstrap ships the suite-lock lib (CHG-113)
+A48 bootstrap usage exposes the fingerprint lib (CHG-103)
+A48 branch-protection helper defaults to dry-run (CHG-113)
+A48 commit-msg template forwards the message file (CHG-102)
+A48 DS carries no authority pointer at a non-shipped file (CHG-102)
+A48 DS points at the shipped intent template (CHG-102)
+A48 eval-rescore never samples the source tree as its primary face (CHG-102)
+A48 eval-rescore resolves the docs root (CHG-102)
+A48 eval-rescore samples the installed docs face (CHG-102)
+A48 eval-rescore source/template byte-identical (CHG-102)
+A48 fingerprint lib ships and sources cleanly
+A48 gate help names the 13-master range (CHG-102)
+A48 gate help no longer claims the 12-master range (CHG-102)
+A48 gate source/template byte-identical (CHG-102; source-only face absent on fresh clone = SKIP, A44 semantics)
+A48 golden section T63 is registered once (CHG-102)
+A48 golden suite defines the T63 section (CHG-102)
+A48 governance config carries the parallel-runner hint (CHG-102/103)
+A48 no long-stale version literal survives in a T48 label (CHG-102)
+A48 only the two working jobs check out (aggregator does no work) (CHG-102)
+A48 pre-push template calls the strict branch gate (CHG-102)
+A48 R64 anchor resolves to a single standards line (CHG-102)
+A48 registry registers R64 (CHG-102)
+A48 required-check job name is preserved verbatim (CHG-102)
+A48 rescore workflow push paths carry no source-repo path (CHG-102)
+A48 rescore workflow push paths list nine installed anchors (CHG-102)
+A48 run-tests honors the receipt path override (CHG-113)
+A48 SKILL never names a shipped script with a .sh suffix (CHG-102)
+A48 source dogfood entry ships and parses (CHG-113)
+A48 standards body ratchet (CHG-107; recalibrated v3.92.2 CHG-128 +unverified-REQ clause)
+A48 suite usage line exposes -j (CHG-103)
+A48 suite-lock lib sources cleanly
+A48 update-assertion-count honors the receipt path override (CHG-113)
+A48 usage lists the guard-layer entry scripts (CHG-102)
+A48 usage lists the regression workflow (CHG-102)
+A48 verification command stays fail-closed when unset (CHG-102)
+A49 AGENTS carries the phase read-set discipline (CHG-107)
+A49 DS carries the read-set pointer (CHG-107)
+A49 gate carries the scaffold generator (CHG-107)
+A49 gate usage names --scaffold (CHG-107)
+A49 registry registers R65 (CHG-107)
+A5 bootstrap --core ships a template for every gate delivery doc
+A5 gate delivery-doc extraction non-empty (防恒真空转)
+A50 README en --as-skill requires the full link path (CHG-108)
+A50 README en carries no 12-volume literal (CHG-108)
+A50 README en CI section names both jobs (CHG-108)
+A50 README en documents --self-update (CHG-108)
+A50 README en documents the Tier1 outright-delete semantics (CHG-108)
+A50 README en has a dedicated uninstall section (CHG-108)
+A50 README en positions as AI agent skill (CHG-108)
+A50 README en states the 13-volume master set (CHG-108)
+A50 README en upgrade section discloses kept semantics (CHG-108)
+A50 README zh --as-skill requires the full link path (CHG-108)
+A50 README zh carries no 12-volume literal (CHG-108)
+A50 README zh CI section names both jobs (CHG-108)
+A50 README zh documents --self-update (CHG-108)
+A50 README zh documents the Tier1 outright-delete semantics (CHG-108)
+A50 README zh has a dedicated uninstall section (CHG-108)
+A50 README zh positions as Agent 技能 (CHG-108)
+A50 README zh upgrade section discloses kept semantics (CHG-108)
+A51 ci.yml bounds each job with timeout-minutes (CHG-108)
+A51 ci.yml cancels superseded runs (CHG-108)
+A51 ci.yml declares a concurrency group (CHG-108)
+A51 install.sh states staleness on pull failure (CHG-108)
+A52 AGENTS entry step discloses the widened probe (CHG-109)
+A52 begin carries the telemetry-liveness backstop (CHG-109)
+A52 darwin missing-caffeinate warning stays loud (CHG-109)
+A52 gate splits delivery into probe-safe back face (CHG-109)
+A52 gate splits delivery into probe-safe front face (CHG-109)
+A52 golden section T65 is defined (CHG-109)
+A52 golden section T65 is registered once (CHG-109)
+A52 hook adapter carries the post-wiring self-proof (CHG-109)
+A52 preflight usage discloses the widened face (CHG-109)
+A52 preflight wires the back shape face (CHG-109)
+A52 preflight wires the front shape face (CHG-109)
+A52 round-ledger write documented stop-lane-only (CHG-109)
+A52 verify channel wraps in caffeinate when available (CHG-109)
+A53 cached run surfaces a CACHED line and evidence (CHG-110)
+A53 gate fingerprints with the docs/changes claim (CHG-110)
+A53 gate sources the fingerprint lib (CHG-110)
+A53 golden section T66 is defined (CHG-110)
+A53 golden section T67 is registered once (CHG-110 tail; CHG-111 joins)
+A53 golden section T68 is registered once (CHG-113 lock joins)
+A53 lib documents the claim face (CHG-110)
+A53 lib takes optional reset claims (CHG-110)
+A53 non-git repos degrade to always-run (CHG-110)
+A53 opt-out env is honored at both read and write (CHG-110)
+A53 receipt carries the gate version key (CHG-110)
+A53 receipt is rc0-only and change-bound (CHG-110)
+A53 TTL is env-tunable with a numeric guard (CHG-110)
+A53 usage discloses the opt-out boundary (CHG-110)
+A54 AGENTS carries no full-read directive (CHG-113)
+A54 AGENTS discipline heading count matches numbered items (CHG-113)
+A54 AGENTS states the never-read-full rule (CHG-113)
+A54 README en states 15 rules (CHG-113)
+A54 README zh states 15 rules (CHG-113)
+A54b README source-audit counts match the baseline (CHG-113)
+A55 DS section4 and entry/09 carry the fifteen canonical section headings (CHG-114)
+A55 DS section4 carries no inline changelog template copy (CHG-114)
+A55 DS section4 extraction non-empty (CHG-114)
+A55 DS section4 names entry/09-changelog.md as the sole shape authority (CHG-114)
+A55 DS section4 states the P00-P12 thirteen-row rule (CHG-114)
+A55 entry/09 template carries P00-P12 in order (13 master rows) (CHG-114)
+A55 entry/09 template carries the ten-item Bug backfill checklist (CHG-114)
+A56 A3 consumes the baseline and keeps no bare --check fallback (CHG-115)
+A56 bootstrap payload list excludes every source-only tool (CHG-115)
+A56 both count baselines and all seven source tools are tracked (CHG-115)
+A56 both READMEs document the four source-layer entry tools (CHG-115)
+A56 CI carries the baseline gate, a parallel audit job and an un-skippable aggregate/summary (CHG-115)
+A56 every CHG-115 suite section gates behind its SKIP branch (CHG-115 target-repo green)
+A56 every source tool declares the source-layer boundary (CHG-115)
+A56 golden section T84 closes the SECTIONS registry (CHG-125 tail)
+A56 mutation-check pins the four fixed mutations (CHG-115)
+A56 private execution disciplines never reach the tracked/public face (CHG-115)
+A56 private execution disciplines present on the local-only face (docs/private-dependent)
+A56 private session-cost wording reaches no tracked face at all (CHG-115)
+A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)
+A56 tests/.suite-baseline is numeric and never git-ignored (CHG-115)
+A56 the count baselines are parsed by one recipe everywhere (CHG-115)
+A56 the generator carries both fast evidence modes (CHG-115)
+A56 the generator delegates receipt trust to the single implementation (CHG-115)
+A56 the private workspace .opencode/ stays untracked (CHG-115)
+A56 the seven source-layer tools exist and parse (CHG-115)
+A56 verify-all shares the generator receipt-reuse rule (CHG-115)
+A57 -T auto keeps partial receipts quarantined and the mapping honest (CHG-116)
+A58a gate carries E150/E151/E152/E153
+A58b fresh-clone tool emits a receipt
+A58c DS documents the environment gate
+A58d AGENTS documents the fresh-clone/CI equivalence
+A58e pre-push carries the G-FEED hint
+A58f CHANGELOG carries the v3.92.0 row
+A58g fresh-clone history ledger is declared
+A58h unverified-REQ declaration face is shipped
+A5b delivery template carries TEMPLATE-MARKER sentinel: 06-delivery-summary.md
+A5b delivery template carries TEMPLATE-MARKER sentinel: 06.5-deployment-config.md
+A6a repo bugfix-log has real BUG entries (docs-dependent)
+A6b every CHG dir has 00-intent.md (docs-dependent)
+A6c actually executed (BUG-004 guard)
+A6c CHG numbering continuous (docs-dependent)
+A6d every BUG dir has six-file set (v3.7.0)
+A6e closed change dirs are complete (BUG-003 guard)
+A8 begin rejects closed change re-entry (FU-015)
+A8 delivery declarations are line-anchored (FU-014)
+A8 numbering checks are digit-anchored (FU-008)
+A8 RTVM glob covers nested change-dir matrices (FU-019)
+A8 stage-2 impact checks are structure-anchored (FU-008)
+A9 change-id occupancy-verification clause present (FU-016)
+agent-gate enforces the marker contract (CHG-127)
+agent-gate names missing defect document
+all template md files declare 交付触发点 (CHG-127)
+bug doc-set templates present (6 files)
+bugfix-log placeholder not matched by ^### BUG-[0-9]
+DS carries the stage input contract (CHG-127)
+DS pointer to playbook present
+DS section4 carries no Bug backfill copy (single source in entry/09)
+governance-state template declares empty bug_ref
+keyword 04.5-coding-record in agent-gate
+keyword 04.5-coding-record in DEVELOPMENT_STANDARDS
+keyword 04.5-coding-record in README en
+keyword 04.5-coding-record in README zh
+keyword 04.5-coding-record in run-tests
+keyword 04.5-coding-record in SKILL
+keyword 06-tasks in agent-gate
+keyword bug-matrix.md in SKILL
+keyword coding-record template in SKILL
+keyword commit-msg attribution gate in README.md
+keyword commit-msg attribution gate in README.zh-CN.md
+keyword commit-msg attribution gate in SKILL.md
+keyword eight-category in README en
+keyword release_authorized_by in DEVELOPMENT_STANDARDS.md
+keyword release_authorized_by in README.md
+keyword release_authorized_by in README.zh-CN.md
+keyword same-family scan in README en
+keyword 六件套 in DEVELOPMENT_STANDARDS
+keyword 六件套 in SKILL
+keyword 缺陷文档组 in bugfix-log.md
+keyword 缺陷文档组 in DEVELOPMENT_STANDARDS.md
+keyword 缺陷文档组 in SKILL.md
+keyword 同族推演 in AGENTS.md
+keyword 同族推演 in bugfix-log.md
+keyword 同族推演 in DEVELOPMENT_STANDARDS.md
+keyword 同族推演 in METHODOLOGY.md
+keyword 同族推演 in README.zh-CN.md
+keyword 同族推演 in state-trigger-audit.md
+keyword 一次变更一组文档 in DEVELOPMENT_STANDARDS.md
+keyword 一次变更一组文档 in README.md
+keyword 一次变更一组文档 in README.zh-CN.md
+keyword 隐式链路三向遍历 in AGENTS.md
+keyword 隐式链路三向遍历 in DEVELOPMENT_STANDARDS.md
+keyword 隐式链路三向遍历 in METHODOLOGY.md
+keyword 隐式链路三向遍历 in state-trigger-audit.md
+keyword 最低文档集八类映射 in DEVELOPMENT_STANDARDS
+log-side backfill checklist == 9 items
+mainline starts with 00 files+begin
+marketplace manifest version == footer version
+methodology 3.6 same-family row
+methodology 4 conditional note
+methodology layer file count >= 3 (fail-closed)
+methodology layer footer coverage == file count
+pipeline 02 skeleton free of A-layer keyword
+playbook file carries mirror sections
+playbook file carries stage-2 mirror
+plugin manifests version == footer version
+quickref carries stage-1 command anchor
+quickref carries stage-6 command anchor
+README en mentions methodologies/data-structures.md
+README en mentions methodologies/development.md
+README en mentions methodologies/expert-capabilities.md
+README en mentions methodologies/project-masters.md
+README en mentions methodologies/review-intelligence.md
+README en mentions methodologies/state-trigger-audit.md
+README en tree lists audit
+README h2 heading count identical (en vs zh)
+README README.md tree covers all resources/templates
+README README.md tree has no phantom template
+README README.zh-CN.md tree covers all resources/templates
+README README.zh-CN.md tree has no phantom template
+README structure-tree extraction non-empty (防恒真空转)
+README structure-tree line count identical (en vs zh)
+README zh mentions methodologies/data-structures.md
+README zh mentions methodologies/development.md
+README zh mentions methodologies/expert-capabilities.md
+README zh mentions methodologies/project-masters.md
+README zh mentions methodologies/review-intelligence.md
+README zh mentions methodologies/state-trigger-audit.md
+README zh tree lists audit
+route state-trigger-audit in AGENTS.md
+route state-trigger-audit in DEVELOPMENT_STANDARDS.md
+route state-trigger-audit in github-artifact-pipeline.yml
+route state-trigger-audit in METHODOLOGY.md
+route state-trigger-audit in README.md
+route state-trigger-audit in README.zh-CN.md
+route state-trigger-audit in SKILL.md
+scaffold emits delivery markers (CHG-127)
+section3 checklist extraction non-empty (防恒真空转)
+section3 is the sole authority (section4 carries no duplicate checklist)
+section4 archive section references §3 verbatim-copy rule
+skill body version banner present
+skill carried version
+skill description carries carried version
+skill frontmatter version == footer version
+SKILL.md wires audit script
+stage A-layer command quickref table present
+stage-8 defect-fix special check
+stage/project/bug templates declare 背景输入 (CHG-127)
+standards §2.14 rule points to STANDARDS_CHANGELOG
+standards body carries no historical upgrade-log rows
+standards changelog file exists and non-empty
+standards changelog newest row == footer version
+standards heading exists: ^## 0.5 
+standards heading exists: ^## 2.11 
+standards heading exists: ^## 2.6 
+standards heading exists: ^## 2.7 
+standards heading exists: ^## 2.8 
+standards heading exists: ^## 2.9 
+standards heading exists: ^## 4. Changelog
+standards heading exists: ^#### 2.17.1
+template exists and non-empty: 06-delivery-summary.md
+template exists and non-empty: 06.5-deployment-config.md
+version badge en
+version badge zh
+version footer en
+version footer synced: AGENTS.md
+version footer synced: methodologies/data-structures.md
+version footer synced: methodologies/development.md
+version footer synced: methodologies/expert-capabilities.md
+version footer synced: methodologies/project-masters.md
+version footer synced: methodologies/review-intelligence.md
+version footer synced: methodologies/state-trigger-audit.md
+version footer synced: METHODOLOGY.md
+version footer zh
+version tree en
+version tree zh

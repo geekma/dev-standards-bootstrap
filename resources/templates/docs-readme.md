@@ -1,4 +1,6 @@
 # 文档地图（docs/ README）
+> 交付触发点：文档结构/目录变化后由安装器刷新；下游输入：目标仓开发者的阅读路由
+
 
 > 本文件由 dev-standards-bootstrap 生成并随升级刷新——**只指路，不定义**；规则细节一律以 `AGENTS.md`（入口）与 `DEVELOPMENT_STANDARDS.md`（权威全文）为准，勿在此另立规范。
 

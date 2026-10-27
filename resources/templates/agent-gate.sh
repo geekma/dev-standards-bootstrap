@@ -4,14 +4,81 @@
 # agent's natural-language claim that a check has run.
 set -euo pipefail
 
+# CHG-121 (batch 0): the friction ledger used to carry only (code, timestamp).
+# 1037 such rows cannot be attributed to any change, so "is this friction
+# concentrated in E86/E122?" was unanswerable. Extra columns are APPENDED, so
+# the metrics aggregation (`awk -F'\t' '{c[$1]++}'`) and the `^GATE-E` row pins
+# keep working byte-for-byte.
+friction_cid() { # current change id, "-" when unknown
+  local c="" f
+  [[ -n "${AGENT_GUARD_CHANGE:-}" ]] && { printf '%s' "$AGENT_GUARD_CHANGE"; return 0; }
+  f=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$f" && -f "$f" ]] && c=$(head -n 1 "$f" 2>/dev/null || true)
+  printf '%s' "${c:--}"
+}
+friction_sanitize() { # <text> -> one TSV-safe cell (no tabs/newlines, <=160 chars)
+  printf '%s' "$1" | tr '\t\n\r' '   ' | cut -c1-160
+}
+friction_append() { # <code> <kind: DIE|BYPASS> <reason>
+  printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$(friction_cid)" "$2" "$(friction_sanitize "$3")" \
+    >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+}
+
+# v3.90.2 (CHG-123, P0-7): error messages are the documentation — four elements
+# (expected / allowed / fix / ref) live in ONE hint table instead of being
+# copy-pasted into 100+ die sites. Only failure time pays the tokens; a message
+# that already carries its own four elements keeps them untouched.
+gate_hint() { # <GATE-Exxx> -> four-element hint block
+  case "$1" in
+    GATE-E03) printf 'expected: every required artifact exists at the exact path above\nallowed: <docs>/changes/<CHG>/{00-intent.md,00-governance.json,00.5-communication.md}\nfix: create the missing file (scripts/new-change <CHG> --risk Lx) and re-run begin\nref: standards §1.1 / §2.5 stage 1' ;;
+    GATE-E83) printf 'expected: 00.5 carries a non-empty user-overall-confirmation record\nallowed: a conclusion line + a status line (L0 may use the single-line exemption)\nfix: present the communication draft to the user, record the confirmation, then re-run begin\nref: standards §2.17.2d' ;;
+    GATE-E86) printf 'expected: the change directory placement is declared inside its own section\nallowed: "**目录落位**：BATCH-YYYYMMDD" or "独立目录（理由）"\nfix: add the placement line under the breakdown section named above, then re-run begin\nref: standards §1.1 / v3.60.0' ;;
+    GATE-E122) printf 'expected: 03 declares its relation to existing same-family implementations\nallowed: a "既有范式关系" section (reuse + anchor, or why different)\nfix: add that section to 03-modification-plan.md and re-run\nref: standards §2.5 stage 3 / v3.84.0' ;;
+    GATE-E10|GATE-E16) printf 'expected: the plan compares alternatives before choosing one\nallowed: a 候选方案/选型 table with at least two options and a verdict\nfix: add the comparison to 03-modification-plan.md, then re-run\nref: standards §2.5 stage 3' ;;
+    GATE-E47|GATE-E48) printf 'expected: the work lands in the directories declared by the governance file\nallowed: paths.* roots from .agent-governance.yml (defaults doc/scripts/tests/.githooks)\nfix: move the artifact to the declared root or fix paths.*, then re-run\nref: standards §1.1 / path-root clause' ;;
+    GATE-E60) printf 'expected: every project-master row starts with its Pxx id at line start\nallowed: "- [x] P01 ..." / "- [ ] P07 未命中"\nfix: rewrite the row with the P id first, then re-run\nref: standards §1.3' ;;
+    GATE-E85|GATE-E115|GATE-E117) printf 'expected: 07 carries the delivery shape rows the checker names\nallowed: signature with platform/model/task id; findings table >=5 columns; source column values from the enum\nfix: patch 07-review-report.md exactly at the named row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
+    GATE-E125) printf 'expected: every source-path change is accounted for by an active change or a same-day defect batch\nallowed: begin a change first, or set AGENT_GUARD_ALLOW_UNACCOUNTED=1 with a 09 justification\nfix: run scripts/agent-gate begin <CHG> (or register the bypass in 09), then re-run\nref: standards §2.17.2b signal 3' ;;
+    GATE-E04|GATE-E05|GATE-E06|GATE-E07|GATE-E08|GATE-E09|GATE-E10|GATE-E11|GATE-E12|GATE-E13|GATE-E14|GATE-E15|GATE-E16|GATE-E17|GATE-E80|GATE-E84|GATE-E122) printf 'expected: the named artifact carries its A-layer section/numbering\nallowed: the section keywords or REQ-/DES-/TC-/SC- numbering named above\nfix: add that section/numbering to the named artifact, then re-run\nref: standards §2.5 stage 1-4 / §2.2' ;;
+    GATE-E19|GATE-E20|GATE-E21|GATE-E22|GATE-E23) printf 'expected: every artifact carries a script-generated provenance block\nallowed: <!-- provenance --> with author/committer/commit/host/platform/generated_at\nfix: scripts/stamp-provenance.sh --all <CHG> (never hand-write), then re-run\nref: standards §1.1 / §2.15' ;;
+    GATE-E18|GATE-E29|GATE-E30|GATE-E31|GATE-E32|GATE-E33|GATE-E34|GATE-E35|GATE-E88) printf 'expected: real, distinct execution subjects (no placeholders)\nallowed: platform/model + session-or-task id; L2/L3 four subjects pairwise distinct\nfix: edit 00-governance.json owners; keep spec_author != review_owner at minimum\nref: standards §2.1 rule 10 / §0.5.2' ;;
+    GATE-E25|GATE-E26|GATE-E27|GATE-E28) printf 'expected: one governance record per change id with a valid risk level\nallowed: change_id == dir id; risk_level L0|L1|L2|L3; batches only L0/L1\nfix: fix 00-governance.json (or move an L2/L3 change to its own directory)\nref: standards §0.5.1 / §1.1' ;;
+    GATE-E36|GATE-E37|GATE-E38) printf 'expected: L3 carries human release authorization (three fields)\nallowed: release_authorized_by / _at / _evidence, all non-empty\nfix: obtain the human authorization, record the three fields, re-run\nref: standards §2.7 / §0.5.2' ;;
+    GATE-E39|GATE-E40|GATE-E41|GATE-E42|GATE-E81|GATE-E87) printf 'expected: bug_ref points at a complete, uniquely anchored defect group\nallowed: BUG-xxx under bugs/ (standalone or BATCH-YYYYMMDD/ with a ## BUG anchor)\nfix: fix the id, add the missing six-file piece, or de-duplicate the batch, then re-run\nref: standards §2.5 stage 6 / §1.1' ;;
+    GATE-E44|GATE-E45|GATE-E46|GATE-E47|GATE-E48|GATE-E49|GATE-E52|GATE-E59|GATE-E60|GATE-E61) printf 'expected: the delivery document set is complete and filled (no template markers)\nallowed: real content or an explicit 未命中（理由） declaration per row\nfix: fill/remove markers in the named 04.5/05/09/Pxx row, then re-run stop\nref: standards §1.1 / §1.3 / §2.5 stage 7-8' ;;
+    GATE-E50|GATE-E51) printf 'expected: 09 carries ReAct Observations and every cited REQ is backfilled\nallowed: "- **Observation**: …" and the REQ ids present in 01.5-rtvm-matrix.md\nfix: add the Observation / backfill the REQ row, then re-run\nref: standards §2.16.2 / §4' ;;
+    GATE-E53|GATE-E54|GATE-E55|GATE-E57|GATE-E58) printf 'expected: a defect group lives once, in one legal layout\nallowed: standalone bugs/<BUG>/ or one BATCH-YYYYMMDD/ with its anchor\nfix: merge/remove the duplicate; independent layout needs AGENT_GUARD_ALLOW_INDEPENDENT=1 + 09 reason\nref: standards §1.1' ;;
+    GATE-E62|GATE-E63) printf 'expected: all thirteen project masters exist under docs/project/\nallowed: P00..P12 with the documented names\nfix: copy <docs>/templates/project/* then fill, or set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a 09 reason\nref: standards §1.3' ;;
+    GATE-E64|GATE-E118) printf 'expected: the configured verification_command passes\nallowed: a command that exits 0 (see .agent-governance.yml ci.verification_command)\nfix: run it yourself, fix the failure, or correct the command; re-run stop\nref: standards §2.17.4 / §2.13' ;;
+    GATE-E66|GATE-E125) printf 'expected: every source-path change is accounted for by an active change\nallowed: begin <CHG> first (or a same-day defect batch); bypass only with a 09 justification\nfix: create the change artifacts and run begin, then re-run staged/stop\nref: standards §2.17.2b' ;;
+    GATE-E67|GATE-E68) printf 'expected: the commit message names its change id\nallowed: "type(scope): summary (CHG-xxx)" (merge/revert/docs-only exempt)\nfix: amend the message file or the commit message, then re-run\nref: standards §4 / commit-msg gate' ;;
+    GATE-E71|GATE-E72) printf 'expected: a closed change is never reopened\nallowed: a NEW change id (one change = one document set)\nfix: create the next change id and run begin on it\nref: standards §2.15 rule 4' ;;
+    GATE-E73|GATE-E74|GATE-E75|GATE-E89|GATE-E112) printf 'expected: session hygiene holds (batch placement / water level / red list / shift)\nallowed: join BATCH-YYYYMMDD for L0/L1; write handoff.md + a shift declaration\nfix: follow the named action; bypass keys need a 09「重要上下文」 entry\nref: standards §1.1 / §2.9.6' ;;
+    GATE-E76|GATE-E77|GATE-E78|GATE-E79|GATE-E69|GATE-E120) printf 'expected: a valid command form\nallowed: see scripts/agent-gate help (begin/preflight/--stage/metrics/plan …)\nfix: correct the arguments; scaffold needs a fresh empty change id\nref: standards §2.17.1' ;;
+    GATE-E82|GATE-E85|GATE-E96|GATE-E98|GATE-E114|GATE-E115|GATE-E116|GATE-E117|GATE-E123|GATE-E124) printf 'expected: 07 carries signatures, dispositions and the required verdict sections\nallowed: platform / model / task-id signatures; ≥5-column finding table; 来源 = 本次引入|既有存量\nfix: patch the named 07 section/row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
+    GATE-E83|GATE-E86) printf 'expected: communication-first and directory-placement declarations\nallowed: 00.5 confirmation record; "- **目录落位**：BATCH-… | 独立目录（理由）"\nfix: add the record/line before generating artifacts, then re-run begin\nref: standards §2.17.2d / §1.1' ;;
+    GATE-E90|GATE-E92|GATE-E93|GATE-E94|GATE-E95|GATE-E97|GATE-E99|GATE-E101|GATE-E102|GATE-E103|GATE-E104|GATE-E106|GATE-E109) printf 'expected: UI / behaviour-inventory conditional evidence is present\nallowed: UJ anchors, 03.6-ui-spec, E2E cases, runtime evidence rows, waiver lines\nfix: add the conditional artifact/evidence the message names, or declare the waiver\nref: standards §2.5 stage 1-4 / v3.67.0' ;;
+    GATE-E126|GATE-E127|GATE-E128|GATE-E129|GATE-E130) printf 'expected: the stage-gate preconditions hold for this change\nallowed: required artifacts + confirmation + one non-empty reviews/Pxx.review.md per claim\nfix: backfill the named stage artifacts, then re-run the same stage command\nref: standards §2.5 / §2.17.2d' ;;
+    GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan <change-id> [flags]\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127' ;;
+    *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
+  esac
+}
+
 die() {
   echo "agent-gate: $*" >&2
+  # v3.90.2 (CHG-123, P0-7): append the four elements unless the message already
+  # carries them (new codes like E132/E134 do). Zero standing cost: only a
+  # FAILING gate prints these lines.
+  local _code4="${1%%:*}"
+  case "$_code4" in
+    GATE-E[0-9]*) case "$*" in *expected:*) : ;; *) gate_hint "$_code4" >&2 ;; esac ;;
+  esac
   # v3.43.0 (REQ-960): gate 摩擦事件账（append-only TSV，metrics 侧聚合）。
   # fail-open：缺 .agent-state 或写失败不影响拒绝语义；TSV 而非 JSON——bash 零依赖。
   local _code="${1%%:*}" _re='^GATE-E[0-9]+$'
   if [[ -d ".agent-state" && "$_code" =~ $_re ]]; then
-    printf '%s\t%s\n' "$_code" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-      >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+    friction_append "$_code" DIE "$*"
   fi
   exit 2
 }
@@ -417,25 +484,29 @@ scaffold_body() { # <doc> <id> <risk> <placement>
   esac
   case "$doc" in
     00-intent.md)
-      printf '# %s Intent\n\n- **目录落位**：%s\n- **来源**：<!-- FILL: 一句话来源（用户裁定/事故/评审发现） -->\n- **范围**：① <!-- FILL: 改动面 1 --> ② <!-- FILL: 改动面 2 -->\n- **不做**：<!-- FILL: 显式排除项 -->\n\n### 预期结果\n\n- <!-- FILL: 可验收结果（与 04 的 TC 对应） -->\n\n### 开放问题\n\n- <!-- FILL: 无 或 开放问题清单 -->\n' "$id" "$placement" ;;
+      printf '# %s Intent\n\n> 交付触发点：变更立项时（00.5 确认前）；下游输入：00.5 沟通稿与 01-spec\n> 背景输入：待填（已读 P12 产品上下文 / P01 需求册 / 相关历史 09 教训）\n\n- **目录落位**：%s\n- **来源**：<!-- FILL: 一句话来源（用户裁定/事故/评审发现） -->\n- **范围**：① <!-- FILL: 改动面 1 --> ② <!-- FILL: 改动面 2 -->\n- **不做**：<!-- FILL: 显式排除项 -->\n\n### 预期结果\n\n- <!-- FILL: 可验收结果（与 04 的 TC 对应） -->\n\n### 开放问题\n\n- <!-- FILL: 无 或 开放问题清单 -->\n' "$id" "$placement" ;;
     00.5-communication.md)
-      printf '# %s Communication（00.5）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
+      printf '# %s Communication（00.5）\n\n> 交付触发点：Round-1 沟通完成、用户整体确认前；下游输入：01-spec 起的全部产物正文\n> 背景输入：待填（00-intent + 目标功能目录既有文档 + P01/P12）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
     00-governance.json)
-      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
+      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
     01-spec.md)
-      printf '# %s Spec\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+      printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     02-code-impact-analysis.md)
-      printf '# %s Code Impact Analysis\n\n### 改动面\n\n| 文件 | 层 | 影响 |\n|---|---|---|\n| <!-- FILL --> | <!-- FILL: payload/源层 --> | <!-- FILL --> |\n\n### 业务影响\n\n<!-- FILL: 目标仓/源仓/治理链 -->\n\n### 历史相似检索\n\n- 检索词：<!-- FILL -->——命中：<!-- FILL -->\n\n### 风险
+      printf '# %s Code Impact Analysis\n\n> 交付触发点：design 阶段交付；下游输入：03（选型）与 04（测试计划）\n> 背景输入：待填（01-spec 的 REQ-xxx + P12 业务上下文）\n\n### 改动面\n\n| 文件 | 层 | 影响 |\n|---|---|---|\n| <!-- FILL --> | <!-- FILL: payload/源层 --> | <!-- FILL --> |\n\n### 业务影响\n\n<!-- FILL: 目标仓/源仓/治理链 -->\n\n### 历史相似检索\n\n- 检索词：<!-- FILL -->——命中：<!-- FILL -->\n\n### 风险
 
 <!-- FILL: 行为风险/回归风险/等级（L0~L3） -->
 
 ### 延伸发现\n\n- <!-- FILL: 无 或 发现 -->\n\n### 回滚策略\n\n- <!-- FILL: revert 面/触发条件/版本链回退 -->\n' "$id" ;;
     03-modification-plan.md)
-      printf '# %s Modification Plan\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+      printf '# %s Modification Plan\n\n> 交付触发点：design 阶段交付；下游输入：03.5（任务拆解）与 04（测试计划）\n> 背景输入：待填（01-spec 的 REQ-xxx + 02 的业务影响/风险/回滚）\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     03.5-tasks.md)
-      printf '# %s Tasks\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
+      printf '# %s Tasks\n\n> 交付触发点：design 阶段交付；下游输入：开发实施顺序与 04（测试计划）\n> 背景输入：待填（01-spec + 02 + 03 的 DES-xxx）\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
+    01.5-rtvm-matrix.md)
+      # v3.91.5: the RTVM is scaffolded (the matrix is a contract artifact), but
+      # placeholders do NOT satisfy the stage gates — each stage must fill its row.
+      printf '# %s RTVM 矩阵（四维闭环总表）\n\n> 交付触发点：随阶段交付逐维回填（spec=REQ/design=DES+tasks=T/testplan=TC）；下游输入：阶段门与收口审计\n> 背景输入：待填（01-spec 的 REQ 行 + P01 需求册）\n\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 / 脚本 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n| <REQ-xxx> | <!-- FILL: 需求简述 --> | <DES-xxx> | <!-- FILL: 设计方案 --> | <T-xxx> | <CHG-xxx> / <!-- FILL: 文件:行号 --> | <TC-xxx> | <!-- FILL: 命令 --> | <!-- FILL: PASS/FAIL --> |\n\n> 回填时机（v3.91.5 机检）：spec 交付填 REQ；design 交付填 DES；tasks 交付填 TASK；testplan 交付填 TC。后补即被阶段门拒绝。\n' "$id" ;;
     04-test-scripts.md)
-      printf '# %s Test Scripts\n\n场景：%s <!-- FILL: 场景名 -->。\n\n| 编号 | TC | SC | 覆盖维度 | 命令 | 期望 | REQ | 来源 |\n|---|---|---|---|---|---|---|---|\n| T1 | %s | %s | <!-- FILL --> | <!-- FILL --> | <!-- FILL --> | %s | 本次引入 |\n\n## TC 落点清单（REQ-1091，v3.71.0）\n\n- %s → <!-- FILL: 文件/节 -->\n' "$id" "$nxt_sc" "$nxt_tc" "$nxt_sc" "$nxt_req" "$nxt_tc" ;;
+      printf '# %s Test Scripts\n\n> 交付触发点：testplan 阶段交付；下游输入：开发（TDD）与 05/07\n> 背景输入：待填（02 业务影响 + 03 的 DES-xxx + 01.5 的 DES/T 行）\n\n场景：%s <!-- FILL: 场景名 -->。\n\n| 编号 | TC | SC | 覆盖维度 | 命令 | 期望 | REQ | 来源 |\n|---|---|---|---|---|---|---|---|\n| T1 | %s | %s | <!-- FILL --> | <!-- FILL --> | <!-- FILL --> | %s | 本次引入 |\n\n## TC 落点清单（REQ-1091，v3.71.0）\n\n- %s → <!-- FILL: 文件/节 -->\n' "$id" "$nxt_sc" "$nxt_tc" "$nxt_sc" "$nxt_req" "$nxt_tc" ;;
   esac
 }
 
@@ -453,7 +524,7 @@ scaffold_change() { # <id> <risk> — generate the eight begin-stage artifacts
   fi
   mkdir -p "$d"
   local created=0 appended=0
-  for doc in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+  for doc in 00-intent.md 00-governance.json 00.5-communication.md 01-spec.md 01.5-rtvm-matrix.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
     target="$d/$doc"
     body=$(scaffold_body "$doc" "$id" "$risk" "$placement")
     t121=""
@@ -602,7 +673,85 @@ is_code_path() {
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
-# v3.55.0 (CHG-068): single source for the 延伸发现/历史相似检索 check family —
+# v3.89.0 (CHG-117, REQ-1199/1200, DES-1956): unaccounted source-change gate —
+# signal class ③ of §2.17.2b (three signal classes). A source-path diff with
+# NO active change, NO same-day defect batch, and a non-docs-only face is
+# unaccounted work (修完不留痕). The exclusion face is is_code_path above —
+# ONE source for "what is source" (session-gate.sh and the G16 audit lane keep
+# byte-compatible replicas with a pinned sync duty; changing one side obliges
+# the other two).
+# Exemption ladder (fail-closed, never silent):
+#   1. active-change pointer present (git-path, same resolution as stop);
+#   2. same-day defect batch WITH its identity piece (<bugs_root>/BATCH-<UTCday>/
+#      01-diagnosis.md carrying at least one `## BUG-` anchor) — an empty
+#      directory is not a batch (independent review F2); full anchor
+#      completeness stays with G8 / the existing group validators;
+#   3. AGENT_GUARD_ALLOW_UNACCOUNTED=1 — same ladder as ALLOW_NO_SHIFT /
+#      ALLOW_OVER_RED: the bypass prints a WARN line and appends a
+#      GATE-E125BYPASS row to the friction ledger; the justification is owed
+#      to 09「重要上下文」.
+# SKIP_VERIFY judgment (DES-1958): this check NEVER consults
+# AGENT_GUARD_SKIP_VERIFY — that env only ever waived the verification_command
+# run (v3.28.0) and keeps meaning exactly that. session-gate idle passes the
+# internal marker AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle (parent-process
+# injection only) purely as a stated contract that the unaccounted check must
+# run regardless of any skip semantics; setting both variables by hand has NO
+# bypass effect — the only bypass keys are the three exemptions above.
+day_bug_batch_present() { # -> 0 when <bugs_root>/BATCH-<UTCday>/01-diagnosis.md carries a BUG anchor
+  local d
+  d="$bugs_root/BATCH-$(date -u +%Y%m%d)/01-diagnosis.md"
+  [[ -s "$d" ]] && grep -qE '^##[[:space:]]+BUG-[0-9A-Za-z_-]+' "$d" 2>/dev/null
+}
+
+unaccounted_exempt() { # -> 0 when the diff face is accounted for
+  local af
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -n "$af" && -s "$af" ]] && return 0
+  day_bug_batch_present
+}
+
+validate_unaccounted_changes() { # <staged|worktree>
+  local mode="$1" files f hits=""
+  case "$mode" in
+    staged) files=$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true) ;;
+    # deletions included: removing source with no account is still 修完不留痕
+    worktree)
+      # stop-lane merged face: porcelain covers staged + unstaged + untracked
+      # (-uall lists untracked DIRECTORY CONTENTS individually — the collapsed
+      # `?? dir/` form would hide a fresh source file inside a new directory).
+      # Cut the XY status pair, keep the rename's NEW path; quoted paths are
+      # unquoted best-effort (core.quotePath names stay an accepted gap — the
+      # same gap changed_files has always had).
+      files=$(git status --porcelain -uall 2>/dev/null | cut -c4- | sed -E 's/.* -> //; s/^"//; s/"$//' || true) ;;
+    *) return 0 ;;
+  esac
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    is_code_path "$f" && hits+="$f"$'\n'
+  done <<< "$files"
+  [[ -n "$hits" ]] || return 0
+  unaccounted_exempt && return 0
+  if [[ "${AGENT_GUARD_ALLOW_UNACCOUNTED:-}" == "1" ]]; then
+    echo "agent-gate: WARN — AGENT_GUARD_ALLOW_UNACCOUNTED=1 bypassed the unaccounted source-change check; the justification is owed to 09「重要上下文」(standards §2.17.2b, v3.89.0 CHG-117)" >&2
+    friction_append "GATE-E125BYPASS" BYPASS "AGENT_GUARD_ALLOW_UNACCOUNTED=1"
+    return 0
+  fi
+  die "GATE-E125: source-path changes with no active change and no same-day defect batch ($mode face: $(printf '%s' "$hits" | head -3 | tr '\n' ' ')...) — standards §2.17.2b signal ③, three options: ① open the change (scripts/agent-gate begin <change-id> / new-change scaffold), ② bind the defect batch (bug-autointent / same-day <bugs_root>/BATCH-<UTCday>/ anchors), ③ skip only with AGENT_GUARD_ALLOW_UNACCOUNTED=1 recorded in 09「重要上下文」 (v3.89.0 CHG-117)"
+}
+
+# v3.90.3 (CHG-125, P2-3): L2/L3 may not accumulate code evidence before the
+# user's overall confirmation is on disk (the §2.17.2d gate extended to staged).
+validate_confirmed_work() { # <staged|preflight>
+  local cid
+  cid=$(active_change_quiet)
+  [[ -n "$cid" ]] || return 0
+  case "$1" in
+    staged)    confirm_required_check "$cid" E129 ;;
+    preflight) confirm_required_check "$cid" E130 ;;
+  esac
+}
+
+# v3.67.0 (CHG-090, REQ-1056): single source for the 延伸发现/历史相似检索 check family —
 # a section heading (bare substring; declaration lines self-carry it) OR an
 # explicit 未命中（…检索…） declaration line. Callers own their die messages.
 require_section_or_decl() { # <file> <keyword> [decl_regex]
@@ -703,6 +852,201 @@ validate_dimensional_begin() { # <change-dir>
   return 0
 }
 
+# v3.89.0 (CHG-117, DES-1960): E113 TC-landing extracted from
+# validate_dimensional_stop — same scan, same single die literal (T41), two
+# callers: the stop lane (require-section=0 keeps the legacy soft warn for 04
+# files without the section) and the testplan stage gate (require-section=1
+# demands the section before source edits).
+tc_landing_check() { # <04-file> <require-section:0|1>
+  local f="$1" req="$2" tcl tc_path tc_id e113
+  if grep -q '^## TC 落点清单' "$f" 2>/dev/null; then
+    while IFS= read -r tcl; do
+      [[ -n "$tcl" ]] || continue
+      case "$tcl" in *"自动化"*) ;; *) continue ;; esac
+      tc_id=$(printf '%s\n' "$tcl" | sed -E 's/^[[:space:]]*-[[:space:]]*(TC-[A-Za-z0-9_-]+)[[:space:]]*:[[:space:]].*/\1/')
+      tc_path="${tcl#*:}"; tc_path="${tc_path%%（*}"; tc_path="${tc_path%%(*}"
+      tc_path="$(printf '%s' "$tc_path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      e113=""
+      if [[ -z "$tc_path" || ! -f "$tc_path" ]]; then
+        e113="TC landing '$tc_id' points at '$tc_path' which does not exist — every automated TC must land an executable file (standards §2.5 stage 7)"
+      elif ! grep -qE 'describe\(|\bit\(|\btest\(|expect\(|assert|def test_|@Test' "$tc_path" 2>/dev/null; then
+        e113="'$tc_id' landing '$tc_path' carries no recognizable test assertion marker"
+      fi
+      [[ -z "$e113" ]] \
+        || die "GATE-E113: $e113 (v3.71.0; escape review: 人工-typed rows are skipped)"
+    done < <(sed -n '/^## TC 落点清单/,/^## /p' "$f" | grep -E '^[[:space:]]*-[[:space:]]*TC-')
+  elif [[ "$req" == "1" ]]; then
+    stage_gate_fail "G-测试门 (testplan)" \
+      "$f lacks the 「TC 落点清单」 section" \
+      "04 用例矩阵 (TC-xxx + 覆盖维度) plus a TC 落点清单 (every automated TC → real executable test file); then agent-gate --stage testplan"
+  else
+    echo "agent-gate: TC landing soft warning: $f has no 「TC 落点清单」 section (legacy shape passes unblocked; new changes must land TC→file mappings, REQ-1091, v3.71.0)" >&2
+  fi
+}
+
+# v3.89.0 (CHG-117, REQ-1202, DES-1960): stateless stage gates. `--stage
+# spec|design|testplan` re-derives stage completion from disk anchors only —
+# no stage-state file, idempotent and re-entrant, so the legacy "all eight
+# artifacts before begin" habit passes every gate for free. begin narrows to
+# the ENTRY gate (00-intent + 00-governance.json + 00.5 confirmation); the
+# 01-04 checks this used to duplicate at begin live here, and the delivery
+# face (staged/stop/ci) keeps its full artifact checks unchanged — 收窄≠弱化.
+# AGENT_GUARD_STAGE_GATES=0: begin restores the legacy full eight-artifact
+# check and the session-gate check-mode stage predicates skip; an explicit
+# `--stage <gate>` invocation still validates (opt-in action).
+stage_gates_enabled() { [[ "${AGENT_GUARD_STAGE_GATES:-1}" != "0" ]]; }
+
+stage_gate_fail() { # <gate-name> <missing-what> <backfill-what> — single E126 die site (T41)
+  die "GATE-E126: stage gate $1 not satisfied: $2 — backfill $3, then re-run (stateless/idempotent; standards §2.16.2, §2.17; v3.89.0 CHG-117; AGENT_GUARD_STAGE_GATES=0 restores the legacy full begin check)"
+}
+
+unknown_stage() { # <stage> — single E78 die site (T41)
+  die "GATE-E78: unknown stage '$1'"
+}
+
+req_seq_gaps() { # <file> <prefix> -> gap count inside the file's own min..max
+  # Definition-form rows only (G2 audit audit-docs-consistency.sh DEF_RE, same
+  # rule and rationale: prose references must not inflate the numbering set).
+  local re nums
+  re=$(printf '^#{1,6}[[:space:]]*%s-[0-9]+|^\\|[[:space:]]*`?%s-[0-9]+`?[[:space:]]*\\||^-[[:space:]]*`?%s-[0-9]+' "$2" "$2" "$2")
+  nums=$(grep -ohE "$re" "$1" 2>/dev/null \
+    | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq || true)
+  [[ -z "$nums" ]] && { printf 0; return; }
+  printf '%s\n' "$nums" \
+    | awk -v mn="$(printf '%s\n' "$nums" | head -1)" -v mx="$(printf '%s\n' "$nums" | tail -1)" \
+      '{a[$1+0]=1} END{n=0; for(i=mn;i<=mx;i++) if(!(i in a)) n++; print n}'
+}
+
+entry_gate_docs_present() { # <id> — narrowed begin face (v3.89.0, DES-1960)
+  # One die site per code (T41): the entry subset is the SAME loop and the
+  # SAME content checks as the legacy full gate, just scoped to three docs.
+  required_docs_present "$1" entry
+}
+
+# v3.91.5 (2026-10-27 user directive): stage delivery, not post-hoc backfill.
+# A stage gate may only open when the PREVIOUS stage's deliverables are actually
+# on disk — including the RTVM row it owes. Placeholder shapes (<REQ-xxx>) do
+# not count; only numbered ids do.
+rtvm_has() { # <file> <REQ|DES|T|TC> -> 0 when a numbered id of that dimension exists
+  local f="$1" dim="$2"
+  [[ -s "$f" ]] || return 1
+  case "$dim" in
+    REQ) grep -qE '(^|[|`[:space:]])`?REQ-[0-9]+' "$f" 2>/dev/null ;;
+    DES) grep -qE '(^|[|`[:space:]])`?DES-[0-9]+' "$f" 2>/dev/null ;;
+    T)   grep -qE '(^|[|`[:space:]])`?T-[0-9]+([^A-Za-z0-9]|$)' "$f" 2>/dev/null ;;
+    TC)  grep -qE '(^|[|`[:space:]])`?TC-[0-9]+' "$f" 2>/dev/null ;;
+    *) return 0 ;;
+  esac
+}
+
+# v3.91.6 (CHG-127, user directive 2026-10-27): every artifact declares BOTH its
+# delivery trigger (when it is produced + which stage consumes it) and its
+# background input (which upstream artifact + business/requirement context was
+# actually read before the stage started). PMP chain rule — the next stage's
+# input IS the previous stage's output — is enforced here, not narrated.
+marker_text() { # <file> <label> -> the marker line's payload (empty when absent)
+  # Use `(：|:)` alternation, never a multibyte bracket class — the latter
+  # silently fails under LANG=C (T67 TC-1433).
+  sed -nE "s/^[[:space:]]*>?[[:space:]]*([-*][[:space:]]*)?${2}(：|:)[[:space:]]*(.*)$/\\3/p" "$1" 2>/dev/null | head -1
+}
+
+delivery_markers_ok() { # <file> -> 0 when 交付触发点 + 背景输入 both carry real text
+  local f="$1" t b
+  [[ -s "$f" ]] || return 1
+  t=$(marker_text "$f" "交付触发点")
+  b=$(marker_text "$f" "背景输入")
+  [[ -n "$t" && -n "$b" ]] || return 1
+  # Placeholders are NOT declarations: scaffold text and hand-written TODO
+  # shapes must be filled before the stage gate opens.
+  if printf '%s\n%s\n' "$t" "$b" | grep -qE 'FILL|待填|<[^>]*>'; then return 1; fi
+  return 0
+}
+
+marker_cites() { # <file> <upstream-anchor ERE> -> 0 when 背景输入 names that input
+  marker_text "$1" "背景输入" | grep -qE "$2"
+}
+
+stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anchors only
+  local stage="$1" id d gaps
+  id=$(active_change)
+  d=$(change_dir "$id")
+  case "$stage" in
+    spec)
+      [[ -s "$d/01-spec.md" ]] \
+        || stage_gate_fail "G-规格门 (spec)" "docs/changes/$id/01-spec.md missing" "the 01-spec REQ table (REQ-xxx rows)"
+      grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
+        || stage_gate_fail "G-规格门 (spec)" "01-spec has no REQ- anchors (E06 anchor)" "the 01-spec REQ table (REQ-xxx rows)"
+      gaps=$(req_seq_gaps "$d/01-spec.md" REQ)
+      [[ "$gaps" == 0 ]] \
+        || stage_gate_fail "G-规格门 (spec)" "REQ numbering has $gaps gap(s) inside the file's own min..max range" "continuous REQ rows in 01-spec (no gaps, standards §1.2)"
+      delivery_markers_ok "$d/01-spec.md" \
+        || stage_gate_fail "G-规格门 (spec)" "01-spec has no 交付触发点/背景输入 declaration (PMP input contract)" "two header lines: '> 交付触发点：…；下游输入：…' and '> 背景输入：…（P01/P12/业务）'"
+      marker_cites "$d/01-spec.md" 'P01|P12|业务' \
+        || stage_gate_fail "G-规格门 (spec)" "01-spec 背景输入 names no business/requirement context" "a 背景输入 line citing P01 需求册 / P12 产品上下文 / 业务背景"
+      ;;
+    design)
+      # v3.91.5: design may not start before the REQUIREMENTS are on disk and
+      # their RTVM row is backfilled (no "design first, write REQ later").
+      [[ -s "$d/01-spec.md" ]] && grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
+        || stage_gate_fail "G-设计门 (design)" "01-spec.md missing/empty or carries no REQ- numbering — requirements must exist before design" "01-spec REQ rows written at the spec stage"
+      rtvm_has "$d/01.5-rtvm-matrix.md" REQ \
+        || stage_gate_fail "G-设计门 (design)" "01.5-rtvm-matrix.md missing or has no REQ row — backfill the RTVM at spec delivery, not at the end" "01.5 row carrying REQ-xxx, filled when the spec stage closed"
+      [[ -s "$d/02-code-impact-analysis.md" && -s "$d/03-modification-plan.md" ]] \
+        || stage_gate_fail "G-设计门 (design)" "02-code-impact-analysis.md / 03-modification-plan.md missing or empty" "02 (业务影响/风险/回滚策略) + 03 (选型比较 + 既有范式关系)"
+      [[ -s "$d/03.5-tasks.md" ]] \
+        || stage_gate_fail "G-设计门 (design)" "docs/changes/$id/03.5-tasks.md missing or empty" "03.5 task breakdown (dependencies + milestones)"
+      grep -qE "^(#{1,6}[[:space:]].*业务影响|\|.*业务影响|[[:space:]]*[-*][[:space:]]+\*\*业务影响)" "$d/02-code-impact-analysis.md" \
+        || stage_gate_fail "G-设计门 (design)" "02 missing business-impact (业务影响) section" "the 02 三维影响 sections (业务影响/风险/回滚策略)"
+      grep -qE "^(#{1,6}[[:space:]].*风险|\|.*风险|[[:space:]]*[-*][[:space:]]+\*\*风险)" "$d/02-code-impact-analysis.md" \
+        || stage_gate_fail "G-设计门 (design)" "02 missing risk (风险) section" "the 02 三维影响 sections (业务影响/风险/回滚策略)"
+      grep -qE "^(#{1,6}[[:space:]].*回滚策略|\|.*回滚策略|[[:space:]]*[-*][[:space:]]+\*\*回滚策略)" "$d/02-code-impact-analysis.md" \
+        || stage_gate_fail "G-设计门 (design)" "02 missing rollback (回滚策略) section" "the 02 三维影响 sections (业务影响/风险/回滚策略)"
+      grep -qE "备选|选型" "$d/03-modification-plan.md" \
+        || stage_gate_fail "G-设计门 (design)" "03 has no option-comparison (备选/选型) content" "the 03 选型比较 section (≥2 candidates)"
+      sed 's/<!--[^>]*-->//g' "$d/03-modification-plan.md" 2>/dev/null | grep -q "既有范式关系" \
+        || stage_gate_fail "G-设计门 (design)" "03 missing 既有范式关系 section or declaration" "the 03 既有范式关系 section (E122 anchor)"
+      # v3.91.6: the design artifacts must prove they were fed by the spec stage.
+      for f in 01.5-rtvm-matrix.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md; do
+        delivery_markers_ok "$d/$f" \
+          || stage_gate_fail "G-设计门 (design)" "$f lacks 交付触发点/背景输入 (PMP input contract)" "the two header lines on $f (交付触发点 + 背景输入)"
+      done
+      for f in 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md; do
+        marker_cites "$d/$f" '01-spec|REQ-[0-9]' \
+          || stage_gate_fail "G-设计门 (design)" "$f 背景输入 does not cite the spec-stage output" "a 背景输入 line citing 01-spec / REQ-xxx"
+      done
+      marker_cites "$d/01.5-rtvm-matrix.md" 'P01|01-spec|REQ-[0-9]' \
+        || stage_gate_fail "G-设计门 (design)" "01.5 背景输入 does not cite the requirement baseline" "a 背景输入 line citing P01 / 01-spec / REQ-xxx"
+      ;;
+    testplan)
+      # v3.91.5: the test plan may not start before design + tasks are delivered,
+      # and their RTVM dimensions (DES/T) are already backfilled.
+      [[ -s "$d/02-code-impact-analysis.md" && -s "$d/03-modification-plan.md" && -s "$d/03.5-tasks.md" ]] \
+        || stage_gate_fail "G-测试门 (testplan)" "02/03/03.5 missing or empty — the design stage was not delivered" "02 + 03 + 03.5 filled before the test plan"
+      rtvm_has "$d/01.5-rtvm-matrix.md" DES \
+        || stage_gate_fail "G-测试门 (testplan)" "01.5 has no DES row — design was not backfilled to the RTVM" "01.5 DES-xxx row filled at design delivery"
+      rtvm_has "$d/01.5-rtvm-matrix.md" T \
+        || stage_gate_fail "G-测试门 (testplan)" "01.5 has no TASK (T-xxx) row — tasks were not backfilled to the RTVM" "01.5 T-xxx row filled at task delivery"
+      [[ -s "$d/04-test-scripts.md" ]] \
+        || stage_gate_fail "G-测试门 (testplan)" "docs/changes/$id/04-test-scripts.md missing" "04 用例矩阵 (TC-xxx + 覆盖维度) + TC 落点清单"
+      grep -qE "TC-[0-9]+" "$d/04-test-scripts.md" \
+        || stage_gate_fail "G-测试门 (testplan)" "04 has no TC- numbering" "04 用例矩阵 (TC-xxx rows)"
+      grep -q "覆盖维度" "$d/04-test-scripts.md" \
+        || stage_gate_fail "G-测试门 (testplan)" "04 has no coverage-dimension (覆盖维度) column" "04 用例矩阵 with a 覆盖维度 column"
+      tc_landing_check "$d/04-test-scripts.md" 1
+      # v3.91.6: the test plan must cite the design/task deliverables it consumed,
+      # and the upstream artifacts must already carry their own declarations.
+      for f in 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+        delivery_markers_ok "$d/$f" \
+          || stage_gate_fail "G-测试门 (testplan)" "$f lacks 交付触发点/背景输入 (PMP input contract)" "the two header lines on $f (交付触发点 + 背景输入)"
+      done
+      marker_cites "$d/04-test-scripts.md" '02|03|DES-[0-9]|REQ-[0-9]' \
+        || stage_gate_fail "G-测试门 (testplan)" "04 背景输入 does not cite the design-stage output" "a 背景输入 line citing 02 / 03 / DES-xxx / REQ-xxx"
+      ;;
+    *) unknown_stage "$stage" ;;
+  esac
+  echo "agent-gate: stage gate $stage green ($id)"
+}
+
 # v3.68.0 (CHG-043): G13/G14 stop lane — the delivery backstop for the
 # reference-corruption incident class (all downstream checks validated against
 # a lossy transcription; nobody compared back to the approved origin artifact):
@@ -710,6 +1054,27 @@ validate_dimensional_begin() { # <change-dir>
 # demo-script replay evidence (E103), per-UJ runtime evidence (E104), review
 # journey evidence (E107), waiver transitivity (E108). Prints upstream-error
 # counters on success (all-zero is a danger signal — playbook stage 8).
+# v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — closes the GATE-E89
+# blind spot (E89 fires only at begin; same-change long sessions never re-run
+# begin). v3.91.7 (CHG-127): extracted into a single function so `--stage shift`
+# (pre-push) reuses the SAME die site — push no longer bypasses handoff.
+shift_gate_check() { # <change-id> — E112 single die site
+  local id="$1" d lastd lc l_started l_delivered
+  d=$(change_dir "$id")
+  lastd="$repo_root/.agent-state/last-delivery.json"
+  [[ -s "$lastd" && ! -s "$d/handoff.md" ]] || return 0
+  grep -qE '^[[:space:]]*-[[:space:]]*\*\*换挡声明\*\*(：|:).+' "$d/09-changelog.md" 2>/dev/null && return 0
+  [[ "${AGENT_GUARD_ALLOW_NO_SHIFT:-}" == "1" ]] && return 0
+  [[ -s "$repo_root/.agent-state/session-started.json" ]] || return 0
+  lc=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+  [[ "$lc" == "$id" ]] || return 0
+  l_started=$(sed -n 's/.*"started_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1)
+  l_delivered=$(sed -n 's/.*"delivered_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
+  [[ -n "$l_started" && -n "$l_delivered" ]] || return 0
+  [[ "$l_delivered" > "$l_started" ]] || return 0
+  die "GATE-E112: change $id was delivered earlier in this session but has neither handoff.md nor a 09 「换挡声明」 line — shift the session (write handoff), record the declaration, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification in 09 (standards §2.9.6, v3.71.0)"
+}
+
 validate_dimensional_stop() { # <change-dir>
   local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row bhv="" n_bhv="" n_wv=""
   [[ -s "$spec" ]] || return 0
@@ -788,57 +1153,20 @@ EOF
     [[ -z "$e110" ]] \
       || die "GATE-E110: $e110 (standards §2.5 stage 7, v3.71.0)"
   fi
-  # v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — closes the GATE-E89
-  # blind spot (E89 fires only at begin; same-change long sessions never re-run
-  # begin). A re-delivery of a change already delivered IN THIS SESSION, without
-  # handoff evidence, is blocked: write docs/changes/<id>/handoff.md, or record
-  # - **换挡声明**：未到换挡点（<理由>） in 09, or escape via
-  # AGENT_GUARD_ALLOW_NO_SHIFT=1 (same key as E89; the discipline layer still
-  # owes the 09 registration). First delivery passes: record_delivery writes
-  # the marker AFTER validate_stop, and stale/absent markers fail open (E89
-  # semantics).
-  local lastd lc l_started l_delivered
-  lastd="$repo_root/.agent-state/last-delivery.json"
-  if [[ -s "$lastd" && ! -s "$d/handoff.md" ]] \
-     && ! grep -qE '^[[:space:]]*-[[:space:]]*\*\*换挡声明\*\*(：|:).+' "$d/09-changelog.md" 2>/dev/null \
-     && [[ "${AGENT_GUARD_ALLOW_NO_SHIFT:-}" != "1" ]] \
-     && [[ -s "$repo_root/.agent-state/session-started.json" ]]; then
-    lc=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
-    if [[ "$lc" == "$id" ]]; then
-      l_started=$(sed -n 's/.*"started_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1)
-      l_delivered=$(sed -n 's/.*"delivered_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lastd" | head -1)
-      if [[ -n "$l_started" && -n "$l_delivered" ]] && [[ "$l_delivered" > "$l_started" ]]; then
-        die "GATE-E112: change $id was delivered earlier in this session but has neither handoff.md nor a 09 「换挡声明」 line — shift the session (write handoff), record the declaration, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification in 09 (standards §2.9.6, v3.71.0)"
-      fi
-    fi
-  fi
+  # v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — extracted to
+  # shift_gate_check so `--stage shift` (pre-push) shares the same E112 die site.
+  local _sg_id
+  _sg_id=$(active_change_quiet)
+  [[ -n "$_sg_id" ]] || _sg_id=$(basename "$d")
+  shift_gate_check "$_sg_id"
   # v3.71.0 (CHG-046, REQ-1091): TC-landing gate — blocks "test planning posing
   # as tests" (external-project retro: 04 promised ~25 test files, zero materialized).
-  # Only the 「TC 落点清单」 section is scanned (legacy 04 files without the
-  # section keep passing; the discipline layer lands the mapping going forward).
+  # v3.89.0 (CHG-117, DES-1960): the row-level scan moved into tc_landing_check
+  # so the testplan stage gate reuses the SAME die site (E113 single-source).
   # 「人工」-typed entries are skipped (manual walkthroughs have no executable
   # file); automated entries must point at an existing file carrying a
   # test-assertion marker.
-  if grep -q '^## TC 落点清单' "$d/04-test-scripts.md" 2>/dev/null; then
-    local tcl tc_path tc_id
-    while IFS= read -r tcl; do
-      [[ -n "$tcl" ]] || continue
-      case "$tcl" in *"自动化"*) ;; *) continue ;; esac
-      tc_id=$(printf '%s\n' "$tcl" | sed -E 's/^[[:space:]]*-[[:space:]]*(TC-[A-Za-z0-9_-]+)[[:space:]]*:[[:space:]].*/\1/')
-      tc_path="${tcl#*:}"; tc_path="${tc_path%%（*}"; tc_path="${tc_path%%(*}"
-      tc_path="$(printf '%s' "$tc_path" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-      local e113=""
-      if [[ -z "$tc_path" || ! -f "$tc_path" ]]; then
-        e113="TC landing '$tc_id' points at '$tc_path' which does not exist — every automated TC must land an executable file (standards §2.5 stage 7)"
-      elif ! grep -qE 'describe\(|\bit\(|\btest\(|expect\(|assert|def test_|@Test' "$tc_path" 2>/dev/null; then
-        e113="'$tc_id' landing '$tc_path' carries no recognizable test assertion marker"
-      fi
-      [[ -z "$e113" ]] \
-        || die "GATE-E113: $e113 (v3.71.0; escape review: 人工-typed rows are skipped)"
-    done < <(sed -n '/^## TC 落点清单/,/^## /p' "$d/04-test-scripts.md" | grep -E '^[[:space:]]*-[[:space:]]*TC-')
-  else
-    echo "agent-gate: TC landing soft warning: $d/04-test-scripts.md has no 「TC 落点清单」 section (legacy shape passes unblocked; new changes must land TC→file mappings, REQ-1091, v3.71.0)" >&2
-  fi
+  tc_landing_check "$d/04-test-scripts.md" 0
   # G14d waiver transitivity (v3.70.0，CHG-045 收窄)：①「行为豁免」表行只允许出现在
   # 01-spec「拆除/豁免登记簿」节内——节外豁免行直接 E108（堵"节外豁免行躲检"）；
   # ②触真实业务链的节内豁免行须行内同时含 00.5 引用与「确认」——静默扩大豁免范围
@@ -971,30 +1299,37 @@ confirmation_gate_reason() { # <id> <dir>
   return 0
 }
 
-required_docs_present() {
-  local id="$1" doc d  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
+required_docs_present() { # <id> [entry]
+  local id="$1" scope="${2:-full}" doc d  # FU-023: ids must start alphanumeric, then alnum/_/- only — no dots at all
+  local docs=("${required_docs[@]}")
+  # v3.89.0 (CHG-117, DES-1960): "entry" = the narrowed begin face (three
+  # entry docs + entry content checks); default = the legacy full eight.
+  [[ "$scope" == "entry" ]] && docs=(00-intent.md 00-governance.json 00.5-communication.md)
   # (kills "-foo", "foo.", "a..b"; existing CHG-xxx / BUG-<ts> forms all pass).
   [[ "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "GATE-E02: invalid change id '$id' (start with [A-Za-z0-9], then alnum/_/-; no dots)"
   d=$(change_dir "$id")
-  for doc in "${required_docs[@]}"; do
+  for doc in "${docs[@]}"; do
     if [[ "$doc" == "00.5-communication.md" && "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]]; then
       # explicit bypass (§2.17.2d) — v3.60.0: append to the friction ledger so
       # bypass use is visible to metrics/review, not silent; 09 justification
       # duty stays (standards §2.17.2d).
-      printf 'GATE-E83BYPASS\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
-        >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+      friction_append "GATE-E83BYPASS" BYPASS "AGENT_GUARD_ALLOW_UNCONFIRMED=1"
       continue
     fi
     [[ -s "$d/$doc" ]] || die "GATE-E03: missing required artifact: $d/$doc"
   done
-  validate_artifact_content "$id"
+  if [[ "$scope" == "entry" ]]; then
+    validate_entry_content "$id"
+  else
+    validate_artifact_content "$id"
+  fi
 }
 
 # --- A-layer artifact content checks (DEVELOPMENT_STANDARDS §2.5) -----------
 # Presence alone is not acceptance: a hollow skeleton with no numbering system
 # must not pass as a complete artifact set. These checks are deterministic
 # greps; quality judgment (B layer) stays with independent roles.
-validate_artifact_content() {
+validate_entry_content() { # <id> — shared by the entry gate and the full gate (T41)
   local id="$1" d
   d=$(change_dir "$id")
   grep -q "预期结果" "$d/00-intent.md" \
@@ -1012,6 +1347,12 @@ validate_artifact_content() {
     [[ -z "$CONFIRM_REASON" ]] \
       || die "GATE-E83: communication-first gate: $CONFIRM_REASON — record the user overall confirmation (standards §2.17.2d; L0 single-line declaration allowed; AGENT_GUARD_ALLOW_UNCONFIRMED=1 is the explicit automation bypass)"
   fi
+}
+
+validate_artifact_content() {
+  local id="$1" d
+  d=$(change_dir "$id")
+  validate_entry_content "$id"
   grep -qE "REQ-[0-9]+" "$d/01-spec.md" \
     || die "GATE-E06: $d/01-spec.md has no REQ- numbering (A-layer acceptance, standards §2.5)"
   grep -qE "DES-[0-9]+" "$d/03-modification-plan.md" \
@@ -1225,6 +1566,28 @@ validate_governance_state() {
   d=$(change_dir "$id")
   file="$d/00-governance.json"
   [[ -s "$file" ]] || die "GATE-E24: missing required artifact: $file"
+  # CHG-121 (batch 0): structural validation. 12/12 batch rosters failed an
+  # external json.load (bare concatenated objects); the internal reader tolerates
+  # that shape, so the breakage stayed invisible. Brace/quote parity plus a
+  # read-back per declared id turns it into a loud refusal.
+  local _opens _closes _quotes _gid _bad=""
+  _opens=$(tr -cd '{' < "$file" 2>/dev/null | wc -c | tr -d ' ')
+  _closes=$(tr -cd '}' < "$file" 2>/dev/null | wc -c | tr -d ' ')
+  _quotes=$(tr -cd '"' < "$file" 2>/dev/null | wc -c | tr -d ' ')
+  if [[ "$_opens" -ne "$_closes" ]] || (( _quotes % 2 != 0 )); then
+    die "GATE-E133: $file is not structurally valid (braces ${_opens}/${_closes}, quotes ${_quotes}) — expected: one JSON object per line or a proper array; allowed: balanced braces/quotes; fix: repair the record file, then re-run begin; ref: CHG-121 batch 0 / CHG-123 P0-7"
+  fi
+  # The observed 12/12 failure shape: sibling objects concatenated on ONE line
+  # (`"..."}{"..."`) — not valid JSON for any external reader. A comma-separated
+  # array (`},{`) and the documented one-object-per-line batch style both pass.
+  if grep -qE '\}[[:space:]]*\{' "$file" 2>/dev/null; then
+    die "GATE-E134: $file concatenates JSON objects on one line ('}{' without a comma) — expected: one object per line or a comma-separated array; allowed: '{\"...\"}\n{\"...\"}' or '[{...},{...}]'; fix: rewrite the record file, then re-run begin; ref: CHG-121 batch 0 / CHG-123 P0-7"
+  fi
+  while IFS= read -r _gid; do
+    [[ -n "$_gid" ]] || continue
+    [[ -n "$(gov_record "$file" "$_gid")" ]] || _bad+=" $_gid"
+  done < <(gov_ids "$file")
+  [[ -z "$_bad" ]] || die "GATE-E135: $file declares change_id(s)$_bad that cannot be read back as records — expected: every change_id has a complete, self-contained object; allowed: truncated/overlapping JSON is rejected; fix: repair the record file, then re-run begin; ref: CHG-121 batch 0 / CHG-123 P0-7"
   # A dedicated <CHG>/ directory holds one record; a batch holds one line per
   # bundled change. Scope to THIS change's line so a sibling's risk/owners can
   # never satisfy our checks (or be misread as ours).
@@ -1407,6 +1770,17 @@ active_change() {
   tr -d '[:space:]' < "$active_file"
 }
 
+# v3.90.4: quiet variant for optional lanes (staged/stop). active_change() calls
+# die(), and `exit` inside a command substitution terminates that subshell before
+# `|| true` can run — under `set -e` the parent then exits silently. Optional
+# callers must use this reader instead.
+active_change_quiet() {
+  local af
+  af=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  [[ -s "$af" ]] || return 0
+  tr -d '[:space:]' < "$af" 2>/dev/null || true
+}
+
 extract_file_from_hook_input() {
   # Claude Code, Cursor, Gemini CLI, and Copilot place tool arguments under
   # tool_input. This intentionally supports the common path field spellings
@@ -1518,6 +1892,8 @@ stub_guard() { # file risk id
 validate_delivery() { # change-id
   local id="$1" d
   d=$(change_dir "$id")
+  reviews_pair_check "$id"
+  review_consent_check "$id"
   validate_delivery_shape_front "$id"
   if [[ -s "$d/07-review-report.md" ]]; then
     track_review_round "$d" "$id" "$d/07-review-report.md"
@@ -2123,6 +2499,1518 @@ append_verify_evidence() { # <line>（单行；调用端负责折叠换行）
   return 0
 }
 
+# v3.90.2 (CHG-123, P0-15): execution-cost record — one append-only line in the
+# change's 09, written once per (change, session start). The gate only READS the
+# runtime ledgers written by session-gate.sh; estimated values are labelled and
+# never feed any exit-2 decision.
+cl_json() { # <file> <key> — flat-JSON string/number field, empty when absent
+  sed -n "s/.*\"$2\":[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$1" 2>/dev/null | head -1 || true
+}
+
+record_cost_line() { # <change-id> [verdict]
+  local id="$1" verdict="${2:-ok}" d f stats prof started marker ts
+  local stage tin tout chars wall calls src wmin dev
+  d=$(change_dir "$id")
+  [[ -d "$d" ]] || { echo "agent-gate: cost line skipped — no change dir for $id" >&2; return 0; }
+  f="$d/09-changelog.md"
+  [[ -s "$f" ]] || { echo "agent-gate: cost line skipped — $f missing (write 09 first)" >&2; return 0; }
+  stats="$repo_root/.agent-state/session-tool-stats.json"
+  prof="$repo_root/.agent-state/model-profile.json"
+  [[ -s "$stats" ]] || { echo "agent-gate: cost line skipped — no $stats (session-gate start/count not wired)" >&2; return 0; }
+  started=""
+  [[ -s "$repo_root/.agent-state/session-started.json" ]] \
+    && started=$(sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1 || true)
+  marker="$repo_root/.agent-state/cost-line.json"
+  if [[ -n "$started" ]]; then
+    if [[ -s "$marker" ]] \
+       && grep -qF "\"change\":\"$id\"" "$marker" 2>/dev/null \
+       && grep -qF "\"session\":\"$started\"" "$marker" 2>/dev/null; then
+      echo "agent-gate: cost line already recorded for $id in this session (P0-15)"
+      return 0
+    fi
+  else
+    # No session-start marker (hook-less/legacy repos): fall back to one line
+    # per change — better than appending on every stop (review CHG-123 #8).
+    if [[ -s "$marker" ]] && grep -qF "\"change\":\"$id\"" "$marker" 2>/dev/null; then
+      echo "agent-gate: cost line already recorded for $id (no session marker; one per change) — P0-15"
+      return 0
+    fi
+    started="unknown-session"
+  fi
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  stage=$(cl_json "$stats" stage); [[ -n "$stage" ]] || stage="delivery"
+  tin=$(cl_json "$stats" tokens_in); [[ -n "$tin" ]] || tin=0
+  tout=$(cl_json "$stats" tokens_out); [[ -n "$tout" ]] || tout=0
+  chars=$(cl_json "$stats" context_chars); [[ -n "$chars" ]] || chars=0
+  wall=$(cl_json "$stats" wall_s); [[ -n "$wall" ]] || wall=0
+  calls=$(cl_json "$stats" total); [[ -n "$calls" ]] || calls=0
+  src=$(cl_json "$stats" exec_source); [[ -n "$src" ]] || { src=$(cl_json "$prof" source); [[ -n "$src" ]] || src="unavailable"; }
+  wmin=$(( wall / 60 ))
+  dev="n/a（基线缺失见 05）"
+  local tok_show
+  # v3.91.2: never print 0/0 as if it were a measurement.
+  if [[ "$src" == "unavailable" ]]; then tok_show="不可测"; else tok_show="${tin}/${tout}"; fi
+  {
+    printf '\n#### 本次执行成本（P0-15，v3.90.2）\n\n'
+    printf -- '- %s | stage=%s | wall_min=%s | tokens_in/out=%s（%s） | tool_calls=%s | 预算偏差=%s | verdict=%s\n' \
+      "$id" "$stage" "$wmin" "$tok_show" "$src" "$calls" "$dev" "$verdict"
+  } >> "$f" 2>/dev/null \
+    || { echo "agent-gate: WARN — cannot append cost line to $f (P0-15)" >&2; return 0; }
+  printf '{"change":"%s","session":"%s","recorded_at":"%s"}\n' "$id" "$started" "$ts" > "$marker" 2>/dev/null || true
+  echo "agent-gate: cost line recorded in $f (P0-15: wall ${wmin}min, tokens ${tin}/${tout} $src, calls ${calls})"
+}
+
+# v3.90.4 (review intelligence): runtime-aware review plan + cost consent.
+# The gate NEVER picks an expensive model for the user: it lists candidates,
+# labels cost tiers, and refuses to let a `deep`/approval-required model reach
+# the review gate until the user records consent. Detection reuses the adapter
+# (single source for runtime/family/layers) instead of a fourth client map.
+review_models_file() { printf '%s' "${AGENT_GUARD_REVIEW_MODELS:-$repo_root/.agent-review-models.json}"; }
+
+review_adapter_path() {
+  local p
+  for p in "$repo_root/scripts/install-hook-adapter" "$repo_root/scripts/install-hook-adapter.sh" "$repo_root/resources/templates/install-hook-adapter.sh"; do
+    [[ -f "$p" ]] && { printf '%s' "$p"; return 0; }
+  done
+  return 1
+}
+
+review_runtime_raw() { # adapter --detect run INSIDE the target repo (never the source-repo CWD)
+  local ad
+  ad=$(review_adapter_path) || return 0
+  ( cd "$repo_root" && bash "$ad" --detect 2>/dev/null ) || true
+}
+
+review_ui_change() { # <change-dir> -> 0 when 01-spec declares ui_change: true
+  grep -qE '^[[:space:]]*ui_change[[:space:]]*:[[:space:]]*true' "$1/01-spec.md" 2>/dev/null
+}
+
+review_roles_for() { # <change-dir> <id> -> space-separated role names
+  local d="$1" id="$2" rec risk roles="code handoff" bug_ref
+  rec=$(gov_record "$d/00-governance.json" "$id")
+  risk=$(json_field "$rec" risk_level)
+  case "$risk" in L2|L3) roles="$roles architecture business" ;; esac
+  review_ui_change "$d" && roles="$roles ui business"
+  bug_ref=$(json_field "$rec" bug_ref)
+  [[ -n "$bug_ref" ]] && roles="$roles bug"
+  printf '%s' "$(printf '%s\n' $roles | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
+}
+
+review_plan_json() { # <id> -> one-line plan JSON; no writes, never exits 2
+  local id="$1" d roles raw rt fam clients layers cfg
+  d=$(change_dir "$id")
+  roles=$(review_roles_for "$d" "$id")
+  raw=$(review_runtime_raw)
+  rt=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: *\([^ ]*\).*/\1/p' | head -1 || true)
+  fam=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: .*(family: *\([^)]*\)).*/\1/p' | head -1 || true)
+  clients=$(printf '%s\n' "$raw" | sed -n 's/^  - \([A-Za-z0-9_-]*\) (.*/\1/p' | tr '\n' ',' | sed 's/,$//' || true)
+  layers=$(printf '%s\n' "$raw" | sed -n 's/^  effective layers: *//p' | head -1 || true)
+  [[ -n "$rt" ]] || rt="unknown"
+  [[ -n "$fam" ]] || fam="unknown"
+  cfg=$(review_models_file)
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$cfg" "$(printf '%s' "$roles" | tr ' ' ',')" "$id" "$rt" "$fam" "$clients" "$layers" <<'PY'
+import json, os, sys, datetime
+cfg, roles_s, cid, rt, fam, clients, layers = sys.argv[1:8]
+now = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+if fam in ('json-hooks', 'plugin-api'):
+    scheme = 'in-session-independent-subagent'
+elif fam == 'git+ci':
+    scheme = 'external-cli-or-human-ci'
+else:
+    scheme = 'blocked-no-independent-executor'
+clients_list = [c for c in clients.split(',') if c]
+if len(clients_list) > 1:
+    scheme = 'multi-runtime-choose-one'
+roles = [r for r in roles_s.split(',') if r]
+models = []
+if cfg and os.path.exists(cfg):
+    try:
+        data = json.load(open(cfg, encoding='utf-8'))
+    except Exception:
+        data = {}
+    for m in data.get('models', []) or []:
+        if not isinstance(m, dict):
+            continue
+        strengths = []
+        for k in ('strengths', 'roles'):
+            v = m.get(k) or []
+            if isinstance(v, list):
+                strengths += [str(x) for x in v]
+        models.append({
+            'id': str(m.get('id', '')),
+            'provider': str(m.get('provider', '')),
+            'cli': str(m.get('cli', '')),
+            'tier': str(m.get('tier', 'standard')),
+            'approval': bool(m.get('approval', False)),
+            'strengths': strengths,
+            'note': str(m.get('note', '')),
+        })
+    models = [m for m in models if m['id']]
+selected = {}
+for r in roles:
+    cand = [m for m in models if (not m['strengths']) or (r in m['strengths'])]
+    if cand:
+        selected[r] = cand[0]['id']
+chosen = [m for m in models if m['id'] in selected.values()]
+order = {'economy': 0, 'standard': 1, 'deep': 2}
+tier = 'economy'
+for m in chosen:
+    if order.get(m['tier'], 1) > order.get(tier, 0):
+        tier = m['tier']
+approval_required = any(m['tier'] == 'deep' or m['approval'] for m in chosen)
+out = {
+    'change': cid, 'created_at': now,
+    'runtime': rt, 'runtime_family': fam, 'runtime_clients': [c for c in clients.split(',') if c],
+    'effective_layers': layers, 'scheme': scheme, 'roles': roles, 'models': models,
+    'selected': selected, 'tier': tier, 'approval_required': approval_required,
+    'approved': False, 'approved_by': '', 'approved_at': '',
+}
+print(json.dumps(out, ensure_ascii=False, separators=(',', ':')))
+PY
+  else
+    printf '{"change":"%s","created_at":"%s","runtime":"%s","runtime_family":"%s","runtime_clients":[],"effective_layers":"","scheme":"blocked-no-independent-executor","roles":%s,"models":[],"selected":{},"tier":"economy","approval_required":false,"approved":false,"approved_by":"","approved_at":""}\n' \
+      "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rt" "$fam" \
+      "$(printf '%s' "$roles" | awk '{printf "["; for(i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i; printf "]"}')"
+  fi
+}
+
+review_plan_write() { # <id> [approved-model] — write the runtime plan; no die
+  local id="$1" am="${2:-}" f js
+  f="$repo_root/.agent-state/review-plan.json"
+  js=$(review_plan_json "$id") || return 0
+  [[ -n "$js" ]] || return 0
+  if [[ -n "$am" ]]; then
+    js=$(printf '%s' "$js" | sed "s/\"approved\":false/\"approved\":true/; s/\"approved_by\":\"\"/\"approved_by\":\"user\"/; s/\"approved_at\":\"\"/\"approved_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)\"/")
+    # record which model the user approved (replace the selected map's targets)
+    js=$(printf '%s' "$js" | sed "s/\"selected\":{[^}]*}/\"selected\":{\"approved\":\"$am\"}/")
+  fi
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  printf '%s\n' "$js" > "$f" 2>/dev/null || { echo "agent-gate: WARN — cannot write $f (review plan)" >&2; return 0; }
+  printf '%s\n' "$js"
+}
+
+review_plan_seed() { # <id> — begin-time seed; economy default when no config
+  local id="$1" f ch
+  f="$repo_root/.agent-state/review-plan.json"
+  if [[ -s "$f" ]]; then
+    ch=$(json_field "$(tr -d '\n\r' < "$f" 2>/dev/null || true)" change)
+    [[ "$ch" == "$id" ]] && return 0
+  fi
+  review_plan_write "$id" >/dev/null 2>&1 || true
+}
+
+review_consent_check() { # <id> — E137: a deep/approval model needs user consent
+  local id="$1" f line ch
+  f="$repo_root/.agent-state/review-plan.json"
+  [[ -s "$f" ]] || return 0
+  line=$(tr -d '\n\r' < "$f" 2>/dev/null || true)
+  ch=$(json_field "$line" change)
+  [[ -z "$ch" || "$ch" == "$id" ]] || return 0
+  printf '%s\n' "$line" | grep -q '"approval_required":true' || return 0
+  printf '%s\n' "$line" | grep -q '"approved":true' && return 0
+  die "GATE-E137: $id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
+}
+
+# v3.90.2 (CHG-124, P1-1~P1-3): read-only decision engine. R2 = ADVISE ONLY:
+# nothing here may exit 2 for a coverage judgement, and AGENT_GUARD_ADAPT=0 turns
+# the whole face off (byte-identical to v3.90.2 behaviour).
+plan_enabled() { [[ "${AGENT_GUARD_ADAPT:-1}" != "0" ]]; }
+
+# v3.90.5 (CHG-126, P0-0): baseline snapshot — read the five numbers that make
+# "how much did we save" measurable, from the ledgers already on disk. No new
+# instrumentation, no writes unless --write; missing data stays explicit (null).
+baseline_p50() { # <kind> -> p50 of the last 5 numeric cost_s rows (empty when absent)
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" kind="$1" vals
+  [[ -s "$lg" ]] || return 0
+  vals=$(awk -F'\t' -v k="$kind" '$2==k && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
+  [[ -n "$vals" ]] || return 0
+  printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
+}
+
+baseline_last() { # <kind> -> cost_s of the last numeric row (empty when absent)
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" kind="$1"
+  [[ -s "$lg" ]] || return 0
+  awk -F'\t' -v k="$kind" '$2==k && $5 ~ /^[0-9]+$/ {v=$5} END{if (v!="") print v}' "$lg"
+}
+
+baseline_count() { # <kind> -> row count
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" kind="$1"
+  [[ -s "$lg" ]] || { printf '0'; return 0; }
+  awk -F'\t' -v k="$kind" '$2==k {n++} END{print n+0}' "$lg"
+}
+
+baseline_snapshot() { # -> one-line JSON (never writes)
+  local stop_p50 full_runs audit_p50 assertions wall src parts=""
+  stop_p50=$(baseline_p50 run-full)
+  full_runs=$(baseline_count run-full)
+  audit_p50=$(baseline_p50 audit)
+  wall=$(baseline_last run-full)
+  assertions=""
+  if [[ -s "$repo_root/.agent-state/last-suite-receipt.json" ]]; then
+    local pa fa
+    pa=$(sed -nE 's/.*"passed":[[:space:]]*([0-9]+).*/\1/p' "$repo_root/.agent-state/last-suite-receipt.json" | head -1)
+    fa=$(sed -nE 's/.*"failed":[[:space:]]*([0-9]+).*/\1/p' "$repo_root/.agent-state/last-suite-receipt.json" | head -1)
+    if [[ -n "$pa" && -n "$fa" ]]; then assertions=$(( pa + fa )); fi
+  fi
+  if [[ -n "$stop_p50" && -n "$audit_p50" && -n "$assertions" ]]; then src="ledger+receipt"
+  elif [[ -n "$stop_p50" || -n "$audit_p50" ]]; then src="ledger"
+  elif [[ -n "$assertions" ]]; then src="receipt"
+  else src="partial"; fi
+  printf '{"measured_at":"%s","source":"%s","stop_p50_s":%s,"full_runs":%s,"audit_p50_s":%s,"full_assertions":%s,"full_wall_s":%s}' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$src" \
+    "${stop_p50:-null}" "${full_runs:-0}" "${audit_p50:-null}" "${assertions:-null}" "${wall:-null}"
+}
+
+baseline_write() { # <change-dir> <json>
+  local d="$1" js="$2" f="$1/baseline.json" log="$1/09-changelog.md"
+  printf '%s\n' "$js" > "$f" 2>/dev/null || {
+    echo "agent-gate: WARN — could not write $f (P0-0)" >&2; return 1; }
+  if [[ -s "$log" ]] && ! grep -q '^- \[baseline\]' "$log" 2>/dev/null; then
+    printf -- '- [baseline] %s\n' "$js" >> "$log" 2>/dev/null || true
+  fi
+  echo "agent-gate: baseline recorded at $f"
+}
+
+# v3.90.5 (CHG-126, P1-2): three-source TC index. The old resolver read only 04;
+# the union adds test-script self-declarations and the RTVM matrix, and marks
+# dangling landings instead of silently counting them as resolved. The index is a
+# target-repo CACHE (tests/tc-index.tsv) — never shipped, never a contract artifact.
+tc_section_exists() { # <section-id>
+  local sec="$1"
+  [[ -n "$sec" && "$sec" != "-" ]] || return 1
+  # v3.91.1 (CHG-127 self-audit): the TC index resolves up to 300 TC rows, and a
+  # per-row `grep` of the 280 KB runner cost ~2.7 s — over the <=1 s plan budget
+  # (final-plan N4). Load the section set once and test membership in memory.
+  tc_sections_load
+  case " $TC_SEC_SET " in *" $sec "*) return 0 ;; esac
+  return 1
+}
+
+TC_SEC_SET=""
+TC_SEC_LOADED=""
+tc_sections_load() {
+  [[ -z "$TC_SEC_LOADED" ]] || return 0
+  TC_SEC_LOADED=1
+  local f="$repo_root/tests/run-tests.sh" ids=""
+  [[ -f "$f" ]] || return 0
+  ids=$(sed -n 's/^SECTIONS=(\(.*\))/\1/p' "$f" 2>/dev/null | head -1 || true)
+  ids="$ids $(grep -oE '^section_[A-Za-z0-9_]+\(\)' "$f" 2>/dev/null \
+    | sed 's/^section_//;s/()$//' | tr '\n' ' ' || true)"
+  TC_SEC_SET=$(printf '%s' "$ids" | tr -s '[:space:]' ' ')
+}
+
+tc_emit() { # <rows-file> <tc> <source> <section|-> <file|->
+  local rows="$1" tc="$2" src="$3" sec="$4" fil="$5" sok="-" fok="-"
+  [[ -n "$sec" ]] || sec="-"
+  [[ -n "$fil" ]] || fil="-"
+  if [[ "$sec" != "-" ]]; then
+    tc_section_exists "$sec" && sok="ok" || sok="missing"
+  fi
+  if [[ "$fil" != "-" ]]; then
+    [[ -f "$repo_root/$fil" ]] && fok="ok" || fok="missing"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$tc" "$src" "$sec" "$sok" "$fil" "$fok" >> "$rows"
+}
+
+tc_index_scan() { # <change-dir> -> sets TC_INDEX_OUT / TC_INDEX_OK / TC_INDEX_TOTAL / TC_INDEX_DANGLING
+  local d="$1" f04="$1/04-test-scripts.md" f15="$1/01.5-rtvm-matrix.md"
+  local raw agg line spec secs fil method tc s f files fp
+  raw=$(mktemp 2>/dev/null) || { TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
+  agg=$(mktemp 2>/dev/null) || { rm -f "$raw"; TC_INDEX_TOTAL=0; TC_INDEX_OK=0; TC_INDEX_DANGLING=""; return 0; }
+
+  # v3.91.1 (CHG-127 self-audit): S1/S3 used to spawn ~4 processes per matrix
+  # row (300 rows ≈ 2 s), which broke the <=1 s plan budget (final-plan N4).
+  # Both passes now run as one awk program over precomputed section/file sets.
+  local secset fileset tc_awk
+  tc_sections_load
+  secset=" $TC_SEC_SET "
+  fileset=" $( cd "$repo_root" 2>/dev/null && find tests scripts -type f 2>/dev/null | tr '\n' ' ' ) "
+  tc_awk='
+function trim(s) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", s); return s }
+function emit(tc,  n, i, a, b, sok, fok) {
+  n = split(ROWSEC, a, " ")
+  for (i = 1; i <= n; i++) {
+    if (a[i] == "") continue
+    sok = (index(secset, " " a[i] " ") > 0) ? "ok" : "missing"
+    print tc "\t" SRC "\t" a[i] "\t" sok "\t-\t-" >> out
+  }
+  n = split(ROWFIL, b, " ")
+  for (i = 1; i <= n; i++) {
+    if (b[i] == "") continue
+    fok = (index(fileset, " " b[i] " ") > 0) ? "ok" : "missing"
+    print tc "\t" SRC "\t-\t-\t" b[i] "\t" fok >> out
+  }
+  if (ROWSEC == "" && ROWFIL == "") {
+    if (mode == "04" && ROWMETHOD != "" && ROWMETHOD != "-") print tc "\tmanual\t-\t-\t-\t-" >> out
+    else print tc "\t" SRC "\t-\t-\t-\t-" >> out
+  }
+}
+function scan(line,  tmp, tok) {
+  ROWSEC = ""; ROWFIL = ""; ROWMETHOD = ""
+  tmp = line
+  while (match(tmp, /T[0-9]+[a-z]?/)) {
+    tok = substr(tmp, RSTART, RLENGTH)
+    if (index(" " ROWSEC " ", " " tok " ") == 0) ROWSEC = ROWSEC (ROWSEC == "" ? "" : " ") tok
+    tmp = substr(tmp, RSTART + RLENGTH)
+  }
+  tmp = line
+  while (match(tmp, /(tests|scripts)\/[A-Za-z0-9._\/-]+\.(sh|py|js|ts|java|go|rb)/)) {
+    tok = substr(tmp, RSTART, RLENGTH)
+    if (index(" " ROWFIL " ", " " tok " ") == 0) ROWFIL = ROWFIL (ROWFIL == "" ? "" : " ") tok
+    tmp = substr(tmp, RSTART + RLENGTH)
+  }
+  if (mode == "04") ROWMETHOD = trim($5)
+}
+function expand(spec,  p, a, b, i) {
+  p = index(spec, "~")
+  if (p == 0) { emit(spec); return }
+  a = substr(spec, 1, p - 1); b = substr(spec, p + 1)
+  sub(/^TC-/, "", a); sub(/^T/, "", a)
+  sub(/^TC-/, "", b); sub(/^T/, "", b)
+  if (a !~ /^[0-9]+$/ || b !~ /^[0-9]+$/ || b + 0 < a + 0) { emit(spec); return }
+  for (i = a + 0; i <= b + 0; i++) emit("TC-" i)
+}
+BEGIN { SRC = (mode == "04" ? "04" : "01.5") }
+{
+  if (mode == "04") {
+    if ($0 !~ /^\|[[:space:]]*TC-[0-9]/) next
+    if (!match($0, /TC-[0-9]+(~(TC-)?[0-9]+)?/)) next
+    spec = substr($0, RSTART, RLENGTH)
+    scan($0)
+    expand(spec)
+  } else {
+    if ($0 !~ /TC-[0-9]+/) next
+    scan($0)
+    tmp = $0; seentc = ""
+    while (match(tmp, /TC-[0-9]+/)) {
+      tok = substr(tmp, RSTART, RLENGTH)
+      if (index(" " seentc " ", " " tok " ") == 0) { seentc = seentc (seentc == "" ? "" : " ") tok; emit(tok) }
+      tmp = substr(tmp, RSTART + RLENGTH)
+    }
+  }
+}'
+
+  # S1: 04 matrix rows (TC id + landing section/file)
+  [[ -s "$f04" ]] && awk -F'|' -v mode=04 -v secset="$secset" -v fileset="$fileset" -v out="$raw" "$tc_awk" "$f04" || true
+
+  # S2: test scripts referenced by 04/01.5 that declare TC ids themselves
+  files=$( { grep -oE '(tests|scripts)/[A-Za-z0-9._/-]+\.(sh|py|js|ts|java|go|rb)' "$f04" "$f15" 2>/dev/null || true; } \
+    | sed -E 's/^[^:]+://' | sort -u)
+  for fp in $files; do
+    [[ -f "$repo_root/$fp" ]] || continue
+    grep -oE 'TC-[0-9]+' "$repo_root/$fp" 2>/dev/null | sort -u | while IFS= read -r tc; do
+      tc_emit "$raw" "$tc" script "-" "$fp"
+    done
+  done
+
+  # S3: RTVM matrix declares TC rows even when 04 has not caught up yet
+  [[ -s "$f15" ]] && awk -F'|' -v mode=15 -v secset="$secset" -v fileset="$fileset" -v out="$raw" "$tc_awk" "$f15" || true
+
+  awk -F'\t' '
+    {
+      tc=$1; src=$2; sec=$3; sok=$4; fil=$5; fok=$6
+      if (!(tc in seen)) { seen[tc]=1; order[++n]=tc }
+      srcs[tc]=srcs[tc] (srcs[tc]?" ":"") src
+      if (sok=="ok" && sec!="-" && bestsec[tc]=="") bestsec[tc]=sec
+      if (fok=="ok" && fil!="-" && bestfil[tc]=="") bestfil[tc]=fil
+      if (src=="manual") ok[tc]=1
+      if ((sec!="-" && sok=="ok") || (fil!="-" && fok=="ok")) ok[tc]=1
+      if ((sec!="-" && sok!="ok") || (fil!="-" && fok!="ok")) dang[tc]=1
+    }
+    END {
+      print "tc\tsource\tsection\tfile\tstatus"
+      for (i=1; i<=n; i++) {
+        tc=order[i]
+        st=(ok[tc]?"ok":(dang[tc]?"dangling":"unresolved"))
+        print tc "\t" srcs[tc] "\t" (bestsec[tc]?bestsec[tc]:"-") "\t" (bestfil[tc]?bestfil[tc]:"-") "\t" st
+      }
+    }' "$raw" > "$agg"
+
+  TC_INDEX_OUT="$agg"
+  TC_INDEX_TOTAL=$(awk -F'\t' 'NR>1 {n++} END{print n+0}' "$agg")
+  TC_INDEX_OK=$(awk -F'\t' 'NR>1 && $5=="ok" {n++} END{print n+0}' "$agg")
+  TC_INDEX_DANGLING=$(awk -F'\t' 'NR>1 && $5=="dangling" {print $1}' "$agg" | tr '\n' ',' | sed 's/,$//')
+  rm -f "$raw"
+}
+
+tc_index_rate() { # total ok -> integer percent (0 when nothing declared)
+  local total="$1" ok="$2"
+  [[ "$total" -gt 0 ]] || { printf '0'; return 0; }
+  printf '%s' $(( ok * 100 / total ))
+}
+
+tc_index_build() { # <id> [--write]
+  local id="$1" write="${2:-}" d dest
+  d=$(change_dir "$id")
+  tc_index_scan "$d"
+  dest="$repo_root/tests/tc-index.tsv"
+  echo "tc-index: resolved=${TC_INDEX_OK}/${TC_INDEX_TOTAL} rate=$(tc_index_rate "$TC_INDEX_TOTAL" "$TC_INDEX_OK")% dangling=${TC_INDEX_DANGLING:-none}"
+  if [[ "$write" == "--write" ]]; then
+    mkdir -p "$repo_root/tests" 2>/dev/null || true
+    cat "$TC_INDEX_OUT" > "$dest" 2>/dev/null \
+      && echo "tc-index: wrote $dest" \
+      || echo "agent-gate: WARN — could not write $dest (P1-2)" >&2
+  fi
+  cat "$TC_INDEX_OUT"
+  rm -f "$TC_INDEX_OUT" 2>/dev/null || true
+}
+
+plan_changed_csv() { # staged+unstaged+untracked, governance-face only, CSV for run-tests
+  # v3.91.2: `diff HEAD` already contains staged content, so `diff --cached` was
+  # a redundant third git spawn on the <=1 s plan path.
+  { git -C "$repo_root" diff --name-only HEAD 2>/dev/null || true
+    git -C "$repo_root" ls-files --others --exclude-standard 2>/dev/null || true
+  } | sort -u | tr '\n' ',' | sed 's/,$//'
+}
+
+plan_sections() { # [changed-csv] — single source: the runner's own -T auto resolver
+  local out changed="${1:-}"
+  [[ -n "$changed" ]] || changed=$(plan_changed_csv)
+  out=$(AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_AUTO_DIFF="$changed" \
+    bash "$repo_root/tests/run-tests.sh" -T auto 2>/dev/null \
+    | sed -n 's/^auto-resolve-only:[[:space:]]*//p' | tail -1 || true)
+  case "$out" in NONE) printf '' ;; *) printf '%s' "$out" ;; esac
+}
+
+plan_run_cost() { # whole-run p50 from FULL runs only (kind=run-full); empty when absent
+  local lg="$repo_root/.agent-state/cost-ledger.tsv" vals
+  [[ -s "$lg" ]] || return 0
+  vals=$(awk -F'\t' '$2=="run-full" && $5 ~ /^[0-9]+$/ {print $5}' "$lg" | tail -5 | sort -n)
+  [[ -n "$vals" ]] || return 0
+  printf '%s' "$(printf '%s\n' "$vals" | awk '{a[NR]=$1} END{print a[int((NR+1)/2)]}')"
+}
+
+# v3.91.2 (CHG-127 self-audit): every section cost used to cost one `awk` spawn
+# (12 sections ≈ 0.39 s of the <=1 s budget). One pass now yields "sec=cost;…".
+plan_section_costs() { # -> "T41=75;T50=4;…" (empty when the ledger is absent)
+  local lg="$repo_root/.agent-state/cost-ledger.tsv"
+  [[ -s "$lg" ]] || return 0
+  awk -F'\t' '
+    $2=="sec" && $5 ~ /^[0-9]+$/ { vals[$3]=vals[$3] " " $5 }
+    END {
+      for (s in vals) {
+        n=split(vals[s], a, " "); st=(n>5?n-4:1); m=0
+        for (i=st; i<=n; i++) b[++m]=a[i]+0
+        for (i=1; i<=m; i++) for (j=i+1; j<=m; j++) if (b[j]<b[i]) { t=b[i]; b[i]=b[j]; b[j]=t }
+        printf "%s=%d;", s, b[int((m+1)/2)]
+      }
+    }' "$lg" 2>/dev/null || true
+}
+
+plan_cost_lookup() { # <map> <section> -> cost, empty when not in the map
+  local IFS=';' e
+  for e in $1; do
+    [[ "${e%%=*}" == "$2" ]] && { printf '%s' "${e#*=}"; return 0; }
+  done
+  return 0
+}
+
+plan_section_value() { # <section> -> TC count from tests/tc-index.tsv (empty = unknown)
+  local f="$repo_root/tests/tc-index.tsv"
+  [[ -s "$f" ]] || return 0
+  awk -F'\t' -v s="$1" 'NR>1 && $3==s {n++} END{print n+0}' "$f" 2>/dev/null
+}
+
+plan_wasted_sections() { # -> csv of sections whose last 3 ledger rows are all `wasted` (G6)
+  # v3.91.1 (CHG-127 self-audit): one awk pass instead of one awk per candidate
+  # section (8 sections ≈ 0.22 s of the 1 s plan budget).
+  local lg="$repo_root/.agent-state/cost-ledger.tsv"
+  [[ -s "$lg" ]] || return 0
+  awk -F'\t' '
+    $2=="sec" && NF>=11 {
+      id=$3
+      if (!(id in seen)) { seen[id]=1; order[++n]=id }
+      hist[id]=hist[id] "|" $11
+    }
+    END {
+      out=""
+      for (i=1;i<=n;i++) {
+        id=order[i]; m=split(hist[id], a, "|"); k=0; w=0
+        for (j=m; j>=2 && k<3; j--) { k++; if (a[j]=="wasted") w++ }
+        if (k==3 && w==3) out=out (out?",":"") id
+      }
+      print out
+    }' "$lg" 2>/dev/null || true
+}
+
+plan_resolution_rate() { # <change-dir> — tc=<resolved>/<declared> over the three-source union
+  # v3.90.5 (CHG-126, P1-2): the 04-only resolver could not see TC ids declared
+  # by the test script itself or by 01.5. The union is the single implementation
+  # (tc_index_scan); this wrapper keeps the historical `tc=N/M` shape.
+  local d="$1" unp=""
+  tc_index_scan "$d"
+  unp=$(awk -F'\t' 'NR>1 && $5=="unresolved" {print $1}' "$TC_INDEX_OUT" | tr '\n' ',' | sed 's/,$//')
+  printf 'tc=%s/%s%s' "$TC_INDEX_OK" "$TC_INDEX_TOTAL" "${unp:+ unresolved:${unp}}"
+  rm -f "$TC_INDEX_OUT" 2>/dev/null || true
+}
+
+# v3.90.5 (CHG-126, P2-1): four judges (artifacts / reviews / stages / masters).
+# The engine only encodes STRUCTURAL FLOORS (risk + whether code paths moved);
+# it never encodes business keywords ("payment" etc.). An AI override is accepted
+# only with a >=20-char basis and a platform/model/session reviewer signature.
+json_arr() { # csv -> ["a","b"] (empty -> [])
+  local csv="$1" out="" x
+  for x in $(printf '%s' "$csv" | tr ',' ' '); do
+    [[ -n "$x" ]] || continue
+    out="${out}${out:+,}\"$x\""
+  done
+  printf '[%s]' "$out"
+}
+
+plan_judges_json() { # <change-dir> [changed-csv] -> JSON fragment (no outer braces)
+  local d="$1" changed="${2:-}" risk pcode=0 psize="" diffn=0 cp
+  local art rev stg mas jsrc="engine" jrev="" jbasis="" aib air
+  local ctype path skipped depth cond must masters_fill masters_na rroles="code,test"
+  local floor_tok filt sk tok hr gov="" yml=""
+  aib="${AGENT_GUARD_PLAN_AI_BASIS:-}"; air="${AGENT_GUARD_PLAN_AI_REVIEWER:-}"
+  # v3.91.2 (CHG-127 self-audit): one read each instead of three sed|head pipes
+  # (each pipe ≈13 ms; the <=1 s plan budget cannot afford six of them).
+  [[ -s "$d/00-governance.json" ]] && gov=$(<"$d/00-governance.json") || true
+  [[ -s "$repo_root/.agent-governance.yml" ]] && yml=$(<"$repo_root/.agent-governance.yml") || true
+  risk=""
+  [[ "$gov" =~ \"risk_level\"[[:space:]]*:[[:space:]]*\"(L[0-3])\" ]] && risk="${BASH_REMATCH[1]}" || true
+  [[ "$risk" =~ ^L[0-3]$ ]] || risk="L1"
+  [[ -n "$changed" ]] || changed=$(plan_changed_csv)
+  for cp in $(printf '%s' "$changed" | tr ',' '\n'); do
+    [[ -n "$cp" ]] || continue
+    diffn=$(( diffn + 1 ))
+    is_code_path "$cp" && { pcode=1; break; }
+  done
+  [[ "$yml" =~ (^|[[:space:]])size:[[:space:]]*([^[:space:]#]*) ]] && psize="${BASH_REMATCH[2]}" || true
+  case "$risk:$pcode" in
+    L0:0|L1:0)
+      art="00-intent.md,00-governance.json,05-test-results.md,09-changelog.md"
+      rev="min=1;independent=true"
+      stg="staged,stop"
+      mas="P10"
+      ;;
+    L3:*)
+      art="00-intent.md,00-governance.json,00.5-communication.md,01-spec.md,01.5-rtvm-matrix.md,02-code-impact-analysis.md,03-modification-plan.md,03.5-tasks.md,04-test-scripts.md,04.5-coding-record.md,05-test-results.md,06-bugs.md,06.5-bug-tasks.md,07-review-report.md,09-changelog.md"
+      rev="min=2;independent=true;cross_model=true"
+      stg="spec,design,testplan,implement,test,review,staged,stop"
+      mas="P00,P01,P02,P03,P04,P05,P06,P07,P08,P09,P10,P11,P12"
+      ;;
+    *)
+      art="00-intent.md,00-governance.json,00.5-communication.md,01-spec.md,01.5-rtvm-matrix.md,02-code-impact-analysis.md,03-modification-plan.md,03.5-tasks.md,04-test-scripts.md,04.5-coding-record.md,05-test-results.md,07-review-report.md,09-changelog.md"
+      rev="min=2;independent=true"
+      stg="spec,design,testplan,staged,stop"
+      mas="P01,P06,P09,P10,P11"
+      ;;
+  esac
+  # v3.91.0 (CHG-127, G13): change.type routing (structural table from §5.4,
+  # not business keywords). Unknown type falls back to `feature` (full 8).
+  ctype=""
+  [[ "$gov" =~ \"change_type\"[[:space:]]*:[[:space:]]*\"([a-z_-]*)\" ]] && ctype="${BASH_REMATCH[1]}" || true
+  [[ -n "$ctype" ]] || ctype="feature"
+  case "$ctype" in
+    fix)       path="intent,diagnosis,testplan,code,test,review,delivery"; skipped="spec,design" ;;
+    hotfix)    path="intent,code,test,delivery"; skipped="spec,design,testplan,review" ;;
+    refactor)  path="design,code,test,review,delivery"; skipped="intent,spec" ;;
+    docs)      path="code,review,delivery"; skipped="intent,spec,design,testplan,test" ;;
+    config)    path="design,code,test,review,delivery"; skipped="intent,spec" ;;
+    deps)      path="design,code,test,review,delivery"; skipped="intent,spec" ;;
+    migration) path="design,testplan,code,test,review,delivery"; skipped="intent,spec" ;;
+    security)  path="intent,spec,design,testplan,code,test,review,delivery,disclosure"; skipped="" ;;
+    *)         path="intent,spec,design,testplan,code,test,review,delivery"; skipped="" ;;
+  esac
+  # v3.91.0 (CHG-127, G13): the type route may only narrow the risk floor — the
+  # L0/L1 lightweight channel (DS §1.1) keeps its reduced stage set, so routing
+  # never *adds* a burden to a low-risk change. Non-standard tokens (diagnosis,
+  # disclosure) pass through; plan_consume_check ignores unknown stages.
+  case "$risk:$pcode" in
+    L0:0|L1:0) floor_tok="intent,test,delivery" ;;
+    *)         floor_tok="intent,spec,design,testplan,code,test,review,delivery" ;;
+  esac
+  filt=""; sk=""
+  for tok in $(printf '%s' "$path" | tr ',' ' '); do
+    case "$tok" in
+      intent|spec|design|testplan|code|test|review|delivery)
+        case ",$floor_tok," in
+          *",$tok,"*) filt="${filt}${filt:+,}$tok" ;;
+          *) sk="${sk}${sk:+,}$tok" ;;
+        esac ;;
+      *) filt="${filt}${filt:+,}$tok" ;;
+    esac
+  done
+  path="$filt"
+  skipped="${skipped}${skipped:+${sk:+,}}$sk"
+  stg="$path"
+  # depth: only "how deep", never "whether" (universe stays 15).
+  case "$risk" in
+    L0|L1) depth='{"00-intent":"standard","00-governance.json":"standard","00.5-communication":"one-line","01-spec":"standard","01.5-rtvm-matrix":"chain","02-code-impact-analysis":"standard","03-modification-plan":"standard","03.5-tasks":"pointer-only","04-test-scripts":"standard","04.5-coding-record":"standard","05-test-results":"standard","06-delivery-summary":"section-declared","06.5-deployment-config":"section-declared","07-review-report":"standard","09-changelog":"standard"}' ;;
+    *)    depth='{"00-intent":"standard","00-governance.json":"standard","00.5-communication":"standard","01-spec":"standard","01.5-rtvm-matrix":"chain","02-code-impact-analysis":"standard","03-modification-plan":"standard","03.5-tasks":"standard","04-test-scripts":"standard","04.5-coding-record":"standard","05-test-results":"standard","06-delivery-summary":"standard","06.5-deployment-config":"section-declared","07-review-report":"standard","09-changelog":"standard"}' ;;
+  esac
+  cond='{"03.6-ui-spec":"not-applicable (ui_change=false)","handoff.md":"required (delivery shift)"}'
+  # v3.91.0 (CHG-127, G12): hard rules = declared hard_rules[] + H7 when the
+  # governance core itself changes. Business H1-H6/H8-H13 stay declared, never
+  # hardcoded here.
+  must=""
+  case ",$changed," in
+    *"/agent-gate.sh,"*|*"/run-tests.sh,"*|*",.agent-governance.yml,"*) must="H7" ;;
+  esac
+  local hr_raw=""
+  [[ "$gov" =~ \"hard_rules\"[[:space:]]*:[[:space:]]*\[([^]]*)\] ]] && hr_raw="${BASH_REMATCH[1]}" || true
+  hr=$(printf '%s' "$hr_raw" | tr -d '" ' | tr ',' '\n' | grep -E '^H[0-9]+$' || true)
+  for hr in $hr; do
+    case ",$must," in *",$hr,"*) ;; *) must="${must}${must:+,}$hr" ;; esac
+  done
+  masters_fill="$mas"; masters_na=""
+  for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12; do
+    case ",$masters_fill," in *",$p,"*) ;; *) masters_na="${masters_na}${masters_na:+,}$p" ;; esac
+  done
+  jbasis="engine: risk=$risk; type=$ctype; code-change=$pcode; changed-files=$diffn; profile-size=${psize:-unknown}"
+  if [[ -n "${AGENT_GUARD_PLAN_AI_ARTIFACTS:-}${AGENT_GUARD_PLAN_AI_STAGES:-}${AGENT_GUARD_PLAN_AI_MASTERS:-}${AGENT_GUARD_PLAN_AI_REVIEWS:-}" ]]; then
+    if [[ ${#aib} -ge 20 ]] \
+      && printf '%s' "$air" | grep -Eq '^[^/]+ / [^/]+ / (task|ses)-[A-Za-z0-9._-]+$'; then
+      jsrc="ai"; jrev="$air"; jbasis="$aib"
+      [[ -n "${AGENT_GUARD_PLAN_AI_ARTIFACTS:-}" ]] && art="$AGENT_GUARD_PLAN_AI_ARTIFACTS"
+      [[ -n "${AGENT_GUARD_PLAN_AI_STAGES:-}" ]] && stg="$AGENT_GUARD_PLAN_AI_STAGES"
+      [[ -n "${AGENT_GUARD_PLAN_AI_MASTERS:-}" ]] && mas="$AGENT_GUARD_PLAN_AI_MASTERS"
+      [[ -n "${AGENT_GUARD_PLAN_AI_REVIEWS:-}" ]] && rev="$AGENT_GUARD_PLAN_AI_REVIEWS"
+    else
+      echo "agent-gate: WARN — plan AI override ignored: need AGENT_GUARD_PLAN_AI_BASIS >=20 chars and AGENT_GUARD_PLAN_AI_REVIEWER 'platform / model / task-|ses-…' (P2-1)" >&2
+    fi
+  fi
+  art=$(printf '%s' "$art" | tr -d '\n\r"')
+  rev=$(printf '%s' "$rev" | tr -d '\n\r"')
+  stg=$(printf '%s' "$stg" | tr -d '\n\r"')
+  mas=$(printf '%s' "$mas" | tr -d '\n\r"')
+  jrev=$(printf '%s' "$jrev" | tr -d '\n\r"')
+  jbasis=$(printf '%s' "$jbasis" | tr -d '\n\r"')
+  case "$risk" in L2|L3) rroles="code,test,architecture,business" ;; esac
+  printf '"artifact_list":"%s","artifacts":{"universe":15,"depth":%s,"conditional":%s},"reviews":"%s","review_roles":%s,"stage_list":"%s","stages":{"path":%s,"skipped":%s},"masters":"%s","project_masters":{"rows":"P00..P12","fill":%s,"na":%s},"must":%s,"judges_source":"%s","judges_reviewer":"%s","judges_basis":"%s","tc_index":"tests/tc-index.tsv"' \
+    "$art" "$depth" "$cond" "$rev" "$(json_arr "$rroles")" "$stg" \
+    "$(json_arr "$path")" "$(json_arr "$skipped")" "$mas" \
+    "$(json_arr "$masters_fill")" "$(json_arr "$masters_na")" "$(json_arr "$must")" \
+    "$jsrc" "$jrev" "$jbasis"
+}
+
+plan_diff_hash() { # -> sha256 hex (empty on failure)
+  # v3.91.1 (CHG-127 self-audit): `git diff HEAD` sees tracked edits only, so a
+  # NEW untracked file added after `plan` left the decision looking fresh (G3
+  # hole). Include untracked paths + their blob digests.
+  {
+    git -C "$repo_root" diff HEAD 2>/dev/null || true
+    git -C "$repo_root" ls-files --others --exclude-standard 2>/dev/null \
+      | while IFS= read -r _p; do
+          [[ -n "$_p" ]] || continue
+          printf '?? %s %s\n' "$_p" "$(git -C "$repo_root" hash-object -- "$_p" 2>/dev/null || echo -)"
+        done || true
+  } | shasum -a 256 2>/dev/null | awk '{print $1}' || true
+}
+
+plan_json() { # <id> -> one-line decision JSON (no writes)
+  local id="$1" d secs budget pred src per gap="" rate diffh now judges changed must_csv deferred="" ranked c
+  local wasted_csv="" kept s2 v score costmap
+  d=$(change_dir "$id")
+  changed=$(plan_changed_csv)
+  secs=$(plan_sections "$changed")
+  # v3.91.0 (CHG-127, G6): a section that wasted the last 3 runs (asserts=0 rc=0)
+  # leaves the recommendation — capability is kept, it is just no longer selected.
+  if [[ -n "$secs" && "$secs" != "FULL" ]]; then
+    wasted_csv=$(plan_wasted_sections)
+    kept=""
+    for s2 in $secs; do
+      case ",$wasted_csv," in
+        *",$s2,"*) ;;                                  # kept as capability, no longer recommended
+        *) kept="${kept}${kept:+ }$s2" ;;
+      esac
+    done
+    secs="$kept"
+  fi
+  budget="${AGENT_GUARD_BUDGET_CLOSE_S:-120}"
+  [[ "$budget" =~ ^[0-9]+$ ]] || budget=120
+  costmap=$(plan_section_costs)
+  pred=0; src="prior"
+  if [[ "$secs" == "FULL" ]]; then
+    pred=$(plan_run_cost)
+    if [[ -z "$pred" || "$pred" -lt 60 ]]; then pred=300; src="prior-full"; else src="ledger-full"; fi
+  else
+    local hit=0
+    for per in $secs; do
+      local c; c=$(plan_cost_lookup "$costmap" "$per")
+      if [[ -n "$c" ]]; then pred=$(( pred + c )); hit=$(( hit + 1 )); else pred=$(( pred + 20 )); fi
+    done
+    if [[ "$hit" -eq 0 ]]; then src="prior"; elif [[ "$hit" -eq $(printf '%s\n' $secs | grep -c .) ]]; then src="ledger"; else src="mixed"; fi
+  fi
+  [[ -n "$secs" ]] && [[ "$src" != "prior" ]] || true
+  [[ -n "$secs" ]] || src="no-map"
+  # v3.91.6: resolution rate is informational; for a FULL decision it cannot
+  # change the outcome, so the expensive three-source scan is skipped (N4 <=1 s).
+  rate=""
+  local judgment="engine" j_reviewer="" j_basis=""
+  if [[ -n "${AGENT_GUARD_SUITE_AI_SECTIONS:-}" && -n "${AGENT_GUARD_SUITE_AI_BASIS:-}" \
+        && -n "${AGENT_GUARD_SUITE_AI_REVIEWER:-}" ]]; then
+    judgment="ai"
+    j_reviewer=$(printf '%s' "$AGENT_GUARD_SUITE_AI_REVIEWER" | tr -d '\n\r"')
+    j_basis=$(printf '%s' "$AGENT_GUARD_SUITE_AI_BASIS" | tr -d '\n\r"')
+  fi
+  # 2026-10-27 user ruling ("whether to run the full suite is the AI's call"):
+  # when the AI judges the scope, its explicit section list IS the chosen set —
+  # the engine stops second-guessing it with the resolver's FULL fallback or CAB.
+  if [[ "$judgment" == "ai" ]]; then
+    secs=$(printf '%s' "$AGENT_GUARD_SUITE_AI_SECTIONS" | tr ',' ' ' | tr -s ' ' | sed 's/^ //; s/ $//')
+    pred=0; src="prior"; local _ai_hit=0 _ai_c
+    for per in $secs; do
+      _ai_c=$(plan_cost_lookup "$costmap" "$per")
+      if [[ -n "$_ai_c" ]]; then pred=$(( pred + _ai_c )); _ai_hit=$(( _ai_hit + 1 )); else pred=$(( pred + 20 )); fi
+    done
+    if [[ "$_ai_hit" -eq 0 ]]; then src="prior"; elif [[ "$_ai_hit" -eq $(printf '%s\n' $secs | grep -c .) ]]; then src="ledger"; else src="mixed"; fi
+  fi
+  if [[ -n "$secs" ]]; then
+    local dang=""
+    if [[ -s "$d/04-test-scripts.md" ]]; then
+      dang=$(grep -oE 'tests/[A-Za-z0-9._/-]+\.sh' "$d/04-test-scripts.md" 2>/dev/null | sort -u | while IFS= read -r _p; do
+        [[ -f "$repo_root/$_p" ]] || printf '%s ' "$_p"
+      done)
+    fi
+    [[ -z "$dang" ]] || gap='[{"id":"tc-dangling","why":"04 references missing script(s): '"${dang% }"'","substitute":"add the script or correct the 落点"}]'
+  else
+    gap='[{"id":"no-section-map","why":"no tracked governance-face change (docs-only or empty diff)","substitute":"run the full suite before release"}]'
+  fi
+  judges=$(plan_judges_json "$d" "$changed")
+  # v3.91.0 (CHG-127, G2/G12): must-rules override the budget; when the budget
+  # cannot hold every section, cheapest-first filling moves the rest to deferred.
+  must_csv=$(printf '%s' "$judges" | sed -n 's/.*"must":\[\([^]]*\)\].*/\1/p' | tr -d '"' | tr ',' '\n' | grep -E '^H[0-9]+$' | tr '\n' ',' | sed 's/,$//' || true)
+  # v3.91.0 (CHG-127, G12): hard rules stop being a hard-coded FULL unless the AI
+  # has not judged the scope. 2026-10-27 user ruling: "whether to run the full
+  # suite is the AI's call" — with evidence (judgment=ai) the chosen set stands.
+  if [[ -n "$must_csv" && "$secs" != "FULL" && "$judgment" != "ai" ]]; then
+    secs="FULL"; pred=$(plan_run_cost); src="ledger-full"
+    [[ -n "$pred" && "$pred" -ge 60 ]] || { pred=300; src="prior-full"; }
+  fi
+  # v3.91.0 (CHG-127, G2): cost-aware budget (CAB). Each section carries
+  # value = TC rows it covers (tests/tc-index.tsv) and score = value/cost.
+  # value=0 (known, not unknown) is never selectable — that is how a `mvn test`
+  # with zero assertions stops being recommended. The rest fills cheapest-first.
+  if [[ "$judgment" != "ai" && "$secs" != "FULL" && -n "$secs" && "$pred" -gt "$budget" ]]; then
+    ranked=$(for per in $secs; do
+      c=$(plan_cost_lookup "$costmap" "$per"); [[ -n "$c" ]] || c=20
+      v=$(plan_section_value "$per")
+      awk -v c="$c" -v v="${v:--1}" -v p="$per" 'BEGIN{
+        if (v < 0) printf "0 %d %s\n", c, p;
+        else if (v == 0) printf "-1 %d %s\n", c, p;
+        else printf "%.6f %d %s\n", v / c, c, p }'
+    done | sort -k1,1nr -k2,2n)
+    # If the TC index maps nothing to ANY candidate section, value is unknown for
+    # all of them — treat it as unknown (0) instead of starving the whole run.
+    if [[ -n "$ranked" ]] && ! printf '%s\n' "$ranked" | grep -qv '^-1 '; then
+      ranked=$(printf '%s\n' "$ranked" | sed 's/^-1 /0 /')
+    fi
+    secs=""; pred=0
+    while read -r score c per; do
+      [[ -n "$per" ]] || continue
+      if [[ "$score" == "-1" ]]; then
+        deferred="${deferred}${deferred:+,}{\"id\":\"$per\",\"cost_s\":$c,\"value\":0,\"why\":\"wasted: no TC coverage\"}"
+      elif [[ "$pred" -eq 0 || $(( pred + c )) -le "$budget" ]]; then
+        secs="${secs}${secs:+ }$per"; pred=$(( pred + c ))
+      else
+        deferred="${deferred}${deferred:+,}{\"id\":\"$per\",\"cost_s\":$c,\"why\":\"over budget\"}"
+      fi
+    done <<< "$ranked"
+  fi
+  if [[ -n "$deferred" ]]; then deferred="[$deferred]"; else deferred="[]"; fi
+  if [[ "$secs" == "FULL" ]]; then rate="skipped(full)"; else rate=$(plan_resolution_rate "$d"); fi
+  diffh=$(plan_diff_hash)
+  [[ -n "$diffh" ]] || diffh="unavailable"
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  # v3.91.4 (2026-10-27 二次裁定): the user owns the time decision. A narrowed/AI
+  # scope is only valid with the user's recorded choice; empty is explicit.
+  local scope
+  scope=$(printf '%s' "${AGENT_GUARD_SCOPE_CONFIRM:-}" | tr -d '\n\r"')
+  # v3.92.2 (CHG-128, REQ-1281): change-scope budget is a FACT in the decision —
+  # the gate never decides for the user; it only makes overrun visible so the
+  # user-confirmation contract can be enforced at consumption time (E152).
+  local sc_batches sc_core sc_over sc_verdict sb st
+  sc_batches=$(grep -cE '^#{3,4}[[:space:]]*第([0-9]|一|二|三|四|五|六|七|八|九|十|百)+批' "$d/09-changelog.md" 2>/dev/null || true); sc_batches=${sc_batches:-0}
+  sc_core=$(core_changed_files | wc -l | tr -d ' '); sc_core=${sc_core:-0}
+  sb=${AGENT_GUARD_SCOPE_MAX_BATCHES:-5}; st=${AGENT_GUARD_SCOPE_MAX_CORE_FILES:-10}
+  sc_verdict="ok"
+  if [[ "$sc_batches" -gt "$sb" ]] || [[ "$sc_core" -gt "$st" ]]; then sc_verdict="over"; fi
+  sc_over="{\"batches\":$sc_batches,\"core_files\":$sc_core,\"threshold_batches\":$sb,\"threshold_core_files\":$st,\"verdict\":\"$sc_verdict\"}"
+  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s","scope_confirmed":"%s","deferred":%s,"wasted":%s,%s,"scope_overrun":%s}' \
+    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis" "$scope" "$deferred" "$(json_arr "$wasted_csv")" "$judges" "$sc_over"
+}
+
+plan_strip_decision() { # <file> — drop a top-level "decision":{...} key with brace matching
+  awk '
+  { s = s $0 }
+  END {
+    k = index(s, "\"decision\"")
+    if (k > 0) {
+      n = length(s); depth = 0; sv = 0; ev = 0
+      for (i = k; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (c == "{") { if (depth == 0) sv = i; depth++ }
+        else if (c == "}") { depth--; if (depth == 0) { ev = i; break } }
+      }
+      if (sv > 0 && ev > 0) {
+        # Remove the KEY NAME as well as its value: keeping `"decision":` would
+        # make the next write emit `"decision":,"decision":{…}` (review #1).
+        before = substr(s, 1, k - 1); after = substr(s, ev + 1)
+        sub(/,[[:space:]]*$/, "", before)
+        sub(/^[[:space:]]*,/, "", after)
+        s = before after
+      }
+    }
+    print s
+  }' "$1"
+}
+
+plan_write_json() { # <file> <decision-json> — append-only key, validated before replace
+  local f="$1" dec="$2" tmp base
+  [[ -s "$f" ]] || return 1
+  base=$(plan_strip_decision "$f")
+  tmp="$f.$$"
+  printf '%s' "$base" | sed 's/[[:space:]]*$//' | sed 's/}[[:space:]]*$//' > "$tmp"
+  printf ',%s}\n' "\"decision\":$dec" >> "$tmp"
+  # structural validation: balanced braces/quotes, real JSON parse when python3
+  # is available (belt and braces), decision readable back, change_id preserved.
+  local o q qq
+  o=$(tr -cd '{' < "$tmp" | wc -c | tr -d ' ')
+  q=$(tr -cd '}' < "$tmp" | wc -c | tr -d ' ')
+  qq=$(tr -cd '"' < "$tmp" | wc -c | tr -d ' ')
+  if [[ "$o" != "$q" ]] || [[ $(( qq % 2 )) -ne 0 ]] \
+     || ! grep -q '"decision"' "$tmp" || ! grep -q '"change_id"' "$tmp" \
+     || [[ "$(grep -o '"decision"' "$tmp" | wc -l | tr -d ' ')" != "1" ]]; then
+    rm -f "$tmp"
+    echo "agent-gate: WARN — decision not written: rebuilt $f failed structural validation (P1-1)" >&2
+    return 1
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1 || {
+      rm -f "$tmp"
+      echo "agent-gate: WARN — decision not written: rebuilt $f is not valid JSON (P1-1)" >&2
+      return 1
+    }
+  fi
+  mv -f "$tmp" "$f"
+}
+
+plan_append_intent() { # <change-dir> <decision-json>
+  local f="$1/00-intent.md" dec="$2" chosen pred src rate budget
+  [[ -s "$f" ]] || return 0
+  grep -q '^## 自适应判定' "$f" 2>/dev/null && return 0   # append once; JSON is the refreshed copy
+  chosen=$(printf '%s' "$dec" | sed -n 's/.*"chosen":"\([^"]*\)".*/\1/p')
+  pred=$(printf '%s' "$dec" | sed -n 's/.*"predicted_s":\([0-9]*\).*/\1/p')
+  src=$(printf '%s' "$dec" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')
+  rate=$(printf '%s' "$dec" | sed -n 's/.*"resolution_rate":"\([^"]*\)".*/\1/p')
+  budget=$(printf '%s' "$dec" | sed -n 's/.*"budget_s":\([0-9]*\).*/\1/p')
+  {
+    printf '\n## 自适应判定（引擎生成，R2 只建议）\n\n'
+    printf -- '- 建议测试：%s\n' "${chosen:-（无映射）}"
+    printf -- '- 预计耗时：%s s（预算 %s s，source=%s）\n' "${pred:-0}" "${budget:-120}" "${src:-prior}"
+    printf -- '- TC 解析率：%s；gap 见 decision.gaps\n' "${rate:-0/0}"
+    if printf '%s' "$dec" | grep -q '"judgment":"ai"'; then
+      printf -- '- AI 判断：apply（复核：%s；依据：%s）\n' \
+        "$(printf '%s' "$dec" | sed -n 's/.*"judgment_reviewer":"\([^"]*\)".*/\1/p')" \
+        "$(printf '%s' "$dec" | sed -n 's/.*"judgment_basis":"\([^"]*\)".*/\1/p')"
+    fi
+    printf -- '- 关闭：`AGENT_GUARD_ADAPT=0`；重算：`scripts/agent-gate plan %s`\n' "$(basename "$1")"
+  } >> "$f"
+}
+
+plan_log() { # <id> <decision-json>
+  local lg="$repo_root/.agent-state/adapt-decisions.tsv" chosen pred budget src id="$1" dec="$2"
+  chosen=$(printf '%s' "$dec" | sed -n 's/.*"chosen":"\([^"]*\)".*/\1/p')
+  pred=$(printf '%s' "$dec" | sed -n 's/.*"predicted_s":\([0-9]*\).*/\1/p')
+  budget=$(printf '%s' "$dec" | sed -n 's/.*"budget_s":\([0-9]*\).*/\1/p')
+  src=$(printf '%s' "$dec" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')
+  mkdir -p "$(dirname "$lg")" 2>/dev/null || return 0
+  [[ -s "$lg" ]] || printf 'ts\tchange\tchosen\tpredicted_s\tbudget_s\tsource\taccepted\n' > "$lg" 2>/dev/null || return 0
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t-\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$id" "${chosen:--}" "${pred:-0}" "${budget:-120}" "${src:-prior}" >> "$lg" 2>/dev/null || true
+}
+
+plan_explain() { # <id> <decision-json>
+  local id="$1" dec="$2" secs per c rate d fullc cmap
+  d=$(change_dir "$id")
+  secs=$(plan_sections); rate=$(plan_resolution_rate "$d"); cmap=$(plan_section_costs)
+  echo "plan: changed files = $(plan_changed_csv | tr ',' '\n' | grep -c . )"
+  if [[ "$secs" == "FULL" ]]; then
+    fullc=$(plan_run_cost)
+    echo "plan: chosen = FULL suite (runner reported a correctness-sensitive change: runner self-edit or unmapped file)"
+    if [[ -n "$fullc" && "$fullc" -ge 60 ]]; then echo "  - whole-run p50: ${fullc}(ledger) s"; else echo "  - whole-run p50: 300(prior) s"; fi
+  else
+    echo "plan: chosen sections = ${secs:-（none）}"
+    for per in $secs; do
+      c=$(plan_cost_lookup "$cmap" "$per")
+      if [[ -n "$c" ]]; then echo "  - $per: ${c}(ledger) s"; else echo "  - $per: 20(prior) s"; fi
+    done
+  fi
+  echo "plan: resolution_rate=$rate gaps=$(printf '%s' "$dec" | sed -n 's/.*"gaps":\(\[[^]]*\]\).*/\1/p')"
+  if printf '%s' "$dec" | grep -q '"judgment":"ai"'; then
+    echo "plan: judgment=ai reviewer=$(printf '%s' "$dec" | sed -n 's/.*"judgment_reviewer":"\([^"]*\)".*/\1/p') basis=$(printf '%s' "$dec" | sed -n 's/.*"judgment_basis":"\([^"]*\)".*/\1/p')"
+  else
+    echo "plan: judgment=engine"
+  fi
+  echo "plan: ledger=${repo_root}/.agent-state/cost-ledger.tsv (absent => prior 20s/section)"
+}
+
+# v3.91.1 (CHG-127 self-audit): the real suite wall time already lives in the
+# cost ledger; `$SECONDS` only measures how long THIS `stop` call ran, so a CPI
+# computed from it could never fire (a 120 s prediction vs a 1 s stop call).
+last_suite_actual_s() { # <since-iso|empty> -> cost_s of the last real suite run, empty when none
+  local since="${1:-}" lg="$repo_root/.agent-state/cost-ledger.tsv" rc="$repo_root/.agent-state/last-suite-receipt.json" v="" kind ga
+  # v3.91.1: a full-run receipt is the authoritative wall time when it belongs to
+  # this session; nested `-T auto` child runs also append ledger rows (1-2 s), so
+  # the ledger fallback takes the MAX of the session's run rows, not the last one.
+  if [[ -s "$rc" ]]; then
+    kind=$(sed -n 's/.*"kind":"\([^"]*\)".*/\1/p' "$rc" 2>/dev/null | head -1)
+    ga=$(sed -n 's/.*"generated_at":"\([^"]*\)".*/\1/p' "$rc" 2>/dev/null | head -1)
+    if [[ "$kind" == "full" ]] && { [[ -z "$since" ]] || [[ -z "$ga" ]] || [[ "$ga" > "$since" ]]; }; then
+      v=$(sed -n 's/.*"wall_time_s":\([0-9]*\).*/\1/p' "$rc" 2>/dev/null | head -1)
+    fi
+  fi
+  [[ -n "$v" ]] && { printf '%s' "$v"; return 0; }
+  [[ -s "$lg" ]] || return 0
+  v=$(awk -F'\t' -v s="$since" \
+    '($2=="run"||$2=="run-full") && $5 ~ /^[0-9]+$/ && (s=="" || $1>=s) {if($5+0>max) max=$5+0} END{if(max>0) print max}' "$lg" 2>/dev/null || true)
+  printf '%s' "$v"
+}
+
+record_suite_suggestion() { # <change-id> — R2 advice line + 05 record; never blocks
+  local id="$1" d mode reason dec actual actual_src f cpi s_started s_marker
+  plan_enabled || return 0
+  d=$(change_dir "$id"); [[ -d "$d" ]] || return 0
+  mode="${AGENT_GUARD_SUITE_MODE:-adopt}"
+  reason="${AGENT_GUARD_SUITE_DOWN_REASON:-}"
+  case "$mode" in adopt|up) ;; down)
+    if [[ -z "$reason" ]]; then
+      echo "agent-gate: WARN — AGENT_GUARD_SUITE_MODE=down without AGENT_GUARD_SUITE_DOWN_REASON; falling back to adopt (P1-3)" >&2
+      mode="adopt"
+    fi ;;
+    *) echo "agent-gate: WARN — unknown AGENT_GUARD_SUITE_MODE='$mode'; falling back to adopt" >&2; mode="adopt" ;;
+  esac
+  dec=$(plan_json "$id")
+  local chosen pred budget
+  chosen=$(printf '%s' "$dec" | sed -n 's/.*"chosen":"\([^"]*\)".*/\1/p')
+  pred=$(printf '%s' "$dec" | sed -n 's/.*"predicted_s":\([0-9]*\).*/\1/p')
+  budget=$(printf '%s' "$dec" | sed -n 's/.*"budget_s":\([0-9]*\).*/\1/p')
+  echo "agent-gate: plan 建议 节=${chosen:-（无映射）} predicted_s=${pred:-0} 预算=${budget:-120}s 模式=$mode（采纳/升档/降档：AGENT_GUARD_SUITE_MODE；降档须 AGENT_GUARD_SUITE_DOWN_REASON）"
+  f="$d/05-test-results.md"
+  s_started=""
+  [[ -s "$repo_root/.agent-state/session-started.json" ]] \
+    && s_started=$(sed -n 's/.*"started_at":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/session-started.json" | head -1 || true)
+  s_marker="$repo_root/.agent-state/suite-mode.json"
+  if [[ -n "$s_started" && -s "$s_marker" ]] \
+     && grep -qF "\"change\":\"$id\"" "$s_marker" 2>/dev/null \
+     && grep -qF "\"session\":\"$s_started\"" "$s_marker" 2>/dev/null; then
+    return 0   # suggestion printed; 05 block already recorded for this session
+  fi
+  if [[ -s "$f" ]]; then
+    actual=$(last_suite_actual_s "${s_started:-}")
+    if [[ -n "$actual" ]]; then actual_src="ledger"; else actual="${SECONDS:-0}"; actual_src="elapsed"; fi
+    {
+      printf '\n## 套件模式（引擎建议，R2）\n\n'
+      printf -- '- suite_mode=%s\n' "$mode"
+      printf -- '- chosen=%s predicted_s=%s budget_s=%s\n' "${chosen:--}" "${pred:-0}" "${budget:-120}"
+      printf -- '- actual_s=%s（来源=%s：ledger=本次会话最近一次套件墙钟，elapsed=本次 stop 调用）\n' "$actual" "$actual_src"
+      if [[ "$mode" == "down" ]]; then printf -- '- down_reason=%s\n' "$reason"; fi
+    } >> "$f" 2>/dev/null || echo "agent-gate: WARN — cannot append suite mode to $f (P1-3)" >&2
+    # v3.91.0 (CHG-127, G18): cost self-feedback — over budget by actual, or
+    # CPI = predicted/actual < 0.7 (earned value far below the spend).
+    if [[ "${pred:-0}" -gt 0 ]] && { [[ "$actual" -gt $(( pred * 2 )) ]] || [[ $(( pred * 10 )) -lt $(( actual * 7 )) ]]; } \
+       && [[ -d "$repo_root/.agent-state" ]]; then
+      mkdir -p "$repo_root/.agent-state/retro" 2>/dev/null || true
+      cpi=$(awk -v p="$pred" -v a="$actual" 'BEGIN{ if (a>0) printf "%.2f", p/a; else printf "n/a" }')
+      {
+        printf 'CHG %s :: actual_s=%s predicted_s=%s CPI=%s source=%s :: %s\n' "$id" "$actual" "$pred" "$cpi" "$actual_src" \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"
+        printf 'FU suggestion :: review why the estimate missed and whether the section set was too wide\n'
+      } >> "$repo_root/.agent-state/retro/$id.md" 2>/dev/null || true
+      echo "agent-gate: retro note written for $id (actual/predicted off, G18)" >&2
+    fi
+  fi
+  printf '{"change":"%s","session":"%s","mode":"%s"}\n' "$id" "${s_started:-unknown}" "$mode" > "$s_marker" 2>/dev/null || true
+  plan_log "$id" "$dec" >/dev/null 2>&1 || true
+}
+
+e131_dogfood_check() { # <change-dir> — R3: HARD reject (R2's WARN is over)
+  local d="$1" f reason
+  [[ "${AGENT_GUARD_ADAPT:-1}" != "0" ]] || return 0
+  f="$d/09-changelog.md"
+  [[ -s "$f" ]] || return 0
+  reason=""
+  grep -q '\[dogfood\]' "$f" 2>/dev/null || reason="no [dogfood] line (what last round's capability was verified, with 05 evidence)"
+  if [[ -z "$reason" ]]; then
+    grep -q '\[dogfood-next\]' "$f" 2>/dev/null || reason="no [dogfood-next] line (capability + command + expected for the next round)"
+  fi
+  [[ -z "$reason" ]] || die "GATE-E131: $(basename "$(dirname "$f")") — $reason — expected: both self-bootstrap lines in 09; allowed: AGENT_GUARD_ADAPT=0 only when you explicitly abandon self-verification; fix: add the missing line(s) with 05 evidence, then re-run; ref: CHG-125 P2-4 / §18.3"
+}
+
+plan_run() { # <id> <dry|write> [explain] — the only side-effecting entry point
+  local id="$1" mode="$2" expl="${3:-}" d dec
+  d=$(change_dir "$id")
+  dec=$(plan_json "$id")
+  [[ "$expl" == "explain" ]] && plan_explain "$id" "$dec"
+  echo "plan: $dec"
+  if [[ "$mode" == "write" ]]; then
+    if plan_write_json "$d/00-governance.json" "$dec"; then
+      plan_append_intent "$d" "$dec"
+      plan_log "$id" "$dec"
+    fi
+  fi
+}
+
+# v3.90.3 (CHG-125, P2): R3 hard gates. All of them act ONLY on the active change
+# and each has its own off switch, so a single bad gate cannot disable the rest.
+stage_close_enabled() { [[ "${AGENT_GUARD_STAGE_CLOSE:-1}" != "0" ]]; }
+
+stage_history_last() { # <change> <field> [stage] -> last matching value
+  local id="$1" field="$2" want="${3:-}" hf="$repo_root/.agent-state/stage-close.tsv"
+  [[ -s "$hf" ]] || return 0
+  awk -F'\t' -v c="$id" -v w="$want" -v fld="$field" '
+    $2==c && (w=="" || $3==w) { v=$fld } END { if (v!="") print v }' "$hf"
+}
+
+stage_backfilled() { # <d> <stage> <change> -> csv of Pxx backfilled at this stage FOR THIS CHANGE
+  # v3.90.5: project masters are repo-global. A `filled-at` line must name the
+  # change it belongs to, otherwise CHG-A's stage-1 marker would leak into
+  # CHG-B's stage-2 close (and every [x] row in 09 would be re-attributed on
+  # every close). The 09 checklist is deliberately NOT used here.
+  local d="$1" n="$2" cid="$3" out="" p f pdir="$docs_dir/project"
+  if [[ -d "$pdir" ]]; then
+    for f in "$pdir"/P*.md; do
+      [[ -s "$f" ]] || continue
+      grep -qE "filled-at[[:space:]]+stage=${n}[[:space:]]+(chg|change)=${cid}([^A-Za-z0-9_-]|$)" "$f" 2>/dev/null || continue
+      p=$(basename "$f"); p="${p%%-*}"
+      out="${out}${out:+,}$p"
+    done
+  fi
+  printf '%s' "${out:-none}"
+}
+
+stage_master_expected() { # <Pxx> -> mapped stage number(s), space-separated (empty = unmapped)
+  # §5.5 table: a master may legitimately be touched again at a later stage
+  # (P11 decision changes at 7, P09 closes at 8, P12 note at 8) — list them all
+  # so a valid re-fill is never reported as a wrong stage.
+  case "$1" in
+    P00) echo "1" ;;
+    P01) echo "2" ;;
+    P12) echo "2 8" ;;
+    P02|P03|P04|P05|P11) echo "3" ;;
+    P06) echo "4" ;;
+    P07) echo "5" ;;
+    P09) echo "7 8" ;;
+    P08|P10) echo "8" ;;
+    *) echo "" ;;
+  esac
+}
+
+stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 ordering
+  local id="$1" argn="${2:-}" d os reason f rec n prev late line at hts p first missing="" exp_stage
+  stage_close_enabled || { echo "agent-gate: stage close disabled (AGENT_GUARD_STAGE_CLOSE=0)"; return 0; }
+  d=$(change_dir "$id")
+  reason=""
+  printf '%s\n' "$(cat "$d/00.5-communication.md" 2>/dev/null)" \
+    | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)' \
+    || reason="00.5 has no user-overall-confirmation record"
+  if [[ -z "$reason" ]]; then
+    os=$(grep -E '子 Agent 放行' "$d/09-changelog.md" 2>/dev/null | grep -vc '待' || true)
+    [[ "$os" -ge 1 ]] || reason="09 has no completed 子 Agent 放行 record (child-agent release; a '待…' placeholder does not count)"
+  fi
+  if [[ -n "$reason" ]]; then
+    die "GATE-E127: $id cannot close: $reason — expected: confirmation + child-agent release recorded before closing; allowed: L0 single-line exemption; fix: record both, then re-run --stage close; ref: CHG-125 P2-1 / standards §2.17.2d"
+  fi
+  # v3.90.5 (CHG-126, P2-5): stage number defaults to "next after the last close".
+  n="$argn"
+  [[ "$n" =~ ^[1-8]$ ]] || n=$(( $(stage_history_last "$id" 3) + 1 ))
+  [[ "$n" -ge 1 && "$n" -le 8 ]] || n=1
+
+  # v3.91.5 (2026-10-27 user directive): closing a stage CERTIFIES that stage's
+  # RTVM dimension is already backfilled. Late "fill the matrix at the end" is
+  # rejected here, at the stage boundary, not only at stop.
+  case "$n" in
+    2) rtvm_has "$d/01.5-rtvm-matrix.md" REQ \
+         || stage_gate_fail "G-RTVM门 (stage 2)" "01.5 has no REQ row — the spec stage was not backfilled" "01.5 REQ-xxx row, filled before closing stage 2" ;;
+    3) rtvm_has "$d/01.5-rtvm-matrix.md" DES \
+         || stage_gate_fail "G-RTVM门 (stage 3)" "01.5 has no DES row — the design stage was not backfilled" "01.5 DES-xxx row, filled before closing stage 3"
+       rtvm_has "$d/01.5-rtvm-matrix.md" T \
+         || stage_gate_fail "G-RTVM门 (stage 3)" "01.5 has no TASK (T-xxx) row — the task stage was not backfilled" "01.5 T-xxx row, filled before closing stage 3" ;;
+    4) rtvm_has "$d/01.5-rtvm-matrix.md" TC \
+         || stage_gate_fail "G-RTVM门 (stage 4)" "01.5 has no TC row — the test-plan stage was not backfilled" "01.5 TC-xxx row, filled before closing stage 4" ;;
+  esac
+
+  # A) late backfill: a master marked for a FUTURE stage, or stamped after that
+  # stage already closed, is evidence of "fill it all at the end" (Q7 forbids it).
+  late=""
+  for f in "$docs_dir"/project/P*.md; do
+    [[ -s "$f" ]] || continue
+    # Only THIS change's marker counts; `at=` is the per-change time (provenance
+    # `generated_at` is file-global and would compare across changes).
+    # v3.91.0 (CHG-127, G14): accept the final-plan HTML-comment shape
+    # `<!-- filled-at stage=N chg=CHG by=role -->` and the v3.90.5 alias
+    # `> filled-at stage=N change=CHG at=ISO`. `revision` lines are not late.
+    line=$(grep -E "filled-at[[:space:]]+stage=[1-8][[:space:]]+(chg|change)=${id}([^A-Za-z0-9_-]|$)" "$f" 2>/dev/null | head -1 || true)
+    [[ -n "$line" ]] || continue
+    local fa
+    fa=$(printf '%s' "$line" | sed -nE 's/.*stage=([1-8]).*/\1/p')
+    at=$(printf '%s' "$line" | sed -nE 's/.*[[:space:]]at=([^[:space:]]+).*/\1/p')
+    [[ -n "$fa" ]] || continue
+    p=$(basename "$f"); p="${p%%-*}"
+    if [[ "$line" == *revision* ]]; then continue; fi
+    exp_stage=$(stage_master_expected "$p")
+    if [[ -n "$exp_stage" ]]; then
+      case " $exp_stage " in
+        *" $fa "*) ;;
+        *) late="$late $p(stage=$fa!=mapped=$exp_stage)"; continue ;;
+      esac
+    fi
+    if [[ "$fa" -gt "$n" ]]; then late="$late $p(stage=$fa>N=$n)"; continue; fi
+    hts=$(stage_history_last "$id" 4 "$fa")
+    if [[ -n "$at" && -n "$hts" && "$at" > "$hts" ]]; then late="$late $p(at=$at>closed[$fa]=$hts)"; fi
+  done
+  [[ -z "$late" ]] || die "GATE-E145: $id stage $n late backfill:$late — expected: a master is filled at its mapped stage (filled-at stage=M chg=$id; revision lines exempt); allowed: re-open the stage and fill it there; fix: move the content to the mapped stage and update the marker; ref: CHG-127 G14 / final-plan §5.5"
+
+  # B) the next stage must read what the previous stage backfilled.
+  prev=$(stage_history_last "$id" 5 "$(( n - 1 ))")
+  if [[ -n "$prev" && "$prev" != "none" ]]; then
+    first=$(awk -v m="阶段 $(( n - 1 )) 关闭" 'index($0,m){f=1;next} f && /Observation/ {print; exit}' "$d/09-changelog.md" 2>/dev/null)
+    for p in $(printf '%s' "$prev" | tr ',' ' '); do
+      printf '%s' "$first" | grep -q "$p" 2>/dev/null || missing="$missing $p"
+    done
+    [[ -z "$missing" ]] || die "GATE-E146: $id stage $n did not read the previous stage's backfill:$missing — expected: the first Observation after '阶段 $(( n - 1 )) 关闭' names every backfilled master; allowed: an Observation line quoting the anchors; fix: add the read-back Observation, then re-run; ref: CHG-126 P2-5 / Q7"
+  fi
+
+  rec=$(stage_backfilled "$d" "$n" "$id")
+  f="$repo_root/.agent-state/stage-close.json"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || true
+  hf="$repo_root/.agent-state/stage-close.tsv"
+  [[ -s "$hf" ]] || printf 'ts\tchange\tstage\tstamped_at\tbackfilled\n' > "$hf" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    "$id" "$n" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rec" >> "$hf" 2>/dev/null || true
+  printf '{"change":"%s","closed_at":"%s","release":"child-agent","stage":%s,"backfilled":"%s","changelog_lines":%s}\n' \
+    "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$n" "$rec" \
+    "$(wc -l < "$d/09-changelog.md" 2>/dev/null | tr -d ' ' || echo 0)" > "$f" 2>/dev/null || true
+  printf -- '- 阶段 %s 关闭：%s；回填：%s\n' "$n" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rec" >> "$d/09-changelog.md" 2>/dev/null || true
+  echo "agent-gate: stage close recorded for $id (stage=$n backfilled=$rec, $f)"
+}
+
+reviews_pair_check() { # <id> — E128: a dedicated 阶段复核 CLAIM needs its review artifact
+  local id="$1" d n
+  d=$(change_dir "$id")
+  # Only a dedicated heading counts as a claim; prose mentions ("复核成对") must
+  # not self-trigger (review CHG-125 #2).
+  grep -qE '^####[[:space:]]*阶段复核' "$d/09-changelog.md" 2>/dev/null || return 0
+  n=0
+  [[ -d "$d/reviews" ]] && n=$(find "$d/reviews" -maxdepth 1 -type f -name 'P*.review.md' -size +0 2>/dev/null | wc -l | tr -d ' ')
+  [[ "$n" -ge 1 ]] || die "GATE-E128: $id claims 阶段复核 but $d/reviews/ has no non-empty P*.review.md — expected: one review artifact per claimed stage batch; allowed: reviews/P01.review.md …; fix: write the review file (or remove the claim), then re-run; ref: CHG-125 P2-2"
+}
+
+confirm_required_check() { # <id> <code> — E129 (staged) / E130 (preflight) for L2/L3
+  local id="$1" code="$2" d risk
+  [[ "${AGENT_GUARD_ALLOW_UNCONFIRMED:-}" == "1" ]] && return 0
+  [[ "${AGENT_GUARD_STAGE_CLOSE:-1}" != "0" ]] || return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" ]] || return 0
+  risk=$(sed -n 's/.*"risk_level":[[:space:]]*"\(L[0-3]\)".*/\1/p' "$d/00-governance.json" 2>/dev/null | head -1)
+  case "$risk" in L2|L3) ;; *) return 0 ;; esac
+  printf '%s\n' "$(cat "$d/00.5-communication.md" 2>/dev/null)" \
+    | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)' \
+    && return 0
+  if [[ "$code" == "E129" ]]; then
+    die "GATE-E129: $id is $risk but 00.5 has no user-overall-confirmation — expected: '确认状态：已整体确认' before code evidence enters the staged face; allowed: record the user's overall confirmation; fix: present the communication draft and record it, then re-run; ref: CHG-125 P2-3 / standards §2.17.2d"
+  fi
+  die "GATE-E130: $id is $risk but 00.5 has no user-overall-confirmation — expected: '确认状态：已整体确认' before the preflight probe accepts evidence; allowed: record the user's overall confirmation; fix: record it, then re-run preflight; ref: CHG-125 P2-3 / standards §2.17.2d"
+}
+
+# v3.90.5 (CHG-126, P2-2/P2-3): consume the decision the engine already wrote.
+# Hard floors (required artifacts/stages) reject; soft gaps (masters/reviews)
+# only WARN unless AGENT_GUARD_PLAN_STRICT=1. Legacy changes without a decision
+# stay WARN-only by default, so存量 is not blocked.
+plan_decision_value() { # <d> <key>
+  local d="$1" key="$2"
+  sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" \
+    "$d/00-governance.json" 2>/dev/null | head -1
+}
+
+# ── v3.92.2 (CHG-128): 四道交付门（环境/证据/独立/范围）──────────────────────
+# 判定与证据分离：本文件只**验证据**，不执行测试（执行归 tests/fresh-clone-check.sh）。
+# 被测核心路径可由 AGENT_GUARD_CORE_PATHS 覆盖（目标仓可声明自己的核心面）。
+gate_core_paths() {
+  printf '%s' "${AGENT_GUARD_CORE_PATHS:-^(tests/run-tests\.sh|tests/audit-standards-src\.sh|scripts/bootstrap\.sh|scripts/update-assertion-count\.sh|resources/templates/agent-gate\.sh)$}"
+}
+core_changed_files() { # -> newline list of core files in worktree/index/last commit
+  { git -C "$repo_root" diff --name-only 2>/dev/null
+    git -C "$repo_root" diff --name-only --cached 2>/dev/null
+    git -C "$repo_root" diff --name-only HEAD~1 2>/dev/null; } \
+    | awk 'NF' | sort -u | grep -E "$(gate_core_paths)" 2>/dev/null || true
+}
+tracked_tree_sha() { # -> content hash of the tracked working tree (receipt freshness)
+  ( cd "$repo_root" && git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' )
+}
+core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 independence
+  local id="$1" d core f
+  d=$(change_dir "$id" 2>/dev/null) || return 0
+  [[ -d "$d" ]] || return 0
+  core=$(core_changed_files)
+  [[ -n "$core" ]] || return 0
+  local core_list
+  core_list=$(printf '%s' "$core" | tr '\n' ' ')
+
+  # E153: fresh-clone receipt (environment equivalence). ONE die site per code (T41).
+  if [[ "${AGENT_GUARD_FRESH_CLONE:-1}" == "1" ]]; then
+    local r rc_head rc_audit rc_suite rc_tree want_head want_tree e153=""
+    r="$repo_root/.agent-state/fresh-clone-receipt.json"
+    want_head=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo none)
+    want_tree=$(tracked_tree_sha)
+    if [[ ! -s "$r" ]]; then
+      e153="no fresh-clone receipt ($core_list)"
+    else
+      rc_head=$(sed -n 's/.*"head":"\([^"]*\)".*/\1/p' "$r" | head -1)
+      rc_tree=$(sed -n 's/.*"tree_sha":"\([^"]*\)".*/\1/p' "$r" | head -1)
+      rc_audit=$(sed -n 's/.*"audit_rc":\([0-9-]*\).*/\1/p' "$r" | head -1)
+      rc_suite=$(sed -n 's/.*"suite_rc":\([0-9-]*\).*/\1/p' "$r" | head -1)
+      [[ "$rc_tree" == "$want_tree" && "$rc_audit" == "0" && "$rc_suite" == "0" ]] \
+        || e153="stale/red receipt (tree=$rc_tree want=$want_tree head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+    fi
+    [[ -z "$e153" ]] || die "GATE-E153: $id $e153 — expected: .agent-state/fresh-clone-receipt.json whose tree_sha matches the current tracked tree, with audit_rc=0, suite_rc=0; allowed: AGENT_GUARD_FRESH_CLONE=0 with the reason recorded in 09「重要上下文」; fix: bash tests/fresh-clone-check.sh --sections <affected list>; ref: CHG-128 REQ-1278"
+  else
+    echo "agent-gate: WARN — fresh-clone gate skipped by AGENT_GUARD_FRESH_CLONE=0 ($id, core: $core_list; record the reason in 09「重要上下文」)" >&2
+  fi
+
+  # E150: red→green evidence in 05 (shape only; truth is vouched for by the independent reviewer).
+  f="$d/05-test-results.md"
+  local e150="" have_red=0 have_green=0
+  grep -qE '^[[:space:]]*red_repro:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_red=1
+  grep -qE '^[[:space:]]*green_after:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_green=1
+  if [[ "$have_red" -eq 0 || "$have_green" -eq 0 ]]; then
+    e150="lacks red_repro:/green_after: evidence"
+  elif grep -qE '^[[:space:]]*(red_repro|green_after):.*(FILL|待填|<)' "$f" 2>/dev/null; then
+    e150="red→green lines are placeholders"
+  fi
+  [[ -z "$e150" ]] || die "GATE-E150: $id $e150 in $f — expected: a 'red_repro: <cmd> -> <FAIL/rc>' line AND a 'green_after: <cmd> -> <rc0>' line with real values; allowed: AGENT_GUARD_CORE_PATHS narrowing only if the change truly has no core edit; fix: reproduce the red before fixing and record both lines; ref: CHG-128 REQ-1279"
+
+  # E151: verification owner must differ from the implementer (core changes only).
+  local vo io
+  vo=$(plan_decision_value "$d" verification_owner)
+  io=$(plan_decision_value "$d" implementation_owner)
+  if [[ -z "$vo" || "$vo" == "$io" ]]; then
+    if [[ "${AGENT_GUARD_ALLOW_SELF_VERIFY:-0}" == "1" ]]; then
+      echo "agent-gate: WARN — self-verification allowed by AGENT_GUARD_ALLOW_SELF_VERIFY=1 ($id; record the reason in 09「重要上下文」)" >&2
+    else
+      die "GATE-E151: $id verification_owner='${vo:-<empty>}' must differ from implementation_owner='${io:-<empty>}' for a core change — expected: an independent verifier name in 00-governance.json; allowed: AGENT_GUARD_ALLOW_SELF_VERIFY=1 with the reason recorded in 09「重要上下文」; fix: assign verification_owner (≠ implementation_owner) or take the exemption; ref: CHG-128 REQ-1280"
+    fi
+  fi
+}
+unverified_req_check() { # <id> — E154: unverified RTVM REQs must be declared in 09 (no silent downgrade)
+  local id="$1" d spec rtvm log req row status unverified="" missing="" section e154=""
+  d=$(change_dir "$id" 2>/dev/null) || return 0
+  [[ -d "$d" ]] || return 0
+  spec="$d/01-spec.md"; rtvm="$d/01.5-rtvm-matrix.md"; log="$d/09-changelog.md"
+  [[ -f "$spec" && -f "$rtvm" && -f "$log" ]] || return 0
+  for req in $(grep -oE 'REQ-[0-9]+' "$spec" | sort -u); do
+    row=$(grep -E "^\|[[:space:]]*$req[[:space:]]*\|" "$rtvm" | head -1)
+    [[ -n "$row" ]] || continue
+    # Verification state = LAST non-empty column (the template's 验证状态 column).
+    status=$(printf '%s' "$row" | awk -F'|' '{for(i=NF;i>=2;i--){gsub(/^[ \t]+|[ \t]+$/,"",$i); if($i!=""){print $i; exit}}}')
+    case "$status" in *✅*|*PASS*|*Pass*|*pass*|*已验*|*通过*) ;; *) unverified="${unverified}${unverified:+ }$req" ;; esac
+  done
+  # v3.92.2: the contract only bites when something is actually unverified.
+  # All-✅ changes (and fixtures with no REQ rows) have nothing to declare.
+  [[ -n "$unverified" ]] || return 0
+  section=$(awk '/^#{3,4}[[:space:]]*未验证 REQ 清单/{f=1;next} f&&/^#{1,4}[[:space:]]/{exit} f{print}' "$log" 2>/dev/null)
+  if [[ -z "$section" ]]; then
+    e154="09-changelog.md has no 『未验证 REQ 清单』 section (must list: $unverified)"
+  else
+    for req in $unverified; do
+      grep -qF "$req" <<< "$section" || missing="${missing}${missing:+ }$req"
+    done
+    [[ -z "$missing" ]] || e154="unverified REQ(s) not declared: $missing"
+  fi
+  [[ -n "$e154" ]] || return 0
+  if [[ "${AGENT_GUARD_RTVM_UNVERIFIED:-1}" != "1" ]]; then
+    echo "agent-gate: WARN — $id $e154 (AGENT_GUARD_RTVM_UNVERIFIED=0; record the reason in 09「重要上下文」)" >&2
+    return 0
+  fi
+  die "GATE-E154: $id $e154 — expected: every REQ whose 01.5 验证状态 is not ✅ listed in 09 (write 『无』 when none); allowed: AGENT_GUARD_RTVM_UNVERIFIED=0 with the reason recorded in 09「重要上下文」; fix: add/fix the 『未验证 REQ 清单』 section; ref: CHG-128 REQ-1284"
+}
+
+scope_overrun_check() { # <id> — E152 (over-budget scope without the user's recorded choice)
+  local id="$1" d verdict
+  d=$(change_dir "$id" 2>/dev/null) || return 0
+  [[ -d "$d" ]] || return 0
+  verdict=$(sed -n 's/.*"scope_overrun":{[^}]*"verdict":"\([^"]*\)".*/\1/p' "$d/00-governance.json" 2>/dev/null | head -1)
+  [[ "$verdict" == "over" ]] || return 0
+  local scope
+  scope=$(plan_decision_value "$d" scope_confirmed)
+  [[ -n "$scope" ]] && return 0
+  if [[ "${AGENT_GUARD_SCOPE_OVERRUN:-1}" != "1" ]]; then
+    echo "agent-gate: WARN — $id is over the change-scope budget and has no user-confirmed scope (AGENT_GUARD_SCOPE_OVERRUN=0; record the reason in 09「重要上下文」)" >&2
+    return 0
+  fi
+  die "GATE-E152: $id is over the change-scope budget (see scope_overrun in 00-governance.json) and has no user-confirmed scope — expected: the user's recorded choice (AGENT_GUARD_SCOPE_CONFIRM='<user>@<ISO>') or a split change; allowed: AGENT_GUARD_SCOPE_OVERRUN=0 (WARN only, recorded in 09); fix: ask the user to confirm or split, then re-run plan; ref: CHG-128 REQ-1281"
+}
+
+plan_gap_declared() { # <09> <prefix>
+  local log="$1" pfx="$2"
+  # v3.91.0 (CHG-127, G4): the final-plan format `- [adapt] <item> :: <reason> ::
+  # <substitute>` is accepted alongside the v3.90.5 alias `- decision-gap: …`.
+  grep -qE "^- (decision-gap: ${pfx}|\[adapt\][^:]*${pfx})" "$log" 2>/dev/null
+}
+
+plan_mark_accepted() { # <id> <yes|no|gap>
+  local lg="$repo_root/.agent-state/adapt-decisions.tsv" id="$1" val="$2" tmp
+  [[ -s "$lg" ]] || return 0
+  tmp="$lg.$$"
+  awk -F'\t' -v OFS='\t' -v id="$id" -v val="$val" '
+    { line[NR]=$0 }
+    END {
+      for (i=NR; i>=1; i--) {
+        n=split(line[i], a, "\t")
+        if (a[2]==id) { a[7]=val; line[i]=a[1]; for (j=2;j<=n;j++) line[i]=line[i] OFS a[j]; break }
+      }
+      for (i=1; i<=NR; i++) print line[i]
+    }' "$lg" > "$tmp" 2>/dev/null && mv -f "$tmp" "$lg" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+}
+
+coverage_gap_check() { # <change-id> <change-dir> <chosen>
+  local cid="$1" cdir="$2" chosen="$3" diffs="" sec f05
+  # v3.91.2 erratum: a FULL decision is adopted by definition (there is no
+  # narrower set to compare against). Without this, `accepted` stayed "-" for
+  # every full run and the adoption metric could never be computed.
+  if [[ "$chosen" == "FULL" ]]; then plan_mark_accepted "$cid" yes; return 0; fi
+  [[ -z "$chosen" ]] && return 0
+  f05="$cdir/05-test-results.md"
+  [[ -s "$f05" ]] || return 0
+  for sec in $(printf '%s' "$chosen" | tr ',' ' '); do
+    grep -qE "(^|[^A-Za-z0-9_])${sec}([^A-Za-z0-9_]|$)" "$f05" 2>/dev/null || diffs="$diffs $sec"
+  done
+  [[ -n "$diffs" ]] || { plan_mark_accepted "$cid" yes; return 0; }
+  if plan_gap_declared "$cdir/09-changelog.md" "coverage"; then
+    echo "agent-gate: plan coverage gap declared in 09:$diffs (P2-3)" >&2
+    plan_mark_accepted "$cid" gap
+    return 0
+  fi
+  echo "agent-gate: WARN — plan coverage gap: decision.chosen=[$chosen] but 05 has no evidence for:$diffs — add '- decision-gap: coverage …' to 09 (P2-3)" >&2
+  plan_mark_accepted "$cid" no
+  [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
+    && die "GATE-E144: $cid decision.chosen has no 05 evidence for:$diffs — expected: every chosen section appears in 05 (or a declared gap); allowed: '- decision-gap: coverage <sections> — <reason>' in 09; fix: run the sections and record them, or declare the gap; ref: CHG-126 P2-3"
+  return 0
+}
+
+plan_consume_check() { # <id>
+  local id="$1" d dec arts stages masters reviews missing="" soft="" reason="" a s p f pdir
+  plan_enabled || return 0
+  d=$(change_dir "$id") || return 0
+  [[ -d "$d" ]] || return 0
+  if ! grep -q '"decision"' "$d/00-governance.json" 2>/dev/null; then
+    if [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]]; then
+      die "GATE-E142: $id has no decision in 00-governance.json — expected: an engine decision recorded at begin (scripts/agent-gate plan $id); allowed: AGENT_GUARD_PLAN_STRICT=0 (WARN only) or AGENT_GUARD_ADAPT=0; fix: run plan, then re-run stop; ref: CHG-126 P2-2"
+    fi
+    echo "agent-gate: WARN — $id has no engine decision (run: scripts/agent-gate plan $id); continuing in WARN mode (P2-2)" >&2
+    return 0
+  fi
+  # v3.91.0 (CHG-127, G3): a decision whose diff_hash no longer matches the live
+  # diff is stale. Default: recompute+persist (the plan's "stop 前自动重算");
+  # strict: reject with E147 so an auditor can opt into hard freshness.
+  local dec_hash cur fresh
+  dec_hash=$(plan_decision_value "$d" diff_hash)
+  cur="sha256:$(plan_diff_hash)"
+  if [[ -n "$dec_hash" && "$cur" != "sha256:" && "$dec_hash" != "$cur" ]]; then
+    [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
+      && die "GATE-E147: $id decision is stale: diff_hash=$dec_hash, current=$cur — expected: re-run scripts/agent-gate plan $id after the last edit; allowed: PLAN_STRICT=0 (auto-refresh); fix: re-plan, then re-run; ref: CHG-127 G3"
+    echo "agent-gate: decision refreshed for $id (stale diff_hash) (P2-2/G3)" >&2
+    fresh=$(plan_json "$id")
+    plan_write_json "$d/00-governance.json" "$fresh" >/dev/null 2>&1 || true
+    plan_log "$id" "$fresh"
+    # measurable staleness (G16): one row per auto-refresh.
+    mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
+    printf '%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+      "$id" "$dec_hash" "$cur" >> "$repo_root/.agent-state/stale-decisions.tsv" 2>/dev/null || true
+  fi
+  # v3.91.0 (CHG-127, G11): flat lists are the compat aliases; the nested
+  # `artifacts`/`stages` objects carry depth/path/skipped for humans.
+  # v3.90.x decisions wrote `"artifacts":"…"` / `"stages":"…"` as strings —
+  # read those as a fallback so an old decision is still consumed (no silent skip).
+  arts=$(plan_decision_value "$d" artifact_list)
+  [[ -n "$arts" ]] || arts=$(plan_decision_value "$d" artifacts)
+  stages=$(plan_decision_value "$d" stage_list)
+  [[ -n "$stages" ]] || stages=$(plan_decision_value "$d" stages)
+  masters=$(plan_decision_value "$d" masters)
+  reviews=$(plan_decision_value "$d" reviews)
+  # v3.91.0 (CHG-127, G12): a declared hard rule (or H7) must be covered by a
+  # FULL run; a narrowed selection with must rules is a contract violation.
+  local must_csv chosen_now judgment_now scope_now e148=""
+  must_csv=$(sed -n 's/.*"must":\[\([^]]*\)\].*/\1/p' "$d/00-governance.json" 2>/dev/null | tr -d '"' | tr ',' '\n' | grep -E '^H[0-9]+$' | tr '\n' ',' | sed 's/,$//' || true)
+  chosen_now=$(plan_decision_value "$d" chosen)
+  judgment_now=$(plan_decision_value "$d" judgment)
+  scope_now=$(plan_decision_value "$d" scope_confirmed)
+  # v3.91.4/v3.91.5: TWO contract violations share ONE die site (T41):
+  #   (a) judgment=ai without the user's recorded confirmation;
+  #   (b) must rules not covered while judgment is not AI.
+  if [[ "$judgment_now" == "ai" && -z "$scope_now" ]]; then
+    e148="AI-narrowed scope has no user confirmation (decision.scope_confirmed is empty; set AGENT_GUARD_SCOPE_CONFIRM before plan)"
+  fi
+  if [[ -n "$must_csv" && "$chosen_now" != "FULL" && "$judgment_now" != "ai" ]]; then
+    e148="${e148:+$e148; }hard rule(s) $must_csv require a FULL run but chosen='$chosen_now' and judgment is not AI"
+  fi
+  if [[ -n "$e148" ]]; then
+    [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
+      && die "GATE-E148: $id $e148 — expected: chosen=FULL, or an AI judgment WITH user confirmation (AGENT_GUARD_SUITE_AI_* + AGENT_GUARD_SCOPE_CONFIRM); allowed: re-plan after the user chooses (adopt/up/down) or run FULL; fix: ask the user, then re-plan and run the chosen set; ref: CHG-127 G12 / 2026-10-27 rulings"
+    echo "agent-gate: WARN — $id $e148 (E148 in strict)" >&2
+  fi
+  # v3.92.2 (CHG-128, REQ-1281): scope budget is consumed with the same decision.
+  scope_overrun_check "$id"
+
+  # Hard floor 1: required artifacts exist.
+  if [[ -n "$arts" ]]; then
+    for a in $(printf '%s' "$arts" | tr ',' ' '); do
+      [[ -f "$d/$a" ]] || missing="$missing $a"
+    done
+  fi
+  # Hard floor 2: required stages have their representative artifact.
+  if [[ -n "$stages" ]]; then
+    for s in $(printf '%s' "$stages" | tr ',' ' '); do
+      case "$s" in
+        intent) f="00-intent.md" ;;
+        spec) f="01-spec.md" ;;
+        design) f="02-code-impact-analysis.md" ;;
+        testplan) f="04-test-scripts.md" ;;
+        code) f="04.5-coding-record.md" ;;
+        test) f="05-test-results.md" ;;
+        review) f="07-review-report.md" ;;
+        delivery) f="09-changelog.md" ;;
+        staged) f="05-test-results.md" ;;
+        stop) f="09-changelog.md" ;;
+        *) f="" ;;
+      esac
+      [[ -z "$f" || -f "$d/$f" ]] || missing="$missing stage:$s($f)"
+    done
+  fi
+  [[ -z "$missing" ]] || reason="hard items absent:$missing"
+
+  # Soft floor: masters/reviews → WARN + require a declared gap.
+  if [[ -n "$masters" ]]; then
+    for p in $(printf '%s' "$masters" | tr ',' ' '); do
+      f=$(find "$docs_dir/project" -maxdepth 1 -type f -name "$p-*.md" 2>/dev/null | head -1)
+      if [[ -z "$f" ]] || ! grep -q "变更注记 $id" "$f" 2>/dev/null; then soft="$soft master:$p"; fi
+    done
+  fi
+  if [[ -n "$reviews" ]]; then
+    local min n
+    min=$(printf '%s' "$reviews" | sed -nE 's/.*min=([0-9]+).*/\1/p')
+    [[ "$min" =~ ^[0-9]+$ ]] || min=1
+    n=0
+    [[ -d "$d/reviews" ]] && n=$(find "$d/reviews" -maxdepth 1 -type f -name 'P*.review.md' -size +0 2>/dev/null | wc -l | tr -d ' ')
+    [[ "$n" -ge "$min" ]] || soft="$soft reviews:$n<$min"
+  fi
+  if [[ -n "$soft" ]]; then
+    if plan_gap_declared "$d/09-changelog.md" "soft"; then
+      echo "agent-gate: plan soft gaps declared in 09:$soft (P2-2)" >&2
+    else
+      echo "agent-gate: WARN — plan soft gaps:$soft — add '- decision-gap: soft <item> — <reason>' to 09 (P2-2)" >&2
+      [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] && reason="${reason:+$reason; }soft items unmet:$soft (no '- decision-gap: soft …' line)"
+    fi
+  fi
+  # ONE die site for E143 (T41): hard and strict-soft findings are assembled
+  # into $reason instead of duplicating the branch.
+  [[ -z "$reason" ]] || die "GATE-E143: $id decision items unmet: $reason — expected: every artifacts/stages item present and soft gaps declared in 09; allowed: fill the item or add '- decision-gap: soft|coverage …'; fix: close the gap, then re-run; ref: CHG-126 P2-2"
+  coverage_gap_check "$id" "$d" "$(plan_decision_value "$d" chosen)"
+}
+
 validate_stop() {
   local id
   working_code_changed || return 0
@@ -2253,7 +4141,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.88.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.92.2" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -2261,6 +4149,24 @@ validate_stop() {
       echo "agent-gate: verification command CACHED (receipt match, age $(( $(date +%s) - vc_r_at ))s) — AGENT_GUARD_VERIFY_CACHE=0 forces a run"
       vreason="${vreason:-} (cached receipt, REQ-1161)"
       append_verify_evidence "- 通道缓存命中（REQ-1161）：键匹配（版本/命令/树指纹/变更号），年龄 $(( $(date +%s) - vc_r_at ))s；未重复执行。"
+    fi
+    # v3.90.3 (CHG-125, FU-959): a cache hit is a zero-cost verify action — record
+    # it so the ledger can tell "reused" from "ran" (columns unchanged).
+    if [[ "$vc_hit" == "1" && -d "$repo_root/.agent-state" ]]; then
+      _vlg="$repo_root/.agent-state/cost-ledger.tsv"
+      _vrk="$(id -un 2>/dev/null || echo user)@$(hostname 2>/dev/null || echo host)/$(basename "$repo_root")"
+      # v3.91.0 (CHG-127, G1): in-place migration of the historical 8-column rows.
+      if [[ -s "$_vlg" ]] && ! head -1 "$_vlg" | grep -q 'asserts'; then
+        awk -F'\t' -v rk="$_vrk" 'BEGIN{OFS="\t"}
+          NR==1 {print "ts","kind","id","suite_key","cost_s","setup_s","cache","exit","asserts","rc","outcome","repo_key","model_id","ctx_window"; next}
+          { o=($8=="0"?"green":"red"); if ($6=="0" && $8=="0") o="wasted"; print $0,"-1",$8,o,rk,"","" }' \
+          "$_vlg" > "$_vlg.mig" 2>/dev/null && mv -f "$_vlg.mig" "$_vlg"
+      fi
+      [[ -s "$_vlg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$_vlg" 2>/dev/null || true
+      printf '%s\tverify\t%s\t%s\t0\t0\thit\t0\t-1\t0\tgreen\t%s\t\t\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+        "$(c=$(active_change_quiet); printf '%s' "${c:--}")" \
+        "$(git -C "$repo_root" rev-parse --short HEAD 2>/dev/null || true)" "$_vrk" >> "$_vlg" 2>/dev/null || true
     fi
   fi
   if [[ -n "$vcmd" && "$vc_hit" != "1" ]]; then
@@ -2270,18 +4176,24 @@ validate_stop() {
     # -dims keeps display/idle/disk awake for the whole child). Non-darwin
     # hosts without the binary run the command unchanged; darwin without it
     # gets a loud warning instead of a silent exposure.
-    if command -v caffeinate >/dev/null 2>&1; then
+    # v3.92.2 (CHG-128 batch 2): probe before wrapping — on hosts where
+    # caffeinate itself aborts (observed on macOS 27 beta: SIGABRT/OBJC),
+    # wrapping would kill the verify and leave the caller with a dead session.
+    # `AGENT_GUARD_CAFFEINATE=0` opts out explicitly (record the reason in 09).
+    if [[ "${AGENT_GUARD_CAFFEINATE:-1}" != "0" ]] \
+       && command -v caffeinate >/dev/null 2>&1 \
+       && caffeinate -dims true >/dev/null 2>&1; then
       caffeinate -dims bash -lc "$vcmd" || vexit=$?
     else
       if [[ "$(uname -s)" == "Darwin" ]]; then
-        echo "agent-gate: WARNING: caffeinate not found — if the machine sleeps mid-verify the run shows up as false reds (review before re-running)" >&2
+        echo "agent-gate: WARNING: caffeinate unavailable or disabled — verify runs without the sleep guard (false reds possible; review before re-running)" >&2
       fi
       bash -lc "$vcmd" || vexit=$?
     fi
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.88.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.92.2","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -2490,10 +4402,80 @@ delivery_ready() {
   fi
 }
 
+# v3.91.0 (CHG-127, G10/G9): runtime status + profile refresh probe.
+runtime_status() {
+  local adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin
+  for c in "$repo_root/scripts/install-hook-adapter" "$repo_root/scripts/install-hook-adapter.sh"; do
+    [[ -x "$c" ]] && adapter="$c" && break
+  done
+  if [[ -n "$adapter" ]]; then
+    out=$( cd "$repo_root" && "$adapter" --detect 2>/dev/null || true )
+    rt=$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*runtime:[[:space:]]*\([^ ]*\).*/\1/p' | head -1)
+    fam=$(printf '%s\n' "$out" | sed -n 's/.*family:[[:space:]]*\([^)]*\)).*/\1/p' | head -1)
+    layers=$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*effective layers:[[:space:]]*//p' | head -1)
+  fi
+  [[ -n "$rt" ]] || rt="${AGENT_RUNTIME:-unknown}"
+  [[ -n "$fam" ]] || fam="unknown"
+  [[ "$rt" != "unknown" && -n "$layers" ]] && enforce="hook"
+  if ls "$repo_root/.agent-state/runtime/"*.json >/dev/null 2>&1; then hand="present"; fi
+  mid="unknown"; mwin=""
+  if [[ -s "$repo_root/.agent-state/model-profile.json" ]]; then
+    mid=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/model-profile.json" | head -1)
+    mwin=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$repo_root/.agent-state/model-profile.json" | head -1)
+  fi
+  echo "status: runtime=$rt family=$fam enforcement=$enforce layers=${layers:-none}"
+  echo "status: handshake=$hand model=${mid:-unknown} window=${mwin:-unknown}"
+}
+
+resume_change() { # <CHG> — G17: handoff + decision + next steps, read-only
+  local id="$1" d h
+  d=$(change_dir "$id") || return 1
+  h="$d/handoff.md"
+  echo "resume: change=$id"
+  if [[ -s "$h" ]]; then
+    echo "resume: handoff=$h"
+    sed -n '1,40p' "$h"
+  else
+    echo "resume: handoff missing (write docs/changes/$id/handoff.md before shifting) — WARN"
+  fi
+  echo "resume: decision=$(plan_decision_value "$d" chosen) predicted=$(plan_decision_value "$d" predicted_s)s"
+  echo "resume: next: 1) read 05 evidence 2) run the chosen sections 3) stop/ci"
+}
+
+profile_refresh_check() {
+  local y="$repo_root/.agent-governance.yml" k missing=""
+  [[ -f "$y" ]] || { echo "profile-refresh: .agent-governance.yml absent (nothing to check)"; return 0; }
+  for k in schema_version language size files tests ci budgets ai_project architecture ui runtime_env repo_topology; do
+    grep -qE "^[[:space:]]+${k}:" "$y" 2>/dev/null || missing="$missing $k"
+  done
+  if [[ -n "$missing" ]]; then
+    echo "profile-refresh: WARN missing keys:$missing — re-run bootstrap --upgrade (P0-9/U-6)"
+    return 1
+  fi
+  echo "profile-refresh: all profile keys present"
+}
+
 emit_metrics() {
   local dir id risk t_intent t_gov t_spec t_plan t_test t_chg t_code
-  local sigs esess esess_over r_rounds r_limit r_over f_tot f_dis f_rate
+  local ad_total ad_yes ad_no ad_over ad_rate
+  local sigs esess r_rounds r_limit r_over f_tot f_dis f_rate
+  local g_sec g_wasted g_wrate g_stale g_handshake rev_indep r_owner i_owner
   [[ -d "$change_root" ]] || exit 0
+  # v3.91.0 (CHG-127, G16): repo-wide observability — wasted rate, stale count,
+  # handshake coverage. All derived from files the gates already write; never a
+  # substitute for the DoD (§2.17.5).
+  g_sec=0; g_wasted=0
+  if [[ -s "$repo_root/.agent-state/cost-ledger.tsv" ]]; then
+    read -r g_sec g_wasted <<< "$(awk -F'\t' '$2=="sec" && NF>=11 {n++; if ($11=="wasted") w++} END{print n+0, w+0}' \
+      "$repo_root/.agent-state/cost-ledger.tsv")"
+  fi
+  g_wrate=null
+  [[ "$g_sec" -gt 0 ]] && g_wrate=$(awk -v w="$g_wasted" -v n="$g_sec" 'BEGIN{printf "%.2f", w/n}')
+  g_stale=0
+  [[ -s "$repo_root/.agent-state/stale-decisions.tsv" ]] \
+    && g_stale=$(grep -c . "$repo_root/.agent-state/stale-decisions.tsv" 2>/dev/null || true)
+  g_handshake=false
+  ls "$repo_root/.agent-state/runtime/"*.json >/dev/null 2>&1 && g_handshake=true
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
     # One metrics row per CHANGE, not per directory: a batch directory holds
@@ -2516,15 +4498,14 @@ emit_metrics() {
       t_chg=$(first_commit_ts "$dir/09-changelog.md")
       t_code=$(first_commit_referencing "$id")
       # v3.34.0 (CHG-034): observational count of DISTINCT expert-review
-      # signature task-ids (§2.1.7 third segment) across 01/03 — makes the
-      # L2 ≤3 session guardrail (§2.2) visible WITHOUT enforcing (metrics is
-      # read-only by contract).
+      # signature task-ids (§2.1.7 third segment) across 01/03 — read-only by
+      # contract (§2.17.5). The old `expert_sessions_over_guardrail` flag is gone
+      # with the L2 ≤3 session cap (v3.90.0, CHG-122): that cap contradicted
+      # "阶段 1-5 各派独立子代理".
       sigs=$(cat "$dir/01-spec.md" "$dir/03-modification-plan.md" 2>/dev/null \
         | grep -Eo '[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / [A-Za-z0-9_-]+' \
         | awk -F'/' '{gsub(/[[:space:]]/,"",$3); print $3}' | sort -u || true)
       esess=$(printf '%s' "$sigs" | grep -c . || true)
-      esess_over=false
-      if [[ "$risk" == '"L2"' || "$risk" == '"L3"' ]] && [[ "${esess:-0}" -gt 3 ]]; then esess_over=true; fi
       # v3.38.0 (CHG-040): artifact cost observation — md file count and byte
       # volume of the change's containing directory. In a BATCH the files are
       # SHARED by every member, so each member reports the same directory-wide
@@ -2590,8 +4571,28 @@ emit_metrics() {
           f_pre=${f_counts#* }; f_pre=${f_pre%% *}
         fi
       fi
-      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"expert_sessions_over_guardrail":%s,"artifact_files":%s,"artifact_bytes":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s,"findings_introduced":%s,"findings_pre_existing":%s}\n' \
-        "$id" "$risk" "${esess:-0}" "$esess_over" "${a_files:-0}" "${a_bytes:-0}" \
+      # v3.91.0 (CHG-127, G15/G16): adoption telemetry from adapt-decisions.tsv.
+      ad_total=0; ad_yes=0; ad_no=0; ad_over=0
+      if [[ -s "$repo_root/.agent-state/adapt-decisions.tsv" ]]; then
+        read -r ad_total ad_yes ad_no ad_over <<< "$(awk -F'\t' -v id="$id" '
+          $2==id {n++; if ($7=="yes") y++; if ($7=="no") o++; if ($4 ~ /^[0-9]+$/ && $5 ~ /^[0-9]+$/ && $4+0>$5+0) b++}
+          END {print n+0, y+0, o+0, b+0}' "$repo_root/.agent-state/adapt-decisions.tsv")"
+      fi
+      ad_rate=null
+      [[ "$ad_total" -gt 0 ]] && ad_rate=$(( ad_yes * 100 / ad_total ))
+      # v3.91.0 (CHG-127, G16): review independence per change (two subjects differ).
+      rev_indep=null
+      if [[ -s "$dir/00-governance.json" ]]; then
+        r_owner=$(json_field "$(gov_record "$dir/00-governance.json" "$id")" review_owner)
+        i_owner=$(json_field "$(gov_record "$dir/00-governance.json" "$id")" implementation_owner)
+        if [[ -n "$r_owner" && -n "$i_owner" ]]; then
+          if [[ "$r_owner" != "$i_owner" ]]; then rev_indep=true; else rev_indep=false; fi
+        fi
+      fi
+      printf '{"change_id":"%s","risk_level":%s,"expert_sessions":%s,"artifact_files":%s,"artifact_bytes":%s,"decisions":%s,"adopted":%s,"overridden":%s,"over_budget":%s,"adoption_rate":%s,"wasted_rate":%s,"stale_decisions":%s,"handshake":%s,"review_independent":%s,"intent_ts":%s,"governance_ts":%s,"spec_ts":%s,"plan_ts":%s,"first_code_commit_ts":%s,"test_evidence_ts":%s,"changelog_ts":%s,"intent_to_spec_s":%s,"spec_to_plan_s":%s,"plan_to_code_s":%s,"code_to_evidence_s":%s,"intent_to_changelog_s":%s,"delivery_ready":%s,"review_rounds":%s,"review_rounds_over_limit":%s,"findings_total":%s,"findings_dismissed":%s,"dismissal_rate":%s,"findings_introduced":%s,"findings_pre_existing":%s}\n' \
+        "$id" "$risk" "${esess:-0}" "${a_files:-0}" "${a_bytes:-0}" \
+        "$ad_total" "$ad_yes" "$ad_no" "$ad_over" "$ad_rate" \
+        "$g_wrate" "$g_stale" "$g_handshake" "$rev_indep" \
         "$(ts_or_null "$t_intent")" "$(ts_or_null "$t_gov")" "$(ts_or_null "$t_spec")" \
         "$(ts_or_null "$t_plan")" "$(ts_or_null "$t_code")" "$(ts_or_null "$t_test")" \
         "$(ts_or_null "$t_chg")" \
@@ -2643,7 +4644,16 @@ case "$command" in
     [[ -z "$e69msg" ]] || die "GATE-E69: $e69msg"
     if [[ "$scaffold" = 1 ]]; then
       : "${srisk:=L1}"
-      scaffold_change "$id" "$srisk"; exit 0
+      scaffold_change "$id" "$srisk"
+      # v3.91.1 (CHG-127 self-audit): `--scaffold` deliberately does not activate
+      # the change. It used to leave a STALE pointer silently in place, so a later
+      # `stop`/`preflight` consumed the wrong change (observed: CHG-125 was still
+      # active while CHG-127 was being tested). Visible, not silent.
+      _sc_cur=$(tr -d '[:space:]' < "$active_file" 2>/dev/null || true)
+      if [[ -n "$_sc_cur" && "$_sc_cur" != "$id" ]]; then
+        echo "agent-gate: WARN — active change is still $_sc_cur; stop/preflight will consume THAT change until you run 'scripts/agent-gate begin $id' (or 'scripts/agent-gate end')" >&2
+      fi
+      exit 0
     fi
     # FU-015 (BUG-003): a change dir carrying a changelog is a CLOSED change —
     # re-opening it would let a new change write into a read-only artifact set
@@ -2667,7 +4677,17 @@ case "$command" in
     elif [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]]; then
       die "GATE-E72: change $id is already closed ($d/09-changelog.md exists) — open a new change id (standards §2.15 rule 4, FU-015)"
     fi
-    required_docs_present "$id"
+    # v3.89.0 (CHG-117, REQ-1202, DES-1960): begin narrows to the ENTRY gate —
+    # 00-intent (预期结果/开放问题/目录落位 via E86 below) + 00-governance.json
+    # + 00.5 confirmation. The 01-04 artifact checks moved to the stage gates
+    # (`--stage spec|design|testplan`, stateless). AGENT_GUARD_STAGE_GATES=0
+    # restores the legacy full check; staged/stop/ci keep the full bar either
+    # way, so coverage does not shrink — 收窄≠弱化.
+    if stage_gates_enabled; then
+      entry_gate_docs_present "$id"
+    else
+      required_docs_present "$id"
+    fi
     validate_governance_state "$id"
     # v3.27.0 (CHG-027): the same-day batch default is ENFORCED, not advisory —
     # once a BATCH-<today> exists, a new L0/L1 change must join it (standards
@@ -2713,7 +4733,9 @@ case "$command" in
       if [[ ! -s "$vstats_file" ]]; then
         echo "agent-gate: YELLOW liveness: session is active (water file present) but $vstats_file is missing/empty — hook adapter likely not loaded; check client logs and run scripts/session-gate status (v3.82.0, REQ-1160)"
       else
-        vstats_mtime=$(stat -f %m "$vstats_file" 2>/dev/null || stat -c %Y "$vstats_file" 2>/dev/null || true)
+        # v3.92.2 (CHG-127): GNU stat first — BSD-first silently degraded on Linux
+        # (GNU `stat -f %m` is filesystem mode, prints a non-numeric token → no warn).
+        vstats_mtime=$(gate_mtime "$vstats_file")
         if [[ -n "$vstats_mtime" ]] && [[ $(( $(date +%s) - vstats_mtime )) -gt 600 ]]; then
           echo "agent-gate: YELLOW liveness: session active but tool stats not updated for >10min — hook adapter likely not loaded; check client logs and run scripts/session-gate status (v3.82.0, REQ-1160)"
         fi
@@ -2767,6 +4789,12 @@ case "$command" in
         fi
       fi
     fi
+    # v3.90.2 (CHG-123, P0-1): handshake visibility — a session with no
+    # handshake runs on the L0 baseline only. Soft WARN in R1 (never blocks);
+    # the hard requirement belongs to the R2/R3 trains.
+    if ! ls "$repo_root"/.agent-state/runtime/*.json >/dev/null 2>&1; then
+      echo "agent-gate: YELLOW handshake: no .agent-state/runtime/<session>.json — run scripts/agent-gate session-start so this session's runtime/model/window are on record (P0-1)"
+    fi
     # v3.40.0 (CHG-046, FU-106⑤): unresolved session RED blocks new changes.
     # .agent-state/session-gate-last.md is the last start/idle audit report; a
     # `GATE RED` report FRESHER than the newest delivered 09-changelog means the
@@ -2785,6 +4813,13 @@ case "$command" in
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     echo "agent-gate: active change is $id"
+    # v3.90.2 (CHG-124, P1-1): decision is generated by default at begin (the
+    # mandatory waypoint) so it is actually read instead of being an opt-in
+    # nobody calls. `AGENT_GUARD_ADAPT=0` removes the line entirely.
+    if plan_enabled; then
+      plan_run "$id" write | sed -n 's/^plan: /agent-gate: plan: /p' || true
+    fi
+    review_plan_seed "$id"
     ;;
   end)
     rm -f "$active_file"
@@ -2874,6 +4909,13 @@ case "$command" in
     pf_d=$(change_dir "$id")
     p_n=0
     p_seen=""
+    # v3.90.3 (CHG-125, P2-3): L2/L3 without a confirmed 00.5 is collected as an
+    # E130 violation (die shadowed in the subshell, like every other probe).
+    _e130_out=$( ( die() { printf 'agent-gate: preflight: %s\n' "$*"; }; confirm_required_check "$id" E130 ) 2>&1 ) || true
+    if [[ -n "$_e130_out" ]]; then
+      printf '%s\n' "$_e130_out" >&2
+      p_n=$(( p_n + 1 )); p_seen="$_e130_out"
+    fi
     p_run() {
       unset AGENT_GUARD_ALLOW_UNCONFIRMED AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS  # probe determinism (v3.72.0 erratum, CHG-095, REQ-1099)
       local out p_line
@@ -2888,10 +4930,20 @@ case "$command" in
       done <<< "$out"
       return 0
     }
-    p_run required_docs_present "$id"
-    p_run validate_artifact_content "$id"
+    # v3.89.0 (CHG-117, 独立评审 F3): begin 已收窄为入口门，preflight 的 begin
+    # face 必须同口径——入口三件齐即绿；01-04 的完整校验只在阶段工作已开动
+    # （任一阶段产物在场）时加入，避免把“刚 begin”误报成缺 01-04。
+    pf_flow=0
+    for pf_a in 01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+      [[ -s "$pf_d/$pf_a" ]] && pf_flow=1
+    done
+    p_run required_docs_present "$id" entry
     p_run validate_governance_state "$id"
-    p_run validate_dimensional_begin "$pf_d"
+    if [[ "$pf_flow" == 1 ]]; then
+      p_run required_docs_present "$id"
+      p_run validate_artifact_content "$id"
+      p_run validate_dimensional_begin "$pf_d"
+    fi
     p_run validate_project_masters
     # v3.82.0 (CHG-109, REQ-1160): the stop-side delivery shape face joins the
     # probe (same die sites, zero side effects — the round-ledger write stays
@@ -2903,12 +4955,133 @@ case "$command" in
     if [[ -e "$pf_d/09-changelog.md" || -e "$pf_d/04.5-coding-record.md" || -e "$pf_d/05-test-results.md" ]]; then
       p_run validate_delivery_shape_front "$id"
       p_run validate_delivery_shape_back "$id"
+      p_run reviews_pair_check "$id"
+      # v3.90.5: the decision-consume face joins the probe too, so a missing
+      # hard artifact surfaces at second-level instead of at stop.
+      p_run plan_consume_check "$id"
     fi
     if [[ "$p_n" -eq 0 ]]; then
       echo "agent-gate: preflight: $id: all artifact gates clean"
       exit 0
     fi
     exit 1
+    ;;
+  cost-line)
+    # v3.90.2 (CHG-123, P0-15): diagnostic subcommand (same family as metrics /
+    # verify-channel). `--stage stop` calls the same writer automatically.
+    cid="${2:-}"; cdir=""
+    [[ -n "$cid" ]] && cdir=$(change_dir "$cid")
+    if [[ -z "$cid" || ! -d "$cdir" ]]; then
+      die "GATE-E132: cost-line needs an existing change id (got '${cid:-<none>}') — expected: scripts/agent-gate cost-line CHG-123; allowed: a directory under changes/ or a BATCH dir carrying '## <id>'; fix: pass the right change id and re-run; ref: standards §1.1 / CHG-123 P0-15"
+    fi
+    record_cost_line "$cid" manual
+    ;;
+  session-start)
+    # v3.90.2 (CHG-123, P0-1): session handshake — the L0 baseline every agent can
+    # produce (no hook surface required). Runtime/model/window are self-reported;
+    # missing capabilities stay explicit instead of being guessed.
+    ss_dir="$repo_root/.agent-state/runtime"
+    mkdir -p "$ss_dir" 2>/dev/null || true
+    ss_sid="${AGENT_GUARD_SESSION_ID:-$$-$(date -u +%s)}"
+    ss_rt="${AGENT_RUNTIME:-}"
+    if [[ -z "$ss_rt" && -s "$repo_root/.agent-state/runtime.json" ]]; then
+      ss_rt=$(sed -n 's/.*"runtime_id":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/runtime.json" | head -1)
+    fi
+    [[ -n "$ss_rt" ]] || ss_rt="unknown"
+    ss_prof="$repo_root/.agent-state/model-profile.json"
+    ss_model="${AGENT_GUARD_MODEL:-}"; ss_win="${AGENT_GUARD_CONTEXT_WINDOW:-}"; ss_src="declared"
+    if [[ -z "$ss_model" && -s "$ss_prof" ]]; then
+      ss_model=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$ss_prof" | head -1)
+      ss_win=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$ss_prof" | head -1)
+      ss_src="profile"
+    fi
+    [[ -n "$ss_model" ]] || ss_model="unknown"
+    [[ -n "$ss_win" ]] || { ss_win=128000; ss_src="assumed"; }
+    printf '{"session":"%s","runtime":"%s","model":"%s","context_window":%s,"window_source":"%s","started_at":"%s"}\n' \
+      "$ss_sid" "$ss_rt" "$ss_model" "$ss_win" "$ss_src" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+      > "$ss_dir/$ss_sid.json" 2>/dev/null \
+      || echo "agent-gate: WARN — cannot write session handshake under $ss_dir (P0-1)" >&2
+    echo "agent-gate: session handshake recorded ($ss_dir/$ss_sid.json): runtime=$ss_rt model=$ss_model window=$ss_win ($ss_src)"
+    ;;
+  baseline)
+    # v3.90.5 (CHG-126, P0-0): 5-number snapshot; --write persists it in the
+    # change dir. Read-only otherwise (never touches code/config).
+    bcid="${2:-}"; bmode="${3:-}"; bdir=""
+    [[ -n "$bcid" ]] && bdir=$(change_dir "$bcid")
+    if [[ -z "$bcid" || ! -d "$bdir" || ( -n "$bmode" && "$bmode" != "--write" ) ]]; then
+      die "GATE-E140: usage: scripts/agent-gate baseline <change-id> [--write] (got '${bcid:-<none>}' '${bmode:-}') — expected an existing change; allowed: --write (persist baseline.json + one 09 line); fix: pass a real change id; ref: CHG-126 P0-0"
+    fi
+    bjs=$(baseline_snapshot)
+    echo "baseline: $bjs"
+    [[ "$bmode" == "--write" ]] && baseline_write "$bdir" "$bjs"
+    ;;
+  tc-index)
+    # v3.90.5 (CHG-126, P1-2): three-source union (04 + script headers + 01.5).
+    tcid="${2:-}"; tcmode="${3:-}"; tcdir=""
+    [[ -n "$tcid" ]] && tcdir=$(change_dir "$tcid")
+    if [[ -z "$tcid" || ! -d "$tcdir" || ( -n "$tcmode" && "$tcmode" != "--write" ) ]]; then
+      die "GATE-E141: usage: scripts/agent-gate tc-index <change-id> [--write] (got '${tcid:-<none>}' '${tcmode:-}') — expected an existing change; allowed: --write (persist tests/tc-index.tsv cache); fix: pass a real change id; ref: CHG-126 P1-2"
+    fi
+    tc_index_build "$tcid" "$tcmode"
+    ;;
+  plan)
+    # v3.90.2 (CHG-124, P1-1/P1-2): read-only decision. R2 never blocks on the
+    # advice itself; a bad invocation is still a usage error (E136).
+    pcid="${2:-}"; pmode="${3:-}"; pdir=""
+    [[ -n "$pcid" ]] && pdir=$(change_dir "$pcid")
+    if [[ -z "$pcid" || ! -d "$pdir" || ( -n "$pmode" && "$pmode" != "--dry-run" && "$pmode" != "--explain" && "$pmode" != "--refresh-profile" ) ]]; then
+      die "GATE-E136: usage: scripts/agent-gate plan <change-id> [--dry-run|--explain] (got '${pcid:-<none>}' '${pmode:-}') — expected an existing change; allowed: --dry-run (no writes) / --explain (print cost basis); fix: pass a real change id; ref: CHG-124 P1-1 / ADAPT=0 disables this face"
+    fi
+    if ! plan_enabled; then
+      echo "agent-gate: plan disabled (AGENT_GUARD_ADAPT=0) — no decision generated (P1-1)"
+    else
+      case "$pmode" in
+        --dry-run) plan_run "$pcid" dry ;;
+        --explain) plan_run "$pcid" dry explain ;;
+        --refresh-profile) profile_refresh_check || true ;;
+        *)         plan_run "$pcid" write ;;
+      esac
+    fi
+    ;;
+  review-plan)
+    # v3.90.4: runtime-aware review plan. Read-only unless --write/--approve.
+    # High-cost models NEVER auto-approve: --approve requires the USER marker.
+    rcid="${2:-}"; rmode="${3:-}"; rmodel="${4:-}"; rdir=""
+    [[ -n "$rcid" ]] && rdir=$(change_dir "$rcid")
+    if [[ -z "$rcid" || ! -d "$rdir" || ( -n "$rmode" && "$rmode" != "--json" && "$rmode" != "--write" && "$rmode" != "--approve" ) ]]; then
+      die "GATE-E138: usage: scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>] (got '${rcid:-<none>}' '${rmode:-}' '${rmodel:-}') — expected an existing change; fix: pass a real change id and a known option; ref: standards §2.1 rule 11 / v3.90.4"
+    fi
+    case "$rmode" in
+      --write) js=$(review_plan_write "$rcid") ;;
+      --approve)
+        [[ -n "$rmodel" ]] || die "GATE-E139: review-plan --approve needs a model id — fix: review-plan $rcid --approve <model>; ref: standards §2.1 rule 11"
+        if [[ "${AGENT_REVIEW_USER_APPROVED:-}" != "1" ]]; then
+          echo "agent-gate: review-plan: --approve refused — set AGENT_REVIEW_USER_APPROVED=1 only after the USER chooses the model (AI must not self-approve; §2.1 rule 11)" >&2
+          exit 3
+        fi
+        js=$(review_plan_write "$rcid" "$rmodel")
+        ;;
+      *) js=$(review_plan_json "$rcid") ;;
+    esac
+    rt=$(printf '%s' "$js" | sed -n 's/.*"runtime":"\([^"]*\)".*/\1/p')
+    fam=$(printf '%s' "$js" | sed -n 's/.*"runtime_family":"\([^"]*\)".*/\1/p')
+    tier=$(printf '%s' "$js" | sed -n 's/.*"tier":"\([^"]*\)".*/\1/p')
+    scheme=$(printf '%s' "$js" | sed -n 's/.*"scheme":"\([^"]*\)".*/\1/p')
+    appr=false
+    printf '%s' "$js" | grep -q '"approval_required":true' && appr=true
+    echo "review-plan: runtime=${rt:-unknown} family=${fam:-unknown} scheme=${scheme:-unknown} tier=${tier:-economy} approval_required=${appr:-false}"
+    echo "$js"
+    if [[ "$appr" == "true" && "$rmode" != "--approve" ]]; then
+      echo "review-plan: USER CONSENT REQUIRED — choose a model from the candidates above, then run: AGENT_REVIEW_USER_APPROVED=1 scripts/agent-gate review-plan $rcid --approve <model> (AI must not choose for you)" >&2
+    fi
+    ;;
+  status)
+    runtime_status
+    ;;
+  resume)
+    resid="${2:-}"
+    [[ -n "$resid" ]] || die "GATE-E149: usage: scripts/agent-gate resume <change-id> — expected an existing change; fix: pass the active change id; ref: CHG-127 G17"
+    resume_change "$resid"
     ;;
   metrics)
     emit_metrics
@@ -2927,8 +5100,49 @@ case "$command" in
           validate_active_change
         fi
         ;;
-      staged) validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
-      stop) validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery stop ;;
+      # v3.89.0 (CHG-117, REQ-1202, DES-1960): stateless stage gates. Explicit
+      # invocation validates regardless of AGENT_GUARD_STAGE_GATES (opt-in
+      # action; the switch only controls begin narrowing and the session-gate
+      # check-mode predicates).
+      spec|design|testplan)
+        stage_gate_check "$stage" ;;
+      core)
+        # v3.92.2 (CHG-128): stateless explicit validation of the environment /
+        # evidence / independence gates (E150/E151/E153) for the active change.
+        cc_id=$(active_change)
+        core_gate_check "$cc_id"
+        echo "agent-gate: core gate green ($cc_id)" ;;
+      scope)
+        # v3.92.2 (CHG-128): stateless explicit validation of the scope budget (E152).
+        sc_id=$(active_change)
+        scope_overrun_check "$sc_id"
+        echo "agent-gate: scope gate green ($sc_id)" ;;
+      rtvm)
+        # v3.92.2 (CHG-128 batch 3): stateless E154 — every unverified RTVM REQ
+        # must be declared in 09 (silent scope reduction becomes a signed claim).
+        rt_id=$(active_change)
+        unverified_req_check "$rt_id"
+        echo "agent-gate: rtvm gate green ($rt_id)" ;;
+      shift)
+        # v3.91.7 (CHG-127): cheap pre-push handoff gate. Pre-commit deliberately
+        # only WARNS (T55 TC-1257), so without this branch a push can bypass E112
+        # entirely (no pre-push hook in the source repo). No suite, no delivery
+        # shape: shift hygiene only.
+        sh_id=$(active_change_quiet)
+        [[ -n "$sh_id" ]] || sh_id=$(sed -n 's/.*"change"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/last-delivery.json" 2>/dev/null | head -1)
+        if [[ -z "$sh_id" ]]; then
+          echo "agent-gate: shift gate skipped (no delivered change)"
+        else
+          shift_gate_check "$sh_id"
+          echo "agent-gate: shift gate green ($sh_id)"
+        fi ;;
+      close)
+        # v3.90.5: `--stage close <N>` closes a numbered stage; a non-numeric
+        # argument keeps the historical meaning (explicit change id).
+        if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
+        else stage_close_check "${1:-$(active_change)}"; fi ;;
+      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
@@ -2943,7 +5157,7 @@ case "$command" in
         fi
         validate_commit_msg "$msgfile"
         ;;
-      *) die "GATE-E78: unknown stage '$stage'" ;;
+      *) unknown_stage "$stage" ;;
     esac
     ;;
   help|--help|-h)
@@ -2952,7 +5166,18 @@ Usage:
   scripts/agent-gate begin <change-id>
   scripts/agent-gate end
   scripts/agent-gate metrics
+  scripts/agent-gate session-start          # v3.90.2: write the session handshake (runtime/model/window, P0-1)
+  scripts/agent-gate plan <change-id> [--dry-run|--explain]  # v3.90.2: read-only test-scope decision (P1-1/P1-2)
+  scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)
+  scripts/agent-gate tc-index <change-id> [--write]          # v3.90.5: three-source TC index cache (P1-2)
+  scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>]  # v3.90.4: runtime-aware review plan; deep/high-cost needs USER consent
+  scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
+  scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)
+  scripts/agent-gate --stage core   # v3.92.2: stateless E150/E151/E153 (environment + red→green + independence)
+  scripts/agent-gate --stage scope  # v3.92.2: stateless E152 (change-scope budget)
+  scripts/agent-gate --stage rtvm   # v3.92.2: stateless E154 (unverified RTVM REQs must be declared)
+  scripts/agent-gate --stage shift               # v3.91.7: pre-push handoff gate (E112, no suite)
   scripts/agent-gate --stage staged
   scripts/agent-gate --stage stop               # v3.83.0: successful-verify receipt cache (key = version+cmd+tree-fingerprint+change-id, TTL 30min, rc=0 only; repos whose tests read external mutable state set AGENT_GUARD_VERIFY_CACHE=0)
   scripts/agent-gate --stage ci [--base ref]
@@ -2962,15 +5187,40 @@ Usage:
   scripts/agent-gate check-smoke                 # exit 0/1/2, read-only (v3.71.0)
   scripts/agent-gate preflight <change-id>       # exit 0/1/2, read-only probe, collects all begin- AND stop-side shape anchors in one run (v3.72.0; v3.82.0 adds the delivery shape face E85/E114/E115/E117/E46, round ledger excluded)
 
-begin requires eight non-empty artifacts under the change root:
-00-intent.md, 00-governance.json, 00.5-communication.md, 01-spec.md,
+begin narrows to the ENTRY gate in v3.89.0 (CHG-117, standards §2.17):
+00-intent.md (expected-outcome / open-questions), 00-governance.json, and
+00.5-communication.md (communication-first E83). The 01-04 artifact checks
+moved to the STATELESS STAGE GATES: `--stage spec` (01-spec REQ anchors +
+gap-free REQ numbering), `--stage design` (02 三维影响+回滚 + 03 选型比较 +
+既有范式关系 + 03.5 任务拆解), `--stage testplan` (04 用例矩阵 TC-xxx + 覆盖维度 + TC 落点清单).
+Stage gates read disk anchors only — no stage-state file, idempotent and
+re-entrant, so completing all artifacts up front passes every gate for free.
+Coverage does not shrink: staged/stop/ci keep the full artifact checks
+(收窄≠弱化). AGENT_GUARD_STAGE_GATES=0 restores the legacy begin full check
+and turns the session-gate check-mode stage predicates off (smooth-upgrade
+switch; default on).
+
+Unaccounted source-change gate (v3.89.0, CHG-117, standards §2.17.2b signal
+③): `--stage staged` scans the staged diff, `--stage stop` scans the merged
+worktree face (git status --porcelain); source-path changes (is_code_path
+face) with no active change and no same-day defect batch die GATE-E125.
+Bypass: AGENT_GUARD_ALLOW_UNACCOUNTED=1 — the bypass prints a WARN line and
+lands a GATE-E125BYPASS row in the friction ledger; the justification is owed
+to 09「重要上下文」. This check never consults AGENT_GUARD_SKIP_VERIFY (that
+env still only waives the verification_command run); session-gate idle passes
+the internal parent-process marker AGENT_GUARD_SKIP_VERIFY_CONTEXT=idle to
+state that the unaccounted check must run regardless of any skip semantics.
+
+begin requires the entry artifacts under the change root (v3.89.0 entry gate;
+AGENT_GUARD_STAGE_GATES=0 requires all eight):
+00-intent.md, 00-governance.json, 00.5-communication.md (+ 01-spec.md,
 02-code-impact-analysis.md, 03-modification-plan.md, 03.5-tasks.md,
-04-test-scripts.md. It also enforces
+04-test-scripts.md under the legacy full check). It also enforces
 the project masters (v3.35.0, standards §1.3): all thirteen docs/project/ files
 must exist (escape hatch AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a
 recorded justification). It also enforces
 A-layer content checks (standards §2.5): 00-intent.md must contain the
-expected-outcome and open-questions sections; 00.5-communication.md must
+expected-outcome and open-questions sections (entry gate); 00.5-communication.md must
 carry a non-empty user-overall-confirmation record (v3.52.0 communication-
 first gate, §2.17.2d; L0 single-line declaration allowed); 01-spec.md must use REQ-
 numbering; 02 must cover business impact, risk and rollback; 03-modification-
@@ -2978,7 +5228,10 @@ plan.md must use DES- numbering plus option comparison; 03.5-tasks.md must
 carry dependencies/milestones plus a review-input (评审输入) field, or an
 explicit no-breakdown exemption; 04-test-
 scripts.md must use TC- numbering, a coverage-dimension column, and SC-
-scenario numbering. Hollow skeletons fail.
+scenario numbering. Hollow skeletons fail. The 01-04 faces are asserted by
+the stage gates at their §2.16.2 stage and re-asserted by staged/stop/ci
+(v3.89.0 split; the legacy AGENT_GUARD_STAGE_GATES=0 mode keeps them at
+begin).
 
 commit-msg attribution (v3.5.0): a code-bearing commit message must
 reference its change id (e.g. 'feat: CHG-123 implement ...'); the referenced
