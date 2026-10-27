@@ -3225,8 +3225,12 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
   diffh=$(plan_diff_hash)
   [[ -n "$diffh" ]] || diffh="unavailable"
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
-  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s","deferred":%s,"wasted":%s,%s}' \
-    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis" "$deferred" "$(json_arr "$wasted_csv")" "$judges"
+  # v3.91.4 (2026-10-27 二次裁定): the user owns the time decision. A narrowed/AI
+  # scope is only valid with the user's recorded choice; empty is explicit.
+  local scope
+  scope=$(printf '%s' "${AGENT_GUARD_SCOPE_CONFIRM:-}" | tr -d '\n\r"')
+  printf '{"engine_version":"adapt/v0","decided_at":"%s","diff_hash":"sha256:%s","budget_s":%s,"chosen":"%s","predicted_s":%s,"source":"%s","resolution_rate":"%s","gaps":%s,"judgment":"%s","judgment_reviewer":"%s","judgment_basis":"%s","scope_confirmed":"%s","deferred":%s,"wasted":%s,%s}' \
+    "$now" "$diffh" "$budget" "$secs" "$pred" "$src" "$rate" "${gap:-[]}" "$judgment" "$j_reviewer" "$j_basis" "$scope" "$deferred" "$(json_arr "$wasted_csv")" "$judges"
 }
 
 plan_strip_decision() { # <file> — drop a top-level "decision":{...} key with brace matching
@@ -3697,13 +3701,22 @@ plan_consume_check() { # <id>
   reviews=$(plan_decision_value "$d" reviews)
   # v3.91.0 (CHG-127, G12): a declared hard rule (or H7) must be covered by a
   # FULL run; a narrowed selection with must rules is a contract violation.
-  local must_csv chosen_now judgment_now
+  local must_csv chosen_now judgment_now scope_now
   must_csv=$(sed -n 's/.*"must":\[\([^]]*\)\].*/\1/p' "$d/00-governance.json" 2>/dev/null | tr -d '"' | tr ',' '\n' | grep -E '^H[0-9]+$' | tr '\n' ',' | sed 's/,$//' || true)
   chosen_now=$(plan_decision_value "$d" chosen)
   judgment_now=$(plan_decision_value "$d" judgment)
+  scope_now=$(plan_decision_value "$d" scope_confirmed)
+  # v3.91.4 (2026-10-27 二次裁定): AI may PROPOSE a narrowed scope, but the TIME
+  # decision belongs to the user. An `judgment=ai` decision without a recorded
+  # user confirmation is therefore incomplete — same code, stronger condition.
+  if [[ "$judgment_now" == "ai" && -z "$scope_now" ]]; then
+    [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
+      && die "GATE-E148: $id AI-narrowed scope has no user confirmation — expected: decision.scope_confirmed='<user>@<ISO>' (set AGENT_GUARD_SCOPE_CONFIRM before plan); allowed: re-plan after the user chooses (adopt/up/down), or keep judgment=engine with FULL; fix: ask the user, then re-plan; ref: 2026-10-27 ruling / §3.1"
+    echo "agent-gate: WARN — AI scope without user confirmation for $id (E148 in strict)" >&2
+  fi
   if [[ -n "$must_csv" && "$chosen_now" != "FULL" && "$judgment_now" != "ai" ]]; then
     [[ "${AGENT_GUARD_PLAN_STRICT:-0}" == "1" ]] \
-      && die "GATE-E148: $id hard rule(s) $must_csv require a FULL run but decision.chosen='$chosen_now' and judgment is not AI — expected: chosen=FULL, or an AI scope judgment with AGENT_GUARD_SUITE_AI_SECTIONS/BASIS/REVIEWER; allowed: re-plan with evidence (2026-10-27 ruling) or run FULL; fix: re-plan and run the chosen set; ref: CHG-127 G12"
+      && die "GATE-E148: $id hard rule(s) $must_csv require a FULL run but decision.chosen='$chosen_now' and judgment is not AI — expected: chosen=FULL, or an AI scope judgment WITH user confirmation (AGENT_GUARD_SUITE_AI_* + AGENT_GUARD_SCOPE_CONFIRM); allowed: re-plan with evidence after the user chooses, or run FULL; fix: re-plan and run the chosen set; ref: CHG-127 G12 / 2026-10-27 ruling"
     echo "agent-gate: WARN — hard rule(s) $must_csv not covered by chosen='$chosen_now' (G12)" >&2
   fi
 
@@ -3893,7 +3906,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.3" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.91.4" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -3939,7 +3952,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.3","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.91.4","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi

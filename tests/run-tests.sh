@@ -3233,18 +3233,33 @@ out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); repo
 check_output "T83 G3 untracked names the code" 'GATE-E147' "$out"
 rm -f .t83-untracked.zzz
 scripts/agent-gate plan CHG-970 >/dev/null 2>&1
+# v3.91.4 (2026-10-27 二次裁定): AI proposes, the USER confirms. The confirmation
+# is a recorded field, not a post-hoc label.
+AGENT_GUARD_SUITE_AI_SECTIONS="T83" \
+AGENT_GUARD_SUITE_AI_BASIS="T83 fixture diff touches only assertions and fixtures; no product runtime path" \
+AGENT_GUARD_SUITE_AI_REVIEWER="WorkBuddy / test-model / ses-t83-ai" \
+AGENT_GUARD_SCOPE_CONFIRM="user:t83@2026-10-27T00:00:00Z" \
+scripts/agent-gate plan CHG-970 >/dev/null 2>&1
+check_output "T83 G12 plan records the user scope confirmation" '"scope_confirmed":"user:t83@' "$(cat docs/changes/CHG-970/00-governance.json)"
 # G12: a declared hard rule with a narrowed chosen is a contract violation (strict).
 cat > docs/changes/CHG-970/00-governance.json <<'EOF'
 {"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","stage_list":"test,delivery","artifact_list":"05-test-results.md,09-changelog.md","must":["H7"],"reviews":"min=1;independent=true","masters":""}}
 EOF
 out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 G12 must rule without FULL dies E148" 1 "$?"
 check_output "T83 G12 names the code" 'GATE-E148' "$out"
-# 2026-10-27 user ruling: the AI may narrow a must rule WITH evidence (judgment=ai).
+# 2026-10-27 ruling: the AI may PROPOSE narrowing a must rule, but only WITH
+# evidence AND the user's recorded confirmation.
+cat > docs/changes/CHG-970/00-governance.json <<'EOF'
+{"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","judgment":"ai","scope_confirmed":"user:t83@2026-10-27T00:00:00Z","stage_list":"test,delivery","artifact_list":"05-test-results.md,09-changelog.md","must":["H7"],"reviews":"min=1;independent=true","masters":""}}
+EOF
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
+report "T83 G12 AI judgment with user confirmation narrows a must rule" 0 "$(printf '%s' "$out" | grep -c 'GATE-E148' || true)"
+# Same AI decision WITHOUT the user confirmation is incomplete (strict).
 cat > docs/changes/CHG-970/00-governance.json <<'EOF'
 {"change_id":"CHG-970","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-83","test_owner":"claude/s-t","review_owner":"claude/s-r","decision":{"engine_version":"adapt/v0","chosen":"T83","judgment":"ai","stage_list":"test,delivery","artifact_list":"05-test-results.md,09-changelog.md","must":["H7"],"reviews":"min=1;independent=true","masters":""}}
 EOF
-out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1)
-report "T83 G12 AI judgment narrows a must rule" 0 "$(printf '%s' "$out" | grep -c 'GATE-E148' || true)"
+out=$(AGENT_GUARD_PLAN_STRICT=1 scripts/agent-gate preflight CHG-970 2>&1); report "T83 G12 AI judgment without user confirmation dies E148" 1 "$?"
+check_output "T83 G12 missing confirmation names the code" 'GATE-E148' "$out"
 # ---- TC-1555: self-bootstrap VERIFIED WITH CHG-124's real artifacts (copy only) ----
 S83=$(mktemp -d "${TMPDIR:-/tmp}/selfboot.XXXXXX")
 mkdir -p "$S83/scripts" "$S83/docs/changes"

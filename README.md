@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v3.91.3-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v3.91.4-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -87,7 +87,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
 | **Release Integrity + Evidence Reuse** | One version authority (`scripts/release.sh check\|bump`) verifies every carrier and rewrites only declared sites; CI runs the full suite once, uploads a tree-keyed receipt, and reuses it for hard audit gates; a workspace suite lock admits one full run at a time and reclaims dead owners |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1551 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (1554 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics` emits read-only JSON Lines pipeline metrics from git history — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -208,7 +208,7 @@ Command reference (invoked by the above; manual runs are for debugging):
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
 | `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md`, `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing verification command (L0: 04.5/05 may be §1.1 single-line declarations, v3.44.0); changelog REQ ids must be backfilled in `01.5-rtvm-matrix.md` (Gate 4 closure) |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff and runs the real verification command |
-| `plan <change-id> [--explain\|--dry-run]` / `plan --refresh-profile` | Read-only adaptive decision engine (v3.90.2+, hardened in v3.91.0): reads the profile + diff + cost ledger and writes `decision` into `00-governance.json` (sections, predicted seconds, CAB `deferred`/`wasted`, nested artifacts/stages/masters, `must`, TC resolution rate). `--explain` prints the cost/coverage account; `--refresh-profile` reports missing profile keys. Off switch: `AGENT_GUARD_ADAPT=0` |
+| `plan <change-id> [--explain\|--dry-run]` / `plan --refresh-profile` | Read-only adaptive decision engine (v3.90.2+, hardened in v3.91.0): reads the profile + diff + cost ledger and writes `decision` into `00-governance.json` (sections, predicted seconds, CAB `deferred`/`wasted`, nested artifacts/stages/masters, `must`, TC resolution rate). The decision is a **proposal**: the agent must show the card plus three options (adopt / up / down) and the user chooses; a narrowed AI scope is only valid with `AGENT_GUARD_SCOPE_CONFIRM` recorded as `decision.scope_confirmed`. `--explain` prints the cost/coverage account; `--refresh-profile` reports missing profile keys. Off switch: `AGENT_GUARD_ADAPT=0` |
 | `status` | Prints the effective enforcement face — runtime, hook-protocol family, layers, `enforcement=hook\|handshake`, handshake presence and the current model/context window (v3.91.0) |
 | `resume <change-id>` | Restores a shifted session from `handoff.md` + `decision` and prints the next steps; read-only, usage error is `GATE-E149` |
 | `baseline <change-id> [--write]` / `tc-index <change-id> [--write]` | P0-0 five-number baseline snapshot and P1-2 three-source TC index (04 matrix + script self-declarations + RTVM); the index is a target-repo cache, never a contract artifact |
@@ -381,7 +381,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.91.3 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v3.91.4 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
@@ -465,7 +465,7 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 | Job | What it does |
 |---|---|
 | **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 646) |
-| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1551 golden-case assertions) in throwaway git repos; bash + git only |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1554 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
 **There is no soft mode and no double run in CI.** golden-case runs the suite once with `-j 4` under a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`, so a regression fails loudly instead of drifting into the job timeout) and uploads `.agent-state/last-suite-receipt.json` for human forensics. source-audit no longer consumes that artifact: A3/A3c/A10 read the **committed baselines** and run as hard gates (no `AGENT_GUARD_AUDIT_SOFT`), which is also why it needs no dependency on the suite job and runs in parallel with it. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
@@ -504,7 +504,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v3.91.3 | **Last Updated:** 2026-10-26 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v3.91.4 | **Last Updated:** 2026-10-26 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 
