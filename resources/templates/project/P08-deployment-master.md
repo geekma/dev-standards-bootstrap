@@ -1,4 +1,7 @@
 # P08 · 部署总册（Deployment Master）
+> 交付触发点：部署拓扑/环境变更时；下游输入：06.5 部署配置与发布检查单
+> 背景输入：P02 架构 + P04 数据 + 既有 P08
+
 
 > **总册编号：P08** ｜ 落点：`docs/project/P08-deployment-master.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

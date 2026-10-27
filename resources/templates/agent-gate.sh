@@ -484,29 +484,29 @@ scaffold_body() { # <doc> <id> <risk> <placement>
   esac
   case "$doc" in
     00-intent.md)
-      printf '# %s Intent\n\n- **目录落位**：%s\n- **来源**：<!-- FILL: 一句话来源（用户裁定/事故/评审发现） -->\n- **范围**：① <!-- FILL: 改动面 1 --> ② <!-- FILL: 改动面 2 -->\n- **不做**：<!-- FILL: 显式排除项 -->\n\n### 预期结果\n\n- <!-- FILL: 可验收结果（与 04 的 TC 对应） -->\n\n### 开放问题\n\n- <!-- FILL: 无 或 开放问题清单 -->\n' "$id" "$placement" ;;
+      printf '# %s Intent\n\n> 交付触发点：变更立项时（00.5 确认前）；下游输入：00.5 沟通稿与 01-spec\n> 背景输入：待填（已读 P12 产品上下文 / P01 需求册 / 相关历史 09 教训）\n\n- **目录落位**：%s\n- **来源**：<!-- FILL: 一句话来源（用户裁定/事故/评审发现） -->\n- **范围**：① <!-- FILL: 改动面 1 --> ② <!-- FILL: 改动面 2 -->\n- **不做**：<!-- FILL: 显式排除项 -->\n\n### 预期结果\n\n- <!-- FILL: 可验收结果（与 04 的 TC 对应） -->\n\n### 开放问题\n\n- <!-- FILL: 无 或 开放问题清单 -->\n' "$id" "$placement" ;;
     00.5-communication.md)
-      printf '# %s Communication（00.5）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
+      printf '# %s Communication（00.5）\n\n> 交付触发点：Round-1 沟通完成、用户整体确认前；下游输入：01-spec 起的全部产物正文\n> 背景输入：待填（00-intent + 目标功能目录既有文档 + P01/P12）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
     00-governance.json)
       printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
     01-spec.md)
-      printf '# %s Spec\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+      printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     02-code-impact-analysis.md)
-      printf '# %s Code Impact Analysis\n\n### 改动面\n\n| 文件 | 层 | 影响 |\n|---|---|---|\n| <!-- FILL --> | <!-- FILL: payload/源层 --> | <!-- FILL --> |\n\n### 业务影响\n\n<!-- FILL: 目标仓/源仓/治理链 -->\n\n### 历史相似检索\n\n- 检索词：<!-- FILL -->——命中：<!-- FILL -->\n\n### 风险
+      printf '# %s Code Impact Analysis\n\n> 交付触发点：design 阶段交付；下游输入：03（选型）与 04（测试计划）\n> 背景输入：待填（01-spec 的 REQ-xxx + P12 业务上下文）\n\n### 改动面\n\n| 文件 | 层 | 影响 |\n|---|---|---|\n| <!-- FILL --> | <!-- FILL: payload/源层 --> | <!-- FILL --> |\n\n### 业务影响\n\n<!-- FILL: 目标仓/源仓/治理链 -->\n\n### 历史相似检索\n\n- 检索词：<!-- FILL -->——命中：<!-- FILL -->\n\n### 风险
 
 <!-- FILL: 行为风险/回归风险/等级（L0~L3） -->
 
 ### 延伸发现\n\n- <!-- FILL: 无 或 发现 -->\n\n### 回滚策略\n\n- <!-- FILL: revert 面/触发条件/版本链回退 -->\n' "$id" ;;
     03-modification-plan.md)
-      printf '# %s Modification Plan\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
+      printf '# %s Modification Plan\n\n> 交付触发点：design 阶段交付；下游输入：03.5（任务拆解）与 04（测试计划）\n> 背景输入：待填（01-spec 的 REQ-xxx + 02 的业务影响/风险/回滚）\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     03.5-tasks.md)
-      printf '# %s Tasks\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
+      printf '# %s Tasks\n\n> 交付触发点：design 阶段交付；下游输入：开发实施顺序与 04（测试计划）\n> 背景输入：待填（01-spec + 02 + 03 的 DES-xxx）\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
     01.5-rtvm-matrix.md)
       # v3.91.5: the RTVM is scaffolded (the matrix is a contract artifact), but
       # placeholders do NOT satisfy the stage gates — each stage must fill its row.
-      printf '# %s RTVM 矩阵（四维闭环总表）\n\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 / 脚本 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n| <REQ-xxx> | <!-- FILL: 需求简述 --> | <DES-xxx> | <!-- FILL: 设计方案 --> | <T-xxx> | <CHG-xxx> / <!-- FILL: 文件:行号 --> | <TC-xxx> | <!-- FILL: 命令 --> | <!-- FILL: PASS/FAIL --> |\n\n> 回填时机（v3.91.5 机检）：spec 交付填 REQ；design 交付填 DES；tasks 交付填 TASK；testplan 交付填 TC。后补即被阶段门拒绝。\n' "$id" ;;
+      printf '# %s RTVM 矩阵（四维闭环总表）\n\n> 交付触发点：随阶段交付逐维回填（spec=REQ/design=DES+tasks=T/testplan=TC）；下游输入：阶段门与收口审计\n> 背景输入：待填（01-spec 的 REQ 行 + P01 需求册）\n\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 / 脚本 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n| <REQ-xxx> | <!-- FILL: 需求简述 --> | <DES-xxx> | <!-- FILL: 设计方案 --> | <T-xxx> | <CHG-xxx> / <!-- FILL: 文件:行号 --> | <TC-xxx> | <!-- FILL: 命令 --> | <!-- FILL: PASS/FAIL --> |\n\n> 回填时机（v3.91.5 机检）：spec 交付填 REQ；design 交付填 DES；tasks 交付填 TASK；testplan 交付填 TC。后补即被阶段门拒绝。\n' "$id" ;;
     04-test-scripts.md)
-      printf '# %s Test Scripts\n\n场景：%s <!-- FILL: 场景名 -->。\n\n| 编号 | TC | SC | 覆盖维度 | 命令 | 期望 | REQ | 来源 |\n|---|---|---|---|---|---|---|---|\n| T1 | %s | %s | <!-- FILL --> | <!-- FILL --> | <!-- FILL --> | %s | 本次引入 |\n\n## TC 落点清单（REQ-1091，v3.71.0）\n\n- %s → <!-- FILL: 文件/节 -->\n' "$id" "$nxt_sc" "$nxt_tc" "$nxt_sc" "$nxt_req" "$nxt_tc" ;;
+      printf '# %s Test Scripts\n\n> 交付触发点：testplan 阶段交付；下游输入：开发（TDD）与 05/07\n> 背景输入：待填（02 业务影响 + 03 的 DES-xxx + 01.5 的 DES/T 行）\n\n场景：%s <!-- FILL: 场景名 -->。\n\n| 编号 | TC | SC | 覆盖维度 | 命令 | 期望 | REQ | 来源 |\n|---|---|---|---|---|---|---|---|\n| T1 | %s | %s | <!-- FILL --> | <!-- FILL --> | <!-- FILL --> | %s | 本次引入 |\n\n## TC 落点清单（REQ-1091，v3.71.0）\n\n- %s → <!-- FILL: 文件/节 -->\n' "$id" "$nxt_sc" "$nxt_tc" "$nxt_sc" "$nxt_req" "$nxt_tc" ;;
   esac
 }
 
@@ -939,6 +939,33 @@ rtvm_has() { # <file> <REQ|DES|T|TC> -> 0 when a numbered id of that dimension e
   esac
 }
 
+# v3.91.6 (CHG-127, user directive 2026-10-27): every artifact declares BOTH its
+# delivery trigger (when it is produced + which stage consumes it) and its
+# background input (which upstream artifact + business/requirement context was
+# actually read before the stage started). PMP chain rule — the next stage's
+# input IS the previous stage's output — is enforced here, not narrated.
+marker_text() { # <file> <label> -> the marker line's payload (empty when absent)
+  # Use `(：|:)` alternation, never a multibyte bracket class — the latter
+  # silently fails under LANG=C (T67 TC-1433).
+  sed -nE "s/^[[:space:]]*>?[[:space:]]*([-*][[:space:]]*)?${2}(：|:)[[:space:]]*(.*)$/\\3/p" "$1" 2>/dev/null | head -1
+}
+
+delivery_markers_ok() { # <file> -> 0 when 交付触发点 + 背景输入 both carry real text
+  local f="$1" t b
+  [[ -s "$f" ]] || return 1
+  t=$(marker_text "$f" "交付触发点")
+  b=$(marker_text "$f" "背景输入")
+  [[ -n "$t" && -n "$b" ]] || return 1
+  # Placeholders are NOT declarations: scaffold text and hand-written TODO
+  # shapes must be filled before the stage gate opens.
+  if printf '%s\n%s\n' "$t" "$b" | grep -qE 'FILL|待填|<[^>]*>'; then return 1; fi
+  return 0
+}
+
+marker_cites() { # <file> <upstream-anchor ERE> -> 0 when 背景输入 names that input
+  marker_text "$1" "背景输入" | grep -qE "$2"
+}
+
 stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anchors only
   local stage="$1" id d gaps
   id=$(active_change)
@@ -952,6 +979,10 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
       gaps=$(req_seq_gaps "$d/01-spec.md" REQ)
       [[ "$gaps" == 0 ]] \
         || stage_gate_fail "G-规格门 (spec)" "REQ numbering has $gaps gap(s) inside the file's own min..max range" "continuous REQ rows in 01-spec (no gaps, standards §1.2)"
+      delivery_markers_ok "$d/01-spec.md" \
+        || stage_gate_fail "G-规格门 (spec)" "01-spec has no 交付触发点/背景输入 declaration (PMP input contract)" "two header lines: '> 交付触发点：…；下游输入：…' and '> 背景输入：…（P01/P12/业务）'"
+      marker_cites "$d/01-spec.md" 'P01|P12|业务' \
+        || stage_gate_fail "G-规格门 (spec)" "01-spec 背景输入 names no business/requirement context" "a 背景输入 line citing P01 需求册 / P12 产品上下文 / 业务背景"
       ;;
     design)
       # v3.91.5: design may not start before the REQUIREMENTS are on disk and
@@ -974,6 +1005,17 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
         || stage_gate_fail "G-设计门 (design)" "03 has no option-comparison (备选/选型) content" "the 03 选型比较 section (≥2 candidates)"
       sed 's/<!--[^>]*-->//g' "$d/03-modification-plan.md" 2>/dev/null | grep -q "既有范式关系" \
         || stage_gate_fail "G-设计门 (design)" "03 missing 既有范式关系 section or declaration" "the 03 既有范式关系 section (E122 anchor)"
+      # v3.91.6: the design artifacts must prove they were fed by the spec stage.
+      for f in 01.5-rtvm-matrix.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md; do
+        delivery_markers_ok "$d/$f" \
+          || stage_gate_fail "G-设计门 (design)" "$f lacks 交付触发点/背景输入 (PMP input contract)" "the two header lines on $f (交付触发点 + 背景输入)"
+      done
+      for f in 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md; do
+        marker_cites "$d/$f" '01-spec|REQ-[0-9]' \
+          || stage_gate_fail "G-设计门 (design)" "$f 背景输入 does not cite the spec-stage output" "a 背景输入 line citing 01-spec / REQ-xxx"
+      done
+      marker_cites "$d/01.5-rtvm-matrix.md" 'P01|01-spec|REQ-[0-9]' \
+        || stage_gate_fail "G-设计门 (design)" "01.5 背景输入 does not cite the requirement baseline" "a 背景输入 line citing P01 / 01-spec / REQ-xxx"
       ;;
     testplan)
       # v3.91.5: the test plan may not start before design + tasks are delivered,
@@ -991,6 +1033,14 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
       grep -q "覆盖维度" "$d/04-test-scripts.md" \
         || stage_gate_fail "G-测试门 (testplan)" "04 has no coverage-dimension (覆盖维度) column" "04 用例矩阵 with a 覆盖维度 column"
       tc_landing_check "$d/04-test-scripts.md" 1
+      # v3.91.6: the test plan must cite the design/task deliverables it consumed,
+      # and the upstream artifacts must already carry their own declarations.
+      for f in 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+        delivery_markers_ok "$d/$f" \
+          || stage_gate_fail "G-测试门 (testplan)" "$f lacks 交付触发点/背景输入 (PMP input contract)" "the two header lines on $f (交付触发点 + 背景输入)"
+      done
+      marker_cites "$d/04-test-scripts.md" '02|03|DES-[0-9]|REQ-[0-9]' \
+        || stage_gate_fail "G-测试门 (testplan)" "04 背景输入 does not cite the design-stage output" "a 背景输入 line citing 02 / 03 / DES-xxx / REQ-xxx"
       ;;
     *) unknown_stage "$stage" ;;
   esac
@@ -3958,7 +4008,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.91.5" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.91.6" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4004,7 +4054,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.91.5","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.91.6","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi

@@ -1,4 +1,7 @@
 # P04 · 数据字典（Data Dictionary）
+> 交付触发点：数据模型/字典变更时；下游输入：02 影响分析、03 方案与 06.5 DB 变更
+> 背景输入：P02 架构 + P03 接口 + 既有 P04
+
 
 > **总册编号：P04** ｜ 落点：`docs/project/P04-data-dictionary.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

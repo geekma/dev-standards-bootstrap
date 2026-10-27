@@ -1,4 +1,7 @@
 # P10 · 变更总日志（Change Ledger）
+> 交付触发点：每个变更收口后登记；下游输入：下一变更的背景检索与审计
+> 背景输入：09-changelog 的 CHG 条目 + P11 决策
+
 
 > **总册编号：P10** ｜ 落点：`docs/project/P10-change-ledger.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

@@ -1,4 +1,7 @@
 # P07 · 测试结论总册（Test Verdicts）
+> 交付触发点：每次测试结论产出后（阶段 7/8 回填）；下游输入：07 评审与 09 收口
+> 背景输入：04 用例 + 05 结果 + P06 策略
+
 
 > **总册编号：P07** ｜ 落点：`docs/project/P07-test-verdicts.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

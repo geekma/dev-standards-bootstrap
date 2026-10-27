@@ -1,4 +1,7 @@
 # P09 · 风险与遗留登记册（Risk Register & Follow-ups）
+> 交付触发点：风险/遗留项新增或关闭时；下游输入：02 风险节、03 选型与 09 未动项
+> 背景输入：P01 需求 + P02 架构 + 相关 09 教训
+
 
 > **总册编号：P09** ｜ 落点：`docs/project/P09-risk-register.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

@@ -1,4 +1,7 @@
 # P11 · 决策总册（Decision Log / ADR Index）
+> 交付触发点：架构/技术决策做出时；下游输入：02/03 的选型依据与下一变更背景
+> 背景输入：01-spec 需求 + 02 影响 + 相关历史决策
+
 
 > **总册编号：P11** ｜ 落点：`docs/project/P11-decision-log.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

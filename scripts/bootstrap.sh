@@ -465,8 +465,23 @@ transform_src() { # src -> stdout
       -e "s|docs/|$DOCS_DIR/|g" \
       "$1"
 }
+# v3.91.6: the project-profile block appended to .agent-governance.yml is
+# USER-OWNED (write_profile_section never rewrites it). Re-installing therefore
+# compared "template" against "template + profile" and aborted as a CONFLICT
+# (T14 idempotency red since P1-4). Compare the managed part only.
+profile_stripped() { # <yml> — drop the profile block AND the blank line before it
+  awk '/^# v3\.90\.2 \(CHG-124, P1-4\): project profile/{exit} {l[NR]=$0; if (NF) last=NR}
+       END{for (i=1;i<=last;i++) print l[i]}' "$1"
+}
 same_as_src() { # src dest
-  if [[ "$PATHS_CUSTOM" == 1 ]]; then cmp -s <(transform_src "$1") "$2"; else cmp -s "$1" "$2"; fi
+  if [[ "$(basename "$1")" == "agent-governance.yml" && -f "$2" ]]; then
+    cmp -s <(if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1"; else cat "$1"; fi) \
+           <(profile_stripped "$2")
+  elif [[ "$PATHS_CUSTOM" == 1 ]]; then
+    cmp -s <(transform_src "$1") "$2"
+  else
+    cmp -s "$1" "$2"
+  fi
 }
 copy_src() { # src dest
   if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1" > "$2"; else cp "$1" "$2"; fi

@@ -1,4 +1,7 @@
 # P01 · 总需求册（Requirements Master）
+> 交付触发点：需求基线变更时（spec 阶段回填）；下游输入：01-spec/01.5 与 design
+> 背景输入：P12 产品上下文 + P00 章程 + 既有 P01 版本
+
 
 > **总册编号：P01** ｜ 落点：`docs/project/P01-requirements-master.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

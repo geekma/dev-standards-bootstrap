@@ -414,7 +414,7 @@ A48 rescore workflow push paths list nine installed anchors (CHG-102)
 A48 run-tests honors the receipt path override (CHG-113)
 A48 SKILL never names a shipped script with a .sh suffix (CHG-102)
 A48 source dogfood entry ships and parses (CHG-113)
-A48 standards body did not grow past the v3.80.0 ratchet (CHG-107; growth requires explicit recalibration)
+A48 standards body ratchet (CHG-107; recalibrated v3.91.6 CHG-127 +717B for the stage input contract)
 A48 suite usage line exposes -j (CHG-103)
 A48 suite-lock lib sources cleanly
 A48 update-assertion-count honors the receipt path override (CHG-113)
@@ -524,9 +524,12 @@ A8 numbering checks are digit-anchored (FU-008)
 A8 RTVM glob covers nested change-dir matrices (FU-019)
 A8 stage-2 impact checks are structure-anchored (FU-008)
 A9 change-id occupancy-verification clause present (FU-016)
+agent-gate enforces the marker contract (CHG-127)
 agent-gate names missing defect document
+all template md files declare 交付触发点 (CHG-127)
 bug doc-set templates present (6 files)
 bugfix-log placeholder not matched by ^### BUG-[0-9]
+DS carries the stage input contract (CHG-127)
 DS pointer to playbook present
 DS section4 carries no Bug backfill copy (single source in entry/09)
 governance-state template declares empty bug_ref
@@ -607,6 +610,7 @@ route state-trigger-audit in METHODOLOGY.md
 route state-trigger-audit in README.md
 route state-trigger-audit in README.zh-CN.md
 route state-trigger-audit in SKILL.md
+scaffold emits delivery markers (CHG-127)
 section3 checklist extraction non-empty (防恒真空转)
 section3 is the sole authority (section4 carries no duplicate checklist)
 section4 archive section references §3 verbatim-copy rule
@@ -617,6 +621,7 @@ skill frontmatter version == footer version
 SKILL.md wires audit script
 stage A-layer command quickref table present
 stage-8 defect-fix special check
+stage/project/bug templates declare 背景输入 (CHG-127)
 standards §2.14 rule points to STANDARDS_CHANGELOG
 standards body carries no historical upgrade-log rows
 standards changelog file exists and non-empty

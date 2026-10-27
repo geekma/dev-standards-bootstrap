@@ -1,4 +1,7 @@
 # P02 · 总架构册（Architecture Master）
+> 交付触发点：架构/流程/时序变更时（design 阶段回填）；下游输入：02 影响分析与 03 方案
+> 背景输入：P01 需求 + 既有 P02 + P11 决策
+
 
 > **总册编号：P02** ｜ 落点：`docs/project/P02-architecture-master.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

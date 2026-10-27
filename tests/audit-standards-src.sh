@@ -259,6 +259,20 @@ for t in bug-diagnosis.md bug-impact.md bug-test-plan.md bug-matrix.md bug-confi
 done
 report "bug doc-set templates present (6 files)" 6 "$tpl6"
 
+# ---------- 阶段输入契约：交付触发点 / 背景输入 全覆盖（v3.91.6，CHG-127） ----------
+# PMP 要求下阶段输入=上阶段产出：模板自带标记，gate 再按阶段机检引用面。
+# 聚合断言（总数 == 带标记数）比逐个文件名断言更抗模板增删，且基线数字由生成器同步。
+tpl_md_total=$(find "$TPL" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')
+tpl_md_marked=$(grep -rl '交付触发点：' "$TPL" --include='*.md' 2>/dev/null | wc -l | tr -d ' ')
+report "all template md files declare 交付触发点 (CHG-127)" "$tpl_md_total" "$tpl_md_marked"
+tpl_bg_total=$(( $(find "$TPL/entry" "$TPL/project" -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ') \
+  + $(find "$TPL" -maxdepth 1 -name 'bug-*.md' -type f 2>/dev/null | wc -l | tr -d ' ') ))
+tpl_bg_marked=$( { grep -rl '背景输入：' "$TPL/entry" "$TPL/project" --include='*.md' 2>/dev/null || true; grep -l '背景输入：' "$TPL"/bug-*.md 2>/dev/null || true; } | wc -l | tr -d ' ')
+report "stage/project/bug templates declare 背景输入 (CHG-127)" "$tpl_bg_total" "$tpl_bg_marked"
+at_least "DS carries the stage input contract (CHG-127)" 1 "$STD" '阶段输入契约'
+at_least "agent-gate enforces the marker contract (CHG-127)" 1 "$TPL/agent-gate.sh" 'delivery_markers_ok'
+at_least "scaffold emits delivery markers (CHG-127)" 1 "$TPL/agent-gate.sh" '交付触发点：变更立项时'
+
 # ---------- 关键词矩阵：最低文档集八类映射 + 编码记录 04.5 + 缺陷六件套（v3.7.0 引入） ----------
 at_least "keyword 最低文档集八类映射 in DEVELOPMENT_STANDARDS" 1 "$STD" "最低文档集八类映射"
 at_least "keyword eight-category in README en" 1 "$RM_EN" "eight-category"
@@ -1466,7 +1480,7 @@ at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/sc
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body did not grow past the v3.80.0 ratchet (CHG-107; growth requires explicit recalibration)" 1 "$([[ "$std_bytes" -le 167933 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; recalibrated v3.91.6 CHG-127 +717B for the stage input contract)" 1 "$([[ "$std_bytes" -le 168650 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'

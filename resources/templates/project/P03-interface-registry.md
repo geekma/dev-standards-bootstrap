@@ -1,4 +1,7 @@
 # P03 · 接口索引册（Interface Registry）
+> 交付触发点：接口新增/变更/弃用时；下游输入：03 方案、04 接口用例与 06.5 配置
+> 背景输入：P01 需求 + P02 架构 + 既有 P03
+
 
 > **总册编号：P03** ｜ 落点：`docs/project/P03-interface-registry.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

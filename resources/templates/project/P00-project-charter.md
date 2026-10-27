@@ -1,4 +1,7 @@
 # P00 · 项目章程（Project Charter）
+> 交付触发点：项目立项/章程变更时；下游输入：P01 需求基线、P05 任务计划与 00-intent 的范围判定
+> 背景输入：P12 产品上下文 + 业务目标与干系人约束
+
 
 > **总册编号：P00** ｜ 落点：`docs/project/P00-project-charter.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

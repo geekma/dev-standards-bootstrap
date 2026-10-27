@@ -1,4 +1,7 @@
 # P12 · 产品上下文册（Product Context Master）
+> 交付触发点：产品定位/业务场景变化时；下游输入：全部阶段的需求与业务背景（00-intent 起）
+> 背景输入：P00 章程 + P01 需求 + 业务与合规约束
+
 
 > **总册编号：P12** ｜ 落点：`docs/project/P12-product-context.md` ｜ 细节唯一权威：`resources/methodologies/project-masters.md`
 > **独立完整声明**：本册自含全部必含章节正文；跨册仅以引用链接补充，禁止唯一内容寄存他册；单册可独立评审。

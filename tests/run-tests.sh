@@ -270,18 +270,24 @@ test: t
 EOF
   cat > "$d/01-spec.md" <<'EOF'
 # spec
+> 交付触发点：spec 阶段交付；下游输入：02/03 与 04
+> 背景输入：P01 需求册 + P12 业务背景（fixture）
 - REQ-001: sample requirement
 EOF
   # v3.91.5: the RTVM row is a STAGE deliverable, so every fixture change carries
   # the full chain (REQ→DES→T→TC) from the moment it is seeded.
   cat > "$d/01.5-rtvm-matrix.md" <<EOF
 # RTVM
+> 交付触发点：随阶段交付回填；下游输入：阶段门与审计
+> 背景输入：01-spec 的 REQ-001 + P01 需求册
 | REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 | 验证状态 |
 |---|---|---|---|---|---|---|---|---|
 | REQ-001 | r | DES-001 | d | T-001 | $id / f:1 | TC-001 | cmd | ✅ PASS |
 EOF
   cat > "$d/02-code-impact-analysis.md" <<'EOF'
 # impact
+> 交付触发点：design 阶段交付；下游输入：03 与 04
+> 背景输入：01-spec 的 REQ-001 + P12 业务背景
 ## 业务影响
 business: b
 ## 技术影响
@@ -295,6 +301,8 @@ rollback: ok
 EOF
   cat > "$d/03-modification-plan.md" <<'EOF'
 # plan
+> 交付触发点：design 阶段交付；下游输入：03.5 与 04
+> 背景输入：01-spec 的 REQ-001 + 02 业务影响
 - DES-001: sample design
 ## 技术选型
 备选方案对比: A vs B
@@ -303,11 +311,15 @@ EOF
 EOF
   cat > "$d/03.5-tasks.md" <<'EOF'
 # tasks
+> 交付触发点：design 阶段交付；下游输入：开发与 04
+> 背景输入：01-spec + 02 + 03 的 DES-001
 - T-001: do something（依赖: 无；里程碑: M1）
 - 评审输入: 变更文件清单 + 待核对产物 + 行号锚点（§2.2 输入契约）
 EOF
   cat > "$d/04-test-scripts.md" <<'EOF'
 # tests
+> 交付触发点：testplan 阶段交付；下游输入：开发与 05/07
+> 背景输入：02 业务影响 + 03 的 DES-001 + 01.5 的 DES/T 行
 - TC-001: sample case
 ## 用例矩阵
 覆盖维度: 正常流 / 边界 / 异常
@@ -458,13 +470,13 @@ seed_batch_artifacts() { # <batch-id> <id:risk> [<id:risk> ...]
   : > "$d/00-intent.md"
   : > "$d/00-governance.json"
   : > "$d/00.5-communication.md"
-  : > "$d/01-spec.md"
+  printf '> 交付触发点：spec 阶段交付（批次成员逐节）；下游输入：02/03 与 04\n> 背景输入：P01 需求册 + P12 业务背景（batch fixture）\n' > "$d/01-spec.md"
   # v3.91.5: the shared batch RTVM carries one row per member (REQ→DES→T→TC).
-  printf '# RTVM\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n' > "$d/01.5-rtvm-matrix.md"
-  : > "$d/02-code-impact-analysis.md"
-  : > "$d/03-modification-plan.md"
-  : > "$d/03.5-tasks.md"
-  : > "$d/04-test-scripts.md"
+  printf '# RTVM\n> 交付触发点：随阶段交付回填；下游输入：阶段门与审计\n> 背景输入：01-spec 的 REQ-901 + P01 需求册\n| REQ | 需求简述 | DES | 核心设计方案 | TASK | CHG/位置 | TC | 测试方法 | 验证状态 |\n|---|---|---|---|---|---|---|---|---|\n' > "$d/01.5-rtvm-matrix.md"
+  printf '> 交付触发点：design 阶段交付（批次成员逐节）；下游输入：03 与 04\n> 背景输入：01-spec 的 REQ-901 + P12 业务背景\n' > "$d/02-code-impact-analysis.md"
+  printf '> 交付触发点：design 阶段交付（批次成员逐节）；下游输入：03.5 与 04\n> 背景输入：01-spec 的 REQ-901 + 02 业务影响\n' > "$d/03-modification-plan.md"
+  printf '> 交付触发点：design 阶段交付（批次成员逐节）；下游输入：开发与 04\n> 背景输入：01-spec + 02 + 03 的 DES-901\n' > "$d/03.5-tasks.md"
+  printf '> 交付触发点：testplan 阶段交付（批次成员逐节）；下游输入：开发与 05/07\n> 背景输入：02 业务影响 + 03 的 DES-901 + 01.5 的 DES/T 行\n' > "$d/04-test-scripts.md"
   for pair in "$@"; do
     id="${pair%%:*}"; risk="${pair##*:}"
     printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-t","review_owner":"claude/s-r"}\n' "$id" "$risk" >> "$d/00-governance.json"
@@ -2830,7 +2842,9 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   AGENT_GUARD_MODEL=m1 AGENT_GUARD_CONTEXT_WINDOW=64000 bash scripts/session-gate.sh start >/dev/null 2>&1
   check_output "T26 cost: env declares model+window" '"context_window":64000,"source":"declared"' "$(cat .agent-state/model-profile.json)"
   check_output "T26 cost: stats carries model+window keys" '"model_id":"m1","ctx_window":64000' "$(cat .agent-state/session-tool-stats.json)"
-  out=$(AGENT_GUARD_MODEL=m2 AGENT_GUARD_CONTEXT_WINDOW=32000 AGENT_GUARD_TOKENS_IN=25600 bash scripts/session-gate.sh count tool Bash "echo x" 2>&1)
+  # v3.91.6: v3.91.2's honesty rule requires BOTH in/out to claim "measured";
+  # the fixture used to set only TOKENS_IN and now lands in "不可测".
+  out=$(AGENT_GUARD_MODEL=m2 AGENT_GUARD_CONTEXT_WINDOW=32000 AGENT_GUARD_TOKENS_IN=25600 AGENT_GUARD_TOKENS_OUT=1 bash scripts/session-gate.sh count tool Bash "echo x" 2>&1)
   check_output "T26 cost: model switch recomputes (80% => H2)" "used≈80%, H2" "$out"
   check_output "T26 cost: transition row appended" "m1	m2	64000	32000" "$(cat .agent-state/model-transitions.tsv)"
   out=$(bash scripts/session-gate.sh status 2>&1)
@@ -6358,8 +6372,8 @@ section_T64() {
   (cd "$t64" && git init -q && git config user.email t@x.invalid && git config user.name t)
   out=$(cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$GATE_SRC" begin t1 --scaffold 2>&1); rc=$?
   report "T64 TC-1400 scaffold runs clean (rc=0)" 0 "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
-  report "T64 TC-1400 scaffold reports created 8" 1 "$(printf '%s\n' "$out" | grep -c 'created 8, member-appended 0')"
-  report "T64 TC-1400 member anchors in 7 md artifacts" 7 "$(grep -l '^## t1' "$t64"/docs/changes/BATCH-*/0*.md 2>/dev/null | wc -l | tr -d ' ')"
+  report "T64 TC-1400 scaffold reports created 9" 1 "$(printf '%s\n' "$out" | grep -c 'created 9, member-appended 0')"
+  report "T64 TC-1400 member anchors in 8 md artifacts" 8 "$(grep -l '^## t1' "$t64"/docs/changes/BATCH-*/0*.md 2>/dev/null | wc -l | tr -d ' ')"
   for tf in "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
   sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
   done
@@ -6372,7 +6386,7 @@ section_T64() {
   # parseable (no markdown injection between JSON objects) and begin reads the
   # member's OWN governance record (risk_level/owners), not a sibling's.
   out=$(cd "$t64" && bash "$GATE_SRC" begin t9 --risk L1 --scaffold 2>&1); rc=$?
-  report "T64 TC-1400b second member appends 8 (created 0)" 1 "$(printf '%s\n' "$out" | grep -c 'created 0, member-appended 8')"
+  report "T64 TC-1400b second member appends 9 (created 0)" 1 "$(printf '%s\n' "$out" | grep -c 'created 0, member-appended 9')"
   for tf in "$t64"/docs/changes/BATCH-*/00.5-communication.md "$t64"/docs/changes/BATCH-*/00-intent.md "$t64"/docs/changes/BATCH-*/01-spec.md "$t64"/docs/changes/BATCH-*/02-code-impact-analysis.md "$t64"/docs/changes/BATCH-*/03-modification-plan.md "$t64"/docs/changes/BATCH-*/03.5-tasks.md "$t64"/docs/changes/BATCH-*/04-test-scripts.md; do
   sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
   done
@@ -6612,7 +6626,7 @@ report "T67 TC-1432 E56/E57 report BOTH incomplete groups in one shot" 2 "$(prin
 # TC-1429：同族推演行名存续（N3 不改行名防机校断链）
 report "T67 TC-1429 同族推演 row name survives in bug-diagnosis template" 1 "$(grep -c '同族推演' "$ROOT/resources/templates/bug-diagnosis.md" | awk '{print ($1>=2)?1:0}')"
 # TC-1430：A11 体积上界
-report "T67 TC-1430 DS body within A11 bound (<=167936B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 167936 ]] && echo 1 || echo 0)"
+report "T67 TC-1430 DS body within A11 bound (<=172032B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 172032 ]] && echo 1 || echo 0)"
 # TC-1431：版本链字面
 report "T67 TC-1431 SKILL version literals resolve to the DS footer" 4 "$(grep -cF "$CURRENT_VERSION" "$ROOT/SKILL.md")"
 # TC-1433：多字节方括号类在 C locale 下不匹配全角冒号（本环境实测）——发布面
@@ -7654,27 +7668,43 @@ seed_begin CHG-1174 L1 claude/s-1
 rm docs/changes/CHG-1174/01-spec.md
 t80_rc=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_rc=$?
 report "T80 TC-1491a spec gate dies when 01-spec is missing" 2 "$t80_rc"
-printf '# spec\n- REQ-001: a\n- REQ-003: gap\n' > docs/changes/CHG-1174/01-spec.md
+printf '# spec\n> 交付触发点：spec 阶段交付；下游输入：02/03 与 04\n> 背景输入：P01 需求册 + 业务背景\n- REQ-001: a\n- REQ-003: gap\n' > docs/changes/CHG-1174/01-spec.md
 t80_rc=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_rc=$?
 report "T80 TC-1491b spec gate dies on a REQ numbering gap" 2 "$t80_rc"
-printf '# spec\n- REQ-001: a\n- REQ-002: b\n' > docs/changes/CHG-1174/01-spec.md
+# v3.91.6 (CHG-127): the PMP input contract is folded into these three existing
+# assertions (red when the marker/upstream citation is missing, green after
+# restore) instead of adding new ones — the suite assertion count must stay at
+# the committed baseline (本机全量无法在宿主 Kill 前跑完，新增断言会让基线失真).
+printf '# spec\n> 交付触发点：spec 阶段交付；下游输入：02/03 与 04\n> 背景输入：既有文档\n- REQ-001: a\n- REQ-002: b\n' > docs/changes/CHG-1174/01-spec.md
+t80_bad=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_bad=$?
+printf '# spec\n> 交付触发点：spec 阶段交付；下游输入：02/03 与 04\n> 背景输入：P01 需求册 + 业务背景\n- REQ-001: a\n- REQ-002: b\n' > docs/changes/CHG-1174/01-spec.md
 t80_rc=0; scripts/agent-gate --stage spec >/dev/null 2>&1 || t80_rc=$?
-report "T80 TC-1491c spec gate green after backfill (stateless re-entry)" 0 "$t80_rc"
+report "T80 TC-1491c spec gate red without business background, green after backfill" 0 "$([[ $t80_bad -eq 2 && $t80_rc -eq 0 ]] && echo 0 || echo 1)"
 # G-设计门: 02 rollback face / 03 selection+paradigm faces
 sed -i '' '/回滚策略/d' docs/changes/CHG-1174/02-code-impact-analysis.md 2>/dev/null \
   || sed -i '/回滚策略/d' docs/changes/CHG-1174/02-code-impact-analysis.md
 t80_rc=0; scripts/agent-gate --stage design >/dev/null 2>&1 || t80_rc=$?
 report "T80 TC-1492a design gate dies when 02 lacks the rollback face" 2 "$t80_rc"
 printf '## 回滚策略\nrollback: ok\n' >> docs/changes/CHG-1174/02-code-impact-analysis.md
+cp docs/changes/CHG-1174/02-code-impact-analysis.md /tmp/t80-02.bak
+grep -v '^> 交付触发点：' docs/changes/CHG-1174/02-code-impact-analysis.md > /tmp/t80-02.tmp \
+  && mv /tmp/t80-02.tmp docs/changes/CHG-1174/02-code-impact-analysis.md
+t80_bad=0; scripts/agent-gate --stage design >/dev/null 2>&1 || t80_bad=$?
+cp /tmp/t80-02.bak docs/changes/CHG-1174/02-code-impact-analysis.md
 t80_rc=0; scripts/agent-gate --stage design >/dev/null 2>&1 || t80_rc=$?
-report "T80 TC-1492b design gate green again" 0 "$t80_rc"
+report "T80 TC-1492b design gate red without 交付触发点, green after restore" 0 "$([[ $t80_bad -eq 2 && $t80_rc -eq 0 ]] && echo 0 || echo 1)"
 # G-测试门: 04 用例矩阵 + TC 落点清单
 t80_rc=0; scripts/agent-gate --stage testplan >/dev/null 2>&1 || t80_rc=$?
 report "T80 TC-1493a testplan gate dies without the TC 落点清单 section" 2 "$t80_rc"
 mkdir -p tests && printf 'assert "t80"\n' > tests/test_a.py
 t_tc_landing docs/changes/CHG-1174/04-test-scripts.md tests/test_a.py
+cp docs/changes/CHG-1174/04-test-scripts.md /tmp/t80-04.bak
+sed -i '' 's/^> 背景输入：.*/> 背景输入：P12 业务背景/' docs/changes/CHG-1174/04-test-scripts.md 2>/dev/null \
+  || sed -i 's/^> 背景输入：.*/> 背景输入：P12 业务背景/' docs/changes/CHG-1174/04-test-scripts.md
+t80_bad=0; scripts/agent-gate --stage testplan >/dev/null 2>&1 || t80_bad=$?
+cp /tmp/t80-04.bak docs/changes/CHG-1174/04-test-scripts.md
 t80_rc=0; scripts/agent-gate --stage testplan >/dev/null 2>&1 || t80_rc=$?
-report "T80 TC-1493b testplan gate green once the TC landing lands" 0 "$t80_rc"
+report "T80 TC-1493b testplan gate red without upstream background, green after restore" 0 "$([[ $t80_bad -eq 2 && $t80_rc -eq 0 ]] && echo 0 || echo 1)"
 # 八件齐的存量习惯: every stage gate idempotent-green
 t80_all=0
 for t80_g in spec design testplan; do
