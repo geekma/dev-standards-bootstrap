@@ -3776,7 +3776,7 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
       [[ "$rc_tree" == "$want_tree" && "$rc_audit" == "0" && "$rc_suite" == "0" ]] \
         || e153="stale/red receipt (tree=$rc_tree want=$want_tree head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
     fi
-    [[ -z "$e153" ]] || die "GATE-E153: $id $e153 — expected: .agent-state/fresh-clone-receipt.json whose tree_sha matches the current tracked tree, with audit_rc=0, suite_rc=0; allowed: AGENT_GUARD_FRESH_CLONE=0 with the reason recorded in 09「重要上下文」; fix: bash tests/fresh-clone-check.sh --sections <affected list>; ref: CHG-128 REQ-1278"
+    [[ -z "$e153" ]] || die "GATE-E153: $id $e153 — expected: .agent-state/fresh-clone-receipt.json whose tree_sha matches the current tracked tree, with audit_rc=0, suite_rc=0; allowed: AGENT_GUARD_FRESH_CLONE=0 with the reason recorded in 09「重要上下文」; fix: bash tests/fresh-clone-check.sh --sections <affected list> once, after the content freezes; ref: CHG-128 REQ-1278"
   else
     echo "agent-gate: WARN — fresh-clone gate skipped by AGENT_GUARD_FRESH_CLONE=0 ($id, core: $core_list; record the reason in 09「重要上下文」)" >&2
   fi

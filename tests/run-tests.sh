@@ -11,6 +11,8 @@
 # 依赖未装层的 T10/T12）自动 SKIP，已装层全部回归。
 #
 # Usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [-l|--list]
+#   AGENT_GUARD_REPEAT_LIMIT=N  warn on stderr when the same HEAD + section set
+#   already ran N times within 30 min (default 3; 0 disables the guard entirely)
 set -uo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -4476,7 +4478,8 @@ section_T50() {
   # CHG-113: tail recalibrated T67→T68; CHG-115: T68→T73b (基线/事实/编排/前置/变异/汇总六节 joins).
   # CHG-117: tail recalibrated T76→T81 (无账门/编辑硬拦/G16/阶段门/阶段感知五节 joins).
   # CHG-128: tail recalibrated T83→T84 (五道交付质量门 golden 节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T84 ]] && echo 0 || echo 1)"
+  # CHG-129: tail recalibrated T84→T85 (repeat-run guard 节 joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T85 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -8036,6 +8039,14 @@ report "T84 ledger warns on repeated receipts without a reason" 1 "$t84_rc"
 check_output "T84 ledger points at the reason line" 'fresh-clone re-run' "$out"
 printf -- '- fresh-clone re-run: verified after the T50 tail fix\n' >> docs/changes/CHG-1200/09-changelog.md
 out=$(AGENT_GUARD_FRESH_CLONE_HISTORY="$PWD/.agent-state/fresh-clone-history.tsv" bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --ledger-check 2>&1); report "T84 ledger accepts a recorded reason" 0 "$?"
+# ⑭b repeat guard (v3.92.4, CHG-129): the history above already holds 2 receipts
+t84_rc=0
+out=$(AGENT_GUARD_REPEAT_LIMIT=2 bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --sections FULL 2>&1) || t84_rc=$?
+report "T84 repeat guard keeps the FULL refusal (rc 2)" 2 "$t84_rc"
+report "T84 fresh-clone repeat guard warns at the limit" 1 "$(printf '%s\n' "$out" | grep -c 'repeat guard')"
+check_output "T84 repeat guard names the receipt count" 'already has 2 receipt' "$out"
+out=$(AGENT_GUARD_REPEAT_LIMIT=0 bash "$ROOT/tests/fresh-clone-check.sh" --root "$PWD" --sections FULL 2>&1) || true
+report "T84 repeat guard stays silent at limit 0" 0 "$(printf '%s\n' "$out" | grep -c 'repeat guard')"
 
 # ⑮ E154 未验证 REQ 清单（v3.92.2）：⬜ REQ 必须被 09 逐条声明，否则拒
 printf '# spec\n- REQ-001: x\n- REQ-002: y\n' > docs/changes/CHG-1200/01-spec.md
@@ -8051,8 +8062,65 @@ out=$(scripts/agent-gate --stage rtvm 2>&1); report "T84 E154 declared unverifie
 # (canonical order puts T84 last, but -T subsets / shards must stay hermetic).
 unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_CORE_PATHS
 }
+section_T85() {
+# ------------------------------------------------ T85 repeat-run guard（v3.92.4，CHG-129）
+# TC↔REQ：TC-1560/1571→REQ-1285，TC-1561/1562/1563/1565→REQ-1286，TC-1564/1566→REQ-1287。
+# Every case drives a CHILD runner: the parent already exported
+# AGENT_GUARD_SUITE_NESTED=1, so the child gets it forced back to 0 and an
+# isolated state file. T41 is the cheapest section (one grep).
+t85_dir=$(mktemp -d "${TMPDIR:-/tmp}/t85-repeat.XXXXXX") || t85_dir=""
+t85_state="$t85_dir/repeats.tsv"
+t85_err="$t85_dir/err.log"
+t85_key="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo nogit)|T41"
+t85_seed() { # <ts> <n>
+  : > "$t85_state"
+  local i=0
+  while [[ "$i" -lt "$2" ]]; do
+    printf '%s\t%s\tT41\t1\t1\n' "$1" "$t85_key" >> "$t85_state"
+    i=$(( i + 1 ))
+  done
+}
+t85_run() { # <limit> <nested>
+  t85_out=$(AGENT_GUARD_SUITE_NESTED="$2" AGENT_GUARD_REPEAT_LIMIT="$1" \
+    AGENT_GUARD_REPEAT_STATE_PATH="$t85_state" \
+    AGENT_GUARD_COST_LEDGER="$t85_dir/ledger.tsv" \
+    AGENT_GUARD_SUITE_PROGRESS_PATH="$t85_dir/progress.json" \
+    bash "$ROOT/tests/run-tests.sh" -T T41 2>"$t85_err"); t85_rc=$?
+}
+report "T85 repeat guard is wired at the dispatcher" 1 "$(grep -c '^_repeat_limit=' "$ROOT/tests/run-tests.sh")"
+t85_now=$(date +%s)
+t85_seed "$t85_now" 3
+t85_run 3 0
+report "T85 over-limit run warns on stderr" 1 "$(grep -c 'repeat guard' "$t85_err")"
+report "T85 warning names the prior count and limit" 1 "$(grep -c 'already ran 3 time(s).*limit 3' "$t85_err")"
+report "T85 over-limit run is non-blocking" 0 "$t85_rc"
+report "T85 warning never reaches stdout" 0 "$(printf '%s\n' "$t85_out" | grep -c 'repeat guard')"
+report "T85 run appends exactly one fingerprint row" 4 "$(wc -l < "$t85_state" | tr -d ' ')"
+t85_seed "$t85_now" 3
+t85_run 0 0
+report "T85 limit 0 stays silent" 0 "$(grep -c 'repeat guard' "$t85_err")"
+report "T85 limit 0 leaves the state untouched" 3 "$(wc -l < "$t85_state" | tr -d ' ')"
+t85_seed "$(( t85_now - 7200 ))" 3
+t85_run 3 0
+report "T85 stale rows do not warn" 0 "$(grep -c 'repeat guard' "$t85_err")"
+report "T85 stale rows are pruned before appending" 1 "$(wc -l < "$t85_state" | tr -d ' ')"
+t85_seed "$t85_now" 3
+t85_run 3 1
+report "T85 nested child stays silent" 0 "$(grep -c 'repeat guard' "$t85_err")"
+report "T85 nested child does not append" 3 "$(wc -l < "$t85_state" | tr -d ' ')"
+mkdir -p "$t85_dir/ro" && chmod 500 "$t85_dir/ro"
+t85_out=$(AGENT_GUARD_SUITE_NESTED=0 AGENT_GUARD_REPEAT_LIMIT=3 \
+  AGENT_GUARD_REPEAT_STATE_PATH="$t85_dir/ro/repeats.tsv" \
+  AGENT_GUARD_COST_LEDGER="$t85_dir/ledger.tsv" \
+  AGENT_GUARD_SUITE_PROGRESS_PATH="$t85_dir/progress.json" \
+  bash "$ROOT/tests/run-tests.sh" -T T41 2>"$t85_dir/ro.err"); t85_rc=$?
+chmod 700 "$t85_dir/ro" 2>/dev/null || true
+report "T85 unwritable state degrades silently (rc unchanged)" 0 "$t85_rc"
+report "T85 unwritable state prints no guard noise" 0 "$(grep -c 'repeat guard' "$t85_dir/ro.err")"
+rm -rf "$t85_dir"
+}
 
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84)
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84 T85)
 
 # v3.91.7 (CHG-127): --shard i/N — deterministic contiguous partition. Contiguous
 # slices preserve the SERIAL_CHAIN adjacency (T5,T22a,T16 and T50,T51) at N=6,
@@ -8249,6 +8317,44 @@ if [[ ${#WANTED[@]} -eq 0 && "${AGENT_GUARD_FULL_SUITE_FORCE:-0}" != "1" ]]; the
     exit 3
   fi
 fi
+# v3.92.4 (CHG-129): repeat-run guard. One -T set repeated at the same HEAD is
+# the costliest waste we have observed (a 1537 s turn ran one set 5 times and
+# burned two fresh-clone receipts). Record one fingerprint row per top-level
+# run; once the window already holds AGENT_GUARD_REPEAT_LIMIT runs, say so on
+# stderr. Never blocks, never touches stdout (T50 tail / T57 byte-equality).
+# Sections spawn run-tests.sh themselves (T50/T57/T61/T70/T75) — that is the
+# same logical execution, so the marker exported below silences the children.
+_repeat_limit="${AGENT_GUARD_REPEAT_LIMIT:-3}"
+case "$_repeat_limit" in ''|*[!0-9]*) _repeat_limit=3 ;; esac
+if [[ "$_repeat_limit" -gt 0 && "${AGENT_GUARD_SUITE_NESTED:-0}" != "1" ]]; then
+  _repeat_sections="FULL"
+  if [[ ${#WANTED[@]} -gt 0 ]]; then
+    _repeat_sections=$(printf '%s\n' "${WANTED[@]}" | LC_ALL=C sort -u | paste -s -d, -)
+  fi
+  _repeat_key="${SUITE_KEY:-nogit}|${_repeat_sections}"
+  _repeat_state="${AGENT_GUARD_REPEAT_STATE_PATH:-$ROOT/.agent-state/suite-repeats.tsv}"
+  _repeat_window=1800
+  _repeat_now=$(date +%s)
+  _repeat_prior=0
+  if [[ -f "$_repeat_state" ]]; then
+    _repeat_prior=$(awk -F'\t' -v k="$_repeat_key" -v t="$(( _repeat_now - _repeat_window ))" \
+      '$2==k && $1+0>=t {n++} END{print n+0}' "$_repeat_state" 2>/dev/null)
+    case "$_repeat_prior" in ''|*[!0-9]*) _repeat_prior=0 ;; esac
+    awk -F'\t' -v t="$(( _repeat_now - _repeat_window ))" '$1+0>=t' "$_repeat_state" \
+      > "$_repeat_state.tmp.$$" 2>/dev/null && mv -f "$_repeat_state.tmp.$$" "$_repeat_state" 2>/dev/null \
+      || rm -f "$_repeat_state.tmp.$$" 2>/dev/null
+  fi
+  if [[ "$_repeat_prior" -ge "$_repeat_limit" ]]; then
+    printf 'run-tests: repeat guard — section set (%s) already ran %s time(s) in the last %s min; this is run #%s (limit %s).\n' \
+      "$_repeat_key" "$_repeat_prior" "$(( _repeat_window / 60 ))" "$(( _repeat_prior + 1 ))" "$_repeat_limit" >&2
+    printf 'run-tests: stop re-running — read the previous result (receipt: %s) or set AGENT_GUARD_REPEAT_LIMIT=0 to silence.\n' \
+      "$SUITE_RECEIPT_PATH" >&2
+  fi
+  mkdir -p "$(dirname "$_repeat_state")" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\n' "$_repeat_now" "$_repeat_key" "$_repeat_sections" "${JOBS:-1}" "$$" \
+    >> "$_repeat_state" 2>/dev/null || true
+fi
+export AGENT_GUARD_SUITE_NESTED=1
 # v3.72.0 erratum (CHG-095, DES-1868): replay/re-export anchors — defined ONCE
 # here; the parallel branch's counter/failed_names re-export shares them with
 # the report() wire format (^ok / ^FAIL).

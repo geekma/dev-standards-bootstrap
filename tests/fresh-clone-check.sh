@@ -94,6 +94,18 @@ if [[ "$ledger_check" -eq 1 ]]; then
   exit 0
 fi
 
+# v3.92.4 (CHG-129): repeat guard. Re-generating the receipt for the same change
+# is the costliest re-run we see (a receipt is the whole audit + section set),
+# so say it on stderr before the expensive copy. Never blocks, never changes rc.
+_fc_limit="${AGENT_GUARD_REPEAT_LIMIT:-3}"
+case "$_fc_limit" in ''|*[!0-9]*) _fc_limit=3 ;; esac
+if [[ "$_fc_limit" -gt 0 && -n "$CHANGE" ]]; then
+  _fc_prior=$(ledger_dupes)
+  if [[ "$_fc_prior" -ge "$_fc_limit" ]]; then
+    echo "fresh-clone-check: repeat guard — ${CHANGE} already has ${_fc_prior} receipt(s); this would be #$(( _fc_prior + 1 )) (limit ${_fc_limit}). Generate the receipt once after the content freezes; AGENT_GUARD_REPEAT_LIMIT=0 silences this." >&2
+  fi
+fi
+
 head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null) || { echo "fresh-clone-check: not a git repo" >&2; exit 2; }
 [[ -n "$head" ]] || { echo "fresh-clone-check: no HEAD commit" >&2; exit 2; }
 

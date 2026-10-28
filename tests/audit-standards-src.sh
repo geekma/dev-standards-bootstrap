@@ -1735,7 +1735,7 @@ for a56_s in $a56_secs; do
     || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
 done
 report "A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)" 0 "$a56_sec_bad"
-at_least_unique "A56 golden section T84 closes the SECTIONS registry (CHG-125 tail)" "$a56_suite" '^SECTIONS=.* T84)'
+at_least_unique "A56 golden section T85 closes the SECTIONS registry (CHG-129 tail)" "$a56_suite" '^SECTIONS=.* T85)'
 
 # The SKIP string alone is a vacuous pin: a section can put its first assertions
 # above the guard and still print the string. In a target-repo layout (only
