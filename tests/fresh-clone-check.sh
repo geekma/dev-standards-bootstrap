@@ -11,6 +11,8 @@
 #            shipped tests/audit-docs-consistency.sh in a target repo
 #     receipt: .agent-state/fresh-clone-receipt.json (agent-gate E153 consumes it)
 #   --check : validate the existing receipt only (no run)
+#   AGENT_GUARD_REPEAT_LIMIT=N  warn when this change already has N receipts
+#                               (default 3; 0 disables the guard)
 set -uo pipefail
 TOOL_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DEFAULT=$(cd "$(dirname "$0")/.." && pwd)
@@ -28,7 +30,7 @@ while [[ $# -gt 0 ]]; do
       opt_root="$2"; shift 2 ;;
     --check) check_only=1; shift ;;
     --ledger-check) ledger_check=1; shift ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "fresh-clone-check: unknown option '$1' (supported: --sections --root --check)" >&2; exit 2 ;;
   esac
 done
@@ -99,6 +101,9 @@ fi
 # so say it on stderr before the expensive copy. Never blocks, never changes rc.
 _fc_limit="${AGENT_GUARD_REPEAT_LIMIT:-3}"
 case "$_fc_limit" in ''|*[!0-9]*) _fc_limit=3 ;; esac
+[[ ${#_fc_limit} -le 9 ]] || _fc_limit=3
+# "08" is octal syntax inside $(( )); normalize before the numeric test.
+: "$(( _fc_limit = 10#$_fc_limit ))"
 if [[ "$_fc_limit" -gt 0 && -n "$CHANGE" ]]; then
   _fc_prior=$(ledger_dupes)
   if [[ "$_fc_prior" -ge "$_fc_limit" ]]; then

@@ -8117,6 +8117,11 @@ t85_out=$(AGENT_GUARD_SUITE_NESTED=0 AGENT_GUARD_REPEAT_LIMIT=3 \
 chmod 700 "$t85_dir/ro" 2>/dev/null || true
 report "T85 unwritable state degrades silently (rc unchanged)" 0 "$t85_rc"
 report "T85 unwritable state prints no guard noise" 0 "$(grep -c 'repeat guard' "$t85_dir/ro.err")"
+# CHG-129 review fix: "08" is octal syntax in $(( )) — the limit must parse.
+t85_seed "$t85_now" 3
+t85_run 08 0
+report "T85 leading-zero limit parses without arithmetic noise" 0 "$(grep -c 'value too great\|syntax error' "$t85_err")"
+report "T85 limit 08 counts as 8 (3 prior rows stay silent)" 0 "$(grep -c 'repeat guard' "$t85_err")"
 rm -rf "$t85_dir"
 }
 
@@ -8124,7 +8129,7 @@ SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T1
 
 # v3.91.7 (CHG-127): --shard i/N — deterministic contiguous partition. Contiguous
 # slices preserve the SERIAL_CHAIN adjacency (T5,T22a,T16 and T50,T51) at N=6,
-# and make shard evidence reproducible without hand-building a 93-key -T list.
+# and make shard evidence reproducible without hand-building a 94-key -T list.
 if [[ -n "$SHARD" ]]; then
   [[ "$AUTO" -eq 1 || ${#WANTED[@]} -gt 0 ]] \
     && { printf 'invalid option combination: --shard is exclusive with -T/auto\n' >&2; exit 2; }
@@ -8326,6 +8331,10 @@ fi
 # same logical execution, so the marker exported below silences the children.
 _repeat_limit="${AGENT_GUARD_REPEAT_LIMIT:-3}"
 case "$_repeat_limit" in ''|*[!0-9]*) _repeat_limit=3 ;; esac
+[[ ${#_repeat_limit} -le 9 ]] || _repeat_limit=3
+# "08" is octal syntax inside $(( )); normalize before any numeric test so a
+# leading zero can never make the guard itself print an arithmetic error.
+: "$(( _repeat_limit = 10#$_repeat_limit ))"
 if [[ "$_repeat_limit" -gt 0 && "${AGENT_GUARD_SUITE_NESTED:-0}" != "1" ]]; then
   _repeat_sections="FULL"
   if [[ ${#WANTED[@]} -gt 0 ]]; then
@@ -8337,18 +8346,29 @@ if [[ "$_repeat_limit" -gt 0 && "${AGENT_GUARD_SUITE_NESTED:-0}" != "1" ]]; then
   _repeat_now=$(date +%s)
   _repeat_prior=0
   if [[ -f "$_repeat_state" ]]; then
-    _repeat_prior=$(awk -F'\t' -v k="$_repeat_key" -v t="$(( _repeat_now - _repeat_window ))" \
-      '$2==k && $1+0>=t {n++} END{print n+0}' "$_repeat_state" 2>/dev/null)
+    # Upper bound too: a row written while the clock was ahead must not stay
+    # "in window" forever.
+    _repeat_prior=$(awk -F'\t' -v k="$_repeat_key" -v t="$(( _repeat_now - _repeat_window ))" -v nw="$_repeat_now" \
+      '$2==k && $1+0>=t && $1+0<=nw {n++} END{print n+0}' "$_repeat_state" 2>/dev/null)
     case "$_repeat_prior" in ''|*[!0-9]*) _repeat_prior=0 ;; esac
+    _repeat_rows=$(wc -l < "$_repeat_state" 2>/dev/null | tr -d ' ')
     awk -F'\t' -v t="$(( _repeat_now - _repeat_window ))" '$1+0>=t' "$_repeat_state" \
-      > "$_repeat_state.tmp.$$" 2>/dev/null && mv -f "$_repeat_state.tmp.$$" "$_repeat_state" 2>/dev/null \
-      || rm -f "$_repeat_state.tmp.$$" 2>/dev/null
+      > "$_repeat_state.tmp.$$" 2>/dev/null || rm -f "$_repeat_state.tmp.$$" 2>/dev/null
+    # Swap in the pruned ledger only when no other run appended meanwhile — a
+    # rewrite that drops a concurrent row would undercount (silently, and the
+    # guard is warning-only, so a stale row is the cheaper failure).
+    if [[ -f "$_repeat_state.tmp.$$" \
+       && "$(wc -l < "$_repeat_state" 2>/dev/null | tr -d ' ')" == "$_repeat_rows" ]]; then
+      mv -f "$_repeat_state.tmp.$$" "$_repeat_state" 2>/dev/null || rm -f "$_repeat_state.tmp.$$" 2>/dev/null
+    else
+      rm -f "$_repeat_state.tmp.$$" 2>/dev/null
+    fi
   fi
   if [[ "$_repeat_prior" -ge "$_repeat_limit" ]]; then
     printf 'run-tests: repeat guard — section set (%s) already ran %s time(s) in the last %s min; this is run #%s (limit %s).\n' \
       "$_repeat_key" "$_repeat_prior" "$(( _repeat_window / 60 ))" "$(( _repeat_prior + 1 ))" "$_repeat_limit" >&2
-    printf 'run-tests: stop re-running — read the previous result (receipt: %s) or set AGENT_GUARD_REPEAT_LIMIT=0 to silence.\n' \
-      "$SUITE_RECEIPT_PATH" >&2
+    printf 'run-tests: stop re-running — read the previous result (%s; subset runs also record %s) or set AGENT_GUARD_REPEAT_LIMIT=0 to silence.\n' \
+      "$SUITE_RECEIPT_PATH" "$ROOT/.agent-state/last-suite-partial.json" >&2
   fi
   mkdir -p "$(dirname "$_repeat_state")" 2>/dev/null || true
   printf '%s\t%s\t%s\t%s\t%s\n' "$_repeat_now" "$_repeat_key" "$_repeat_sections" "${JOBS:-1}" "$$" \
