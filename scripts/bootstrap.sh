@@ -472,6 +472,14 @@ transform_src() { # src -> stdout
       -e "s|tests/run-tests\.sh|$TESTS_DIR/run-tests.sh|g" \
       -e "s|tests/audit-docs-consistency\.sh|$TESTS_DIR/audit-docs-consistency.sh|g" \
       -e "s|\.githooks/|$GITHOOKS_DIR/|g" \
+      -e "s|\$(cfg_path docs docs)|\$(cfg_path docs $DOCS_DIR)|g" \
+      -e "s|\$(cfg_path scripts scripts)|\$(cfg_path scripts $SCRIPTS_DIR)|g" \
+      -e "s|\$(cfg_path tests tests)|\$(cfg_path tests $TESTS_DIR)|g" \
+      -e "s|\$(cfg_path githooks \.githooks)|\$(cfg_path githooks $GITHOOKS_DIR)|g" \
+      -e "s|\$(sg_cfg_path docs docs)|\$(sg_cfg_path docs $DOCS_DIR)|g" \
+      -e "s|\$(sg_cfg_path scripts scripts)|\$(sg_cfg_path scripts $SCRIPTS_DIR)|g" \
+      -e "s|\$(sg_cfg_path tests tests)|\$(sg_cfg_path tests $TESTS_DIR)|g" \
+      -e "s|\$(sg_cfg_path githooks \.githooks)|\$(sg_cfg_path githooks $GITHOOKS_DIR)|g" \
       -e "s|docs/|$DOCS_DIR/|g" \
       "$1"
 }

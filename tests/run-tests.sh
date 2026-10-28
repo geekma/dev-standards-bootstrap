@@ -55,6 +55,17 @@ SUITE_RED_PATH="${AGENT_GUARD_SUITE_RED_PATH:-$ROOT/.agent-state/last-suite-red.
 # hoisted to top level (order-independence for -j / -T 单节；was section_T17 局部变量、T18 跨节使用 — v3.72.0 erratum, CHG-095, REQ-1097)
 STAMP_SRC="$ROOT/resources/templates/stamp-provenance.sh"
 [[ -f "$STAMP_SRC" ]] || STAMP_SRC="$ROOT/scripts/stamp-provenance.sh"
+# v3.92.4: payload anchors resolve in BOTH layouts. The skill repo keeps them
+# under resources/; an installed target repo keeps the same files under the
+# configured docs root, <githooks>/ and the repo root. T55 greps these bytes.
+PAYLOAD_DOCS="$ROOT/resources"
+[[ -d "$PAYLOAD_DOCS" ]] || { PAYLOAD_DOCS="$ROOT/docs/"; PAYLOAD_DOCS="${PAYLOAD_DOCS%/}"; }
+PAYLOAD_HOOKS="$ROOT/resources/templates"
+[[ -d "$PAYLOAD_HOOKS" ]] || { PAYLOAD_HOOKS="$ROOT/.githooks/"; PAYLOAD_HOOKS="${PAYLOAD_HOOKS%/}"; }
+PAYLOAD_YML="$ROOT/resources/templates/agent-governance.yml"
+[[ -f "$PAYLOAD_YML" ]] || PAYLOAD_YML="$ROOT/.agent-governance.yml"
+PAYLOAD_AGENTS="$ROOT/resources/AGENTS.md"
+[[ -f "$PAYLOAD_AGENTS" ]] || PAYLOAD_AGENTS="$ROOT/AGENTS.md"
 # v3.91.9 (CHG-127): a fresh checkout (CI / any non-installed clone) has no
 # .agent-state/ — receipt probes and telemetry writes must not die on rd/wr.
 mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
@@ -5294,9 +5305,9 @@ printf 'paths:\nsmoke_command: bash scripts/smoke.sh\n' > .agent-governance.yml
 touch docs/changes/CHG-1072/05-test-results.md
 printf '{"delivered_at":"%s","change":"CHG-1072","stage":"stop","session":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/last-delivery.json
 cp "$STAMP_SRC" scripts/stamp-provenance.sh
-out=$(bash "$ROOT/resources/templates/pre-commit" 2>&1 || true)
+out=$(bash "$PAYLOAD_HOOKS/pre-commit" 2>&1 || true)
 check_output "T55 TC-1257 pre-commit emits the SHIFT REMINDER" "SHIFT REMINDER" "$out"
-pre_rc=0; bash "$ROOT/resources/templates/pre-commit" >/dev/null 2>&1 || pre_rc=$?
+pre_rc=0; bash "$PAYLOAD_HOOKS/pre-commit" >/dev/null 2>&1 || pre_rc=$?
 # v3.91.7 (CHG-127): pre-commit stays warning-only, but `--stage shift` (called
 # by pre-push) must hard-fail E112 without handoff and pass once it lands.
 printf '{"started_at":"2026-01-01T00:00:00Z"}\n' > .agent-state/session-started.json
@@ -5357,12 +5368,12 @@ printf 'paths:\nsmoke_command: bash scripts/smoke.sh\nsmoke_paths: zzz\\.nomatch
 scripts/agent-gate --stage staged >/dev/null 2>&1
 report "T55 TC-1264 valid ERE override that misses keeps the gate green" 0 $?
 # TC-1265：pre-commit 零触碰钉 + 行形权威派生面在位
-report "T55 TC-1265 pre-commit consumes no ALLOW_NO_SHIFT env (FU-943 erratum pin)" 0 "$(grep -c 'ALLOW_NO_SHIFT' "$ROOT/resources/templates/pre-commit")"
-report "T55 TC-1265 gate header pins the CHG-093 erratum" 1 "$(grep -c '^# --- v3.71.0 (CHG-046, REQ-1088) + v3.71.0 erratum (CHG-093, REQ-1093/1094)' "$ROOT/resources/templates/agent-gate.sh")"
-report "T55 TC-1265 governance yml pins the active-change scan face" 1 "$(grep -c '扫描面' "$ROOT/resources/templates/agent-governance.yml")"
-report "T55 TC-1265 playbook pins the narrowed scan face" 1 "$(grep -c '扫描面限活跃变更 05' "$ROOT/resources/STAGE_PLAYBOOK.md")"
-report "T55 TC-1265 DS anchor pins the narrowed scan face" 1 "$(grep -c '豁免/证据限活跃变更 05' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T55 TC-1265 registry pins pointer fail-open semantics" 1 "$(grep -c '指针缺失 fail-open' "$ROOT/resources/CLAUSE_REGISTRY.md")"
+report "T55 TC-1265 pre-commit consumes no ALLOW_NO_SHIFT env (FU-943 erratum pin)" 0 "$(grep -c 'ALLOW_NO_SHIFT' "$PAYLOAD_HOOKS/pre-commit")"
+report "T55 TC-1265 gate header pins the CHG-093 erratum" 1 "$(grep -c '^# --- v3.71.0 (CHG-046, REQ-1088) + v3.71.0 erratum (CHG-093, REQ-1093/1094)' "$GATE_SRC")"
+report "T55 TC-1265 governance yml pins the active-change scan face" 1 "$(grep -c '扫描面' "$PAYLOAD_YML")"
+report "T55 TC-1265 playbook pins the narrowed scan face" 1 "$(grep -c '扫描面限活跃变更 05' "$PAYLOAD_DOCS/STAGE_PLAYBOOK.md")"
+report "T55 TC-1265 DS anchor pins the narrowed scan face" 1 "$(grep -c '豁免/证据限活跃变更 05' "$STD_SRC")"
+report "T55 TC-1265 registry pins pointer fail-open semantics" 1 "$(grep -c '指针缺失 fail-open' "$PAYLOAD_DOCS/CLAUSE_REGISTRY.md")"
 # TC-1266（评审 P1-1 第 4 象限机钉）：指针缺失 × 未声明 smoke_command → 配置门仍拦（fail-open 仅豁免扫描面）
 new_repo
 seed_begin CHG-1081 L1 claude/s-1
@@ -5374,16 +5385,16 @@ report "T55 TC-1266 E111 fail-closed: config gate survives a missing pointer" 2 
 out=$(scripts/agent-gate --stage staged 2>&1 || true)
 check_output "T55 TC-1266 stderr shows the bounded fail-open skip" "smoke gate fail-open" "$out"
 # ⑤ 条款与模板在位（TC-1258，audit 同源口径）
-report "T55 TC-1258 DS carries the four-gate row" 1 "$(grep -c '交付四门' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T55 TC-1258 DS carries the config-observability clause" 1 "$(grep -c '生效配置可观测' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-report "T55 TC-1258 playbook carries the four-gate detail" 1 "$(grep -c '交付四门细则' "$ROOT/resources/STAGE_PLAYBOOK.md")"
-report "T55 TC-1258 playbook carries the no-parallel red line" 1 "$(grep -c '禁并行集成测试' "$ROOT/resources/STAGE_PLAYBOOK.md")"
-report "T55 TC-1258 AGENTS carries the no-parallel discipline" 1 "$(grep -c '禁并行集成测试' "$ROOT/resources/AGENTS.md")"
+report "T55 TC-1258 DS carries the four-gate row" 1 "$(grep -c '交付四门' "$STD_SRC")"
+report "T55 TC-1258 DS carries the config-observability clause" 1 "$(grep -c '生效配置可观测' "$STD_SRC")"
+report "T55 TC-1258 playbook carries the four-gate detail" 1 "$(grep -c '交付四门细则' "$PAYLOAD_DOCS/STAGE_PLAYBOOK.md")"
+report "T55 TC-1258 playbook carries the no-parallel red line" 1 "$(grep -c '禁并行集成测试' "$PAYLOAD_DOCS/STAGE_PLAYBOOK.md")"
+report "T55 TC-1258 AGENTS carries the no-parallel discipline" 1 "$(grep -c '禁并行集成测试' "$PAYLOAD_AGENTS")"
 report "T55 TC-1258 pre-commit carries the reminder and pre-push the shift gate" 1 \
-  "$([[ $(grep -c 'SHIFT REMINDER' "$ROOT/resources/templates/pre-commit") -ge 1 && $(grep -c -- '--stage shift' "$ROOT/resources/templates/pre-push") -ge 1 ]] && echo 1 || echo 0)"
-report "T55 TC-1258 04 entry template carries the landing section" 1 "$(grep -c 'TC 落点清单' "$ROOT/resources/templates/entry/04-test-scripts.md")"
-report "T55 TC-1258 governance yml carries the smoke key" 1 "$(grep -c 'smoke_command:' "$ROOT/resources/templates/agent-governance.yml")"
-report "T55 TC-1258 registry indexes the four new codes" 4 "$(grep -cE 'GATE-E11[0-3] \|' "$ROOT/resources/CLAUSE_REGISTRY.md")"
+  "$([[ $(grep -c 'SHIFT REMINDER' "$PAYLOAD_HOOKS/pre-commit") -ge 1 && $(grep -c -- '--stage shift' "$PAYLOAD_HOOKS/pre-push") -ge 1 ]] && echo 1 || echo 0)"
+report "T55 TC-1258 04 entry template carries the landing section" 1 "$(grep -c 'TC 落点清单' "$PAYLOAD_DOCS/templates/entry/04-test-scripts.md")"
+report "T55 TC-1258 governance yml carries the smoke key" 1 "$(grep -c 'smoke_command:' "$PAYLOAD_YML")"
+report "T55 TC-1258 registry indexes the four new codes" 4 "$(grep -cE 'GATE-E11[0-3] \|' "$PAYLOAD_DOCS/CLAUSE_REGISTRY.md")"
 # ⑥ A42 通用性：四门 payload 面无来源项目特异 token（扫描面=评审 P0-1 扩至 8 文件）
 a42_hit=0
 for pf in resources/templates/agent-gate.sh resources/templates/pre-commit resources/STAGE_PLAYBOOK.md resources/templates/agent-governance.yml resources/templates/entry/04-test-scripts.md resources/DEVELOPMENT_STANDARDS.md resources/AGENTS.md resources/CLAUSE_REGISTRY.md; do
