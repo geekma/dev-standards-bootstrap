@@ -180,7 +180,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <target-repo>
 
 **Checking your version**: the carried standards version is written into `SKILL.md` in three places — frontmatter `version:`, the tail of the `description`, and a banner right under the title — so it is visible in the skill list and again whenever the skill loads. Compare it with the `Standards Version` badge at the top of this README, or run `bash <skill-dir>/scripts/bootstrap.sh --check <target>`.
 
-**Custom directory roots**: the defaults are `docs/`, `scripts/`, `tests/`, `.githooks/` (plus `.github/`, whose location the platform mandates and which is therefore not movable). **Only directory roots are configurable**: `AGENTS.md`, the gate filename, the fifteen change artifacts, the six defect artifacts and the required-check name are cross-repo contracts — making them configurable would break comparison and migration.
+**Custom directory roots**: the defaults are `docs/`, `scripts/`, `tests/`, `.githooks/` (plus `.github/`, whose location the platform mandates and which is therefore not movable). The four root keys are read **only inside the `paths:` block** — a flat same-named key (e.g. `profile.tests`) is profile metadata, never a root. **Only directory roots are configurable**: `AGENTS.md`, the gate filename, the fifteen change artifacts, the six defect artifacts and the required-check name are cross-repo contracts — making them configurable would break comparison and migration.
 
 ## What Runs Automatically (and What Stays Manual)
 
@@ -467,7 +467,7 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 661) |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 664) |
 | **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (1594 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 

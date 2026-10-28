@@ -386,8 +386,16 @@ cd "$repo_root"
 cfg_path() { # key default
   local k="$1" d="$2" v=""
   if [[ -f ".agent-governance.yml" ]]; then
-    v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
-        | head -n 1 | tr -d "[:space:]\"'" || true)
+    case "$k" in
+      docs|scripts|tests|githooks)
+        # v3.92.3 fix: path roots live ONLY under paths:. A flat scan also
+        # matches profile.tests (scenario metadata) and retargets the gate.
+        v=$(sed -nE "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+${k}:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+      *)
+        v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+    esac
   fi
   [[ -n "$v" ]] || v="$d"
   printf '%s' "$v"

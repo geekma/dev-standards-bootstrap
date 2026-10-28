@@ -1929,6 +1929,53 @@ report "A58i bootstrap --guard installs an executable fresh-clone tool" 0 "$([[ 
 # v3.92.3: target repos do not receive audit-standards-src.sh, so the tool must
 # fall back to the shipped cross-doc audit or the receipt can never be green.
 report "A58j fresh-clone tool falls back to the shipped cross-doc audit" 1 "$(a17_at_least_1 "$(grep -c 'audit-docs-consistency.sh' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
+# v3.92.3 fix: profile.tests is scenario metadata ("tests dir present, no test
+# command"), NOT a path root. A flat key scan used to retarget the whole install
+# into a directory literally named present-no-command. Behaviour assertion:
+# a legacy yml with profile.tests and no paths: must install to tests/ and gain
+# an explicit paths: block.
+a58k_ok=1
+A58K=$(mktemp -d 2>/dev/null) || A58K=""
+if [[ -n "$A58K" ]]; then
+  ( cd "$A58K" && git init -q . && git config user.email t@x.invalid && git config user.name t \
+    && mkdir -p tests && printf '#!/bin/sh\necho project-test\n' > tests/project.sh \
+    && printf 'profile:\n  schema_version: 1\n  tests: present-no-command\n  assets: tests\n' > .agent-governance.yml \
+    && git add -A >/dev/null 2>&1 && git commit -qm legacy >/dev/null 2>&1 ) || a58k_ok=0
+  bash "$ROOT/scripts/bootstrap.sh" --upgrade "$A58K" >/dev/null 2>&1 || a58k_ok=0
+  [[ -x "$A58K/tests/fresh-clone-check.sh" ]] || a58k_ok=0
+  [[ -d "$A58K/present-no-command" ]] && a58k_ok=0
+  grep -qE '^paths:' "$A58K/.agent-governance.yml" 2>/dev/null || a58k_ok=0
+  grep -qE '^  tests: tests$' "$A58K/.agent-governance.yml" 2>/dev/null || a58k_ok=0
+  rm -rf "$A58K"
+else a58k_ok=0; fi
+report "A58k legacy profile.tests does not hijack the install root" 0 "$([[ "$a58k_ok" -eq 1 ]] && echo 0 || echo 1)"
+# v3.92.3 fix: historic `git add -f` on .agent-state kept runtime files tracked.
+# Upgrade must untrack them (files stay on disk) so sessions stop dirtying the tree.
+a58l_ok=1
+A58L=$(mktemp -d 2>/dev/null) || A58L=""
+if [[ -n "$A58L" ]]; then
+  ( cd "$A58L" && git init -q . && git config user.email t@x.invalid && git config user.name t \
+    && mkdir -p .agent-state && printf 'red\n' > .agent-state/session-gate-last.md \
+    && git add -f .agent-state >/dev/null 2>&1 && git commit -qm legacy >/dev/null 2>&1 ) || a58l_ok=0
+  bash "$ROOT/scripts/bootstrap.sh" --upgrade "$A58L" >/dev/null 2>&1 || a58l_ok=0
+  [[ -z "$(git -C "$A58L" ls-files -- .agent-state 2>/dev/null)" ]] || a58l_ok=0
+  [[ -f "$A58L/.agent-state/session-gate-last.md" ]] || a58l_ok=0
+  rm -rf "$A58L"
+else a58l_ok=0; fi
+report "A58l tracked .agent-state is untracked, file kept" 0 "$([[ "$a58l_ok" -eq 1 ]] && echo 0 || echo 1)"
+# Every shipped path-root reader must carry the paths:-scoped branch; a new
+# reader copied from an old template would silently reintroduce the hijack.
+a58m_n=0
+for a58m_f in scripts/bootstrap.sh scripts/install.sh resources/templates/agent-gate.sh \
+  resources/templates/new-change.sh resources/templates/check-standards-compliance.sh \
+  resources/templates/stamp-provenance.sh resources/templates/audit-docs-consistency.sh \
+  resources/templates/uninstall-standards.sh resources/templates/session-gate.sh \
+  resources/templates/eval-rescore.sh; do
+  # The invariant is the path-scoped range itself, not the four-key case form:
+  # eval-rescore only reads docs, but must still refuse a flat `docs:` scan.
+  grep -qF 'paths:[[:space:]]*$/,/^[^[:space:]#]' "$ROOT/$a58m_f" 2>/dev/null && a58m_n=$(( a58m_n + 1 ))
+done
+report "A58m every path-root reader scopes to paths:" 10 "$a58m_n"
 
 # ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
 # 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`

@@ -100,11 +100,13 @@ member_cksum=$(printf '%s' "$members" | cksum | awk '{print $1"-"$2}')
 # docs 根解析顺序与其它脚本同法（agent-gate `cfg_path`）：AGENT_GUARD_DOCS_DIR →
 #   .agent-governance.yml paths.docs → 默认 docs；取值去空白与**引号**（`docs: "specs"`
 #   与 `docs: specs` 等价——留引号会让装点面全部落空并静默回落源仓路径 = 漂移告警失效）。
+# v3.92.3 fix: paths.docs 只在 paths: 块内匹配。扁平 `docs:` 扫描会命中同名的
+#   非路径键（profile.tests 同族事故），把取样面整体导向错误目录。
 # 每一项取「安装落点 → 源仓回落」中第一个存在者：目标仓走前者（口径正确），
 # 源仓自身（无安装落点）走后者（与变更前行为等价，既有 --face fixture 不回归）。
 docs_dir="${AGENT_GUARD_DOCS_DIR:-}"
 if [[ -z "$docs_dir" && -f "$face/.agent-governance.yml" ]]; then
-  docs_dir=$(sed -nE 's/^[[:space:]]*docs:[[:space:]]*([^#]*).*$/\1/p' "$face/.agent-governance.yml" 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
+  docs_dir=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+docs:[[:space:]]*([^#]*).*$/\1/p' "$face/.agent-governance.yml" 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
 fi
 [[ -n "$docs_dir" ]] || docs_dir=docs
 

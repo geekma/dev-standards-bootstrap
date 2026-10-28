@@ -56,7 +56,7 @@ description: 在任意代码仓库中一键初始化"全局软件开发与变更
 
 ## 路径根可配置
 
-安装时可用 `--docs-dir <path>`（另有 `--scripts-dir` / `--tests-dir` / `--githooks-dir`）改目录根，如 `bash scripts/bootstrap.sh --all --docs-dir doc <目标仓库>`。**不传即默认**（`docs`/`scripts`/`tests`/`.githooks`，零回归）；解析优先级：CLI flag > `AGENT_GUARD_<KEY>_DIR` > `.agent-governance.yml` 的 `paths:` > 内置默认。非默认根会同步写入 yml `paths.*`（`change_root`/`bugs_root` 仅当仍是内置默认才派生，显式 pin 打 NOTE）并**改写模板内部路径引用**——门禁按配置找文件，落点错位即静默假绿。**只有目录根可配置**：契约名（AGENTS.md 文件名、gate 落点名、变更 15 件产物名、缺陷六件套名、required-check 名）与 `.github/` 位置刻意不可配。
+安装时可用 `--docs-dir <path>`（另有 `--scripts-dir` / `--tests-dir` / `--githooks-dir`）改目录根，如 `bash scripts/bootstrap.sh --all --docs-dir doc <目标仓库>`。**不传即默认**（`docs`/`scripts`/`tests`/`.githooks`，零回归）；解析优先级：CLI flag > `AGENT_GUARD_<KEY>_DIR` > `.agent-governance.yml` 的 `paths:` > 内置默认。**四个根键只在 `paths:` 块内解析**——扁平同名键（如 `profile.tests`）是画像元数据，不当作根。非默认根会同步写入 yml `paths.*`（`change_root`/`bugs_root` 仅当仍是内置默认才派生，显式 pin 打 NOTE）并**改写模板内部路径引用**——门禁按配置找文件，落点错位即静默假绿。**只有目录根可配置**：契约名（AGENTS.md 文件名、gate 落点名、变更 15 件产物名、缺陷六件套名、required-check 名）与 `.github/` 位置刻意不可配。
 
 ## Agent 自进化契约
 

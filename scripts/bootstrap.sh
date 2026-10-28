@@ -338,8 +338,17 @@ fi
 cfg_path() { # key default yml-file
   local k="$1" d="$2" f="${3:-}" v=""
   if [[ -n "$f" && -f "$f" ]]; then
-    v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" "$f" 2>/dev/null \
-        | head -n 1 | tr -d "[:space:]\"'" || true)
+    case "$k" in
+      docs|scripts|tests|githooks)
+        # v3.92.3 fix: path roots live ONLY under paths:. A flat scan also
+        # matches profile.tests (scenario metadata, e.g. present-no-command)
+        # and silently retargets installs into a directory named after it.
+        v=$(sed -nE "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+${k}:[[:space:]]*([^#]*).*$/\1/p" "$f" 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+      *)
+        v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" "$f" 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+    esac
   fi
   [[ -n "$v" ]] || v="$d"
   printf '%s' "$v"
@@ -818,18 +827,54 @@ done
 # the tracked tree hash — making every fresh-clone receipt self-invalidating.
 # Append-only and idempotent: existing .gitignore content is never rewritten.
 ensure_agent_state_ignored() {
-  local gi="$target/.gitignore"
-  if [[ -f "$gi" ]] && grep -qE '^[[:space:]]*([*]{1,2}/)?\.agent-state/?[[:space:]]*$' "$gi" 2>/dev/null; then
-    return 0
+  local gi="$target/.gitignore" tracked
+  if ! { [[ -f "$gi" ]] && grep -qE '^[[:space:]]*([*]{1,2}/)?\.agent-state/?[[:space:]]*$' "$gi" 2>/dev/null; }; then
+    if [[ -f "$gi" ]]; then
+      printf '\n# dev-standards runtime state (local only — never commit)\n.agent-state/\n' >> "$gi"
+    else
+      printf '# dev-standards runtime state (local only — never commit)\n.agent-state/\n' > "$gi"
+    fi
+    echo "auto-wired   .agent-state/ ignored (local runtime state)"
   fi
-  if [[ -f "$gi" ]]; then
-    printf '\n# dev-standards runtime state (local only — never commit)\n.agent-state/\n' >> "$gi"
-  else
-    printf '# dev-standards runtime state (local only — never commit)\n.agent-state/\n' > "$gi"
+  # Historic installs sometimes used `git add -f` on runtime files. They remain
+  # tracked even after .gitignore, so every session dirties the worktree. Keep
+  # the files on disk, drop only the index entries; the user commits the removal.
+  if [[ -d "$target/.git" ]] && command -v git >/dev/null 2>&1; then
+    tracked=$(git -C "$target" ls-files -- .agent-state 2>/dev/null | head -20)
+    if [[ -n "$tracked" ]]; then
+      if git -C "$target" rm --cached -r --quiet --ignore-unmatch -- .agent-state >/dev/null 2>&1; then
+        echo "auto-wired   untracked .agent-state/ from the git index (files kept on disk; commit the removal)"
+      else
+        echo "NOTE         .agent-state/ is tracked but should be local-only — run: git rm --cached -r .agent-state (files stay on disk), then commit" >&2
+      fi
+    fi
   fi
-  echo "auto-wired   .agent-state/ ignored (local runtime state)"
 }
 ensure_agent_state_ignored
+
+# v3.92.3 fix: a legacy config without paths: is ambiguous — flat readers (and
+# older skill copies) can latch onto profile.tests. Pin the resolved roots in an
+# explicit paths: block before profile:, so the ambiguity disappears on upgrade.
+ensure_paths_block() {
+  local tmpf
+  [[ -f "$GOV_YML" ]] || return 0
+  grep -qE '^paths:[[:space:]]*$' "$GOV_YML" 2>/dev/null && return 0
+  tmpf=$(mktemp 2>/dev/null) || return 0
+  awk -v d="$DOCS_DIR" -v s="$SCRIPTS_DIR" -v t="$TESTS_DIR" -v g="$GITHOOKS_DIR" '
+    /^profile:[[:space:]]*$/ && !done {
+      print "paths:"; print "  docs: " d; print "  scripts: " s; print "  tests: " t; print "  githooks: " g; print ""; done=1
+    }
+    {print}
+    END { if (!done) { print ""; print "paths:"; print "  docs: " d; print "  scripts: " s; print "  tests: " t; print "  githooks: " g } }
+  ' "$GOV_YML" > "$tmpf" 2>/dev/null
+  if [[ -s "$tmpf" ]]; then
+    cat "$tmpf" > "$GOV_YML"
+    echo "auto-wired   paths: pinned (legacy config had no paths: block)"
+  fi
+  rm -f "$tmpf"
+  return 0
+}
+ensure_paths_block
 
 # --- persist non-default roots into the installed config (v3.15.0) ----------
 # The gates read .agent-governance.yml. If the installer wrote to non-default
@@ -961,6 +1006,47 @@ yml_key_value() { # file key
   return 0
 }
 
+# v3.92.3 fix: the four path roots are read ONLY from the paths: block. A flat
+# key scan also matches profile.tests (scenario metadata such as
+# present-no-command) and silently retargets installs into a directory named
+# after that value. Readers in every shipped tool use the same rule.
+yml_paths_value() { # file key
+  local f="$1" k="$2"
+  [[ -f "$f" ]] || return 0
+  sed -nE "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+${k}:[[:space:]]*([^#]*).*$/\1/p" "$f" 2>/dev/null \
+    | head -n 1 | tr -d "[:space:]\"'" || true
+  return 0
+}
+
+rewrite_paths_key() { # file key value
+  local f="$1" k="$2" v="$3" cur tmpf
+  [[ -f "$f" ]] || return 0
+  cur=$(yml_paths_value "$f" "$k")
+  [[ "$cur" == "$v" ]] && return 0
+  tmpf=$(mktemp 2>/dev/null) || return 0
+  if grep -qE '^paths:[[:space:]]*$' "$f" 2>/dev/null; then
+    if [[ -n "$cur" ]]; then
+      sed -E "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s|^([[:space:]]+${k}:[[:space:]]*)[^#]*|\1${v} |" "$f" > "$tmpf" 2>/dev/null
+    else
+      awk -v k="$k" -v v="$v" '{print} /^paths:[[:space:]]*$/{print "  " k ": " v}' "$f" > "$tmpf" 2>/dev/null
+    fi
+  else
+    awk -v d="$DOCS_DIR" -v s="$SCRIPTS_DIR" -v t="$TESTS_DIR" -v g="$GITHOOKS_DIR" '
+      /^profile:[[:space:]]*$/ && !done {
+        print "paths:"; print "  docs: " d; print "  scripts: " s; print "  tests: " t; print "  githooks: " g; print ""; done=1
+      }
+      {print}
+      END { if (!done) { print ""; print "paths:"; print "  docs: " d; print "  scripts: " s; print "  tests: " t; print "  githooks: " g } }
+    ' "$f" > "$tmpf" 2>/dev/null
+  fi
+  if [[ -s "$tmpf" ]]; then
+    cat "$tmpf" > "$f"
+    echo "auto-wired   paths.$k = $v (in .agent-governance.yml)"
+  fi
+  rm -f "$tmpf"
+  return 0
+}
+
 apply_path_overrides() {
   if [[ "$PATHS_CUSTOM" != 1 ]]; then
     return 0
@@ -970,10 +1056,10 @@ apply_path_overrides() {
     cp "$SKILL_ROOT/resources/templates/agent-governance.yml" "$GOV_YML"
     echo "installed    .agent-governance.yml (required to pin non-default path roots)"
   fi
-  rewrite_yml_key "$GOV_YML" docs     "$DOCS_DIR"
-  rewrite_yml_key "$GOV_YML" scripts  "$SCRIPTS_DIR"
-  rewrite_yml_key "$GOV_YML" tests    "$TESTS_DIR"
-  rewrite_yml_key "$GOV_YML" githooks "$GITHOOKS_DIR"
+  rewrite_paths_key "$GOV_YML" docs     "$DOCS_DIR"
+  rewrite_paths_key "$GOV_YML" scripts  "$SCRIPTS_DIR"
+  rewrite_paths_key "$GOV_YML" tests    "$TESTS_DIR"
+  rewrite_paths_key "$GOV_YML" githooks "$GITHOOKS_DIR"
   # change_root / bugs_root derive from the docs root, in three states
   # (CHG-017: v3.21.1 ⑫ — first guard; v3.21.2 ⑤ — three-state form):
   #   ① still the built-in default (`docs/changes` / `docs/bugs`) → derive;

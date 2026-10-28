@@ -44,7 +44,7 @@
 |---|---|
 | 规范正文条款 | 页脚版本号 + 上下文/方法论层页脚同步（`resources/AGENTS.md`、`resources/METHODOLOGY.md`、`resources/methodologies/*.md`）+ `STANDARDS_CHANGELOG.md` 顶部新行 + `SKILL.md` 三载体版本 + 双 README 版本 |
 | `resources/templates/agent-gate.sh` | 先跑通 `tests/run-tests.sh`（§2.17.4），再发布；`tests/audit-standards-src.sh` 的 A 层断言 |
-| `resources/templates/agent-governance.yml` 的 `paths:` | `agent-gate.sh` / `check-standards-compliance.sh` / `audit-docs-consistency.sh` **三者一起**——只升其一即"门禁按默认根找、文件在自定义根"的静默错位 |
+| `resources/templates/agent-governance.yml` 的 `paths:` | **全部 10 个读取点同步**（`agent-gate` / `new-change` / `check-standards-compliance` / `audit-docs-consistency` / `stamp-provenance` / `session-gate` / `uninstall-standards` / `eval-rescore` + 安装器 `bootstrap.sh` / `install.sh`）——只改其一即"门禁按默认根找、文件在自定义根"的静默错位。四个根键**只在 `paths:` 块内解析**（扁平扫描会命中 `profile.tests`），A58m 逐一钉死 |
 | `scripts/bootstrap.sh` 复制清单 | `SKILL.md` 步骤 3–4 + `--help` 文本 |
 | `scripts/install.sh` 的行为/参数 | 双 README「安装与升级/Installation & Upgrades」+ `SKILL.md` 步骤 3 的一句话路径 + golden T21；**改安装语义先改 bootstrap，install.sh 保持薄委托** |
 | `CHANGELOG.md` | 每次发布（版本链变更）追加一个版本段；规范条款细节只链接 `STANDARDS_CHANGELOG.md`，不复制 |

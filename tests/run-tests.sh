@@ -190,6 +190,12 @@ new_repo() {
     || { echo "FATAL: new_repo temp dir '$REPO' is not a directory — aborting" >&2; exit 1; }
   cd "$REPO" \
     || { echo "FATAL: new_repo could not cd into '$REPO' (refusing to write in $PWD) — aborting" >&2; exit 1; }
+  # v3.92.3 fix: fixtures are hermetic. Inheriting the host's root overrides made
+  # the sandbox gate look in doc/changes while the fixture creates docs/changes
+  # (E150-E153 then silently skipped as "no change dir"). Clear every root env;
+  # sections that need an override set it explicitly after new_repo.
+  unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_SCRIPTS_DIR AGENT_GUARD_TESTS_DIR AGENT_GUARD_GITHOOKS_DIR \
+        AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_BUGS_ROOT AGENT_GUARD_TEMPLATES_DIR AGENT_GUARD_STD_FILE
   git init -q
   git config user.email test@example.invalid
   git config user.name test
@@ -7901,6 +7907,16 @@ section_T84() {
 # TC-10005→REQ-1282（pre-push G-FEED hint）。
 export AGENT_GUARD_CORE_PATHS='^core\.txt$'
 new_repo
+# v3.92.3 fix: pin the fixture roots after new_repo cleared host overrides. The
+# fixture writes docs/changes; host config (e.g. doc/changes) must not retarget it.
+export AGENT_GUARD_DOCS_DIR=docs
+export AGENT_GUARD_CHANGE_ROOT=docs/changes
+# v3.92.3 fix: target repos do not ship resources/templates/pre-push; use the
+# installed <githooks>/pre-push there. Source repos keep the template as canonical.
+t84_prepush=""
+for _t84_p in "$ROOT/resources/templates/pre-push" "$ROOT/.githooks/pre-push"; do
+  [[ -f "$_t84_p" ]] && { t84_prepush="$_t84_p"; break; }
+done
 mkdir -p docs/changes/CHG-1200 .agent-state
 printf '.agent-state/\n' > .gitignore   # 收据不进 tracked 树（否则写入即自指，tree_sha 永不匹配）
 printf '{"change_id":"CHG-1200","risk_level":"L2","spec_author":"s","implementation_owner":"a","test_owner":"t","review_owner":"r"}\n' > docs/changes/CHG-1200/00-governance.json
@@ -7976,17 +7992,21 @@ check_output "T84 plan records the batch count as a fact" '"scope_overrun":{"bat
 check_output "T84 plan marks the overrun verdict" '"verdict":"over"' "$out"
 
 # ⑫ G-FEED：非 main + GitHub 远端 → 提示；main / 无远端 → 静默
-git remote add origin https://github.com/example/t84.git
-git checkout -q -b feature/t84 2>/dev/null || true
-out=$(bash "$ROOT/resources/templates/pre-push" 2>&1 || true)
-check_output "T84 G-FEED hints a draft PR on a non-main GitHub branch" 'G-FEED tip' "$out"
-git checkout -q main 2>/dev/null || git checkout -q -b main
-out=$(bash "$ROOT/resources/templates/pre-push" 2>&1 || true)
-report "T84 G-FEED stays silent on main" 0 "$(printf '%s' "$out" | grep -c 'G-FEED tip')"
-git checkout -q feature/t84 2>/dev/null || true
-git remote remove origin
-out=$(bash "$ROOT/resources/templates/pre-push" 2>&1 || true)
-report "T84 G-FEED stays silent without a GitHub remote" 0 "$(printf '%s' "$out" | grep -c 'G-FEED tip')"
+if [[ -n "$t84_prepush" ]]; then
+  git remote add origin https://github.com/example/t84.git
+  git checkout -q -b feature/t84 2>/dev/null || true
+  out=$(bash "$t84_prepush" 2>&1 || true)
+  check_output "T84 G-FEED hints a draft PR on a non-main GitHub branch" 'G-FEED tip' "$out"
+  git checkout -q main 2>/dev/null || git checkout -q -b main
+  out=$(bash "$t84_prepush" 2>&1 || true)
+  report "T84 G-FEED stays silent on main" 0 "$(printf '%s' "$out" | grep -c 'G-FEED tip')"
+  git checkout -q feature/t84 2>/dev/null || true
+  git remote remove origin
+  out=$(bash "$t84_prepush" 2>&1 || true)
+  report "T84 G-FEED stays silent without a GitHub remote" 0 "$(printf '%s' "$out" | grep -c 'G-FEED tip')"
+else
+  echo "SKIP T84 G-FEED: pre-push absent (source template and <githooks>/pre-push both missing)"
+fi
 
 # ⑬ fresh-clone-check --check：绿/陈旧/FULL 拒绝
 t84_receipt
@@ -8016,6 +8036,9 @@ out=$(scripts/agent-gate --stage rtvm 2>&1)
 check_output "T84 E154 undeclared unverified REQ is refused" 'GATE-E154' "$out"
 printf -- '- REQ-002：本期仅落 action 字段；样本/六类枚举/溯源待到 FU-128-1\n' >> docs/changes/CHG-1200/09-changelog.md
 out=$(scripts/agent-gate --stage rtvm 2>&1); report "T84 E154 declared unverified REQ passes" 0 "$?"
+# v3.92.3 fix: do not leak the fixture's pinned roots into a later section
+# (canonical order puts T84 last, but -T subsets / shards must stay hermetic).
+unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_CORE_PATHS
 }
 
 SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84)

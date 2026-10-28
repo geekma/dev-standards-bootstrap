@@ -428,8 +428,16 @@ emit() { # 摘要进 stdout（Claude SessionStart 会把 stdout 注入上下文�
 sg_cfg_path() { # <key> <default>
   local v=""
   if [[ -f .agent-governance.yml ]]; then
-    v=$(sed -nE "s/^[[:space:]]*$1:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
-        | head -n 1 | tr -d "[:space:]\"'" || true)
+    case "$1" in
+      docs|scripts|tests|githooks)
+        # v3.92.3 fix: path roots live ONLY under paths: (profile.tests is
+        # scenario metadata, not a directory root).
+        v=$(sed -nE "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+$1:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+      *)
+        v=$(sed -nE "s/^[[:space:]]*$1:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+    esac
   fi
   [[ -n "$v" ]] || v="$2"
   printf '%s' "$v"

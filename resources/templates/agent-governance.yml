@@ -6,12 +6,17 @@
 # 只配置**目录根**。每个键的默认值 = 历史写死值，因此**不写这一段与写默认值
 # 完全等价**——未配置的仓库行为与升级前逐字节一致（零回归）。
 #
-# 解析优先级：环境变量 AGENT_GUARD_<KEY>_DIR > 本文件 > 内置默认。
+# 解析优先级：环境变量 AGENT_GUARD_<KEY>_DIR > 本文件的 `paths:` 块 > 内置默认。
+# **四个根键只在 `paths:` 块内解析**——扁平扫描 `tests:` 会命中 `profile.tests`
+# （画像元数据，v3.92.3 实证事故），把安装落点整体导向错误目录。
 # 读取方：scripts/agent-gate、scripts/new-change、
 #         scripts/check-standards-compliance.sh、tests/audit-docs-consistency.sh、
-#         scripts/stamp-provenance.sh（另读 `provenance.include_email`）。
-#         （scripts/bootstrap.sh 是**安装期写入方**，它不随本包下发到目标仓库——
-#          本注释里的路径均指目标仓库内的落点，不是 Skill 源仓的路径。）
+#         scripts/stamp-provenance.sh（另读 `provenance.include_email`）、
+#         scripts/session-gate.sh、scripts/uninstall-standards.sh、
+#         scripts/eval-rescore（只读 docs）。
+#         （scripts/bootstrap.sh 与 scripts/install.sh 是**安装期写入/探测方**，
+#          不随本包下发到目标仓库——本注释里的路径均指目标仓库内的落点，
+#          不是 Skill 源仓的路径。）
 # 安装期替换：非默认根会同步改写模板**内部**的路径引用（hooks/adapter 按路径
 #         调门禁、workflows 与规范模板按路径引用文档），运行时零成本。
 #

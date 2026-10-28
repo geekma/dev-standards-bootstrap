@@ -269,9 +269,11 @@ if [[ "$mode" == "auto" ]]; then
   # env > yml > default). A miss falls back to the default roots — a governed
   # target with exotic roots still fails CLOSED below via bootstrap's CONFLICT
   # path (diff + --force hint), never a silent overwrite.
-  tgt_docs="docs"
-  if [[ -f "$target/.agent-governance.yml" ]]; then
-    yml_docs=$(sed -nE 's/^[[:space:]]*docs:[[:space:]]*([^#]*).*$/\1/p' "$target/.agent-governance.yml" 2>/dev/null \
+  # v3.92.3 fix: paths.docs lives ONLY under paths: (a flat `docs:` scan can hit
+  # an unrelated key); AGENT_GUARD_DOCS_DIR is the documented highest priority.
+  tgt_docs="${AGENT_GUARD_DOCS_DIR:-docs}"
+  if [[ -z "${AGENT_GUARD_DOCS_DIR:-}" && -f "$target/.agent-governance.yml" ]]; then
+    yml_docs=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+docs:[[:space:]]*([^#]*).*$/\1/p' "$target/.agent-governance.yml" 2>/dev/null \
       | head -n 1 | tr -d "[:space:]\"'" || true)
     [[ -z "$yml_docs" ]] || tgt_docs="$yml_docs"
   fi

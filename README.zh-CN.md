@@ -180,7 +180,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 **自查版本**：携带的规范版本写在 `SKILL.md` 三处——frontmatter `version:`、`description` 尾注、正文顶部横幅——技能列表里与每次加载时都能看到。与 README 顶部的 `规范版本` 徽章比对，或执行 `bash <skill目录>/scripts/bootstrap.sh --check <目标仓库>`。
 
-**自定义目录根**：默认根是 `docs/`、`scripts/`、`tests/`、`.githooks/`（另有 `.github/`——平台强制位置，因此不可移动）。**只有目录根可配置**：`AGENTS.md` 文件名、门禁落点名、变更 15 件产物名、缺陷六件套名、required-check 名是跨仓契约——做成可配置就失去了跨仓比对与迁移能力。
+**自定义目录根**：默认根是 `docs/`、`scripts/`、`tests/`、`.githooks/`（另有 `.github/`——平台强制位置，因此不可移动）。四个根键**只在 `paths:` 块内解析**——扁平同名键（如 `profile.tests`）是画像元数据，不当作根。**只有目录根可配置**：`AGENTS.md` 文件名、门禁落点名、变更 15 件产物名、缺陷六件套名、required-check 名是跨仓契约——做成可配置就失去了跨仓比对与迁移能力。
 
 ## 自动化与手动边界
 
@@ -467,7 +467,7 @@ dev-standards-bootstrap/
 
 | Job | 职责 |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：661） |
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：664） |
 | **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1594 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
