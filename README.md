@@ -77,6 +77,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 
 | Feature | Description |
 |---|---|
+| **Delivery Quality Gates** | `E153` fresh-clone receipt (tracked-only audit + selected sections), `E150` red→green evidence lines, `E151` verifier ≠ implementer, `E152` scope budget, `E154` unverified-REQ declaration — stateless self-check via `--stage core\|scope\|rtvm` |
 | **5 Quality Gates + Two-Layer Acceptance** | Doc-First, Test-First, Evidence, Traceability, Independent Verification — non-bypassable; every stage passes machine-verifiable A-layer markers plus independent-role B-layer judgment (§2.5) |
 | **Risk Classification × Role Independence** | L0–L3 matrix drives independence: separate execution entities, L2/L3 distinct platform/model vendors, L3 needs human Release Owner approval (§0.5) |
 | **Stage-Gated Expert Review (9 experts, §2.2)** | Business/Industry/Tech/Architecture/PM/Security/Performance/Test/Acceptance experts as refined subjects of existing roles; PMP-aligned per-stage review matrix, context-grounding contract (a template review without project evidence is rejected), session-cost guardrails |
@@ -207,6 +208,7 @@ Command reference (invoked by the above; manual runs are for debugging):
 | `--stage staged` | Staged source changes must ship with matching change artifacts, otherwise the commit is rejected |
 | `--stage commit-msg <msgfile>` | Attribution gate: a code-bearing commit must reference a valid change id (merge / revert / docs-only exempt) |
 | `--stage stop` | Ending a turn after source edits requires `04.5-coding-record.md`, `05-test-results.md`, `09-changelog.md` (with ReAct Observation records), plus a passing verification command (L0: 04.5/05 may be §1.1 single-line declarations, v3.44.0); changelog REQ ids must be backfilled in `01.5-rtvm-matrix.md` (Gate 4 closure) |
+| `--stage core\|scope\|rtvm` | Stateless delivery gates for the active change: core = E150/E151/E153 (red→green, independent verifier, fresh-clone receipt); scope = E152 (budget); rtvm = E154 (unverified-REQ declaration). Idempotent, no state file |
 | `--stage ci [--base <ref>]` | Rechecks the branch/PR diff and runs the real verification command |
 | `plan <change-id> [--explain\|--dry-run]` / `plan --refresh-profile` | Read-only adaptive decision engine (v3.90.2+, hardened in v3.91.0): reads the profile + diff + cost ledger and writes `decision` into `00-governance.json` (sections, predicted seconds, CAB `deferred`/`wasted`, nested artifacts/stages/masters, `must`, TC resolution rate). The decision is a **proposal**: the agent must show the card plus three options (adopt / up / down) and the user chooses; a narrowed AI scope is only valid with `AGENT_GUARD_SCOPE_CONFIRM` recorded as `decision.scope_confirmed`. `--explain` prints the cost/coverage account; `--refresh-profile` reports missing profile keys. Off switch: `AGENT_GUARD_ADAPT=0` |
 | `status` | Prints the effective enforcement face — runtime, hook-protocol family, layers, `enforcement=hook\|handshake`, handshake presence and the current model/context window (v3.91.0) |

@@ -77,6 +77,7 @@
 
 | 功能 | 说明 |
 |---|---|
+| **交付质量门** | `E153` 新鲜克隆收据（仅跟踪件审计+目标节）、`E150` 先红后绿两行、`E151` 验证人≠实现人、`E152` 范围预算、`E154` 未验证 REQ 清单——`--stage core\|scope\|rtvm` 无状态自查 |
 | **五道门禁 + 两层验收** | 文档先行 / 测试先行 / 证据闭环 / 追踪矩阵 / 独立验证——不可绕过；每阶段过机器可验的 A 层标记 + 独立角色 B 层判定（§2.5） |
 | **风险分级 × 角色独立性** | L0–L3 矩阵驱动独立性：独立执行主体，L2/L3 要求不同平台/模型厂商，L3 强制人类 Release Owner 授权（§0.5） |
 | **分阶段专家评审（9 专家，§2.2）** | 业务/行业/技术/架构/项目管理/安全/性能/测试/整体验收专家，作为既有角色的细分执行主体；PMP 对齐的分阶段评审矩阵 + 上下文贴近契约（无项目证据的模板泛评一律退回）+ 会话成本护栏 |
@@ -207,6 +208,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | `--stage staged` | 暂存的源码变更必须随带匹配的变更产物，否则提交被拒 |
 | `--stage commit-msg <msgfile>` | 归因闸门：含代码的提交必须引用有效变更号（合并/回退/纯文档豁免） |
 | `--stage stop` | 源码改动后收尾要求 `04.5-coding-record.md`、`05-test-results.md`、`09-changelog.md`（含 ReAct Observation）及验证命令通过（L0：04.5/05 可按 §1.1 单行声明，v3.44.0）；changelog 引用的 REQ 须回填 `01.5-rtvm-matrix.md`（门禁 4 闭环） |
+| `--stage core\|scope\|rtvm` | 活跃变更的无状态交付门：core = E150/E151/E153（先红后绿、验证独立、新鲜克隆收据）；scope = E152（范围预算）；rtvm = E154（未验证 REQ 清单）；幂等、不写状态文件 |
 | `--stage ci [--base <ref>]` | 复查分支/PR diff 并运行真实验证命令 |
 | `plan <变更号> [--explain\|--dry-run]` / `plan --refresh-profile` | 只读自适应判定引擎（v3.90.2 起，v3.91.0 加固）：读画像 + diff + 成本台账，把 `decision` 写进 `00-governance.json`（选节、预计秒数、CAB `deferred`/`wasted`、嵌套 artifacts/stages/masters、`must`、TC 解析率）。判定是**议案不是判决**：AI 必须把判定卡与三选一（采纳/升档/降档）交给用户选；AI 收窄必须带 `AGENT_GUARD_SCOPE_CONFIRM` 并落 `decision.scope_confirmed`。`--explain` 打印成本/覆盖账；`--refresh-profile` 报 profile 缺键。总开关 `AGENT_GUARD_ADAPT=0` |
 | `status` | 打印生效执法面——runtime、hook 协议家族、层、`enforcement=hook\|handshake`、握手是否存在、当前模型/上下文窗口（v3.91.0） |
