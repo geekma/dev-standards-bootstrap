@@ -1910,6 +1910,25 @@ report "A58e pre-push carries the G-FEED hint" 1 "$(grep -c 'G-FEED tip' "$ROOT/
 report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(grep -c '| v3.92.0 |' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true)"
 report "A58g fresh-clone history ledger is declared" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-history.tsv' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
 report "A58h unverified-REQ declaration face is shipped" 1 "$([[ $(grep -c 'GATE-E154' "$GATE_TPL") -ge 1 && $(grep -c '未验证 REQ 清单' "$ROOT/resources/templates/entry/09-changelog.md") -ge 1 ]] && echo 1 || echo 0)"
+# v3.92.3 (CHG-128 fix): 只下发门禁、不下发执行件 = E153 永远无法满足。v3.92.0
+# 起三个批次都漏装 tests/fresh-clone-check.sh，changelog 却承诺 --upgrade 带走。
+# 断言刻意用**行为**（真跑 --guard 到临时仓），不复述安装清单文本——文本形态
+# 会被等价改写绕过（A5 同族根因）。
+a58_payload_ok=1
+A58_TMP=$(mktemp -d 2>/dev/null) || A58_TMP=""
+if [[ -n "$A58_TMP" ]]; then
+  ( cd "$A58_TMP" && git init -q . ) >/dev/null 2>&1 || true
+  bash "$ROOT/scripts/bootstrap.sh" --guard "$A58_TMP" >/dev/null 2>&1 || a58_payload_ok=0
+  [[ -x "$A58_TMP/tests/fresh-clone-check.sh" ]] || a58_payload_ok=0
+  bash -n "$A58_TMP/tests/fresh-clone-check.sh" 2>/dev/null || a58_payload_ok=0
+  rm -rf "$A58_TMP"
+else
+  a58_payload_ok=0
+fi
+report "A58i bootstrap --guard installs an executable fresh-clone tool" 0 "$([[ "$a58_payload_ok" -eq 1 ]] && echo 0 || echo 1)"
+# v3.92.3: target repos do not receive audit-standards-src.sh, so the tool must
+# fall back to the shipped cross-doc audit or the receipt can never be green.
+report "A58j fresh-clone tool falls back to the shipped cross-doc audit" 1 "$(a17_at_least_1 "$(grep -c 'audit-docs-consistency.sh' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
 
 # ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
 # 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`

@@ -7,9 +7,12 @@
 # Usage:
 #   tests/fresh-clone-check.sh [--sections "T1,T2"] [--check] [--ledger-check]
 #     default sections: AGENT_GUARD_FRESH_CLONE_SECTIONS, else the `-T auto` resolution
-#     receipt: .agent-state/fresh-clone-receipt.json (agent-gate E149 consumes it)
+#     audit: tests/audit-standards-src.sh in the source repo; falls back to the
+#            shipped tests/audit-docs-consistency.sh in a target repo
+#     receipt: .agent-state/fresh-clone-receipt.json (agent-gate E153 consumes it)
 #   --check : validate the existing receipt only (no run)
 set -uo pipefail
+TOOL_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DEFAULT=$(cd "$(dirname "$0")/.." && pwd)
 opt_root=""
 sections="${AGENT_GUARD_FRESH_CLONE_SECTIONS:-}"
@@ -25,17 +28,35 @@ while [[ $# -gt 0 ]]; do
       opt_root="$2"; shift 2 ;;
     --check) check_only=1; shift ;;
     --ledger-check) ledger_check=1; shift ;;
-    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "fresh-clone-check: unknown option '$1' (supported: --sections --root --check)" >&2; exit 2 ;;
   esac
 done
 ROOT="${opt_root:-$ROOT_DEFAULT}"
+# v3.92.3: the tool is installed at <tests>/ (possibly a non-default root) and
+# must call its SIBLING run-tests/audit tools, never a hardcoded tests/ path.
+if [[ "$TOOL_DIR" == "$ROOT" ]]; then
+  TOOL_REL="."
+elif [[ "$TOOL_DIR" == "$ROOT"/* ]]; then
+  TOOL_REL="${TOOL_DIR#"$ROOT"/}"
+else
+  TOOL_REL="tests"
+fi
 RECEIPT="${AGENT_GUARD_FRESH_CLONE_RECEIPT:-$ROOT/.agent-state/fresh-clone-receipt.json}"
 # v3.92.1 (CHG-128 batch 2): receipt history — repeated full-chain verification is
 # the costliest waste we have observed. Every generation appends one row; a second
 # receipt for the SAME change without a recorded reason is announced (never blocks).
 HISTORY="${AGENT_GUARD_FRESH_CLONE_HISTORY:-$ROOT/.agent-state/fresh-clone-history.tsv}"
-CHANGE=$(tr -d '[:space:]' < "$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null)" 2>/dev/null || true)
+# v3.92.3: --git-path is relative to the worktree; reading it from the caller's
+# cwd made every invocation outside the repo root print a redirection error.
+ACTIVE_FILE=$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+case "$ACTIVE_FILE" in
+  "") CHANGE="" ;;
+  /*) CHANGE=$(tr -d '[:space:]' < "$ACTIVE_FILE" 2>/dev/null || true) ;;
+  *)  [[ -f "$ROOT/$ACTIVE_FILE" ]] \
+        && CHANGE=$(tr -d '[:space:]' < "$ROOT/$ACTIVE_FILE" 2>/dev/null || true) \
+        || CHANGE="" ;;
+esac
 CHANGE_LOG=""
 [[ -n "$CHANGE" ]] && CHANGE_LOG=$(ls -d "$ROOT/docs/changes/$CHANGE" 2>/dev/null | head -1)
 
@@ -78,13 +99,27 @@ head=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null) || { echo "fresh-clone-check: 
 
 # Section resolution: explicit > env > `-T auto` (mapped from the live diff).
 if [[ -z "$sections" ]]; then
-  sections=$(AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1 \
+  sections=$(AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$TOOL_DIR/run-tests.sh" -T auto 2>&1 \
     | sed -n 's/^auto-resolve-only: //p' | tail -1 | tr ' ' ',')
 fi
 [[ -n "$sections" ]] || { echo "fresh-clone-check: cannot resolve sections (pass --sections)" >&2; exit 2; }
 case ",$sections," in
   *,FULL,*) echo "fresh-clone-check: auto resolved FULL — pass --sections with the affected list (full runs belong to CI)" >&2; exit 2 ;;
 esac
+
+# v3.92.3: audit tool selection. The source repo ships audit-standards-src.sh;
+# a target repo only gets audit-docs-consistency.sh (the source audit is
+# deliberately NOT shipped). Without this fallback the receipt could never be
+# green in a target repo and E153 would be unsatisfiable.
+audit_tool=""
+if [[ -f "$TOOL_DIR/audit-standards-src.sh" ]]; then
+  audit_tool="audit-standards-src.sh"
+elif [[ -f "$TOOL_DIR/audit-docs-consistency.sh" ]]; then
+  audit_tool="audit-docs-consistency.sh"
+else
+  echo "fresh-clone-check: no audit tool at $TOOL_DIR (need audit-standards-src.sh in the source repo or audit-docs-consistency.sh in a target repo)" >&2
+  exit 2
+fi
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/fresh-clone.XXXXXX") || { echo "fresh-clone-check: mktemp failed" >&2; exit 2; }
 trap 'rm -rf "$tmp"' EXIT INT TERM
@@ -112,8 +147,8 @@ suite_log="$tmp/.fresh-suite.log"
 # G-ENV proves correctness, not latency: dispatch in parallel so the serial-only
 # wall-clock assertion (T82) does not depend on the host's momentary load.
 fresh_jobs="${AGENT_GUARD_FRESH_CLONE_JOBS:-4}"
-bash "$tmp/tests/audit-standards-src.sh" >"$audit_log" 2>&1; audit_rc=$?
-bash "$tmp/tests/run-tests.sh" -T "$sections" -j "$fresh_jobs" >"$suite_log" 2>&1; suite_rc=$?
+bash "$tmp/$TOOL_REL/$audit_tool" >"$audit_log" 2>&1; audit_rc=$?
+bash "$tmp/$TOOL_REL/run-tests.sh" -T "$sections" -j "$fresh_jobs" >"$suite_log" 2>&1; suite_rc=$?
 passed=$(sed -n 's/^\([0-9][0-9]*\) passed,.*/\1/p' "$suite_log" | tail -1); passed=${passed:-0}
 failed=$(sed -n 's/^[0-9][0-9]* passed, \([0-9][0-9]*\) failed.*/\1/p' "$suite_log" | tail -1); failed=${failed:-0}
 audit_pass=$(sed -n 's/^\([0-9][0-9]*\) passed,.*/\1/p' "$audit_log" | tail -1); audit_pass=${audit_pass:-0}
@@ -121,11 +156,11 @@ audit_fail=$(sed -n 's/^[0-9][0-9]* passed, \([0-9][0-9]*\) failed.*/\1/p' "$aud
 
 mkdir -p "$(dirname "$RECEIPT")"
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
-printf '{"head":"%s","archive_sha":"%s","tree_sha":"%s","audit_rc":%s,"audit_passed":%s,"audit_failed":%s,"suite_rc":%s,"sections":"%s","passed":%s,"failed":%s,"generated_at":"%s"}\n' \
-  "$head" "$archive_sha" "$tree_sha" "$audit_rc" "$audit_pass" "$audit_fail" "$suite_rc" "$sections" "$passed" "$failed" "$now" \
+printf '{"head":"%s","archive_sha":"%s","tree_sha":"%s","audit_tool":"%s","audit_rc":%s,"audit_passed":%s,"audit_failed":%s,"suite_rc":%s,"sections":"%s","passed":%s,"failed":%s,"generated_at":"%s"}\n' \
+  "$head" "$archive_sha" "$tree_sha" "$audit_tool" "$audit_rc" "$audit_pass" "$audit_fail" "$suite_rc" "$sections" "$passed" "$failed" "$now" \
   > "$RECEIPT"
 
-echo "fresh-clone-check: audit ${audit_pass}/${audit_fail} rc=$audit_rc · suite ${passed}/${failed} rc=$suite_rc · sections=$sections"
+echo "fresh-clone-check: audit(${audit_tool}) ${audit_pass}/${audit_fail} rc=$audit_rc · suite ${passed}/${failed} rc=$suite_rc · sections=$sections"
 # v3.92.1: one ledger row per generation; repeated use is announced, never blocked.
 wall_s=$(( $(date +%s) - start_s ))
 rc=0; [[ "$audit_rc" -eq 0 && "$suite_rc" -eq 0 ]] || rc=1

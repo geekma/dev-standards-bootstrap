@@ -56,6 +56,7 @@ Flags (layers; default --core when none given):
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
                <github>/workflows/agent-governance.yml,
                .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4),
+               <tests>/fresh-clone-check.sh (G-ENV 环境等价检查, 随强制包, v3.92.3),
                <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0),
                <scripts>/lib-suite-lock.sh (全量套件工作区锁 lib, 随 run-tests.sh 同包, v3.86.0)
   --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml,
@@ -755,6 +756,10 @@ run_layer() {
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases
       install_file - "$TESTS_DIR/run-tests.sh" tests/run-tests.sh 755
+      # v3.92.3 (CHG-128 fix): G-ENV 的执行件。E153 的 fix 提示与 pre-push 都指向
+      # tests/fresh-clone-check.sh；只下发门禁不下发执行件 = 门永远无法满足（v3.92.0
+      # 起三个批次漏装）。与 run-tests.sh 同层同源，不再另建模板副本防双份漂移。
+      install_file - "$TESTS_DIR/fresh-clone-check.sh" tests/fresh-clone-check.sh 755
       # v3.79.0 (CHG-103, REQ-1144): 树指纹 lib 随 run-tests.sh 同包下发——run-tests.sh
       # 收据块 source "$ROOT/scripts/lib-…"，缺文件 = 收据指纹恒空（降级安全但 emitter
       # 半失效）。声明文件排除清单（README×2/tests/.audit-baseline/tests/.suite-baseline）为源仓收口工具
@@ -781,7 +786,11 @@ if [[ "$upgrade" == true ]]; then
   # unless explicitly forced. Non-git targets get a prominent warning instead
   # (nothing to roll back, but --upgrade is an explicit user action there).
   if [[ -d "$target/.git" ]] && command -v git >/dev/null 2>&1; then
-    if [[ -n "$(git -C "$target" status --porcelain 2>/dev/null)" ]]; then
+    # v3.92.3: .agent-state/ is local runtime state (receipts, ledgers, progress)
+    # and is never committed — counting it as "uncommitted work" made the next
+    # --upgrade refuse after any gate/verification run.
+    dirty=$(git -C "$target" status --porcelain 2>/dev/null | grep -vE '(^|[[:space:]/])\.agent-state/' || true)
+    if [[ -n "$dirty" ]]; then
       if [[ "$force" != true ]]; then
         echo "bootstrap: target has uncommitted changes — commit first, or pass --force to upgrade anyway (git history preserves customization)" >&2
         exit 2
@@ -802,6 +811,25 @@ fi
 for l in $layers; do
   run_layer "$l"
 done
+
+# v3.92.3: .agent-state/ holds receipts, ledgers and progress files. They are
+# local runtime state, never a deliverable. Without an ignore rule a target repo
+# that runs `git add -A` tracks them, and the next receipt generation changes
+# the tracked tree hash — making every fresh-clone receipt self-invalidating.
+# Append-only and idempotent: existing .gitignore content is never rewritten.
+ensure_agent_state_ignored() {
+  local gi="$target/.gitignore"
+  if [[ -f "$gi" ]] && grep -qE '^[[:space:]]*([*]{1,2}/)?\.agent-state/?[[:space:]]*$' "$gi" 2>/dev/null; then
+    return 0
+  fi
+  if [[ -f "$gi" ]]; then
+    printf '\n# dev-standards runtime state (local only — never commit)\n.agent-state/\n' >> "$gi"
+  else
+    printf '# dev-standards runtime state (local only — never commit)\n.agent-state/\n' > "$gi"
+  fi
+  echo "auto-wired   .agent-state/ ignored (local runtime state)"
+}
+ensure_agent_state_ignored
 
 # --- persist non-default roots into the installed config (v3.15.0) ----------
 # The gates read .agent-governance.yml. If the installer wrote to non-default

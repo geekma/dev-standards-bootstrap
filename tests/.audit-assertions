@@ -518,6 +518,8 @@ A58e pre-push carries the G-FEED hint
 A58f CHANGELOG carries the v3.92.0 row
 A58g fresh-clone history ledger is declared
 A58h unverified-REQ declaration face is shipped
+A58i bootstrap --guard installs an executable fresh-clone tool
+A58j fresh-clone tool falls back to the shipped cross-doc audit
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06-delivery-summary.md
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06.5-deployment-config.md
 A6a repo bugfix-log has real BUG entries (docs-dependent)

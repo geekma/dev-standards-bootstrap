@@ -2409,6 +2409,9 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   mkdir -p "$FAKE_SRC/scripts" "$FAKE_SRC/tests"
   cp "$ROOT/scripts/bootstrap.sh" "$FAKE_SRC/scripts/bootstrap.sh"
   cp "$ROOT/tests/run-tests.sh" "$FAKE_SRC/tests/run-tests.sh"
+  # v3.92.3 (CHG-128 fix): guard 清单含 G-ENV 执行件——FAKE_SRC 必须同拷，
+  # 否则 install 链在 install_file 缺源时整体红（安装器清单唯一权威=bootstrap）。
+  cp "$ROOT/tests/fresh-clone-check.sh" "$FAKE_SRC/tests/fresh-clone-check.sh"
   # v3.79.0 (CHG-103): bootstrap guard 清单含树指纹 lib——FAKE_SRC 必须同拷，
   # 否则 install 链在 install_file 缺源时整体红（安装器清单唯一权威=bootstrap）。
   cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$FAKE_SRC/scripts/lib-suite-tree-fingerprint.sh"
@@ -2424,7 +2427,7 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   out=$(bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" 2>&1); rc=$?
   report "T21 install.sh --from performs a full offline install" 0 "$rc"
   for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate scripts/lib-suite-tree-fingerprint.sh scripts/lib-suite-lock.sh .githooks/pre-commit \
-           .agent-governance.yml tests/run-tests.sh; do
+           .agent-governance.yml tests/run-tests.sh tests/fresh-clone-check.sh; do
     [[ -e "$TGT/$f" ]] || { echo "T21 missing after install: $f" >&2; rc=1; }
   done
   report "T21 install lands the governance payload" 0 "$rc"
@@ -4418,12 +4421,19 @@ section_T50() {
   t50_n39=$(printf '%s\n' "$t50_out" | grep -c '^ok   T39')
   t50_n38=$(printf '%s\n' "$t50_out" | grep -c '^ok   T38')
   t50_green=$(printf '%s\n' "$t50_out" | grep -q ', 0 failed$' && echo 1 || echo 0)
-  report "T50 -T isolates single section (TC-1115)" 0 "$([[ $t50_rc -eq 0 && $t50_n39 -ge 3 && $t50_n38 -eq 0 && "$t50_green" == 1 ]] && echo 0 || echo 1)"
+  # v3.92.3: T39 reads resources/CLAUSE_REGISTRY.md, which a target repo does
+  # not have (it lives under <docs>/). The explicit SKIP is the adaptive face;
+  # requiring >=3 ok lines here made T50 red in every installed repo.
+  t50_skip39=$(printf '%s\n' "$t50_out" | grep -c '^SKIP T39')
+  report "T50 -T isolates single section (TC-1115)" 0 "$([[ $t50_rc -eq 0 && ( $t50_n39 -ge 3 || $t50_skip39 -ge 1 ) && $t50_n38 -eq 0 && "$t50_green" == 1 ]] && echo 0 || echo 1)"
   report "T50 unknown section dies rc2 (TC-1116)" 2 "$(bash "$ROOT/tests/run-tests.sh" -T NOPE >/dev/null 2>&1; echo $?)"
   report "T50 wall-time is last line (TC-1117)" 1 "$(printf '%s\n' "$t50_out" | tail -1 | grep -cE '^wall-time: [0-9]+s$')"
   report "T50 summary anchor intact before wall-time (TC-1117)" 1 "$(printf '%s\n' "$t50_out" | tail -2 | head -1 | grep -cE '^[0-9]+ passed, [0-9]+ failed$')"
   t50_out=$(bash "$ROOT/tests/run-tests.sh" -T T39,T38 2>&1)
-  report "T50 -T multi keeps source order (TC-1119)" "T38" "$(printf '%s\n' "$t50_out" | grep -m1 '^ok' | awk '{print $2}')"
+  # The first section marker can be a SKIP line in a target repo (T38's source
+  # fixtures are absent, so it emits only FAIL lines); match the section id
+  # rather than the "ok" prefix.
+  report "T50 -T multi keeps source order (TC-1119)" "T38" "$(printf '%s\n' "$t50_out" | grep -m1 -oE 'T3[89]')"
   t50_list=$(bash "$ROOT/tests/run-tests.sh" -l 2>&1); t50_rc=$?
   t50_expect=$(grep -c '^section_' "$ROOT/tests/run-tests.sh")
   t50_n=$(printf '%s\n' "$t50_list" | grep -c '^T')
@@ -4457,6 +4467,13 @@ section_T50() {
 # （echo 777 passed + 落哨兵）+ fake README×2（声称 888）+ git init。收据采信=999
 # （收据值），拒采内嵌=777（fake 值）——两值不同使哨兵与报文双向可判。
 section_T51() {
+  # v3.92.3: target repos do not receive the source-layer receipt tools. The
+  # section is a self-test of THEM, so skip explicitly instead of red-lighting
+  # every installed suite (G-ENV must stay usable without the source layer).
+  if [[ ! -f "$ROOT/scripts/update-assertion-count.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+    echo "SKIP T51: source-layer receipt tools absent (target repo) — 跳过收据采信自测"
+    return 0
+  fi
   local r51 r51_head r51_out r51_rc r51_receipt r51_ts
   local r51_sentinel r51_has999 r51_has777 r51_same r51_same2 r51_had
   local r51_tree fp1 fp2 fp3 r51_pre r51_post r51_mis r51_ng r51_ngfp r51_ng2
