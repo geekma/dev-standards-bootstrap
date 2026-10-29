@@ -41,6 +41,25 @@ PIPE="$ROOT/resources/templates/github-artifact-pipeline.yml"
 SKILL="$ROOT/SKILL.md"
 RM_EN="$ROOT/README.md"
 RM_ZH="$ROOT/README.zh-CN.md"
+# v3.95.0 (CHG-132, REQ-1323): hoisted from the assertion blocks — read across
+# blocks (and by the A10b/A10 tail), which run in separate subshells under
+# AGENT_GUARD_AUDIT_PARALLEL=1. Pure path/pattern derivations, no side effects.
+SLOG="$ROOT/resources/STANDARDS_CHANGELOG.md"
+V=$(grep -oE '规范版本：v[0-9.]+' "$STD" | head -1 | grep -oE '[0-9.]+')
+[[ -n "$V" ]] || V="UNKNOWN"
+log_head=$(grep -m1 -oE '^\| v[0-9.]+' "$SLOG" 2>/dev/null | grep -oE '[0-9.]+')
+GEN="$ROOT/scripts/update-assertion-count.sh"
+GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
+GOV_WF="$ROOT/resources/templates/github-agent-governance.yml"
+AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
+AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
+a17_at_least_1() { [[ "${1:-0}" -ge 1 ]] && echo 1 || echo 0; }
+REPO_CHANGES="$ROOT/docs/changes"
+REPO_BUGS="$ROOT/docs/bugs"
+YML_TPL="$ROOT/resources/templates/agent-governance.yml"
+GOV_YML_TPL="$ROOT/resources/templates/agent-governance.yml"
+std_bytes=$(wc -c < "$STD" | tr -d ' ')
+a56_suite="$ROOT/tests/run-tests.sh"
 
 pass=0
 soft_pass=0
@@ -166,10 +185,42 @@ at_least_unique() { # name file pattern -> exactly one matching line
 }
 
 # ===================== PART A：永久结构不变量（跨版本有效） =====================
+# v3.95.0 (CHG-132, REQ-1323): the assertion mass below is wrapped into four
+# blocks (audit_block_a..d). Serial mode (default) calls them in order in this
+# shell — byte-identical to the pre-split script. AGENT_GUARD_AUDIT_PARALLEL=1
+# runs each block as a background subshell with per-block stdout/stderr/counter
+# capture; the parent replays captures in ORIGINAL block order (ok → stdout,
+# FAIL/warn → stderr) and sums the per-block counters, so green runs stay
+# byte-identical (red runs group stderr per block). A10b/A10 stay after the
+# blocks in EVERY mode: they compare the FULL executed name set/count.
+# report() keeps appending assertion names to AUDIT_NAMES_RUN from the
+# subshells (single small appends; the A10b comparison is set-based).
+AUDIT_BLOCKS=(a b c d)
+audit_parallel() {
+  _ap_dir="${TMPDIR:-/tmp}/audit-par.$$"
+  mkdir -p "$_ap_dir" 2>/dev/null || return 1
+  local _s
+  for _s in "${AUDIT_BLOCKS[@]}"; do
+    while [[ "$(jobs -rp | wc -l | tr -d ' ')" -ge "${AGENT_GUARD_AUDIT_JOBS:-4}" ]]; do sleep 0.2; done
+    ( "audit_block_$_s" >"$_ap_dir/$_s.out" 2>"$_ap_dir/$_s.err"; \
+      printf '%s %s %s %s\n' "$pass" "$fail" "$soft_pass" "$warn" >"$_ap_dir/$_s.stats" ) &
+  done
+  wait
+  for _s in "${AUDIT_BLOCKS[@]}"; do
+    cat "$_ap_dir/$_s.out"
+    cat "$_ap_dir/$_s.err" >&2
+    if [[ -f "$_ap_dir/$_s.stats" ]]; then
+      read -r _ap _af _asf _aw < "$_ap_dir/$_s.stats"
+      pass=$(( pass + _ap )); fail=$(( fail + _af )); soft_pass=$(( soft_pass + _asf )); warn=$(( warn + _aw ))
+    fi
+  done
+  rm -rf "$_ap_dir"
+  return 0
+}
+audit_block_a() {
 
 # ---------- 版本链（单一权威：规范页脚） ----------
-V=$(grep -oE '规范版本：v[0-9.]+' "$STD" | head -1 | grep -oE '[0-9.]+')
-[[ -n "$V" ]] || V="UNKNOWN"
+# SLOG/V/log_head hoisted to the setup region (REQ-1323 cross-block reads).
 
 for f in "$AGENTS" "$METH"; do
   report "version footer synced: $(basename "$f")" 1 "$(grep_count "$f" "当前对应规范版本：v${V}_")"
@@ -218,9 +269,7 @@ report "marketplace manifest version == footer version" "$V" \
 
 # 升级日志（v3.8.0 起外置 STANDARDS_CHANGELOG.md，CHG-005）：新文件存在、
 # 新条目置顶且首行版本 == 页脚版本、规范正文不再内嵌历史日志行
-SLOG="$ROOT/resources/STANDARDS_CHANGELOG.md"
 report "standards changelog file exists and non-empty" 1 "$([[ -s "$SLOG" ]] && echo 1 || echo 0)"
-log_head=$(grep -m1 -oE '^\| v[0-9.]+' "$SLOG" 2>/dev/null | grep -oE '[0-9.]+')
 report "standards changelog newest row == footer version" "$V" "$log_head"
 at_least "standards §2.14 rule points to STANDARDS_CHANGELOG" 1 "$STD" 'STANDARDS_CHANGELOG.md'
 std_log_rows=$(grep -cE '^\| v[0-9]+\.[0-9]+\.[0-9]+ \| 20[0-9]{2}-' "$STD")
@@ -293,8 +342,10 @@ at_least "keyword bug-matrix.md in SKILL" 1 "$SKILL" "bug-matrix.md"
 at_least "keyword coding-record template in SKILL" 1 "$SKILL" "coding-record.md"
 at_least "keyword 06-tasks in agent-gate" 1 "$TPL/agent-gate.sh" "06-tasks"
 
-# ===================== PART A（续） =====================
+}
 
+# ===================== PART A（续） =====================
+audit_block_b() {
 # ---------- §3 清单唯一性（CHG-005：v3.8.0 起 §3 为唯一权威，§4 只作归档引用） ----------
 # 注意：标准全文的 ```markdown fence 数量随结构变化，必须按章节标题锚定，
 # 禁止按 fence 序号取（序号法曾取到 §1.2/§2.6.3 两个空清单 → 恒真 IDENTICAL，R-D 轮修正；
@@ -484,7 +535,6 @@ claims=$(grep -ohE '(^|[^0-9A-Za-z.])[0-9]+[^0-9]{0,20}(assertions?|项断言|�
 # (baseline == receipt.passed). Generator stderr is captured separately and
 # surfaced on failure — the old 2>&1 silently swallowed the "embedded full
 # run" notice, which is why the slowdown looked unexplained.
-GEN="$ROOT/scripts/update-assertion-count.sh"
 gen_rc=0
 gen_err=$(mktemp "${TMPDIR:-/tmp}/audit-a3.XXXXXX")
 gen_out=$(bash "$GEN" --check --from-baseline 2>"$gen_err") || gen_rc=$?
@@ -517,7 +567,6 @@ fi
 #    故：模板不得回退到字面分支名，且必须保留 fail-closed 拒绝路径。
 #    运行时行为由 run-tests T13 守护，本段是源层发布前拦截。
 CI_SCRIPT="$ROOT/resources/templates/check-standards-compliance.sh"
-GOV_WF="$ROOT/resources/templates/github-agent-governance.yml"
 report "A4 compliance.sh has no hardcoded origin/* default baseline" 0 "$(grep -c -- ':-origin/' "$CI_SCRIPT" || true)"
 report "A4 compliance.sh resolves its baseline dynamically" 1 "$(grep -c '^resolve_base_ref() {' "$CI_SCRIPT" || true)"
 report "A4 compliance.sh fails closed on an unknown baseline" 1 "$(grep -c '无法确定基线分支' "$CI_SCRIPT" || true)"
@@ -564,8 +613,7 @@ done
 # 自身的 docs/bugfix-log.md 双登记、docs/changes/CHG-*/ 编号连续性、
 # docs/bugs/BUG-*/ 六件套齐备——"规范仓库自己也要受规范审计"。
 REPO_BFLOG="$ROOT/docs/bugfix-log.md"
-REPO_CHANGES="$ROOT/docs/changes"
-REPO_BUGS="$ROOT/docs/bugs"
+# REPO_CHANGES/REPO_BUGS hoisted to the setup region (REQ-1323 cross-block reads).
 # v3.86.0 (CHG-113): docs/ is gitignored by source-repo decree (CHG-017), so a fresh
 # CI checkout has no private ledger. Treat that as an explicit SKIP, not a soft pass:
 # the old SOFT bucket made A6a/b/c warn forever and leaked into A3/A10, which hid real
@@ -692,9 +740,8 @@ report "A24 quick-start surface is git-tracked (CHG-020)" 0 "$a24_missing"
 # ── PART A8: 门禁硬化形态锚点（CHG-007：FU-008/014/015/019 防复发）──────────────────
 #   门禁行为已由 run-tests golden case 守护；此处锁"实现形态"，防行为被静默回退成弱检查
 #   （BUG-001 同族：检查模式弱于其声称语义）。取值用 grep -F 固定串，防正则元字符歧义。
-GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
 # v3.76.0 (CHG-100)：验证通道方言声明的唯一权威载体（yml 模板 ci 段注释，A43 单源）。
-YML_TPL="$ROOT/resources/templates/agent-governance.yml"
+# YML_TPL hoisted to the setup region (REQ-1323 cross-block reads).
 # v3.18.0：FU-015 的闭环判定从"changelog 文件存在"细化为两种形态——独立目录仍看文件，
 # 批次目录看**本变更自己的 `## <id>` 小节**（同批共享 changelog，"文件存在"会把后加入的
 # 变更一起判为已关闭）。故此处由"恰好 1 处"改为"两种形态各至少 1 处"：恒等断言会把
@@ -762,7 +809,7 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #   ② 有 CHANGELOG 条目对应：resources/STANDARDS_CHANGELOG.md 的 v3.89.0 行；
 #   ③ 按 +4KB 步进重设为 168KB（172,032 字节），余量 6,095B——**不是**按当前体量贴合；
 #      软警线随上界 −4KiB = 167,936B。独立评审核回+8KB 步进放宽过多，此处兑现 +4KB。
-std_bytes=$(wc -c < "$STD" | tr -d ' ')
+# std_bytes hoisted to the setup region (REQ-1323 cross-block reads).
 report "A11 standards body size <= 168KB (FU-017; ratchet-up v3.89.0 CHG-117, +4KiB step)" 1 "$([[ "$std_bytes" -le 172032 ]] && echo 1 || echo 0)"
 # A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥167,936B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
@@ -837,12 +884,12 @@ at_least "A16 upgrade blocks on dirty target (CHG-015)" 1 "$ROOT/scripts/bootstr
 #   ② 过度参数化：把 AGENTS.md / 15 件产物名 / 六件套名也做成可配 →
 #      跨仓逐文件比对与"装一次迁移任意仓库"解体。
 #   形态锚点（grep -c）而非行为断言：行为由 run-tests T14 在真仓库里端到端验证。
-GOV_YML_TPL="$ROOT/resources/templates/agent-governance.yml"
+# GOV_YML_TPL hoisted to the setup region (REQ-1323 cross-block reads).
 AUDIT_TPL="$ROOT/resources/templates/audit-docs-consistency.sh"
 CI_TPL="$ROOT/resources/templates/check-standards-compliance.sh"
 # 计数型断言统一归一到 0/1（本脚本的 at_least 是 4 参形态：name min file pattern，
 # 计数型必须走 report + 归一，不能直接喂计数）
-a17_at_least_1() { [[ "${1:-0}" -ge 1 ]] && echo 1 || echo 0; }
+# a17_at_least_1 hoisted to the setup region (REQ-1323 cross-block reads).
 report "A17 gate resolves path roots from config" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path() {' "$GATE_TPL" || true)")"
 report "A17 gate path defaults are the historical values" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path docs docs' "$GATE_TPL" || true)")"
 report "A17 audit script resolves the docs root from config" 1 "$(a17_at_least_1 "$(grep -c 'cfg_path docs docs' "$AUDIT_TPL" || true)")"
@@ -872,7 +919,7 @@ report "A18 derived markers are parsed from frontmatter only" 1 "$(a17_at_least_
 report "A18 installer refuses to install into a derived skill" 1 "$(a17_at_least_1 "$(grep -c 'refusing to install into a derived skill directory' "$BOOT" || true)")"
 report "A18 every write path skips derived dirs" 1 "$(a17_at_least_1 "$(grep -c 'derived (skip)' "$BOOT" || true)")"
 report "A18 upgrade refuses to clobber local changelog rows (D5)" 1 "$(a17_at_least_1 "$(grep -c 'divergence_guard' "$BOOT" || true)")"
-report "A18 installer pins path roots into the shipped config (idempotency)" 1 "$(a17_at_least_1 "$(grep -c 'DOCS_DIR}/changes' "$BOOT" || true)")"
+report "A18 installer pins path roots through escaped variables (idempotency)" 3 "$(( $(a17_at_least_1 "$(grep -cF '\1${e_docs} ' "$BOOT" || true)") + $(a17_at_least_1 "$(grep -cF 'e_docs=$(sed_repl_escape' "$BOOT" || true)") + $(a17_at_least_1 "$(grep -cF '$(cfg_path docs $e_docs_q)' "$BOOT" || true)") ))"
 at_least "A18 standards documents the changelog ownership" 1 "$STD" '规范升级日志的归属'
 at_least "A18 standards documents the self-evolution contract" 1 "$STD" 'Agent 自进化与派生资产'
 at_least "A18 SKILL.md declares the derived_from contract" 1 "$SKILL" 'derived_from'
@@ -1185,7 +1232,10 @@ report "A25 golden suite pins the master backfill gate" 1 "$(a17_at_least_1 "$(g
 report "A25 golden suite pins begin masters check" 1 "$(a17_at_least_1 "$(grep -c 'T23 begin refuses to start without project masters' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the bug day-batch default" 1 "$(a17_at_least_1 "$(grep -c 'T18c defect groups join the same-day batch' "$ROOT/tests/run-tests.sh" || true)")"
 report "A25 golden suite pins the flat bug batch form" 1 "$(a17_at_least_1 "$(grep -c 'T18d flat bug batch' "$ROOT/tests/run-tests.sh" || true)")"
+}
+
 # --- A25 v3.38.0：会话水位门 / 产物体量度量 / 入口脚手架（CHG-038/039/040）---
+audit_block_c() {
 report "A25 gate begin reads the session water level" 1 "$(a17_at_least_1 "$(grep -c 'session-water.json' "$GATE_TPL" || true)")"
 report "A25 gate water refusal names the escape hatch" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_ALLOW_OVER_WATER' "$GATE_TPL" || true)")"
 report "A25 adapter counts chat.message turns" 1 "$(a17_at_least_1 "$(grep -c 'chat.message' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
@@ -1304,8 +1354,7 @@ report "A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)" "
 # 死调用）而未同步基线 → 红；红即提示跑 scripts/update-assertion-count.sh 同步。
 # 不采用"静态调用数==执行数"口径：if/else 双分支站点使静态数天然≠执行数。
 # 基线文件随本变更入库；/tmp 计数文件为本轮运行现场（供生成器 --check 比对）。
-AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
-AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
+# AUDIT_BASELINE/AUDIT_LAST hoisted to setup (REQ-1323 cross-block reads).
 # A41（v3.62.1，CHG-081/REQ-1027）：溯源块后空行残留 canary——旧写入路径每跑净增
 # 1 空行（BATCH-20260925 12 文件×73 连续空行实证，跨 73 次盖章累积）。规范形块后
 # 连续空行必须 ≤1；残留=写入幂等被破坏的前哨（红向实证见 05 §CHG-081）。
@@ -1488,7 +1537,7 @@ at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/sc
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body ratchet (CHG-107; recalibrated v3.92.2 CHG-128 +unverified-REQ clause)" 1 "$([[ "$std_bytes" -le 171200 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; recalibrated v3.94.0 CHG-131 +dispatch-contract clause)" 1 "$([[ "$std_bytes" -le 171600 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -1639,7 +1688,7 @@ report "A55 DS section4 states the P00-P12 thirteen-row rule (CHG-114)" 2 \
 #   中文措辞本身，覆盖受跟踪全集而不只是载荷，因为源层文件同样受跟踪）；
 #   ⑬ .opencode/ 目录本身不受跟踪；⑭ 套件收据复用规则被 verify-all 与生成器共享。
 a56_self="$ROOT/tests/audit-standards-src.sh"
-a56_suite="$ROOT/tests/run-tests.sh"
+# a56_suite hoisted to the setup region (REQ-1323 cross-block reads).
 a56_gen="$ROOT/scripts/update-assertion-count.sh"
 a56_ci="$ROOT/.github/workflows/ci.yml"
 a56_tools="lib-source-facts.sh facts.sh verify-all.sh pre-review-check.sh mutation-check.sh ci-summary.sh batch-metrics.sh"
@@ -1698,8 +1747,67 @@ report "A56 the generator carries both fast evidence modes (CHG-115)" 2 "$a56_ge
 a56_delegate=0
 grep -qF "lib-source-facts.sh" "$a56_gen" || a56_delegate=$(( a56_delegate + 1 ))
 grep -qF "sf_receipt_fresh" "$a56_gen" || a56_delegate=$(( a56_delegate + 1 ))
-grep -qE "s/\.\*"passed"" "$a56_gen" && a56_delegate=$(( a56_delegate + 1 ))
+# v3.93.0 (CHG-130, REQ-1295): the old pattern `grep -qE "s/\.\*"passed""`
+# concatenated to `s/\.\*passed` and could never match, so this lane was a
+# permanent false green. The violation it means to catch is a hand-rolled JSON
+# read of the receipt's passed count — that always spells the quoted key.
+grep -qF '"passed"' "$a56_gen" && a56_delegate=$(( a56_delegate + 1 ))
 report "A56 the generator delegates receipt trust to the single implementation (CHG-115)" 0 "$a56_delegate"
+
+# v3.93.0 (CHG-130, REQ-1294): is_code_path's exclusion face is replicated in
+# three files with a pinned sync duty. A missing entry makes the SAME path code
+# in one gate and governance in another (fresh-clone-check.sh was absent twice).
+a59_required='agent-gate session-gate.sh install-hook-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh'
+a59_missing=0; a59_seen=0; a59_mutants=0
+for a59_f in "$ROOT/resources/templates/agent-gate.sh" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh"; do
+  [[ -f "$a59_f" ]] || continue
+  a59_seen=$(( a59_seen + 1 ))
+  # Only the alternation line carries the exclusion face. Searching the whole
+  # function body was a false green: the surrounding comments name
+  # fresh-clone-check.sh / stamp-provenance.sh, so deleting an entry from the
+  # regex still matched. Drop backslashes so `session-gate\.sh` matches the
+  # `session-gate.sh` token.
+  a59_body=$(grep -m1 -i -E 'githooks_re\}/\|' "$a59_f" 2>/dev/null || true)
+  a59_body=${a59_body//\\/}
+  for a59_t in $a59_required; do
+    [[ "$a59_body" == *"$a59_t"* ]] || a59_missing=$(( a59_missing + 1 ))
+  done
+  [[ "$a59_f" == *agent-gate.sh ]] || continue
+  # Mutation self-test: deleting one required token from the extracted line must
+  # make the same token loop report a miss (proves the assertion can fail).
+  # Target a token from $a59_required itself: the exclusion face escapes dots
+  # (`fresh-clone-check\.sh`), so a literal removal never matches that entry.
+  a59_first=${a59_required%% *}
+  a59_mut=${a59_body/$a59_first/}
+  a59_mut_missing=0
+  for a59_t in $a59_required; do
+    [[ "$a59_mut" == *"$a59_t"* ]] || a59_mut_missing=$(( a59_mut_missing + 1 ))
+  done
+  [[ "$a59_mut_missing" -ge 1 ]] && a59_mutants=1
+done
+if [[ "$a59_seen" -eq 3 ]]; then
+  report "A59 is_code_path replicas carry the same tool set (CHG-130 REQ-1294)" 0 "$a59_missing"
+  report "A59 mutation of the exclusion face is detectable (CHG-130 REQ-1294)" 1 "$a59_mutants"
+else
+  report "A59 all three is_code_path replicas exist (CHG-130 REQ-1294)" 3 "$a59_seen"
+fi
+
+# v3.93.0 (CHG-130, REQ-1297): a GATE-Exxx code must have exactly one hint arm —
+# bash only ever uses the first match, so later duplicates were dead code that
+# read like a second, different contract.
+a60_dup=$(sed -n '/^gate_hint()/,/^}/p' "$ROOT/resources/templates/agent-gate.sh" 2>/dev/null | grep -o 'GATE-E[0-9]\+' | sort | uniq -d | wc -l | tr -d ' ')
+report "A60 every gate_hint code is defined exactly once (CHG-130 REQ-1297)" 0 "$a60_dup"
+
+# v3.93.0 (CHG-130, REQ-1296): the tests copy is what T26c executes; it must be
+# the shipped payload byte for byte (it had drifted to the pre-14-column writer).
+a61_p="$ROOT/resources/templates/audit-docs-consistency.sh"
+a61_t="$ROOT/tests/audit-docs-consistency.sh"
+if [[ -f "$a61_p" && -f "$a61_t" ]]; then
+  cmp -s "$a61_p" "$a61_t"
+  report "A61 tests audit copy is byte-identical to the payload (CHG-130 REQ-1296)" 0 $?
+else
+  report "A61 both audit copies exist (CHG-130 REQ-1296)" 1 0
+fi
 
 # One baseline-number parser (v3.87.0 R4, finding #9). sf_baseline_num is the
 # recipe; a second `tr -d` + digit case is how the empty-string hole reopens.
@@ -1735,7 +1843,7 @@ for a56_s in $a56_secs; do
     || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
 done
 report "A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)" 0 "$a56_sec_bad"
-at_least_unique "A56 golden section T85 closes the SECTIONS registry (CHG-129 tail)" "$a56_suite" '^SECTIONS=.* T85)'
+at_least_unique "A56 golden section T87 closes the SECTIONS registry (CHG-132 tail)" "$a56_suite" '^SECTIONS=.* T87)'
 
 # The SKIP string alone is a vacuous pin: a section can put its first assertions
 # above the guard and still print the string. In a target-repo layout (only
@@ -1846,7 +1954,10 @@ report "A56 private session-cost wording reaches no tracked face at all (CHG-115
 report "A56 the private workspace .opencode/ stays untracked (CHG-115)" 0 \
   "$(git -C "$ROOT" ls-files .opencode 2>/dev/null | wc -l | tr -d ' ')"
 
+}
+
 # --- A57 (v3.88.0, CHG-116, REQ-1197/1198): -T auto authority boundaries ---
+audit_block_d() {
 # The mapping is an optimization, never a correctness dependency: the pins below
 # keep the authority path (kind:"full" receipt, full-run gating), the partial
 # quarantine (separate file, kind:"partial"), the consumer-side rejection
@@ -1976,6 +2087,75 @@ for a58m_f in scripts/bootstrap.sh scripts/install.sh resources/templates/agent-
   grep -qF 'paths:[[:space:]]*$/,/^[^[:space:]#]' "$ROOT/$a58m_f" 2>/dev/null && a58m_n=$(( a58m_n + 1 ))
 done
 report "A58m every path-root reader scopes to paths:" 10 "$a58m_n"
+
+# A62 派发输入契约 v2 全链（v3.94.0，CHG-131，REQ-1310~1317）：本批失效形态是"契约只写在
+# 一份文档里"——主 Agent 照旧一句话派发、模板无承载字段、门禁不校版本、生成器缺失，四者
+# 任一回落则契约实际不生效。五面互锁：权威锚点 / 契约表 / 模板承载 / 门禁机校 / 生成器与注册表。
+A62_RI="$ROOT/resources/methodologies/review-intelligence.md"
+A62_T35="$ROOT/resources/templates/entry/03.5-tasks.md"
+A62_T07="$ROOT/resources/templates/entry/07-review-report.md"
+A62_GOV="$ROOT/resources/templates/entry/00-governance.json"
+A62_NC="$ROOT/resources/templates/new-change.sh"
+A62_CR="$ROOT/resources/CLAUSE_REGISTRY.md"
+report "A62 DS §2.2 dispatch-contract anchor is unique (CHG-131)" 1 \
+  "$(grep_count_f "$STD" '**AI 子代理派发输入契约（v3.94.0，dispatch_contract v2）**')"
+report "A62 review-intelligence declares the nine P groups (CHG-131)" 9 \
+  "$(grep -cE '^\| \*\*P[0-8] ' "$A62_RI" 2>/dev/null || true)"
+a62_stage_rows=$(awk '/^### 2\.1 /{f=1;next} f&&/^## /{exit} f&&/^\| /&&!/^\| 阶段/{n++} END{print n+0}' "$A62_RI")
+report "A62 review-intelligence §2.1 carries ten stage skeletons (CHG-131)" 10 "$a62_stage_rows"
+# 五标签逐条在位：正例（模板承载）与反例（模板不得只剩旧「评审输入」单字段）成对。
+a62_lbl=0
+for a62_l in 项目背景 变更上下文 证据包 专业与历史 独立与成本; do
+  a62_c=$(grep -cE "^-[[:space:]]*${a62_l}(：|:)" "$A62_T35" 2>/dev/null || true)
+  a62_lbl=$(( a62_lbl + ${a62_c:-0} ))
+done
+report "A62 entry/03.5 carries the five dispatch-input labels (CHG-131)" 5 "$a62_lbl"
+report "A62 entry/07 carries the business and test-view rows (CHG-131)" 2 \
+  "$(( $(grep_count_f "$A62_T07" '| 功能与业务 |') + $(grep_count_f "$A62_T07" '| 测试视角 |') ))"
+report "A62 entry/00-governance carries the dispatch_contract placeholder (CHG-131)" 1 \
+  "$(grep_count_f "$A62_GOV" '"dispatch_contract": "__DISPATCH_CONTRACT__"')"
+report "A62 new-change stamps dispatch_contract v2 (CHG-131)" 1 \
+  "$(grep_count_f "$A62_NC" 's/__DISPATCH_CONTRACT__/v2/g')"
+at_least_f "A62 gate assembles the P0-P8 skeleton once (CHG-131)" 1 "$GATE_TPL" 'dispatch_run() { # <stage> <change-id> <text|--json>'
+at_least_f "A62 gate wires the dispatch subcommand (CHG-131)" 1 "$GATE_TPL" '  dispatch)'
+at_least_f "A62 gate scaffolds dispatch_contract v2 (CHG-131)" 1 "$GATE_TPL" '"dispatch_contract": "v2"'
+at_least_f "A62 gate emits E155 from one die site (CHG-131)" 1 "$GATE_TPL" 'die "GATE-E155: '
+at_least_f "A62 E155 branches route through the helper (CHG-131)" 4 "$GATE_TPL" 'dispatch_usage "'
+at_least_f "A62 E17 v2 strips the label with colon alternation (CHG-131)" 1 "$GATE_TPL" '${lbl}[[:space:]]*(：|:)'
+# 反例：字节级括号类会把 3 字节「：」吃掉一字节，空值看似非空（E17 静默放行）。
+report "A62 E17 never strips the label with a multibyte bracket class (CHG-131)" 0 \
+  "$(grep_count_f "$GATE_TPL" '[：:]')"
+report "A62 gate names the five expected labels in one hint (CHG-131)" 1 \
+  "$(grep_count_f "$GATE_TPL" 'expected labels: 项目背景 变更上下文 证据包 专业与历史 独立与成本')"
+report "A62 AGENTS carries the dispatch-contract rule (CHG-131)" 1 \
+  "$(grep_count_f "$AGENTS" '**派发契约（v3.94.0，§2.2）**')"
+report "A62 STAGE_PLAYBOOK points at the sole skeleton authority (CHG-131)" 1 \
+  "$(grep_count_f "$ROOT/resources/STAGE_PLAYBOOK.md" '**子代理派发骨架（v3.94.0，CHG-131）**')"
+at_least_unique "A62 registry updates the dispatch clause (CHG-131)" "$A62_CR" '^| R18 | AI 子代理派发输入契约'
+at_least_unique "A62 registry indexes E155 (CHG-131)" "$A62_CR" '^| GATE-E155 |'
+at_least_e "A62 suite registers the dispatch section (CHG-131)" 1 "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T87\)'
+
+# --- A63 (v3.95.0, CHG-132, REQ-1320~1324): 套件基建五手段的源层接线 ---
+at_least_f "A63 AGENTS carries the version-chain-first suite rule (CHG-132)" 1 "$AGENTS" '版本链先行（v3.95.0，CHG-132）'
+at_least_f "A63 AGENTS rule names the sync authority (CHG-132)" 1 "$AGENTS" 'update-assertion-count.sh'
+report "A63 shard-sum.sh is executable" 0 "$([[ -x "$ROOT/scripts/shard-sum.sh" ]] && echo 0 || echo 1)"
+at_least_f "A63 shard-sum prints the summation total (CHG-132)" 1 "$ROOT/scripts/shard-sum.sh" 'total: $total_p passed, $total_f failed'
+at_least_f "A63 shard-sum --write syncs via the generator (CHG-132)" 1 "$ROOT/scripts/shard-sum.sh" 'bash "$gen" --from-baseline'
+at_least_f "A63 shard-sum --write refuses without the generator (CHG-132)" 1 "$ROOT/scripts/shard-sum.sh" 'target installs are sum-only'
+at_least_f "A63 --worktree seam is wired in the runner (CHG-132)" 1 "$ROOT/tests/run-tests.sh" 'WORKTREE=1; shift ;;'
+at_least_f "A63 worktree recursion guard exists (CHG-132)" 1 "$ROOT/tests/run-tests.sh" 'AGENT_GUARD_SUITE_IN_WT'
+at_least_f "A63 section-cache seam is opt-in (CHG-132)" 1 "$ROOT/tests/run-tests.sh" 'AGENT_GUARD_SECTION_CACHE'
+at_least_f "A63 section-cache store is fingerprint-keyed (CHG-132)" 1 "$ROOT/tests/run-tests.sh" 'section-cache.tsv'
+at_least_f "A63 SERIAL_CHAIN hoisted before dispatch (CHG-132)" 1 "$ROOT/tests/run-tests.sh" 'SERIAL_CHAIN=(T50 T51 T5 T22a T16)'
+report "A63 run-tests.sh never writes .suite-baseline directly (CHG-132)" 0 "$(grep -cE '> *"\$ROOT/tests/\.suite-baseline"' "$ROOT/tests/run-tests.sh" || true)"
+at_least_f "A63 audit block-parallel seam exists (CHG-132)" 1 "$ROOT/tests/audit-standards-src.sh" 'AGENT_GUARD_AUDIT_PARALLEL'
+at_least_f "A63 audit blocks are registered for dispatch (CHG-132)" 1 "$ROOT/tests/audit-standards-src.sh" 'AUDIT_BLOCKS=(a b c d)'
+report "A63 audit A10b/A10 stay after the parallel blocks (CHG-132)" 0 "$([[ "$(grep -n 'audit_block_d()' "$ROOT/tests/audit-standards-src.sh" | head -1 | cut -d: -f1)" -lt "$(grep -n 'PART A10b' "$ROOT/tests/audit-standards-src.sh" | head -1 | cut -d: -f1)" ]] && echo 0 || echo 1)"
+}
+
+if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else
+  for _s in "${AUDIT_BLOCKS[@]}"; do "audit_block_$_s"; done
+fi
 
 # ── PART A10b: 断言名集合基线（CHG-121 / batch 0）──────────────────────────────
 # 总数相等 ≠ 断言齐备：BUG-004 中 A6c 整块未执行，审计仍报 `152 passed, 0 failed`

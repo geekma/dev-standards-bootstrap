@@ -878,7 +878,7 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   g16_files=$(git -C "$ROOT" status --porcelain -uall 2>/dev/null | cut -c4- \
     | sed -E 's/.* -> //; s/^"//; s/"$//' \
     | grep -vE "^(${g16_docs_re}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md)" \
-    | grep -vE "^(${g16_githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$)" \
+    | grep -vE "^(${g16_githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_scripts_re}/shard-sum\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$|${g16_tests_re}/fresh-clone-check\.sh$)" \
     | grep -E "\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$" || true)
   g16_af="$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)"
   # linked worktree 下 --git-path 返回绝对路径；普通仓为相对路径——两种形态都解析
@@ -932,11 +932,18 @@ if mkdir -p "$(dirname "$_lg")" 2>/dev/null; then
       "$_lg" > "$_lg.mig" 2>/dev/null && mv -f "$_lg.mig" "$_lg"
   fi
   [[ -s "$_lg" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$_lg" 2>/dev/null || true
-  _out="green"; [[ "$fail" -eq 0 ]] || _out="red"
-  printf '%s\taudit\t%s\t%s\t%s\t0\tnone\t%s\t-1\t%s\t%s\t%s\t\t\n' \
+  _out="green"; _rc=0; [[ "$fail" -eq 0 ]] || { _out="red"; _rc=1; }
+  # v3.93.0 (CHG-130, REQ-1290): 14 columns, one per header field
+  # (ts kind id suite_key cost_s setup_s cache exit asserts rc outcome repo_key
+  # model_id ctx_window). The v3.91.0 header migration updated the header and the
+  # rotation but not this writer: 8 placeholders / 7 values shifted every column
+  # right (rc held "green", outcome held the repo key, repo_key was empty).
+  # `exit` stays the process exit of the measuring run (always 0 here — this lane
+  # ends with `[[ "$fail" -eq 0 ]]`); the audit *verdict* lives in `rc`/`outcome`.
+  printf '%s\taudit\t%s\t%s\t%s\t0\tnone\t0\t%s\t%s\t%s\t%s\t\t\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
     "${since_ref:-full}" "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)" \
-    "${SECONDS:-0}" "$fail" "$_out" "$_rk" >> "$_lg" 2>/dev/null || true
+    "${SECONDS:-0}" "$(( pass + fail ))" "$_rc" "$_out" "$_rk" >> "$_lg" 2>/dev/null || true
   # v3.91.1 (CHG-127 self-audit, final-plan §2.2): header + last 500 rows.
   _ln=$(wc -l < "$_lg" 2>/dev/null | tr -d ' ')
   case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac

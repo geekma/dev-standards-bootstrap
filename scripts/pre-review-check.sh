@@ -44,6 +44,21 @@ done
 ROOT=$(cd "$ROOT" && pwd)
 source "$ROOT/scripts/lib-source-facts.sh"
 
+# v3.93.0 (CHG-130, REQ-1298): the change root is configurable. Resolution order:
+# AGENT_GUARD_CHANGE_ROOT -> paths.change_root in .agent-governance.yml -> docs/changes.
+CHANGE_ROOT="${AGENT_GUARD_CHANGE_ROOT:-}"
+if [ -z "$CHANGE_ROOT" ]; then
+  CHANGE_ROOT=$(sed -nE 's/^[[:space:]]*change_root:[[:space:]]*([^#]*).*$/\1/p' "$ROOT/.agent-governance.yml" 2>/dev/null | head -1 | tr -d '[:space:]"' || true)
+fi
+[ -n "$CHANGE_ROOT" ] || CHANGE_ROOT="docs/changes"
+case "$CHANGE_ROOT" in
+  /*) ;;
+  *) CHANGE_ROOT="$ROOT/$CHANGE_ROOT" ;;
+esac
+# Messages keep the repo-relative form: an absolute host path leaks into findings
+# and makes the wording depend on where the tree is checked out.
+CHANGE_ROOT_REL="${CHANGE_ROOT#"$ROOT"/}"
+
 FAILS=0
 WARNS=0
 ok()   { printf 'ok   %s\n' "$1"; }
@@ -61,9 +76,9 @@ CHANGE_DIR=""
 # change dir into docs/ itself.
 case "$CHANGE" in
   */*|.|..) ;;
-  *) [ -z "$CHANGE" ] || [ ! -d "$ROOT/docs/changes/$CHANGE" ] || CHANGE_DIR="$ROOT/docs/changes/$CHANGE" ;;
+  *) [ -z "$CHANGE" ] || [ ! -d "$CHANGE_ROOT/$CHANGE" ] || CHANGE_DIR="$CHANGE_ROOT/$CHANGE" ;;
 esac
-if [ -z "$CHANGE_DIR" ] && [ -d "$ROOT/docs/changes" ]; then
+if [ -z "$CHANGE_DIR" ] && [ -d "$CHANGE_ROOT" ]; then
   while IFS= read -r gov; do
     [ -f "$gov" ] || continue
     if [ -n "$CHANGE" ]; then
@@ -72,12 +87,12 @@ if [ -z "$CHANGE_DIR" ] && [ -d "$ROOT/docs/changes" ]; then
     else
       CHANGE_DIR=$(dirname "$gov"); CHANGE=$(sf_read_json_str "$gov" change_id); break
     fi
-  done < <(ls -t "$ROOT"/docs/changes/*/00-governance.json 2>/dev/null)
+  done < <(ls -t "$CHANGE_ROOT"/*/00-governance.json 2>/dev/null)
 fi
 if [ -z "$CHANGE_DIR" ]; then
-  bad "no change matches '${CHANGE:-<none>}': neither a directory under docs/changes nor a 00-governance.json change_id"
+  bad "no change matches '${CHANGE:-<none>}': neither a directory under $CHANGE_ROOT_REL nor a 00-governance.json change_id"
 else
-  ok "change directory: $CHANGE_DIR"
+  ok "change directory: ${CHANGE_DIR#"$ROOT"/}"
 fi
 
 if [ -n "$CHANGE_DIR" ]; then

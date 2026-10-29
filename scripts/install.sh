@@ -172,7 +172,12 @@ elif [[ -d "$skill_dir/.git" ]]; then
       echo "install: --ref '$opt_ref' not found in $skill_dir" >&2
       exit 2
     fi
-    git -C "$skill_dir" checkout --quiet "$opt_ref" 2>/dev/null || true
+    # v3.93.0 (CHG-130, REQ-1308): checkout failure must be loud — `|| true`
+    # continued the install on the WRONG revision after the ref had resolved.
+    if ! git -C "$skill_dir" checkout --quiet "$opt_ref" 2>/dev/null; then
+      echo "install: cannot switch $skill_dir to '$opt_ref' — checkout failed (untracked files in the way?)" >&2
+      exit 2
+    fi
   fi
   if GIT_TERMINAL_PROMPT=0 git -C "$skill_dir" pull --ff-only --quiet 2>/dev/null; then
     echo "install: skill checkout up to date: $skill_dir"

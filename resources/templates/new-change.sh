@@ -22,6 +22,7 @@
 # AGENT_GUARD_DOCS_DIR > .agent-governance.yml paths.docs > 默认 docs；
 # AGENT_GUARD_CHANGE_ROOT / AGENT_GUARD_TEMPLATES_DIR 仍各自最高优先。
 set -uo pipefail
+created_dir=""; created_file=""
 
 die() { printf 'new-change: %s\n' "$1" >&2; exit 2; }
 
@@ -86,7 +87,16 @@ if [[ ! -s "$tmpl_dir/00-intent.md" && -s "$tmpl_dir/entry/00-intent.md" ]]; the
   tmpl_dir="$tmpl_dir/entry"
 fi
 [[ -d "$tmpl_dir" ]] || die "NC-E06: entry templates not found at $tmpl_dir (run bootstrap --core/--guard first; non-default docs root: set AGENT_GUARD_DOCS_DIR=<dir> or pin paths.docs in .agent-governance.yml and reinstall/upgrade)"
-[[ -d "$change_root" ]] || mkdir -p "$change_root"
+# v3.93.0 (CHG-130, REQ-1299): set -u only — an unchecked mkdir or redirect
+# turned a permission/disk failure into "scaffolded" with a half-built directory.
+write_fail() { # <path> — stop on a failed write (no partial state reported as created)
+  # A dedicated directory created by THIS run is removed on failure; pre-existing
+  # directories/files are never deleted (they may hold the author's work).
+  [[ -n "${created_dir:-}" ]] && rm -rf "$created_dir" 2>/dev/null
+  [[ -n "${created_file:-}" && -f "${created_file:-}" ]] && rm -f "$created_file" 2>/dev/null
+  die "NC-E12: write failed: $1 — check permissions/free space (no artifacts were reported as created)"
+}
+[[ -d "$change_root" ]] || mkdir -p "$change_root" 2>/dev/null || write_fail "$change_root"
 
 fill() { # <src> -> stdout with placeholders replaced
   local cuid
@@ -95,7 +105,8 @@ fill() { # <src> -> stdout with placeholders replaced
     *) cuid="$id-$(date -u +%Y%m%d)" ;;
   esac
   sed -e "s/__CHANGE_ID__/$id/g" -e "s/__CHANGE_UID__/$cuid/g" \
-      -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" "$1"
+      -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" \
+      -e "s/__DISPATCH_CONTRACT__/v2/g" "$1"
 }
 
 # 沟通先行门两段式（v3.52.0 §2.17.2d）：wave1 = 入口三件；wave2 = 确认后五件
@@ -109,17 +120,19 @@ wave2_docs=(01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-t
 # 把一份骨架落入共享批次文件（存在即追加锚点节，不存在则建带头文件）
 batch_put() { # <doc>
   local doc="$1"
+  created_file=""
   if [[ ! -e "$batch/$doc" ]]; then
+    created_file="$batch/$doc"
     if [[ "$doc" == 00-governance.json ]]; then
       # JSON 件无 markdown 头：读取器按行解析 JSON 对象，夹注释行即坏（fail-closed）
-      fill "$tmpl_dir/$doc" > "$batch/$doc"
+      fill "$tmpl_dir/$doc" > "$batch/$doc" || write_fail "$batch/$doc"
     else
-      { printf '# BATCH-%s %s\n\n## %s\n\n' "$today" "$doc" "$id"; fill "$tmpl_dir/$doc"; } > "$batch/$doc"
+      { printf '# BATCH-%s %s\n\n## %s\n\n' "$today" "$doc" "$id"; fill "$tmpl_dir/$doc"; } > "$batch/$doc" || write_fail "$batch/$doc"
     fi
   elif [[ "$doc" == 00-governance.json ]]; then
-    fill "$tmpl_dir/$doc" >> "$batch/$doc"
+    fill "$tmpl_dir/$doc" >> "$batch/$doc" || write_fail "$batch/$doc"
   else
-    { printf '\n## %s\n\n' "$id"; fill "$tmpl_dir/$doc"; } >> "$batch/$doc"
+    { printf '\n## %s\n\n' "$id"; fill "$tmpl_dir/$doc"; } >> "$batch/$doc" || write_fail "$batch/$doc"
   fi
 }
 
@@ -190,16 +203,17 @@ else
     done
     [[ "$complete" == 1 ]] && die "NC-E08: $d already exists and is fully scaffolded — open a new change id (standards §2.15 rule 4)"
     for doc in "${wave1_docs[@]}"; do
-      [[ -s "$d/$doc" ]] || fill "$tmpl_dir/$doc" > "$d/$doc"
+      [[ -s "$d/$doc" ]] || { created_file="$d/$doc"; fill "$tmpl_dir/$doc" > "$d/$doc" || write_fail "$d/$doc"; created_file=""; }
     done
     wave2_missing=()
     for doc in "${wave2_docs[@]}"; do
       [[ -s "$d/$doc" ]] || wave2_missing+=("$doc")
     done
   else
-    mkdir -p "$d"
+    mkdir -p "$d" 2>/dev/null || write_fail "$d"
+    created_dir="$d"
     for doc in "${wave1_docs[@]}"; do
-      fill "$tmpl_dir/$doc" > "$d/$doc"
+      fill "$tmpl_dir/$doc" > "$d/$doc" || write_fail "$d/$doc"
     done
     wave2_missing=("${wave2_docs[@]}")
     scaffolded_wave1=1
@@ -214,7 +228,9 @@ else
     fi
     if [[ "$allow_unconfirmed" == 1 || "$confirm_gate_rc" == 0 ]]; then
       for doc in "${wave2_missing[@]}"; do
-        fill "$tmpl_dir/$doc" > "$d/$doc"
+        created_file="$d/$doc"
+        fill "$tmpl_dir/$doc" > "$d/$doc" || write_fail "$d/$doc"
+        created_file=""
       done
       echo "new-change: wave2 scaffolded (${wave2_missing[*]})"
     elif [[ "$confirm_gate_rc" == 1 ]]; then

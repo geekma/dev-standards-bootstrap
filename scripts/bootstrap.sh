@@ -445,7 +445,22 @@ PATHS_CUSTOM=0
 if [[ "$DOCS_DIR" != "docs" || "$SCRIPTS_DIR" != "scripts" || "$TESTS_DIR" != "tests" || "$GITHOOKS_DIR" != ".githooks" ]]; then
   PATHS_CUSTOM=1
 fi
+# v3.93.0 (CHG-130, REQ-1300): sed replacement strings are not literals — a root
+# containing & (whole match), \ or the | delimiter used to produce silently wrong
+# paths. Escape the replacement, never the pattern.
+sed_repl_escape() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
 transform_src() { # src -> stdout
+  local e_docs e_scripts e_tests e_gh e_docs_q e_scripts_q e_tests_q e_gh_q
+  e_docs=$(sed_repl_escape "$DOCS_DIR"); e_scripts=$(sed_repl_escape "$SCRIPTS_DIR")
+  e_tests=$(sed_repl_escape "$TESTS_DIR"); e_gh=$(sed_repl_escape "$GITHOOKS_DIR")
+  # v3.93.0 (CHG-130, REQ-1300): `$(cfg_path <key> <default>)` takes its default
+  # UNQUOTED in the templates, so a root containing `&`, spaces or glob chars
+  # became shell syntax in the installed script (`docs&x` ran a background `x`).
+  # Shell-quote those defaults with bash %q, then sed-escape the quoted form.
+  e_docs_q=$(sed_repl_escape "$(printf '%q' "$DOCS_DIR")")
+  e_scripts_q=$(sed_repl_escape "$(printf '%q' "$SCRIPTS_DIR")")
+  e_tests_q=$(sed_repl_escape "$(printf '%q' "$TESTS_DIR")")
+  e_gh_q=$(sed_repl_escape "$(printf '%q' "$GITHOOKS_DIR")")
   # `.agent-governance.yml` carries the roots *themselves* (the `paths:` block,
   # plus the derived change_root / bugs_root). The generic rules below all
   # require a trailing "/", so none of them can match `  docs: docs` — without
@@ -455,32 +470,32 @@ transform_src() { # src -> stdout
   # a warning). Pin the six keys here instead of patching the file afterwards.
   if [[ "${1##*/}" == "agent-governance.yml" ]]; then
     sed -E \
-      -e "s|^([[:space:]]*docs:[[:space:]]*)[^#]*|\1${DOCS_DIR} |" \
-      -e "s|^([[:space:]]*scripts:[[:space:]]*)[^#]*|\1${SCRIPTS_DIR} |" \
-      -e "s|^([[:space:]]*tests:[[:space:]]*)[^#]*|\1${TESTS_DIR} |" \
-      -e "s|^([[:space:]]*githooks:[[:space:]]*)[^#]*|\1${GITHOOKS_DIR} |" \
-      -e "s|^([[:space:]]*change_root:[[:space:]]*)[^#]*|\1${DOCS_DIR}/changes |" \
-      -e "s|^([[:space:]]*bugs_root:[[:space:]]*)[^#]*|\1${DOCS_DIR}/bugs |" \
+      -e "s|^([[:space:]]*docs:[[:space:]]*)[^#]*|\1${e_docs} |" \
+      -e "s|^([[:space:]]*scripts:[[:space:]]*)[^#]*|\1${e_scripts} |" \
+      -e "s|^([[:space:]]*tests:[[:space:]]*)[^#]*|\1${e_tests} |" \
+      -e "s|^([[:space:]]*githooks:[[:space:]]*)[^#]*|\1${e_gh} |" \
+      -e "s|^([[:space:]]*change_root:[[:space:]]*)[^#]*|\1${e_docs}/changes |" \
+      -e "s|^([[:space:]]*bugs_root:[[:space:]]*)[^#]*|\1${e_docs}/bugs |" \
       "$1"
     return 0
   fi
-  sed -e "s|scripts/install-hook-adapter|$SCRIPTS_DIR/install-hook-adapter|g" \
-      -e "s|scripts/session-gate\.sh|$SCRIPTS_DIR/session-gate.sh|g" \
-      -e "s|scripts/check-standards-compliance\.sh|$SCRIPTS_DIR/check-standards-compliance.sh|g" \
-      -e "s|scripts/stamp-provenance\.sh|$SCRIPTS_DIR/stamp-provenance.sh|g" \
-      -e "s|scripts/agent-gate|$SCRIPTS_DIR/agent-gate|g" \
-      -e "s|tests/run-tests\.sh|$TESTS_DIR/run-tests.sh|g" \
-      -e "s|tests/audit-docs-consistency\.sh|$TESTS_DIR/audit-docs-consistency.sh|g" \
-      -e "s|\.githooks/|$GITHOOKS_DIR/|g" \
-      -e "s|\$(cfg_path docs docs)|\$(cfg_path docs $DOCS_DIR)|g" \
-      -e "s|\$(cfg_path scripts scripts)|\$(cfg_path scripts $SCRIPTS_DIR)|g" \
-      -e "s|\$(cfg_path tests tests)|\$(cfg_path tests $TESTS_DIR)|g" \
-      -e "s|\$(cfg_path githooks \.githooks)|\$(cfg_path githooks $GITHOOKS_DIR)|g" \
-      -e "s|\$(sg_cfg_path docs docs)|\$(sg_cfg_path docs $DOCS_DIR)|g" \
-      -e "s|\$(sg_cfg_path scripts scripts)|\$(sg_cfg_path scripts $SCRIPTS_DIR)|g" \
-      -e "s|\$(sg_cfg_path tests tests)|\$(sg_cfg_path tests $TESTS_DIR)|g" \
-      -e "s|\$(sg_cfg_path githooks \.githooks)|\$(sg_cfg_path githooks $GITHOOKS_DIR)|g" \
-      -e "s|docs/|$DOCS_DIR/|g" \
+  sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
+      -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
+      -e "s|scripts/check-standards-compliance\.sh|$e_scripts/check-standards-compliance.sh|g" \
+      -e "s|scripts/stamp-provenance\.sh|$e_scripts/stamp-provenance.sh|g" \
+      -e "s|scripts/agent-gate|$e_scripts/agent-gate|g" \
+      -e "s|tests/run-tests\.sh|$e_tests/run-tests.sh|g" \
+      -e "s|tests/audit-docs-consistency\.sh|$e_tests/audit-docs-consistency.sh|g" \
+      -e "s|\.githooks/|$e_gh/|g" \
+      -e "s|\$(cfg_path docs docs)|\$(cfg_path docs $e_docs_q)|g" \
+      -e "s|\$(cfg_path scripts scripts)|\$(cfg_path scripts $e_scripts_q)|g" \
+      -e "s|\$(cfg_path tests tests)|\$(cfg_path tests $e_tests_q)|g" \
+      -e "s|\$(cfg_path githooks \.githooks)|\$(cfg_path githooks $e_gh_q)|g" \
+      -e "s|\$(sg_cfg_path docs docs)|\$(sg_cfg_path docs $e_docs_q)|g" \
+      -e "s|\$(sg_cfg_path scripts scripts)|\$(sg_cfg_path scripts $e_scripts_q)|g" \
+      -e "s|\$(sg_cfg_path tests tests)|\$(sg_cfg_path tests $e_tests_q)|g" \
+      -e "s|\$(sg_cfg_path githooks \.githooks)|\$(sg_cfg_path githooks $e_gh_q)|g" \
+      -e "s|docs/|$e_docs/|g" \
       "$1"
 }
 # v3.91.6: the project-profile block appended to .agent-governance.yml is
@@ -503,6 +518,22 @@ same_as_src() { # src dest
 }
 copy_src() { # src dest
   if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1" > "$2"; else cp "$1" "$2"; fi
+}
+
+# v3.93.0 (CHG-130, REQ-1291): one fail-closed writer. install_file used to print
+# "installed" and bump its counter BEFORE mkdir/copy/chmod/manifest — a failed
+# copy still reported success (the script runs under set -u only). Every branch
+# now writes first and reports only after all four steps succeed.
+install_write() { # <dest_rel> <dest> <src> <chmod_mode>
+  local dest_rel="$1" dest="$2" src="$3" chmod_mode="$4"
+  mkdir -p "$(dirname "$dest")" || { echo "bootstrap: install failed $dest_rel: cannot create parent directory" >&2; return 1; }
+  copy_src "$src" "$dest" || { echo "bootstrap: install failed $dest_rel: copy failed" >&2; return 1; }
+  if [[ -n "$chmod_mode" ]] && ! chmod "$chmod_mode" "$dest"; then
+    echo "bootstrap: install failed $dest_rel: chmod $chmod_mode failed" >&2
+    return 1
+  fi
+  manifest_record "$dest_rel" "$dest" || { echo "bootstrap: install failed $dest_rel: manifest record failed" >&2; return 1; }
+  return 0
 }
 
 # install_file <logical-key> <dest_rel> <src_rel> [chmod_mode]
@@ -598,7 +629,7 @@ install_file() {
       rm -f "$msrc"
       echo "merged       $dest_rel (managed block updated; user sections outside markers preserved)"
       upgraded=$(( upgraded + 1 ))
-      manifest_record "$dest_rel" "$dest"
+      manifest_record "$dest_rel" "$dest" || { echo "bootstrap: aborting — manifest record failed for $dest_rel" >&2; exit 2; }
       return 0
     fi
     rm -f "$msrc" "$msrc.out"
@@ -638,28 +669,22 @@ install_file() {
     if same_as_src "$src" "$dest"; then
       echo "up to date   $dest_rel"
       skipped=$(( skipped + 1 ))
-      manifest_record "$dest_rel" "$dest"
+      manifest_record "$dest_rel" "$dest" || { echo "bootstrap: aborting — manifest record failed for $dest_rel" >&2; exit 2; }
       return 0
     fi
     if [[ "$upgrade" == true ]]; then
       local eck
       eck=$(manifest_get "$dest_rel")
       if [[ -n "$eck" && "$eck" == "$(file_cksum "$dest")" ]]; then
+        install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
         echo "updated      $dest_rel (upgrade; unchanged since install)"
         upgraded=$(( upgraded + 1 ))
-        mkdir -p "$(dirname "$dest")"
-        copy_src "$src" "$dest"
-        [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
-        manifest_record "$dest_rel" "$dest"
         return 0
       fi
       if [[ "$force" == true ]]; then
+        install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
         echo "overwrite    $dest_rel (user-modified since install — --force given; previous content in git history)"
         overwritten=$(( overwritten + 1 ))
-        mkdir -p "$(dirname "$dest")"
-        copy_src "$src" "$dest"
-        [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
-        manifest_record "$dest_rel" "$dest"
         return 0
       fi
       if [[ -n "$eck" ]]; then
@@ -676,16 +701,14 @@ install_file() {
       echo "bootstrap: aborting — partial install: installed=$installed up-to-date=$skipped; re-run with --force to complete" >&2
       exit 2
     fi
+    install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
     echo "overwrite    $dest_rel"
     overwritten=$(( overwritten + 1 ))
-  else
-    echo "installed    $dest_rel"
-    installed=$(( installed + 1 ))
+    return 0
   fi
-  mkdir -p "$(dirname "$dest")"
-  copy_src "$src" "$dest"
-  [[ -n "$chmod_mode" ]] && chmod "$chmod_mode" "$dest"
-  manifest_record "$dest_rel" "$dest"
+  install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
+  echo "installed    $dest_rel"
+  installed=$(( installed + 1 ))
 }
 
 installed=0
@@ -784,6 +807,9 @@ run_layer() {
       install_file - "$SCRIPTS_DIR/lib-suite-tree-fingerprint.sh" scripts/lib-suite-tree-fingerprint.sh 755
       # v3.86.0 (CHG-113): full-run workspace lock (receipt/red path isolation).
       install_file - "$SCRIPTS_DIR/lib-suite-lock.sh" scripts/lib-suite-lock.sh 755
+      # v3.95.0 (CHG-132, REQ-1322): shard-sum 随 run-tests.sh 同包下发——目标仓
+      # 分片证据轮求和收口用（target 安装为 sum-only，--write 需生成器时具名拒绝）。
+      install_file - "$SCRIPTS_DIR/shard-sum.sh" scripts/shard-sum.sh 755
       ;;
     pipeline)
       install_file - ".github/workflows/artifact-pipeline.yml" resources/templates/github-artifact-pipeline.yml
@@ -891,13 +917,14 @@ ensure_paths_block
 # actually differs, and materialise the config if a non-default root was asked
 # for but no layer shipped it.
 rewrite_yml_key() { # file key value
-  local f="$1" k="$2" v="$3" cur tmpf
+  local f="$1" k="$2" v="$3" cur tmpf e_v
   [[ -f "$f" ]] || return 0
   cur=$(yml_key_value "$f" "$k")
   [[ -n "$cur" && "$cur" != "$v" ]] || return 0
   tmpf=$(mktemp 2>/dev/null) || return 0
+  e_v=$(sed_repl_escape "$v")
   # cat (not mv) keeps the target inode's permissions/ownership
-  if sed -E "s|^([[:space:]]*${k}:[[:space:]]*)[^#]*|\1${v} |" "$f" > "$tmpf" 2>/dev/null; then
+  if sed -E "s|^([[:space:]]*${k}:[[:space:]]*)[^#]*|\1${e_v} |" "$f" > "$tmpf" 2>/dev/null; then
     cat "$tmpf" > "$f"
     echo "auto-wired   $k = $v (in .agent-governance.yml)"
   fi
@@ -1027,14 +1054,15 @@ yml_paths_value() { # file key
 }
 
 rewrite_paths_key() { # file key value
-  local f="$1" k="$2" v="$3" cur tmpf
+  local f="$1" k="$2" v="$3" cur tmpf e_v
   [[ -f "$f" ]] || return 0
   cur=$(yml_paths_value "$f" "$k")
   [[ "$cur" == "$v" ]] && return 0
   tmpf=$(mktemp 2>/dev/null) || return 0
+  e_v=$(sed_repl_escape "$v")
   if grep -qE '^paths:[[:space:]]*$' "$f" 2>/dev/null; then
     if [[ -n "$cur" ]]; then
-      sed -E "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s|^([[:space:]]+${k}:[[:space:]]*)[^#]*|\1${v} |" "$f" > "$tmpf" 2>/dev/null
+      sed -E "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s|^([[:space:]]+${k}:[[:space:]]*)[^#]*|\1${e_v} |" "$f" > "$tmpf" 2>/dev/null
     else
       awk -v k="$k" -v v="$v" '{print} /^paths:[[:space:]]*$/{print "  " k ": " v}' "$f" > "$tmpf" 2>/dev/null
     fi
@@ -1198,7 +1226,7 @@ auto_wire_guard() {
         # single-quoted sed program; the detected command is appended as a
         # separate argv piece to avoid any quote-escaping in the pattern
         sed 's|verification_command: "<replace-with-project-test-command>"|verification_command: "__DETECTED__"|' "$yml" > "$tmpf" \
-          && sed "s|__DETECTED__|$detected|" "$tmpf" > "$tmpf.2" \
+          && sed "s|__DETECTED__|$(sed_repl_escape "$detected")|" "$tmpf" > "$tmpf.2" \
           && cat "$tmpf.2" > "$yml" \
           && echo "auto-wired   verification command detected -> $detected (edit .agent-governance.yml to change; AGENT_GUARD_VERIFY_COMMAND env overrides)"
         rm -f "$tmpf" "$tmpf.2"

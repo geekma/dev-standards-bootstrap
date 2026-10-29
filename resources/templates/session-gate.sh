@@ -115,18 +115,33 @@ mkdir -p "$STATE_DIR"
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%S; }
 
+# v3.93.0 (CHG-130, REQ-1304): write-then-rename. The old `> $STATS_FILE`
+# truncated in place, so a concurrent reader (agent-gate cost-line, status
+# liveness) could parse a half-written file. Callers pass the printf format
+# and its arguments; a failed write leaves the previous file intact.
+sg_write_atomic() { # <dest> <format> [args...]
+  local dest="$1" tmp
+  tmp="$dest.tmp.$$"
+  shift
+  if printf "$@" > "$tmp" 2>/dev/null && mv -f "$tmp" "$dest" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$tmp" 2>/dev/null || true
+  return 1
+}
+
 reset_state() {
   # v3.90.1 (CHG-123, P0-15): the first 8 keys keep their old names AND order so
   # every existing reader (`awk -F`/`sed`/substring golden) keeps working; the
   # metering keys are APPENDED and missing ones read as 0/"" for old files.
   sg_model_resolve
-  printf '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"edits":0,"tokens_in":%s,"tokens_out":%s,"context_chars":0,"wall_s":0,"stage":"%s","change":"%s","model_id":"%s","ctx_window":%s,"exec_source":"%s","updated_at":"%s"}\n' \
+  sg_write_atomic "$STATS_FILE" '{"turns":0,"bash":0,"grep":0,"other":0,"sleep_polls":0,"full_suite":0,"total":0,"edits":0,"tokens_in":%s,"tokens_out":%s,"context_chars":0,"wall_s":0,"stage":"%s","change":"%s","model_id":"%s","ctx_window":%s,"exec_source":"%s","updated_at":"%s"}\n' \
     "$(sg_positive_int "${AGENT_GUARD_TOKENS_IN:-}" 0)" "$(sg_positive_int "${AGENT_GUARD_TOKENS_OUT:-}" 0)" \
-    "${AGENT_GUARD_STAGE:-}" "${AGENT_GUARD_CHANGE:-}" "$SG_MODEL_ID" "$SG_CTX_WINDOW" "$(sg_exec_source)" "$(now_iso)" > "$STATS_FILE"
-  printf '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)" > "$WATER_FILE"
+    "${AGENT_GUARD_STAGE:-}" "${AGENT_GUARD_CHANGE:-}" "$SG_MODEL_ID" "$SG_CTX_WINDOW" "$(sg_exec_source)" "$(now_iso)"
+  sg_write_atomic "$WATER_FILE" '{"turns":0,"session":"","updated_at":"%s"}\n' "$(now_iso)"
   # v3.63.0（REQ-1033，DES-1822）：会话起点标记——agent-gate begin 的 GATE-E89
   # 以「交付时刻晚于本会话起点」判定同会话交付后未换挡；新会话 start 重置起点后放行。
-  printf '{"started_at":"%s"}\n' "$(now_iso)" > "${STATE_DIR}/session-started.json"
+  sg_write_atomic "${STATE_DIR}/session-started.json" '{"started_at":"%s"}\n' "$(now_iso)"
 }
 
 stat_get() { # <key> — 缺键（旧格式 stats 文件，CHG-096 前schema）读数默认 0（向后兼容）
@@ -138,12 +153,12 @@ stat_get() { # <key> — 缺键（旧格式 stats 文件，CHG-096 前schema）�
 stat_write() { # turns bash grep other sleep_polls full_suite total edits
   #   + tokens_in tokens_out context_chars wall_s stage change model_id ctx_window exec_source
   # Old 8 keys stay in their original positions on purpose (CHG-101 compatibility rule).
-  printf '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"edits":%s,"tokens_in":%s,"tokens_out":%s,"context_chars":%s,"wall_s":%s,"stage":"%s","change":"%s","model_id":"%s","ctx_window":%s,"exec_source":"%s","updated_at":"%s"}\n' \
-    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}" "${16}" "${17}" "$(now_iso)" > "$STATS_FILE"
+  sg_write_atomic "$STATS_FILE" '{"turns":%s,"bash":%s,"grep":%s,"other":%s,"sleep_polls":%s,"full_suite":%s,"total":%s,"edits":%s,"tokens_in":%s,"tokens_out":%s,"context_chars":%s,"wall_s":%s,"stage":"%s","change":"%s","model_id":"%s","ctx_window":%s,"exec_source":"%s","updated_at":"%s"}\n' \
+    "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11}" "${12}" "${13}" "${14}" "${15}" "${16}" "${17}" "$(now_iso)"
 }
 
 water_write() { # <turns>
-  printf '{"turns":%s,"session":"","updated_at":"%s"}\n' "$1" "$(now_iso)" > "$WATER_FILE"
+  sg_write_atomic "$WATER_FILE" '{"turns":%s,"session":"","updated_at":"%s"}\n' "$1" "$(now_iso)"
 }
 
 # ---- 执行成本计量（v3.90.1，CHG-123，P0-15）----------------------------------
@@ -459,7 +474,7 @@ sg_is_code_path() { # <path>
   # 改任一侧的排除面/扩展名表，必须同步另一侧与 tests/audit-docs-consistency.sh 的 G16 副本。
   local p="$1"
   [[ "$p" =~ ^(${DOCS_RE}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
-  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$) ]] && return 1
+  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${SCRIPTS_RE}/shard-sum\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$|${TESTS_RE}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$p" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -732,10 +747,11 @@ if [[ "$mode" == "check" ]]; then
 fi
 
 report_init() {
+  local tmp="$REPORT.tmp.$$"
   {
     echo "# session-gate 报告 (${mode} @ $(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown))"
     echo
-  } > "$REPORT"
+  } > "$tmp" && mv -f "$tmp" "$REPORT" || { rm -f "$tmp"; return 1; }
   # 探针关联标记（CHG-084 评审 A5）：install-hook-adapter 真加载终验注入 AGENT_GUARD_SESSION_TAG；
   # 该变量存在=本次 start 由安装探针触发，写入报告作为确定性功能证据（mtime 判据可被同仓其他
   # 活跃会话的 hook 写入污染）。日常会话无此变量，行为不变。
@@ -816,9 +832,9 @@ if [[ "$mode" == "start" ]]; then
   active_file=$(git rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
   if [[ -n "$active_file" && -s "$active_file" ]]; then
     cid=$(tr -d '[:space:]' < "$active_file" 2>/dev/null || true)
-    gov="docs/changes/$cid/00-governance.json"
+    gov="$CHANGE_ROOT/$cid/00-governance.json"
     # 批次治理文件是纯 JSON（无 ## 锚点），按 change_id 字段匹配定位（终审[中]项修复）
-    [[ -s "$gov" ]] || gov=$(grep -ls "\"change_id\"[[:space:]]*:[[:space:]]*\"$cid\"" docs/changes/BATCH-*/00-governance.json 2>/dev/null | head -1)
+    [[ -s "$gov" ]] || gov=$(grep -ls "\"change_id\"[[:space:]]*:[[:space:]]*\"$cid\"" "$CHANGE_ROOT"/BATCH-*/00-governance.json 2>/dev/null | head -1)
     if [[ -n "$gov" && -s "$gov" ]]; then
       jf() { sed -nE "s/.*\"$2\"[[:space:]]*:[[:space:]]*\"([^\"]*)\".*/\1/p" <<<"$1" | head -1; }
       rec=$(tr -d '\n\r' < "$gov" | sed 's/}[[:space:]]*,[[:space:]]*{/}\n{/g' | grep "\"change_id\"[[:space:]]*:[[:space:]]*\"$cid\"" | head -1)

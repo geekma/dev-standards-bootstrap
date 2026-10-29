@@ -46,7 +46,7 @@ A18 every write path skips derived dirs
 A18 installer exposes --derived-report
 A18 installer exposes --self-update
 A18 installer exposes a read-only --check mode
-A18 installer pins path roots into the shipped config (idempotency)
+A18 installer pins path roots through escaped variables (idempotency)
 A18 installer refuses to install into a derived skill
 A18 standards documents the changelog ownership
 A18 standards documents the self-evolution contract
@@ -414,7 +414,7 @@ A48 rescore workflow push paths carry no source-repo path (CHG-102)
 A48 rescore workflow push paths list nine installed anchors (CHG-102)
 A48 run-tests honors the receipt path override (CHG-113)
 A48 source dogfood entry ships and parses (CHG-113)
-A48 standards body ratchet (CHG-107; recalibrated v3.92.2 CHG-128 +unverified-REQ clause)
+A48 standards body ratchet (CHG-107; recalibrated v3.94.0 CHG-131 +dispatch-contract clause)
 A48 suite usage line exposes -j (CHG-103)
 A48 suite-lock lib sources cleanly
 A48 update-assertion-count honors the receipt path override (CHG-113)
@@ -496,7 +496,7 @@ A56 both READMEs document the four source-layer entry tools (CHG-115)
 A56 both count baselines and all seven source tools are tracked (CHG-115)
 A56 every CHG-115 suite section gates behind its SKIP branch (CHG-115 target-repo green)
 A56 every source tool declares the source-layer boundary (CHG-115)
-A56 golden section T85 closes the SECTIONS registry (CHG-129 tail)
+A56 golden section T87 closes the SECTIONS registry (CHG-132 tail)
 A56 mutation-check pins the four fixed mutations (CHG-115)
 A56 private execution disciplines never reach the tracked/public face (CHG-115)
 A56 private execution disciplines present on the local-only face (docs/private-dependent)
@@ -523,8 +523,47 @@ A58j fresh-clone tool falls back to the shipped cross-doc audit
 A58k legacy profile.tests does not hijack the install root
 A58l tracked .agent-state is untracked, file kept
 A58m every path-root reader scopes to paths:
+A59 is_code_path replicas carry the same tool set (CHG-130 REQ-1294)
+A59 mutation of the exclusion face is detectable (CHG-130 REQ-1294)
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06-delivery-summary.md
 A5b delivery template carries TEMPLATE-MARKER sentinel: 06.5-deployment-config.md
+A60 every gate_hint code is defined exactly once (CHG-130 REQ-1297)
+A61 tests audit copy is byte-identical to the payload (CHG-130 REQ-1296)
+A62 AGENTS carries the dispatch-contract rule (CHG-131)
+A62 DS §2.2 dispatch-contract anchor is unique (CHG-131)
+A62 E155 branches route through the helper (CHG-131)
+A62 E17 never strips the label with a multibyte bracket class (CHG-131)
+A62 E17 v2 strips the label with colon alternation (CHG-131)
+A62 STAGE_PLAYBOOK points at the sole skeleton authority (CHG-131)
+A62 entry/00-governance carries the dispatch_contract placeholder (CHG-131)
+A62 entry/03.5 carries the five dispatch-input labels (CHG-131)
+A62 entry/07 carries the business and test-view rows (CHG-131)
+A62 gate assembles the P0-P8 skeleton once (CHG-131)
+A62 gate emits E155 from one die site (CHG-131)
+A62 gate names the five expected labels in one hint (CHG-131)
+A62 gate scaffolds dispatch_contract v2 (CHG-131)
+A62 gate wires the dispatch subcommand (CHG-131)
+A62 new-change stamps dispatch_contract v2 (CHG-131)
+A62 registry indexes E155 (CHG-131)
+A62 registry updates the dispatch clause (CHG-131)
+A62 review-intelligence declares the nine P groups (CHG-131)
+A62 review-intelligence §2.1 carries ten stage skeletons (CHG-131)
+A62 suite registers the dispatch section (CHG-131)
+A63 --worktree seam is wired in the runner (CHG-132)
+A63 AGENTS carries the version-chain-first suite rule (CHG-132)
+A63 AGENTS rule names the sync authority (CHG-132)
+A63 SERIAL_CHAIN hoisted before dispatch (CHG-132)
+A63 audit A10b/A10 stay after the parallel blocks (CHG-132)
+A63 audit block-parallel seam exists (CHG-132)
+A63 audit blocks are registered for dispatch (CHG-132)
+A63 run-tests.sh never writes .suite-baseline directly (CHG-132)
+A63 section-cache seam is opt-in (CHG-132)
+A63 section-cache store is fingerprint-keyed (CHG-132)
+A63 shard-sum --write refuses without the generator (CHG-132)
+A63 shard-sum --write syncs via the generator (CHG-132)
+A63 shard-sum prints the summation total (CHG-132)
+A63 shard-sum.sh is executable
+A63 worktree recursion guard exists (CHG-132)
 A6a repo bugfix-log has real BUG entries (docs-dependent)
 A6b every CHG dir has 00-intent.md (docs-dependent)
 A6c CHG numbering continuous (docs-dependent)

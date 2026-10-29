@@ -63,6 +63,11 @@ done
 
 [[ -n "$source_label" ]] || { echo "bug-autointent: --source is required" >&2; exit 2; }
 [[ -n "$failing" ]]      || { echo "bug-autointent: --failing is required" >&2; exit 2; }
+# v3.93.0 (CHG-130, REQ-1305): awk treats a non-numeric window as 0, which
+# silently disabled rate limiting (every run created a new bug). Reject it.
+case "$window" in
+  ''|*[!0-9]*) echo "bug-autointent: --window must be a non-negative integer (got '$window')" >&2; exit 2 ;;
+esac
 
 # 仓库根：--repo-root 优先；无 git 环境且未显式给出 → 显式降级（exit 2，不猜）
 if [[ -z "$repo_root" ]]; then

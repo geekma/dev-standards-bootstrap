@@ -550,6 +550,7 @@ AUTO=0
 AUTO_BASE=""
 DUAL_RUN=0
 SHARD=""
+WORKTREE=0
 WANTED=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -582,9 +583,15 @@ while [[ $# -gt 0 ]]; do
       # hand-built -T list silently misses sections (T18b was missed in v3.91.6).
       [[ "${2:-}" =~ ^[1-9][0-9]*/[1-9][0-9]*$ ]] || { printf 'invalid --shard value: %s (expected i/N, e.g. 1/6)\n' "${2:-}" >&2; exit 2; }
       SHARD="$2"; shift 2 ;;
+    --worktree)
+      # v3.95.0 (CHG-132, REQ-1321): run from a disposable git worktree snapshot
+      # of the current tracked tree (uncommitted changes included via
+      # `git stash create`), so concurrent shard invocations never share cwd or
+      # .agent-state. Composes with --shard/-T/-j; refuses to nest (T87).
+      WORKTREE=1; shift ;;
     -l|--list) LIST_ONLY=1; shift ;;
     --dual-run) DUAL_RUN=1; shift ;;
-    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [--shard i/N] [--dual-run] [-l|--list])\n' "$1" >&2; exit 2 ;;
+    *) printf 'unknown option: %s (usage: tests/run-tests.sh [-T sec[,sec]] [-j N] [--shard i/N] [--worktree] [--dual-run] [-l|--list])\n' "$1" >&2; exit 2 ;;
   esac
 done
 # No -T operand means "all sections". bash 3.2 + set -u forbids expanding an
@@ -2435,6 +2442,9 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # 否则 install 链在 install_file 缺源时整体红（安装器清单唯一权威=bootstrap）。
   cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$FAKE_SRC/scripts/lib-suite-tree-fingerprint.sh"
   cp "$ROOT/scripts/lib-suite-lock.sh" "$FAKE_SRC/scripts/lib-suite-lock.sh"
+  # v3.95.0 (CHG-132): guard 清单含 shard-sum.sh——FAKE_SRC 必须同拷（同上，
+  # install_file 缺源 = 整链红）。
+  cp "$ROOT/scripts/shard-sum.sh" "$FAKE_SRC/scripts/shard-sum.sh"
   cp "$ROOT/SKILL.md" "$FAKE_SRC/SKILL.md"
   cp -R "$ROOT/resources" "$FAKE_SRC/resources"
 
@@ -3079,6 +3089,26 @@ if [[ -s "$GT82" ]]; then
   report "T82 ledger keeps header + last 500 rows" 1 "$([[ "$(wc -l < .ledger-rot.tsv 2>/dev/null | tr -d ' ')" -le 501 ]] && echo 1 || echo 0)"
   report "T82 ledger rotation keeps the header" 1 "$(grep -c '^ts' .ledger-rot.tsv 2>/dev/null || true)"
   rm -f .ledger-rot.tsv
+  # v3.93.0 (CHG-130, REQ-1290): the audit ledger writer is a 14-column contract.
+  # Execute the real derivation + header + writer with fail=1 so rc/outcome are
+  # derived by the writer (a fixture that pre-sets _rc=green proves nothing).
+  _t82l=$(mktemp "${TMPDIR:-/tmp}/t82ledger.XXXXXX")
+  ( _lg="$_t82l"; ROOT="$PWD"; since_ref=probe; SECONDS=1; pass=2; fail=1
+    _rk="fixture@host/repo"
+    eval "$(awk '/^  _out="green"; _rc=0;/ {f=1} f {print} f && />> "\$_lg"/ {exit}' "$AUDIT_SRC")" ) >/dev/null 2>&1
+  report "T82 audit ledger header has 14 columns (CHG-130 REQ-1290)" 14 "$(awk -F'\t' 'NR==1{print NF; exit}' "$_t82l" 2>/dev/null)"
+  report "T82 audit ledger row has 14 columns (CHG-130 REQ-1290)" 14 "$(awk -F'\t' 'END{print NF}' "$_t82l" 2>/dev/null)"
+  report "T82 audit ledger exit column stays 0 (CHG-130 REQ-1290)" 0 "$(awk -F'\t' 'END{print $8}' "$_t82l" 2>/dev/null)"
+  report "T82 audit ledger rc is derived from fail (CHG-130)" 1 "$(awk -F'\t' 'END{print $10}' "$_t82l" 2>/dev/null)"
+  report "T82 audit ledger outcome red when fail>0 (CHG-130)" "red" "$(awk -F'\t' 'END{print $11}' "$_t82l" 2>/dev/null)"
+  report "T82 audit ledger repo_key is populated (CHG-130)" 1 "$([[ -n "$(awk -F'\t' 'END{print $12}' "$_t82l" 2>/dev/null)" ]] && echo 1 || echo 0)"
+  rm -f "$_t82l"
+  # v3.93.0 (CHG-130, REQ-1293/REQ-1301): read-only baseline returns 0; a
+  # name-less --stage is a usage error (rc 2), not a silent shift overrun.
+  scripts/agent-gate baseline CHG-960 >/dev/null 2>&1; _t82brc=$?
+  report "T82 baseline read-only exits 0 (CHG-130 REQ-1293)" 0 "$_t82brc"
+  scripts/agent-gate --stage >/dev/null 2>&1; _t82src=$?
+  report "T82 --stage without a name exits 2 (CHG-130 REQ-1301)" 2 "$_t82src"
   check_output "T82 decision carries the four judges" '"artifacts".*"reviews".*"stages".*"masters"' "$(cat docs/changes/CHG-960/00-governance.json)"
   check_output "T82 L1 judges are lean" '"stage_list":"intent,test,delivery"' "$(cat docs/changes/CHG-960/00-governance.json)"
   check_output "T82 G5 stages carry the skipped set" '"skipped":\["' "$(cat docs/changes/CHG-960/00-governance.json)"
@@ -4479,7 +4509,9 @@ section_T50() {
   # CHG-117: tail recalibrated T76→T81 (无账门/编辑硬拦/G16/阶段门/阶段感知五节 joins).
   # CHG-128: tail recalibrated T83→T84 (五道交付质量门 golden 节 joins).
   # CHG-129: tail recalibrated T84→T85 (repeat-run guard 节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T85 ]] && echo 0 || echo 1)"
+  # CHG-131: tail recalibrated T85→T86 (dispatch-contract v2 节 joins).
+  # CHG-132: tail recalibrated T86→T87 (套件基建并行/缓存节 joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T87 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -6597,11 +6629,17 @@ git add -A >/dev/null 2>&1 && git commit -qm init   # 树指纹需 HEAD；纯 do
 echo y > src/t66b.js
 t66_stop() { AGENT_GUARD_VERIFY_COMMAND="$1" scripts/agent-gate --stage stop 2>&1; }
 # 命中基线：首跑执行并写 rc=0 收据
-rm -f .agent-state/t66-m .agent-state/verify-receipt.json
+# v3.93.0 (CHG-130, REQ-1302): the gate cache owns .agent-state/gate-verify-cache.json;
+# verify-all's .agent-state/verify-receipt.json is a different schema and must stay
+# untouched by the gate (each writer used to clobber the other).
+rm -f .agent-state/t66-m .agent-state/gate-verify-cache.json
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
-report "T66 TC-1414 first run executes and writes rc0 receipt" 1 "$([[ -e .agent-state/t66-m && -e .agent-state/verify-receipt.json ]] && echo 1 || echo 0)"
-report "T66 TC-1414 receipt binds change id" 1 "$(grep -c '"change_id":"CHG-1095"' .agent-state/verify-receipt.json)"
-report "T66 TC-1414 receipt carries gate version" 1 "$(grep -cE '"gate_version":"[0-9][0-9.]*"' .agent-state/verify-receipt.json)"
+report "T66 TC-1414 first run executes and writes rc0 receipt" 1 "$([[ -e .agent-state/t66-m && -e .agent-state/gate-verify-cache.json ]] && echo 1 || echo 0)"
+report "T66 TC-1414 receipt binds change id" 1 "$(grep -c '"change_id":"CHG-1095"' .agent-state/gate-verify-cache.json)"
+report "T66 TC-1414 receipt carries gate version" 1 "$(grep -cE '"gate_version":"[0-9][0-9.]*"' .agent-state/gate-verify-cache.json)"
+# REQ-1302: verify-all.sh owns .agent-state/verify-receipt.json (status schema read
+# by sf_verify_status). The gate writing its cache there used to destroy that file.
+report "T66 TC-1414 gate cache leaves verify-all receipt path alone" 0 "$([[ -e .agent-state/verify-receipt.json ]] && echo 1 || echo 0)"
 # 命中：同键二跑不执行 vcmd
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
@@ -6620,27 +6658,27 @@ report "T66 TC-1414 src edit invalidates (re-runs)" 1 "$([[ -e .agent-state/t66-
 # rc≠0 不写收据：评审 M1——失败跑前记录收据 vcmd_sha，失败跑后断言 sha 未变
 # （对「只缓存 rc=0」不变式有区分力；原 grep 't66-f' 恒 0 无失败区分力）
 t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
-t66_sha_before=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/verify-receipt.json | head -1)
+t66_sha_before=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/gate-verify-cache.json | head -1)
 rm -f .agent-state/t66-f
 t66_out=$(t66_stop 'touch .agent-state/t66-f; false')
 report "T66 TC-1414 failing verify dies E64" 1 "$(printf '%s\n' "$t66_out" | grep -c 'GATE-E64')"
-t66_sha_after=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/verify-receipt.json | head -1)
+t66_sha_after=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' .agent-state/gate-verify-cache.json | head -1)
 report "T66 TC-1414 receipt unchanged by failing run (rc0-only)" 1 "$([[ -n $t66_sha_before && $t66_sha_before == $t66_sha_after ]] && echo 1 || echo 0)"
 # gate 版本失配失效：篡改收据版本字面
 t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
-sed -E -i '' 's/"gate_version":"[0-9][0-9.]*"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json 2>/dev/null || sed -E -i 's/"gate_version":"[0-9][0-9.]*"/"gate_version":"0.0.0"/' .agent-state/verify-receipt.json
+sed -E -i '' 's/"gate_version":"[0-9][0-9.]*"/"gate_version":"0.0.0"/' .agent-state/gate-verify-cache.json 2>/dev/null || sed -E -i 's/"gate_version":"[0-9][0-9.]*"/"gate_version":"0.0.0"/' .agent-state/gate-verify-cache.json
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 gate-version mismatch invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
 # TTL 失效：篡改 finished_at 为远古
 t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
-sed -i '' 's/"finished_at":[0-9]*/"finished_at":1000/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"finished_at":[0-9]*/"finished_at":1000/' .agent-state/verify-receipt.json
+sed -i '' 's/"finished_at":[0-9]*/"finished_at":1000/' .agent-state/gate-verify-cache.json 2>/dev/null || sed -i 's/"finished_at":[0-9]*/"finished_at":1000/' .agent-state/gate-verify-cache.json
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 TTL expiry invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
 # 变更号失配失效
 t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
-sed -i '' 's/"change_id":"CHG-1095"/"change_id":"CHG-OTHER"/' .agent-state/verify-receipt.json 2>/dev/null || sed -i 's/"change_id":"CHG-1095"/"change_id":"CHG-OTHER"/' .agent-state/verify-receipt.json
+sed -i '' 's/"change_id":"CHG-1095"/"change_id":"CHG-OTHER"/' .agent-state/gate-verify-cache.json 2>/dev/null || sed -i 's/"change_id":"CHG-1095"/"change_id":"CHG-OTHER"/' .agent-state/gate-verify-cache.json
 rm -f .agent-state/t66-m
 t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 change-id mismatch invalidates" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
@@ -8058,6 +8096,35 @@ out=$(scripts/agent-gate --stage rtvm 2>&1)
 check_output "T84 E154 undeclared unverified REQ is refused" 'GATE-E154' "$out"
 printf -- '- REQ-002：本期仅落 action 字段；样本/六类枚举/溯源待到 FU-128-1\n' >> docs/changes/CHG-1200/09-changelog.md
 out=$(scripts/agent-gate --stage rtvm 2>&1); report "T84 E154 declared unverified REQ passes" 0 "$?"
+# ⑯ FU-130-9 counterexample (v3.94.0, CHG-131 REQ-1316): a REQ cited in 01-spec
+# with NO 01.5 row is the defect's hiding place. The old `grep … | head -1` under
+# pipefail returned rc=1 for it and set -e killed the WHOLE gate with no output —
+# invisible to ⑮ because ⑮ only covered "row present, ⬜ undeclared".
+printf '# spec\n- REQ-001: x\n- REQ-002: y\n- REQ-003: cited from an older change, no 01.5 row\n' > docs/changes/CHG-1200/01-spec.md
+out=$(scripts/agent-gate --stage rtvm 2>&1); t84_rc=$?
+report "T84 FU-130-9 cited-but-unrowed REQ passes rtvm (rc 0, no silent abort)" 0 "$t84_rc"
+report "T84 FU-130-9 no GATE-E154 for an unrowed REQ" 0 "$(printf '%s\n' "$out" | grep -c 'GATE-E154')"
+# the same run must still die LOUDLY (rc 2 + code) when a rowed REQ is undeclared
+printf '# 09\n#### 未验证 REQ 清单\n- 无\n' > docs/changes/CHG-1200/09-changelog.md
+out=$(scripts/agent-gate --stage rtvm 2>&1); t84_rc=$?
+report "T84 FU-130-9 rowed undeclared REQ still refused (rc 2, not 1)" 2 "$t84_rc"
+check_output "T84 FU-130-9 refusal names the code" 'GATE-E154' "$out"
+printf '# 09\n#### 未验证 REQ 清单\n- REQ-002：本期仅落 action 字段；样本待到 FU-128-1\n' > docs/changes/CHG-1200/09-changelog.md
+out=$(scripts/agent-gate --stage rtvm 2>&1); report "T84 FU-130-9 fixed gate stays green with unrowed REQ + declaration" 0 "$?"
+# F3 (review, refined by shard evidence): 01.5 missing while 01-spec exists
+# must be judged CANNOT-PASS — never a silent "rtvm gate green". 09 missing
+# mid-change stays SILENT by design: 09 is the closure marker (begin refuses
+# when it exists), so staged/pre-commit legitimately run without it; the E154
+# declaration contract bites at stop, where the changelog is mandatory.
+rm docs/changes/CHG-1200/09-changelog.md
+out=$(scripts/agent-gate --stage rtvm 2>&1); t84_rc=$?
+report "T84 missing 09 mid-change stays silent (closure marker; E154 bites at stop)" 0 "$t84_rc"
+report "T84 missing-09 run prints no GATE-E154" 0 "$(printf '%s\n' "$out" | grep -c 'GATE-E154')"
+mv docs/changes/CHG-1200/01.5-rtvm-matrix.md docs/changes/CHG-1200/01.5.hold
+out=$(scripts/agent-gate --stage rtvm 2>&1); t84_rc=$?
+report "T84 E154 missing 01.5 while 01-spec exists is refused" 2 "$t84_rc"
+check_output "T84 E154 missing-01.5 refusal names the code" 'GATE-E154.*01.5' "$out"
+mv docs/changes/CHG-1200/01.5.hold docs/changes/CHG-1200/01.5-rtvm-matrix.md
 # v3.92.3 fix: do not leak the fixture's pinned roots into a later section
 # (canonical order puts T84 last, but -T subsets / shards must stay hermetic).
 unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_CORE_PATHS
@@ -8125,7 +8192,201 @@ report "T85 limit 08 counts as 8 (3 prior rows stay silent)" 0 "$(grep -c 'repea
 rm -rf "$t85_dir"
 }
 
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84 T85)
+section_T86() {
+# ------------------------------------------------ T86 dispatch contract v2（v3.94.0，CHG-131）
+# TC↔REQ：TC-2310→REQ-1310/1311（契约与三入口），TC-2311→REQ-1312（五标签模板），
+# TC-2312→REQ-1313/1314（版本化 + E17 v2 三分支），TC-2313→REQ-1315（生成器），
+# TC-2314→REQ-1316（FU-130-9 反例，见 T84 ⑯）。
+export AGENT_GUARD_STAGE_GATES=0
+new_repo
+local t86_rc out
+out=$(AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 --scaffold --risk L2 2>&1); t86_rc=$?
+report "T86 scaffold exits 0" 0 "$([[ $t86_rc -eq 0 ]] && echo 0 || echo 1)"
+t86_d=docs/changes/t86
+report "T86 scaffold carries dispatch_contract v2" 1 "$(grep -c '"dispatch_contract": "v2"' "$t86_d/00-governance.json")"
+report "T86 scaffold 03.5 carries the five dispatch labels" 5 "$(grep -cE '^- (项目背景|变更上下文|证据包|专业与历史|独立与成本)：' "$t86_d/03.5-tasks.md")"
+# fill the scaffold the way T64 does, then the same gate must go green
+for tf in "$t86_d"/00-intent.md "$t86_d"/00.5-communication.md "$t86_d"/01-spec.md "$t86_d"/02-code-impact-analysis.md "$t86_d"/03-modification-plan.md "$t86_d"/03.5-tasks.md "$t86_d"/04-test-scripts.md; do
+  sed -i '' 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf" 2>/dev/null \
+    || sed -i 's/确认状态：待确认/确认状态：已整体确认/; s/<!-- FILL[^>]* -->/已填/g; s/<标题：一句话>/已填/' "$tf"
+done
+AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 >/dev/null 2>&1
+report "T86 filled v2 03.5 passes begin (E17 v2 green)" 0 $?
+cp "$t86_d/03.5-tasks.md" t86.35.bak
+# missing / empty / placeholder: each is an E17 die, never a silent pass
+grep -v '^- 项目背景：' t86.35.bak > "$t86_d/03.5-tasks.md"
+out=$(AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 2>&1)
+check_output "T86 E17 v2 refuses a missing label" 'GATE-E17.*项目背景' "$out"
+sed 's/^- 变更上下文：.*/- 变更上下文：/' t86.35.bak > "$t86_d/03.5-tasks.md"
+out=$(AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 2>&1)
+check_output "T86 E17 v2 refuses an empty value (byte-safe strip)" 'GATE-E17.*变更上下文.*is empty' "$out"
+sed 's/^- 证据包：.*/- 证据包：<!-- FILL: x -->/' t86.35.bak > "$t86_d/03.5-tasks.md"
+out=$(AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 2>&1)
+check_output "T86 E17 v2 refuses a placeholder value" 'still holds a placeholder' "$out"
+sed 's/^- 证据包：.*/- 证据包: 已填（ascii colon）/' t86.35.bak > "$t86_d/03.5-tasks.md"
+AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 >/dev/null 2>&1
+report "T86 E17 v2 accepts an ascii colon" 0 $?
+# F1 恒检 (review): the v2 lane sits OUTSIDE the 直接实施 exemption — an
+# exemption marker must not buy a silent pass on a missing label.
+grep -v '^- 项目背景：' t86.35.bak > "$t86_d/03.5-tasks.md"
+printf -- '- 直接实施（豁免）：恒检夹具——豁免不豁免派发契约\n' >> "$t86_d/03.5-tasks.md"
+out=$(AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 2>&1)
+check_output "T86 E17 v2 fires even under the 直接实施 exemption" 'GATE-E17.*项目背景' "$out"
+cp t86.35.bak "$t86_d/03.5-tasks.md"
+# legacy change (no version field) keeps the v3.39.0 substring judgement
+cp "$t86_d/00-governance.json" t86.gov.bak
+printf '# tasks\n\n依赖：单链。\n里程碑：M1=now。\n\n- 评审输入: x\n' > "$t86_d/03.5-tasks.md"
+sed 's/, "dispatch_contract": "v2"//' t86.gov.bak > "$t86_d/00-governance.json"
+AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 >/dev/null 2>&1
+report "T86 legacy change without the field keeps the 评审输入 judgement" 0 $?
+# explicit downgrade is visible, never silent — and it must stay green on a
+# V2-SHAPED 03.5 (five labels present), not just on legacy text (review F2)
+cp t86.gov.bak "$t86_d/00-governance.json"
+cp t86.35.bak "$t86_d/03.5-tasks.md"
+out=$(AGENT_GUARD_DISPATCH_CONTRACT=v1 AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 2>&1)
+check_output "T86 AGENT_GUARD_DISPATCH_CONTRACT=v1 warns" 'downgraded to v1' "$out"
+AGENT_GUARD_DISPATCH_CONTRACT=v1 AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash scripts/agent-gate begin t86 >/dev/null 2>&1
+report "T86 downgrade keeps a v2-shaped 03.5 green (escape hatch, not a block)" 0 $?
+# dispatch generator: text, json, gaps, active-change default, read-only, usage
+out=$(bash scripts/agent-gate dispatch design t86 2>&1); t86_rc=$?
+report "T86 dispatch design exits 0" 0 "$t86_rc"
+report "T86 dispatch prints all nine P sections" 9 "$(printf '%s\n' "$out" | grep -c '^## P[0-8]')"
+check_output "T86 dispatch names contract v2" 'contract=v2' "$out"
+check_output "T86 dispatch carries the risk level" '风险 L2' "$out"
+report "T86 dispatch reports a missing input as [gap]" 1 "$(printf '%s\n' "$out" | grep -c '^- \[gap\] P4 缺 .*bugfix-log')"
+out=$(bash scripts/agent-gate dispatch review --json 2>&1); t86_rc=$?
+report "T86 dispatch --json resolves the ACTIVE change" 0 "$t86_rc"
+check_output "T86 dispatch --json declares contract v2" '"contract":"v2"' "$out"
+report "T86 dispatch --json carries p0..p8" 9 "$(printf '%s\n' "$out" | grep -o '"p[0-8]":' | sort -u | wc -l | tr -d ' ')"
+t86_before=$(git status --porcelain; ls .agent-state)
+bash scripts/agent-gate dispatch review t86 >/dev/null 2>&1
+t86_after=$(git status --porcelain; ls .agent-state)
+report "T86 dispatch writes nothing (read-only)" 0 "$([[ "$t86_before" == "$t86_after" ]] && echo 0 || echo 1)"
+out=$(bash scripts/agent-gate dispatch 2>&1); t86_rc=$?
+report "T86 dispatch without a stage is E155 (rc 2)" 2 "$t86_rc"
+check_output "T86 dispatch usage error names E155" 'GATE-E155' "$out"
+bash scripts/agent-gate dispatch bogus t86 >/dev/null 2>&1
+report "T86 dispatch unknown stage is E155 (rc 2)" 2 "$?"
+bash scripts/agent-gate dispatch design CHG-9999 >/dev/null 2>&1
+report "T86 dispatch unknown change is E155 (rc 2)" 2 "$?"
+rm -f t86.35.bak t86.gov.bak
+unset AGENT_GUARD_STAGE_GATES
+}
+
+section_T87() {
+# ------------------------------------------------ T87 套件基建并行与缓存（v3.95.0，CHG-132）
+# REQ-1321 --worktree 快照、REQ-1322 shard-sum、REQ-1324 分节缓存的 golden 节。
+# 快照携带未提交代码是结构性的：本节只存在于未提交树，HEAD 快照跑不出这一节
+# （-T T87 自证）。审计分块并行（REQ-1323）的行为等价在证据轮一次性证毕，本节
+# 只做结构 pin（见 tests/audit-standards-src.sh A63）。
+  cd "$ROOT"
+  if [[ "${AGENT_GUARD_SUITE_IN_WT:-0}" == "1" ]]; then
+    report "T87 executes inside the worktree snapshot (carry proven)" 0 0
+    return 0
+  fi
+  # REQ-1321: snapshot carry — the inner run must find T87 in the snapshot.
+  _t87_wt=$(bash tests/run-tests.sh -T T87 --worktree 2>&1); _t87_rc=$?
+  report "T87 -T T87 --worktree exits 0 (uncommitted-code carry)" 0 "$_t87_rc"
+  printf '%s\n' "$_t87_wt" | grep -Fq 'T87 executes inside the worktree snapshot'
+  report "T87 snapshot output contains the in-worktree self-report" 0 "$?"
+  printf '%s\n' "$_t87_wt" | grep -Fq '1 passed, 0 failed'
+  report "T87 snapshot run summary matches the single self-report" 0 "$?"
+  # recursion + environment guards
+  _t87_rg=$(AGENT_GUARD_SUITE_IN_WT=1 bash tests/run-tests.sh -T T1 --worktree 2>&1); _t87_rgrc=$?
+  report "T87 --worktree recursion guard exits 2" 2 "$_t87_rgrc"
+  printf '%s\n' "$_t87_rg" | grep -Fq 'already inside a suite worktree'
+  report "T87 recursion guard names the reason" 0 "$?"
+  _t87_ng=$(mktemp -d "${TMPDIR:-/tmp}/t87-ng.XXXXXX"); mkdir -p "$_t87_ng/tests"
+  cp "$ROOT/tests/run-tests.sh" "$_t87_ng/tests/run-tests.sh"
+  _t87_ngout=$(cd "$_t87_ng" && bash tests/run-tests.sh -T T1 --worktree 2>&1); _t87_ngrc=$?
+  report "T87 --worktree outside a git repo exits 2" 2 "$_t87_ngrc"
+  printf '%s\n' "$_t87_ngout" | grep -Fq 'requires a git repository'
+  report "T87 non-git refusal names the reason" 0 "$?"
+  rm -rf "$_t87_ng"
+  # two concurrent worktree invocations stay isolated and both green
+  _t87_c1=$(mktemp -d "${TMPDIR:-/tmp}/t87-c1.XXXXXX"); _t87_c2=$(mktemp -d "${TMPDIR:-/tmp}/t87-c2.XXXXXX")
+  ( cd "$ROOT" && bash tests/run-tests.sh -T T1 --worktree >"$_t87_c1/out" 2>&1; echo $? >"$_t87_c1/rc" ) &
+  ( cd "$ROOT" && bash tests/run-tests.sh -T T1 --worktree >"$_t87_c2/out" 2>&1; echo $? >"$_t87_c2/rc" ) &
+  wait
+  report "T87 two concurrent worktree runs both exit 0" 0 "$([[ "$(cat "$_t87_c1/rc")" == "0" && "$(cat "$_t87_c2/rc")" == "0" ]] && echo 0 || echo 1)"
+  rm -rf "$_t87_c1" "$_t87_c2"
+  # idempotent second snapshot run at the same tree
+  _t87_w2rc=0
+  bash tests/run-tests.sh -T T87 --worktree >/dev/null 2>&1 || _t87_w2rc=$?
+  report "T87 second --worktree run is idempotent (exit 0)" 0 "$_t87_w2rc"
+  # cleanup hygiene: no snapshot dirs, no registered wt-shard worktrees
+  report "T87 leaves no worktree residue under .agent-state" 0 "$([[ -z "$(ls -d "$ROOT"/.agent-state/wt-shard-* 2>/dev/null)" ]] && echo 0 || echo 1)"
+  report "T87 leaves no wt-shard worktrees registered" 0 "$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c 'wt-shard')"
+  # snapshot creation is lock-serialized + retried; a dirty tree with a failing
+  # stash refuses BY NAME (first 6-way round: 5/6 concurrent stash creates
+  # silently lost and fell back to HEAD, testing stale code)
+  grep -Fq 'wt-snapshot.lock' "$ROOT/tests/run-tests.sh"
+  report "T87 snapshot creation is lock-serialized" 0 "$?"
+  grep -Fq 'refusing to snapshot a stale HEAD' "$ROOT/tests/run-tests.sh"
+  report "T87 dirty-tree stash failure refuses by name (no silent HEAD fallback)" 0 "$?"
+  grep -Fq -- '--untracked-files=no' "$ROOT/tests/run-tests.sh"
+  report "T87 dirty check targets tracked changes only" 0 "$?"
+  # REQ-1322: shard-sum sums per-shard summaries; zero success is failure.
+  report "T87 shard-sum.sh is executable" 0 "$([[ -x "$ROOT/scripts/shard-sum.sh" ]] && echo 0 || echo 1)"
+  _t87_ss=$(mktemp -d "${TMPDIR:-/tmp}/t87-ss.XXXXXX")
+  printf '2 passed, 0 failed\n' > "$_t87_ss/a.log"
+  printf '3 passed, 0 failed\n' > "$_t87_ss/b.log"
+  _t87_sum=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" 2>&1); _t87_sumrc=$?
+  report "T87 shard-sum green sum exits 0" 0 "$_t87_sumrc"
+  printf '%s\n' "$_t87_sum" | grep -Fq 'total: 5 passed, 0 failed'
+  report "T87 shard-sum totals the shards" 0 "$?"
+  printf '9 passed, 1 failed\n' > "$_t87_ss/a.log"
+  bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" >/dev/null 2>&1
+  report "T87 shard-sum red sum exits 1" 1 "$?"
+  printf 'noise only\n' > "$_t87_ss/a.log"; rm -f "$_t87_ss/b.log"
+  bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" >/dev/null 2>&1
+  report "T87 shard-sum with no shard summary exits 2" 2 "$?"
+  rm -f "$_t87_ss"/*.log
+  bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" >/dev/null 2>&1
+  report "T87 shard-sum with zero logs exits 2" 2 "$?"
+  _t87_wr=$(mktemp -d "${TMPDIR:-/tmp}/t87-wr.XXXXXX"); mkdir -p "$_t87_wr/tests" "$_t87_wr/scripts"
+  printf '#!/usr/bin/env bash\necho "stub-gen $*" >> stub-gen.log\n' > "$_t87_wr/scripts/update-assertion-count.sh"
+  chmod +x "$_t87_wr/scripts/update-assertion-count.sh"
+  printf '2 passed, 0 failed\n' > "$_t87_ss/a.log"; printf '3 passed, 0 failed\n' > "$_t87_ss/b.log"
+  bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" --write --root "$_t87_wr" >/dev/null 2>&1
+  report "T87 shard-sum --write exits 0 with a stub generator" 0 "$?"
+  report "T87 --write lands the sum in tests/.suite-baseline" 0 "$([[ "$(cat "$_t87_wr/tests/.suite-baseline" 2>/dev/null)" == "5" ]] && echo 0 || echo 1)"
+  report "T87 --write invokes the generator with --from-baseline" 0 "$([[ "$(cat "$_t87_wr/stub-gen.log" 2>/dev/null)" == "stub-gen --from-baseline" ]] && echo 0 || echo 1)"
+  rm -rf "$_t87_ss" "$_t87_wr"
+  # REQ-1324: opt-in cache — default off; hit path; chain exclusion; seam bypass.
+  _t87_cache="$ROOT/.agent-state/section-cache.tsv"
+  rm -f "$_t87_cache"
+  _t87_off=$(bash tests/run-tests.sh -T T1 2>&1)
+  report "T87 cache stays off by default (no [cached] marker)" 0 "$(printf '%s\n' "$_t87_off" | grep -cF '[cached]')"
+  _t87_c1out=$(AGENT_GUARD_SECTION_CACHE=1 bash tests/run-tests.sh -T T1 2>&1); _t87_c1rc=$?
+  report "T87 first cache-populated run exits 0" 0 "$_t87_c1rc"
+  report "T87 first run prints no [cached] marker" 0 "$(printf '%s\n' "$_t87_c1out" | grep -cF '[cached]')"
+  report "T87 cache row lands in section-cache.tsv" 0 "$([[ -f "$_t87_cache" && "$(wc -l < "$_t87_cache" | tr -d ' ')" -ge 1 ]] && echo 0 || echo 1)"
+  _t87_c2out=$(AGENT_GUARD_SECTION_CACHE=1 bash tests/run-tests.sh -T T1 2>&1); _t87_c2rc=$?
+  report "T87 second cache run exits 0 (hit)" 0 "$_t87_c2rc"
+  printf '%s\n' "$_t87_c2out" | grep -Fq '[cached] T1 (2 passed, 0 failed)'
+  report "T87 hit prints the [cached] marker with counts" 0 "$?"
+  printf '%s\n' "$_t87_c2out" | grep -Fq 'section-cache: 1 hit(s)'
+  report "T87 hit prints the cache tally" 0 "$?"
+  printf '%s\n' "$_t87_c2out" | grep -Fq '2 passed, 0 failed'
+  report "T87 cached run keeps the summary truthful" 0 "$?"
+  AGENT_GUARD_SECTION_CACHE=1 bash tests/run-tests.sh -T T5 >/dev/null 2>&1; _t87_chrc=$?
+  report "T87 SERIAL_CHAIN head T5 exits 0 under cache" 0 "$_t87_chrc"
+  _t87_t5rows=0
+  [[ -f "$_t87_cache" ]] && _t87_t5rows=$(grep -cF 'T5' "$_t87_cache" || true)
+  report "T87 SERIAL_CHAIN member is never stored" 0 "$_t87_t5rows"
+  _t87_fr=$(AGENT_GUARD_SECTION_CACHE=1 AGENT_GUARD_SUITE_FORCE_RED=1 bash tests/run-tests.sh -T T1 2>&1); _t87_frrc=$?
+  report "T87 FORCE_RED run exits 1 (T0 seam fires)" 1 "$_t87_frrc"
+  report "T87 FORCE_RED bypasses the cache (no [cached] marker)" 0 "$(printf '%s\n' "$_t87_fr" | grep -cF '[cached]')"
+  # -T auto registry: shard-sum.sh maps to its own section.
+  _t87_am=$(AGENT_GUARD_SUITE_AUTO_DIFF=scripts/shard-sum.sh AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash tests/run-tests.sh -T auto 2>&1); _t87_amrc=$?
+  report "T87 auto-resolve for shard-sum.sh exits 0" 0 "$_t87_amrc"
+  printf '%s\n' "$_t87_am" | grep -Fq 'auto-resolve-only: T50 T87'
+  report "T87 auto-resolve maps shard-sum.sh to T87 (tail pin keeps T50)" 0 "$?"
+  rm -f "$_t87_cache"
+}
+
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84 T85 T86 T87)
 
 # v3.91.7 (CHG-127): --shard i/N — deterministic contiguous partition. Contiguous
 # slices preserve the SERIAL_CHAIN adjacency (T5,T22a,T16 and T50,T51) at N=6,
@@ -8182,15 +8443,16 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
     resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
     resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49 T78' ;;
-    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78 T82 T83' ;;
+    scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78 T82 T83 T86' ;;
     scripts/session-gate.sh|scripts/lib-suite-lock.sh) printf 'T26 T26b T41 T57' ;;
     tests/*)                           printf 'T50 T51 T75 T76' ;;
     resources/templates/stamp-provenance.sh)        printf 'T16 T17 T17b' ;;
     resources/templates/install-hook-adapter.sh)    printf 'T49' ;;
-    resources/templates/*.md)          printf 'T7b T18c T18d T43 T46' ;;
+    resources/templates/*.md)          printf 'T7b T18c T18d T43 T46 T86' ;;
     resources/templates/agent-governance.yml|resources/templates/github-*.yml) printf 'T73b' ;;
-    resources/METHODOLOGY.md|resources/STAGE_PLAYBOOK.md|resources/methodologies/*|resources/templates/*.md) printf 'T40 T43 T48' ;;
-    scripts/*|resources/templates/*.sh) printf 'T19 T30 T41' ;;
+    resources/METHODOLOGY.md|resources/STAGE_PLAYBOOK.md|resources/methodologies/*|resources/templates/*.md) printf 'T40 T43 T48 T86' ;;
+    scripts/shard-sum.sh)              printf 'T87' ;;
+    scripts/*|resources/templates/*.sh) printf 'T19 T30 T41 T86' ;;
     docs/*)                            return 2 ;;  # 变更产物/评审记录：不影响治理工具，无需套件
     MAINTAINER.md)                     return 2 ;;
     # v3.91.2 (CHG-127 self-audit, replay evidence): non-governance repo assets
@@ -8375,6 +8637,128 @@ if [[ "$_repeat_limit" -gt 0 && "${AGENT_GUARD_SUITE_NESTED:-0}" != "1" ]]; then
     >> "$_repeat_state" 2>/dev/null || true
 fi
 export AGENT_GUARD_SUITE_NESTED=1
+# v3.95.0 (CHG-132, REQ-1321): --worktree — run this suite from a disposable git
+# worktree snapshot so concurrent invocations (six shards at once) never share
+# cwd, .agent-state, or temp-repo state. The snapshot is a `git stash create`
+# commit of the CURRENT tracked working tree — uncommitted changes ride along,
+# no ref is mutated, a clean tree falls back to HEAD. Carry is structural, not
+# asserted: a snapshot taken at HEAD would lack this change's own sections and
+# the `-T T87` self-run below would fail (T87 exists only in the working tree).
+# Gitignored runtime (scripts/agent-gate, scripts/session-gate.sh,
+# scripts/stamp-provenance.sh) is regenerated from the tracked templates inside
+# the snapshot — the same recipe bootstrap applies in target repos. Full runs
+# still hit the lock and kill-marker gates ABOVE: --worktree is an isolation
+# mechanism, never a bypass.
+if [[ "$WORKTREE" -eq 1 ]]; then
+  if [[ "${AGENT_GUARD_SUITE_IN_WT:-0}" == "1" ]]; then
+    printf 'invalid --worktree: already inside a suite worktree (recursion guard)\n' >&2
+    exit 2
+  fi
+  git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { printf -- '--worktree requires a git repository (ROOT=%s)\n' "$ROOT" >&2; exit 2; }
+  # Snapshot creation is serialized + retried: concurrent `git stash create`
+  # invocations contend on git's index locks and 5/6 silently lost in the first
+  # 6-way round (the losers fell back to HEAD and tested stale code — a
+  # false-green machine). A dirty tracked tree with a persistently failing
+  # stash must refuse with a named error instead of falling back to HEAD.
+  _wt_lock="$ROOT/.agent-state/wt-snapshot.lock"
+  mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
+  _wt_held=0
+  for _wt_i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 \
+               21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 \
+               41 42 43 44 45 46 47 48 49 50; do
+    mkdir "$_wt_lock" 2>/dev/null && { _wt_held=1; break; }
+    sleep 0.2
+  done
+  [[ "$_wt_held" -eq 1 ]] \
+    || { printf 'worktree: snapshot lock %s busy after 10s (stale lock? remove it and retry)\n' "$_wt_lock" >&2; exit 2; }
+  _wt_snap=""
+  for _wt_i in 1 2 3; do
+    _wt_snap=$(git -C "$ROOT" stash create "suite worktree snapshot" 2>/dev/null) && [[ -n "$_wt_snap" ]] && break
+    _wt_snap=""
+    sleep 0.5
+  done
+  if [[ -z "$_wt_snap" ]]; then
+    if [[ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+      rmdir "$_wt_lock" 2>/dev/null || true
+      printf -- '--worktree: tracked tree carries uncommitted changes but git stash create failed repeatedly — refusing to snapshot a stale HEAD (would test the wrong code)\n' >&2
+      exit 2
+    fi
+    _wt_snap=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null) || true
+    [[ -n "$_wt_snap" ]] || { rmdir "$_wt_lock" 2>/dev/null || true; printf -- '--worktree needs at least one commit (unborn HEAD)\n' >&2; exit 2; }
+  fi
+  mkdir -p "$ROOT/.agent-state" 2>/dev/null || true
+  _wt_dir=$(mktemp -d "$ROOT/.agent-state/wt-shard.XXXXXX" 2>/dev/null) \
+    || { rmdir "$_wt_lock" 2>/dev/null || true; printf 'worktree: cannot create a snapshot dir under %s/.agent-state\n' "$ROOT" >&2; exit 2; }
+  if ! git -C "$ROOT" worktree add --detach --quiet "$_wt_dir" "$_wt_snap" >/dev/null 2>&1; then
+    rm -rf "$_wt_dir"
+    rmdir "$_wt_lock" 2>/dev/null || true
+    printf 'worktree: git worktree add failed for snapshot %s\n' "$_wt_snap" >&2
+    exit 2
+  fi
+  rmdir "$_wt_lock" 2>/dev/null || true
+  for _wt_rt in agent-gate:agent-gate.sh session-gate.sh:session-gate.sh stamp-provenance.sh:stamp-provenance.sh; do
+    _wt_dst="$_wt_dir/scripts/${_wt_rt%%:*}"
+    _wt_src="$_wt_dir/resources/templates/${_wt_rt##*:}"
+    [[ -f "$_wt_dst" || ! -f "$_wt_src" ]] || install -m 755 "$_wt_src" "$_wt_dst"
+  done
+  _wt_args=()
+  if [[ ${#WANTED[@]} -gt 0 ]]; then
+    _wt_list=$(IFS=','; printf '%s' "${WANTED[*]}")
+    _wt_args+=(-T "$_wt_list")
+  fi
+  [[ "$JOBS" -ge 2 ]] && _wt_args+=(-j "$JOBS")
+  [[ "$DUAL_RUN" -eq 1 ]] && _wt_args+=(--dual-run)
+  printf 'worktree: snapshot %s at %s\n' "${_wt_snap:0:12}" "$_wt_dir"
+  _wt_rc=0
+  ( cd "$_wt_dir" && AGENT_GUARD_SUITE_IN_WT=1 bash tests/run-tests.sh "${_wt_args[@]}" ) || _wt_rc=$?
+  git -C "$ROOT" worktree remove --force "$_wt_dir" >/dev/null 2>&1 || rm -rf "$_wt_dir"
+  git -C "$ROOT" worktree prune >/dev/null 2>&1 || true
+  exit "$_wt_rc"
+fi
+# v3.95.0 (CHG-132): serial-chain members, hoisted before both dispatch branches —
+# the parallel pool collects them separately AND the section cache (below) must
+# never store or serve them (their results depend on shared cwd/shell state).
+SERIAL_CHAIN=(T50 T51 T5 T22a T16)
+# v3.95.0 (CHG-132, REQ-1324): opt-in per-section result cache. Content-addressed
+# by the suite tree fingerprint: a row is only served when the tree is
+# byte-identical to the tree that produced it. Default OFF; forced off under the
+# observational seams (FORCE_RED / DUAL_RUN / resolve-only) and inside worktree
+# snapshots (keeps --worktree A/B runs execution-identical). SERIAL_CHAIN members
+# are never cached. A hit prints `[cached] <sec> (P passed, F failed)` and skips
+# the ledger row (a 0s row would poison the sec-latency p50).
+_cache_enabled=0
+if [[ "${AGENT_GUARD_SECTION_CACHE:-0}" == "1" \
+   && "${AGENT_GUARD_SUITE_FORCE_RED:-0}" != "1" \
+   && "${DUAL_RUN:-0}" != "1" \
+   && "${AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY:-0}" != "1" \
+   && "${AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY:-0}" != "1" \
+   && "${AGENT_GUARD_SUITE_IN_WT:-0}" != "1" ]]; then
+  _cache_enabled=1
+fi
+_cache_fp=""
+_cache_hits=0
+if [[ "$_cache_enabled" -eq 1 ]] && command -v suite_tree_fingerprint >/dev/null 2>&1; then
+  _cache_fp=$(suite_tree_fingerprint "$ROOT")
+  [[ -n "$_cache_fp" ]] || _cache_enabled=0
+fi
+_cache_lookup() { # <section> -> prints "P F" on hit; rc 1 on miss/disabled
+  [[ -n "$_cache_fp" && -f "$ROOT/.agent-state/section-cache.tsv" ]] || return 1
+  local _row
+  _row=$(awk -F'\t' -v fp="$_cache_fp" -v sec="$1" '$1==fp && $2==sec {print $3, $4; exit}' "$ROOT/.agent-state/section-cache.tsv" 2>/dev/null) || return 1
+  [[ "$_row" =~ ^[0-9]+[[:space:]][0-9]+$ ]] || return 1
+  printf '%s\n' "$_row"
+}
+_cache_store() { # <section> <passed> <failed> — prune to the current tree on store
+  [[ "$_cache_enabled" -eq 1 && -n "$_cache_fp" ]] || return 0
+  local _cf="$ROOT/.agent-state/section-cache.tsv" _tmp
+  mkdir -p "$ROOT/.agent-state" 2>/dev/null || return 0
+  _tmp="$_cf.tmp.$$"
+  { [[ -f "$_cf" ]] && awk -F'\t' -v fp="$_cache_fp" '$1==fp' "$_cf"; \
+    printf '%s\t%s\t%s\t%s\t%s\n' "$_cache_fp" "$1" "$2" "$3" "$(date +%s)"; } > "$_tmp" 2>/dev/null \
+    && mv -f "$_tmp" "$_cf" 2>/dev/null || rm -f "$_tmp" 2>/dev/null
+  return 0
+}
 # v3.72.0 erratum (CHG-095, DES-1868): replay/re-export anchors — defined ONCE
 # here; the parallel branch's counter/failed_names re-export shares them with
 # the report() wire format (^ok / ^FAIL).
@@ -8390,15 +8774,24 @@ if [[ "$JOBS" -ge 2 ]]; then
   # (so they go first); T5→T22a→T16 form a CHG-500 fixture continuation chain
   # (T22a/T16 evolve T5's temp repo via cwd, deliberately not self-contained —
   # known limitation: `-T T22a` standalone is unsupported, use -T T5,T22a,T16).
-  # They run serially (captured, not pooled) before the replay.
-  SERIAL_CHAIN=(T50 T51 T5 T22a T16)
+  # They run serially (captured, not pooled) before the replay. The chain list
+  # itself is hoisted above the dispatch (cache exclusion shares it).
   _ran=(); _pool=(); _serial=()
+  _cached_secs=(); _cached_out=()
   for _s in "${SECTIONS[@]}"; do
     if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
       _ran+=("$_s")
       case " ${SERIAL_CHAIN[*]} " in
         *" $_s "*) ;; # chain member: collected below, in chain order
-        *) _pool+=("$_s") ;;
+        *)
+          _crow=""
+          [[ "$_cache_enabled" -eq 1 ]] && _crow=$(_cache_lookup "$_s")
+          if [[ -n "$_crow" ]]; then
+            _cached_secs+=("$_s"); _cached_out+=("$_crow")
+          else
+            _pool+=("$_s")
+          fi
+          ;;
       esac
     fi
   done
@@ -8442,11 +8835,29 @@ if [[ "$JOBS" -ge 2 ]]; then
   # stderr; counters and failed_names/fail_lines re-exported from the captured
   # files (subshell-local report() tallies are discarded by design).
   for _s in "${_ran[@]}"; do
+    _crow=""
+    _ci=0
+    while [[ "$_ci" -lt "${#_cached_secs[@]}" ]]; do
+      if [[ "${_cached_secs[_ci]}" == "$_s" ]]; then _crow="${_cached_out[_ci]}"; break; fi
+      _ci=$(( _ci + 1 ))
+    done
+    if [[ -n "$_crow" ]]; then
+      _cp="${_crow% *}"; _cfail="${_crow#* }"
+      pass=$(( pass + _cp )); fail=$(( fail + _cfail ))
+      printf '[cached] %s (%s passed, %s failed)\n' "$_s" "$_cp" "$_cfail"
+      _cache_hits=$(( _cache_hits + 1 ))
+      _TIMINGS+=("${_s}:0:0")
+      continue
+    fi
     _sf="${TMPDIR:-/tmp}/suite-${_s}.$$.out"
     p=$(grep -cE "$_RE_OK" "$_sf")
     f=$(grep -cE "$_RE_FAIL" "$_sf")
     pass=$(( pass + p ))
     fail=$(( fail + f ))
+    case " ${SERIAL_CHAIN[*]} " in
+      *" $_s "*) ;;
+      *) _cache_store "$_s" "$p" "$f" ;;
+    esac
     while IFS= read -r _fl; do fail_lines+=("$_fl"); done < <(grep -hE "$_RE_FAIL" "$_sf")
     while IFS= read -r _fn; do failed_names+=("$_fn"); done < <(grep -hE "$_RE_FAIL" "$_sf" | sed -E 's/^FAIL (.*) \((expected exit|output does not match).*$/\1/')
     grep -vE "$_RE_FAIL" "$_sf"
@@ -8462,10 +8873,27 @@ else
   # ---- serial branch: pre--j dispatcher, byte-identical (JOBS<=1) ---------
   for _s in "${SECTIONS[@]}"; do
     if [[ ${#WANTED[@]} -eq 0 ]] || [[ " ${WANTED[*]} " == *" $_s "* ]]; then
+      _crow=""
+      case " ${SERIAL_CHAIN[*]} " in
+        *" $_s "*) ;;
+        *) [[ "$_cache_enabled" -eq 1 ]] && _crow=$(_cache_lookup "$_s") ;;
+      esac
+      if [[ -n "$_crow" ]]; then
+        printf '[cached] %s (%s passed, %s failed)\n' "$_s" "${_crow% *}" "${_crow#* }"
+        pass=$(( pass + ${_crow% *} )); fail=$(( fail + ${_crow#* } ))
+        _cache_hits=$(( _cache_hits + 1 ))
+        _TIMINGS+=("${_s}:0:0")
+        progress_write running
+        continue
+      fi
       _t0=$(date +%s); NEW_REPO_SETUP_S=0
       _p0=$pass; _f0=$fail
       "section_${_s//-/_}"
       _p=$(( pass - _p0 )); _f=$(( fail - _f0 ))
+      case " ${SERIAL_CHAIN[*]} " in
+        *" $_s "*) ;;
+        *) _cache_store "$_s" "$_p" "$_f" ;;
+      esac
       _el=$(( $(date +%s) - _t0 ))
       printf '[done] %s %ss\n' "$_s" "$_el"
       ledger_append sec "$_s" "$_el" "${NEW_REPO_SETUP_S:-0}" none 0 "$(( _p + _f ))"
@@ -8482,6 +8910,10 @@ fi
 if [[ "${AGENT_GUARD_SUITE_FORCE_RED:-0}" == "1" ]]; then
   report "T0 forced-red seam (AGENT_GUARD_SUITE_FORCE_RED)" 0 1
 fi
+
+# v3.95.0 (CHG-132, REQ-1324): cache tally — only the opt-in run prints it, so
+# default-off output stays byte-identical for the byte-equality pins (T50 tail).
+[[ "${_cache_enabled:-0}" -eq 1 ]] && printf 'section-cache: %d hit(s)\n' "$_cache_hits"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 printf 'wall-time: %ds\n' "$SECONDS"  # v3.65.0 (CHG-087, REQ-1047): constant tail wall-time; summary line format unchanged (update-assertion-count / audit A3 sed anchors)

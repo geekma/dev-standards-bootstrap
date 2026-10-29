@@ -39,7 +39,7 @@
 | R15 | 防跳过红线（§2.16.6） | DEVELOPMENT_STANDARDS.md::### 2.16.6 防遗漏 | universal | 硬 | 结构 |
 | R16 | 歧义分级裁定（§2.1 规则 8） | DEVELOPMENT_STANDARDS.md::歧义分级裁定 | universal | 硬 | 行为 |
 | R17 | 四主体自查表（§2.1 规则 10） | DEVELOPMENT_STANDARDS.md::四主体自查表 | universal | 硬 | 行为 |
-| R18 | 评审/测试子代理输入契约（§2.2） | DEVELOPMENT_STANDARDS.md::评审/测试子代理输入契约 | universal | 硬 | 行为 |
+| R18 | AI 子代理派发输入契约 P0–P8 五标签（§2.2，v3.94.0 起） | DEVELOPMENT_STANDARDS.md::**AI 子代理派发输入契约（v3.94.0，dispatch_contract v2）** | universal | 硬 | 行为 |
 | R19 | 会话与上下文纪律（§2.9.6 水位/换挡/事件型触发） | DEVELOPMENT_STANDARDS.md::### 2.9.6 会话与上下文纪律 | universal | 半硬（check/水位/GATE-E89 begin 硬校+豁免；活性自检软） | 行为 |
 | R20 | 遗留项闭环管理（FU，§2.12） | DEVELOPMENT_STANDARDS.md::## 2.12 遗留项闭环管理 | universal | 硬 | 结构 |
 | R21 | 项目总册回填清单（§1.3） | DEVELOPMENT_STANDARDS.md::#### 项目总册回填清单 | L1-standards | 硬 | 结构 |
@@ -118,7 +118,7 @@
 | GATE-E14 | 02-code-impact-analysis 缺回滚策略 | agent-gate.sh::validate_artifact_content() |
 | GATE-E15 | 03.5-tasks 缺依赖信息 | agent-gate.sh::validate_artifact_content() |
 | GATE-E16 | 03.5-tasks 缺里程碑信息 | agent-gate.sh::validate_artifact_content() |
-| GATE-E17 | 03.5-tasks 缺评审输入字段（§2.2 输入契约） | agent-gate.sh::validate_artifact_content() |
+| GATE-E17 | 03.5-tasks 派发输入缺字段/空值/占位（v2 五标签；无版本字段的存量变更走旧「评审输入」判定，§2.2 输入契约） | agent-gate.sh::validate_artifact_content()（v3.94.0，CHG-131，REQ-1315） |
 | GATE-E18 | 治理记录字段 owner 是占位符（PENDING 类被拒） | agent-gate.sh::reject_placeholder_owner() |
 | GATE-E19 | 交付产物无溯源块 | agent-gate.sh::validate_provenance() |
 | GATE-E20 | 溯源块仍含占位符 | agent-gate.sh::validate_provenance() |
@@ -237,6 +237,7 @@
 | GATE-E151 | `verification_owner` 缺失或等于 `implementation_owner`（被测核心变更） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1280） |
 | GATE-E152 | `scope_overrun=over` 且无用户确认的 scope（变更范围预算） | agent-gate.sh::scope_overrun_check()（v3.92.0，CHG-128，REQ-1281） |
 | GATE-E154 | 09 缺「未验证 REQ 清单」或漏列 01.5 验证状态非 ✅ 的 REQ（静默降级） | agent-gate.sh::unverified_req_check()（v3.92.2，CHG-128，REQ-1284） |
+| GATE-E155 | dispatch 用法错误（阶段缺失/非法、变更号缺失或不存在、未知选项）——只报用法，不写文件 | agent-gate.sh::dispatch 子命令（v3.94.0，CHG-131，REQ-1315） |
 | GATE-E153 | 被测核心变更缺 fresh-clone receipt 或 receipt 陈旧/红（环境等价） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1278） |
 | GATE-E149 | `resume` 子命令用法错误（缺变更号） | agent-gate.sh::resume 分支（v3.91.0，CHG-127，G17） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |

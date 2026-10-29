@@ -40,27 +40,27 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
     GATE-E60) printf 'expected: every project-master row starts with its Pxx id at line start\nallowed: "- [x] P01 ..." / "- [ ] P07 未命中"\nfix: rewrite the row with the P id first, then re-run\nref: standards §1.3' ;;
     GATE-E85|GATE-E115|GATE-E117) printf 'expected: 07 carries the delivery shape rows the checker names\nallowed: signature with platform/model/task id; findings table >=5 columns; source column values from the enum\nfix: patch 07-review-report.md exactly at the named row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
     GATE-E125) printf 'expected: every source-path change is accounted for by an active change or a same-day defect batch\nallowed: begin a change first, or set AGENT_GUARD_ALLOW_UNACCOUNTED=1 with a 09 justification\nfix: run scripts/agent-gate begin <CHG> (or register the bypass in 09), then re-run\nref: standards §2.17.2b signal 3' ;;
-    GATE-E04|GATE-E05|GATE-E06|GATE-E07|GATE-E08|GATE-E09|GATE-E10|GATE-E11|GATE-E12|GATE-E13|GATE-E14|GATE-E15|GATE-E16|GATE-E17|GATE-E80|GATE-E84|GATE-E122) printf 'expected: the named artifact carries its A-layer section/numbering\nallowed: the section keywords or REQ-/DES-/TC-/SC- numbering named above\nfix: add that section/numbering to the named artifact, then re-run\nref: standards §2.5 stage 1-4 / §2.2' ;;
+    GATE-E04|GATE-E05|GATE-E06|GATE-E07|GATE-E08|GATE-E09|GATE-E11|GATE-E12|GATE-E13|GATE-E14|GATE-E15|GATE-E80|GATE-E84) printf 'expected: the named artifact carries its A-layer section/numbering\nallowed: the section keywords or REQ-/DES-/TC-/SC- numbering named above\nfix: add that section/numbering to the named artifact, then re-run\nref: standards §2.5 stage 1-4 / §2.2' ;;
+    GATE-E17) printf 'expected: 03.5 carries the five dispatch-input labels with real values\nallowed: 项目背景 / 变更上下文 / 证据包 / 专业与历史 / 独立与成本 (legacy changes: a 评审输入 field)\nfix: fill the label lines shown by scripts/agent-gate dispatch design <CHG>, then re-run\nref: standards §2.2 / review-intelligence §2 / v3.94.0' ;;
     GATE-E19|GATE-E20|GATE-E21|GATE-E22|GATE-E23) printf 'expected: every artifact carries a script-generated provenance block\nallowed: <!-- provenance --> with author/committer/commit/host/platform/generated_at\nfix: scripts/stamp-provenance.sh --all <CHG> (never hand-write), then re-run\nref: standards §1.1 / §2.15' ;;
     GATE-E18|GATE-E29|GATE-E30|GATE-E31|GATE-E32|GATE-E33|GATE-E34|GATE-E35|GATE-E88) printf 'expected: real, distinct execution subjects (no placeholders)\nallowed: platform/model + session-or-task id; L2/L3 four subjects pairwise distinct\nfix: edit 00-governance.json owners; keep spec_author != review_owner at minimum\nref: standards §2.1 rule 10 / §0.5.2' ;;
     GATE-E25|GATE-E26|GATE-E27|GATE-E28) printf 'expected: one governance record per change id with a valid risk level\nallowed: change_id == dir id; risk_level L0|L1|L2|L3; batches only L0/L1\nfix: fix 00-governance.json (or move an L2/L3 change to its own directory)\nref: standards §0.5.1 / §1.1' ;;
     GATE-E36|GATE-E37|GATE-E38) printf 'expected: L3 carries human release authorization (three fields)\nallowed: release_authorized_by / _at / _evidence, all non-empty\nfix: obtain the human authorization, record the three fields, re-run\nref: standards §2.7 / §0.5.2' ;;
     GATE-E39|GATE-E40|GATE-E41|GATE-E42|GATE-E81|GATE-E87) printf 'expected: bug_ref points at a complete, uniquely anchored defect group\nallowed: BUG-xxx under bugs/ (standalone or BATCH-YYYYMMDD/ with a ## BUG anchor)\nfix: fix the id, add the missing six-file piece, or de-duplicate the batch, then re-run\nref: standards §2.5 stage 6 / §1.1' ;;
-    GATE-E44|GATE-E45|GATE-E46|GATE-E47|GATE-E48|GATE-E49|GATE-E52|GATE-E59|GATE-E60|GATE-E61) printf 'expected: the delivery document set is complete and filled (no template markers)\nallowed: real content or an explicit 未命中（理由） declaration per row\nfix: fill/remove markers in the named 04.5/05/09/Pxx row, then re-run stop\nref: standards §1.1 / §1.3 / §2.5 stage 7-8' ;;
+    GATE-E44|GATE-E45|GATE-E46|GATE-E49|GATE-E52|GATE-E59|GATE-E61) printf 'expected: the delivery document set is complete and filled (no template markers)\nallowed: real content or an explicit 未命中（理由） declaration per row\nfix: fill/remove markers in the named 04.5/05/09/Pxx row, then re-run stop\nref: standards §1.1 / §1.3 / §2.5 stage 7-8' ;;
     GATE-E50|GATE-E51) printf 'expected: 09 carries ReAct Observations and every cited REQ is backfilled\nallowed: "- **Observation**: …" and the REQ ids present in 01.5-rtvm-matrix.md\nfix: add the Observation / backfill the REQ row, then re-run\nref: standards §2.16.2 / §4' ;;
     GATE-E53|GATE-E54|GATE-E55|GATE-E57|GATE-E58) printf 'expected: a defect group lives once, in one legal layout\nallowed: standalone bugs/<BUG>/ or one BATCH-YYYYMMDD/ with its anchor\nfix: merge/remove the duplicate; independent layout needs AGENT_GUARD_ALLOW_INDEPENDENT=1 + 09 reason\nref: standards §1.1' ;;
     GATE-E62|GATE-E63) printf 'expected: all thirteen project masters exist under docs/project/\nallowed: P00..P12 with the documented names\nfix: copy <docs>/templates/project/* then fill, or set AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 with a 09 reason\nref: standards §1.3' ;;
     GATE-E64|GATE-E118) printf 'expected: the configured verification_command passes\nallowed: a command that exits 0 (see .agent-governance.yml ci.verification_command)\nfix: run it yourself, fix the failure, or correct the command; re-run stop\nref: standards §2.17.4 / §2.13' ;;
-    GATE-E66|GATE-E125) printf 'expected: every source-path change is accounted for by an active change\nallowed: begin <CHG> first (or a same-day defect batch); bypass only with a 09 justification\nfix: create the change artifacts and run begin, then re-run staged/stop\nref: standards §2.17.2b' ;;
+    GATE-E66) printf 'expected: every source-path change is accounted for by an active change\nallowed: begin <CHG> first (or a same-day defect batch); bypass only with a 09 justification\nfix: create the change artifacts and run begin, then re-run staged/stop\nref: standards §2.17.2b' ;;
     GATE-E67|GATE-E68) printf 'expected: the commit message names its change id\nallowed: "type(scope): summary (CHG-xxx)" (merge/revert/docs-only exempt)\nfix: amend the message file or the commit message, then re-run\nref: standards §4 / commit-msg gate' ;;
     GATE-E71|GATE-E72) printf 'expected: a closed change is never reopened\nallowed: a NEW change id (one change = one document set)\nfix: create the next change id and run begin on it\nref: standards §2.15 rule 4' ;;
     GATE-E73|GATE-E74|GATE-E75|GATE-E89|GATE-E112) printf 'expected: session hygiene holds (batch placement / water level / red list / shift)\nallowed: join BATCH-YYYYMMDD for L0/L1; write handoff.md + a shift declaration\nfix: follow the named action; bypass keys need a 09「重要上下文」 entry\nref: standards §1.1 / §2.9.6' ;;
     GATE-E76|GATE-E77|GATE-E78|GATE-E79|GATE-E69|GATE-E120) printf 'expected: a valid command form\nallowed: see scripts/agent-gate help (begin/preflight/--stage/metrics/plan …)\nfix: correct the arguments; scaffold needs a fresh empty change id\nref: standards §2.17.1' ;;
-    GATE-E82|GATE-E85|GATE-E96|GATE-E98|GATE-E114|GATE-E115|GATE-E116|GATE-E117|GATE-E123|GATE-E124) printf 'expected: 07 carries signatures, dispositions and the required verdict sections\nallowed: platform / model / task-id signatures; ≥5-column finding table; 来源 = 本次引入|既有存量\nfix: patch the named 07 section/row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
-    GATE-E83|GATE-E86) printf 'expected: communication-first and directory-placement declarations\nallowed: 00.5 confirmation record; "- **目录落位**：BATCH-… | 独立目录（理由）"\nfix: add the record/line before generating artifacts, then re-run begin\nref: standards §2.17.2d / §1.1' ;;
+    GATE-E82|GATE-E96|GATE-E98|GATE-E114|GATE-E116|GATE-E123|GATE-E124) printf 'expected: 07 carries signatures, dispositions and the required verdict sections\nallowed: platform / model / task-id signatures; ≥5-column finding table; 来源 = 本次引入|既有存量\nfix: patch the named 07 section/row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
     GATE-E90|GATE-E92|GATE-E93|GATE-E94|GATE-E95|GATE-E97|GATE-E99|GATE-E101|GATE-E102|GATE-E103|GATE-E104|GATE-E106|GATE-E109) printf 'expected: UI / behaviour-inventory conditional evidence is present\nallowed: UJ anchors, 03.6-ui-spec, E2E cases, runtime evidence rows, waiver lines\nfix: add the conditional artifact/evidence the message names, or declare the waiver\nref: standards §2.5 stage 1-4 / v3.67.0' ;;
     GATE-E126|GATE-E127|GATE-E128|GATE-E129|GATE-E130) printf 'expected: the stage-gate preconditions hold for this change\nallowed: required artifacts + confirmation + one non-empty reviews/Pxx.review.md per claim\nfix: backfill the named stage artifacts, then re-run the same stage command\nref: standards §2.5 / §2.17.2d' ;;
-    GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan <change-id> [flags]\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127' ;;
+    GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149|GATE-E155) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan|dispatch <change-id> [flags]\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127/131' ;;
     *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
   esac
 }
@@ -496,7 +496,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     00.5-communication.md)
       printf '# %s Communication（00.5）\n\n> 交付触发点：Round-1 沟通完成、用户整体确认前；下游输入：01-spec 起的全部产物正文\n> 背景输入：待填（00-intent + 目标功能目录既有文档 + P01/P12）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
     00-governance.json)
-      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": ""}\n' "$id" "$cuid" "$risk" ;;
+      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": "", "dispatch_contract": "v2"}\n' "$id" "$cuid" "$risk" ;;
     01-spec.md)
       printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     02-code-impact-analysis.md)
@@ -508,7 +508,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     03-modification-plan.md)
       printf '# %s Modification Plan\n\n> 交付触发点：design 阶段交付；下游输入：03.5（任务拆解）与 04（测试计划）\n> 背景输入：待填（01-spec 的 REQ-xxx + 02 的业务影响/风险/回滚）\n\n### 改动清单\n\n| # | 文件 | 改动 | REQ |\n|---|---|---|---|\n| 1 | <!-- FILL --> | <!-- FILL --> | %s |\n\n### 设计决策\n\n- **%s <名>**：<!-- FILL -->；备选 <!-- FILL --> 被否——<!-- FILL: 为何 -->\n\n### 既有范式关系（v3.84.0，gate E122）\n\n- <!-- FILL: 复用的既有实现/范式 + 落点（文件:行）或差异化理由；纯新增无同族写：未命中（纯新增无同族实现） -->\n\n### 顺序\n\n1. <!-- FILL -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     03.5-tasks.md)
-      printf '# %s Tasks\n\n> 交付触发点：design 阶段交付；下游输入：开发实施顺序与 04（测试计划）\n> 背景输入：待填（01-spec + 02 + 03 的 DES-xxx）\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n评审输入：<!-- FILL: 01-spec/02/04 + diff 面 -->\n' "$id" ;;
+      printf '# %s Tasks\n\n> 交付触发点：design 阶段交付；下游输入：开发实施顺序与 04（测试计划）\n> 背景输入：待填（01-spec + 02 + 03 的 DES-xxx）\n\n依赖：<!-- FILL: 串/并行链 -->。无外部阻塞。\n\n里程碑：M1=<!-- FILL -->。\n\n派发输入（§2.2 契约 v2）：\n\n- 项目背景：<!-- FILL: P12/P01–P04 装载来源 -->\n- 变更上下文：<!-- FILL: 变更号/风险/ui_change/diff 面/受影响 REQ-DES-TC -->\n- 证据包：<!-- FILL: 文件清单 + 产物路径 + 行号锚点 -->\n- 专业与历史：<!-- FILL: 本环节能力 + bugfix-log/FU -->\n- 独立与成本：<!-- FILL: 生产 vs 评审主体 + 成本档 -->\n' "$id" ;;
     01.5-rtvm-matrix.md)
       # v3.91.5: the RTVM is scaffolded (the matrix is a contract artifact), but
       # placeholders do NOT satisfy the stage gates — each stage must fill its row.
@@ -679,7 +679,8 @@ is_code_path() {
   # 全新安装后的第一次 commit 会被判为"源码变更"而拦下（T15 D5 用例实测暴露）。
   # v3.92.3：fresh-clone-check.sh 同属治理工具（G-ENV 执行件），漏加会让新装仓第一次
   # commit 与后续 --upgrade 同时死锁（T15/T82 tracked-only 实测暴露）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
+  # v3.95.0：shard-sum.sh 同理（CHG-132 随包执行件，漏加 = 首个提交 E125 死锁）。
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -911,7 +912,9 @@ stage_gate_fail() { # <gate-name> <missing-what> <backfill-what> — single E126
 }
 
 unknown_stage() { # <stage> — single E78 die site (T41)
-  die "GATE-E78: unknown stage '$1'"
+  local s="${1:-}" extra=""
+  [[ -n "$s" ]] || { s="<none>"; extra=" (expected pre-write/staged/stop/core/scope/rtvm/commit-msg/shift)"; }
+  die "GATE-E78: unknown stage '$s'$extra"
 }
 
 req_seq_gaps() { # <file> <prefix> -> gap count inside the file's own min..max
@@ -1404,17 +1407,57 @@ validate_artifact_content() {
   # 未命中（<检索词>） declaration line. Single die point keeps T41 uniqueness.
   require_section_or_decl "$d/02-code-impact-analysis.md" "历史相似检索" '未命中（[^）]+）' \
     || die "GATE-E84: $d/02-code-impact-analysis.md missing 历史相似检索 section (or 未命中（检索词） declaration) (A-layer, standards §2.5 stage 2, v3.54.0 CHG-067)"
+  # v3.94.0 (CHG-131, REQ-1314): dispatch contract v2 — five labels, real
+  # values (placeholders are not declarations). The v2 lane runs OUTSIDE the
+  # 直接实施/未拆任务 exemption below (review F1): an exemption from task
+  # breakdown must not silently bypass the dispatch input contract. Changes
+  # WITHOUT the dispatch_contract field keep the v3.39.0 substring judgement:
+  # tightening it would red every pre-v3.94 artifact set and fixture at once.
+  # ONE die site per E-code (T41): every E17 branch passes its detail here.
+  e17_refuse() { die "GATE-E17: $d/03.5-tasks.md $1 (A-layer, standards §2.2 input contract; ref: standards §2.2 / review-intelligence §2 / CHG-131)"; }
+  dc=$(sed -n 's/.*"dispatch_contract"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/00-governance.json" 2>/dev/null | head -1 || true)
+  if [[ "$dc" == "v2" && "${AGENT_GUARD_DISPATCH_CONTRACT:-v2}" != "v1" ]]; then
+    for lbl in 项目背景 变更上下文 证据包 专业与历史 独立与成本; do
+      # `grep -m1 … || true`: a label-less file must DIE with E17, not abort
+      # the gate silently through pipefail + set -e (FU-130-9 family).
+      line=$(grep -m1 -E "^[[:space:]]*-[[:space:]]*${lbl}(：|:)" "$d/03.5-tasks.md" || true)
+      [[ -n "$line" ]] \
+        || e17_refuse "missing dispatch-input label '$lbl' (dispatch_contract v2; expected labels: 项目背景 变更上下文 证据包 专业与历史 独立与成本; fix: add the label line or run scripts/agent-gate dispatch design $id)"
+      # Strip the LABEL literally and split on `(：|:)` — never a bracket class
+      # containing the full-width colon. Under a C locale BSD sed matches such a
+      # class byte-wise, consumes ONE byte of the 3-byte `：`, and the leftover
+      # bytes make an empty value look non-empty (silent E17 pass).
+      val=$(printf '%s' "$line" | sed -E "s/^[[:space:]]*-[[:space:]]*${lbl}[[:space:]]*(：|:)[[:space:]]*//")
+      [[ -n "$val" ]] \
+        || e17_refuse "dispatch-input label '$lbl' is empty (dispatch_contract v2; fix: name the loaded source or write 未命中（理由）)"
+      if printf '%s' "$val" | grep -qE '待填|FILL|<[^>]*>'; then
+        e17_refuse "dispatch-input label '$lbl' still holds a placeholder ('$val') — an unfilled label is not a declaration (dispatch_contract v2)"
+      fi
+    done
+  fi
   if ! grep -qE "直接实施|未拆任务" "$d/03.5-tasks.md"; then
     grep -q "依赖" "$d/03.5-tasks.md" \
       || die "GATE-E15: $d/03.5-tasks.md missing dependency (依赖) info (A-layer, standards §2.5 stage 3)"
     grep -q "里程碑" "$d/03.5-tasks.md" \
       || die "GATE-E16: $d/03.5-tasks.md missing milestone (里程碑) info (A-layer, standards §2.5 stage 3)"
-    # v3.39.0 (CHG-041): review/test subagents must receive their evidence pack
-    # from the orchestrator, not re-explore the repo for it (standards §2.2
-    # input contract). The field must exist on every non-trivial task list;
-    # the lightweight one-line channel stays exempt by the branch above.
-    grep -q "评审输入" "$d/03.5-tasks.md" \
-      || die "GATE-E17: $d/03.5-tasks.md missing review-input (评审输入) field (A-layer, standards §2.2 input contract, v3.39.0)"
+    if [[ "$dc" != "v2" ]]; then
+      # v3.39.0 (CHG-041): review/test subagents must receive their evidence
+      # pack from the orchestrator, not re-explore the repo for it. The
+      # legacy field is only demanded on non-trivial task lists — the
+      # lightweight one-line channel above stays exempt.
+      grep -q "评审输入" "$d/03.5-tasks.md" \
+        || e17_refuse "missing review-input (评审输入) field (v3.39.0)"
+    elif [[ "${AGENT_GUARD_DISPATCH_CONTRACT:-v2}" == "v1" ]]; then
+      # v1 downgrade of a v2 contract keeps a lane (review F2): the five
+      # labels or the legacy field both satisfy it — a v2-shaped 03.5 must
+      # not turn red only because the operator downgraded the check.
+      echo "agent-gate: WARN — dispatch_contract v2 downgraded to v1 by AGENT_GUARD_DISPATCH_CONTRACT=v1 ($id; record the reason in 09「重要上下文」)" >&2
+      if ! grep -q "评审输入" "$d/03.5-tasks.md" && ! grep -qE '^[[:space:]]*-[[:space:]]*(项目背景|变更上下文|证据包|专业与历史|独立与成本)(：|:)' "$d/03.5-tasks.md"; then
+        e17_refuse "missing review-input (评审输入) field (v3.39.0)"
+      fi
+    fi
+    # v2 with the env unset: the five labels were already enforced above,
+    # outside this exemption — nothing left to check here.
   fi
   # v3.67.0 (CHG-090, REQ-1053): requirements carry UX when the change touches a
   # user-visible interface — every REQ block must anchor to a UJ-xxx user task.
@@ -2722,6 +2765,240 @@ review_consent_check() { # <id> — E137: a deep/approval model needs user conse
   die "GATE-E137: $id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
 }
 
+# v3.94.0 (CHG-131, REQ-1315, DES-2215): dispatch-prompt assembler. A one-sentence
+# role prompt ("you are the review agent, read-only") is an unqualified handoff:
+# the subagent then re-derives project background on its own or, worse, judges
+# without it. This emits the P0-P8 skeleton (review-intelligence §2/§2.1) for one
+# stage, filled from the artifacts already on disk. Read-only — writes NOTHING and
+# hangs off no gate chain (stage/staged/stop never call it). Missing inputs show
+# up as `[gap]` lines instead of silently shrinking the prompt.
+dispatch_role() { # <stage> -> role label
+  case "$1" in
+    exploration) printf '只读勘探子代理' ;;
+    intent)      printf '业务 / 行业专家' ;;
+    spec)        printf '需求 Agent' ;;
+    impact)      printf '影响分析 Agent' ;;
+    design)      printf '架构 / 项管专家' ;;
+    testplan)    printf '测试专家' ;;
+    code)        printf '开发 Agent' ;;
+    test)        printf '测试执行 Agent' ;;
+    review)      printf '独立评审子代理' ;;
+    delivery)    printf '交付 / 验收 Agent' ;;
+  esac
+}
+
+dispatch_boundary() { # <stage> -> read/write boundary and done criteria
+  case "$1" in
+    exploration) printf '只读：不改任何文件｜完成判据：每条事实带 文件:行，未覆盖面显式列出' ;;
+    intent)      printf '可写：00-intent.md / 00.5-communication.md；禁改源码｜完成判据：问题陈述 + 未决问题（含状态）+ 风险初判，00.5 待用户确认' ;;
+    spec)        printf '可写：01-spec.md / 01.5-rtvm-matrix.md；禁改源码｜完成判据：REQ 编号连续、可判定、逐条挂靠 UJ 或声明无用户面' ;;
+    impact)      printf '可写：02-code-impact-analysis.md；禁改源码｜完成判据：业务/技术/风险三维影响 + 回滚策略 + 隐式链路三向遍历（或显式未命中）+ 延伸发现 / 历史相似检索节' ;;
+    design)      printf '可写：02 / 03 / 03.5（ui_change 命中时 03.6）；禁改源码｜完成判据：≥2 候选对比 + DES + 任务拆解 + 既有范式关系节' ;;
+    testplan)    printf '可写：04-test-scripts.md；禁改源码｜完成判据：十一维覆盖表 + SC 枚举 + TC 矩阵 + TC 落点清单' ;;
+    code)        printf '可写：DES 范围内源码 + 04.5-coding-record.md；禁改测试断言迁就实现｜完成判据：每 DES 有落点 + ReAct 三段记录 + 镜像同步' ;;
+    test)        printf '可执行测试命令；不改源码与测试断言｜完成判据：真实命令 + rc 证据（含 red→green），未执行项显式列出' ;;
+    review)      printf '只读：不改任何文件；发现与结论回给编排者，由编排者落 07｜完成判据：07 五节齐备，每条发现带证据，禁泛评' ;;
+    delivery)    printf '可写：06-delivery-summary.md / 09-changelog.md（追加式）；禁改上游产物｜完成判据：DoD 逐条 + RTVM 闭环 + 09 回填清单' ;;
+  esac
+}
+
+dispatch_needs() { # <stage> -> artifact basenames this stage must read
+  case "$1" in
+    exploration) printf '%s' '00-intent.md 00-governance.json 00.5-communication.md' ;;
+    intent)      printf '%s' '00-intent.md 00-governance.json' ;;
+    spec)        printf '%s' '00-intent.md 00.5-communication.md' ;;
+    impact)      printf '%s' '00-intent.md 01-spec.md 01.5-rtvm-matrix.md' ;;
+    design)      printf '%s' '01-spec.md 01.5-rtvm-matrix.md' ;;
+    testplan)    printf '%s' '01-spec.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md' ;;
+    code)        printf '%s' '01-spec.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md' ;;
+    test)        printf '%s' '04-test-scripts.md 04.5-coding-record.md' ;;
+    review)      printf '%s' '01-spec.md 01.5-rtvm-matrix.md 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md 05-test-results.md' ;;
+    delivery)    printf '%s' '05-test-results.md 07-review-report.md' ;;
+  esac
+}
+
+dispatch_expertise() { # <stage> -> capability profile (review = risk-derived roles)
+  case "$1" in
+    exploration) printf '系统分析 / 检索纪律 / 证据链' ;;
+    intent)      printf '业务领域 / 行业经验 / 风险判断' ;;
+    spec)        printf '需求工程 / 可判定性 / UJ 建模' ;;
+    impact)      printf '业务建模 / 状态-触发链路审计 / 影响面推理' ;;
+    design)      printf '架构设计 / 演进性 / 权衡取舍' ;;
+    testplan)    printf '测试设计 / 覆盖推理 / 领域知识' ;;
+    code)        printf '实现 / 安全 / 性能 / 最小改动面' ;;
+    test)        printf '证据纪律 / 环境排障 / 红测试归因顺序' ;;
+    delivery)    printf '追踪矩阵 / DoD / 一致性核对' ;;
+    review)      printf '' ;;
+  esac
+}
+
+dispatch_outputs() { # <stage> -> output contract
+  case "$1" in
+    exploration) printf '事实清单（文件:行）+ 未覆盖面 + 建议下一步' ;;
+    intent)      printf '问题陈述 + 未决问题（含关闭状态）+ 风险初判；00.5 需用户整体确认' ;;
+    spec)        printf '01-spec REQ 行（REQ-xxx + 描述 + 验收标准 + 挂靠 UJ/声明）+ 01.5 行' ;;
+    impact)      printf '02 业务/技术/风险三维 + 回滚策略 + 隐式链路三向遍历（或显式未命中）+ 延伸发现 / 历史相似检索' ;;
+    design)      printf '02 三维 + 回滚；03 选型 + DES + 既有范式关系；03.5 任务表' ;;
+    testplan)    printf '04 维度表 + SC-xxx 清单 + TC-xxx 矩阵 + TC 落点清单' ;;
+    code)        printf '04.5 ReAct（Thought / Action / Observation）+ 改动清单' ;;
+    test)        printf '05 证据（命令 + 过滤后关键输出 + rc）+ 未执行项；禁「测试已通过」式空声明' ;;
+    review)      printf '07 五节：输入契约与专业能力 / 模型选择与成本确认 / 独立性声明 / 发现处置 / 评审结论' ;;
+    delivery)    printf '06 + 09（DoD 逐条、RTVM 闭环、09 回填清单、重要上下文与未验证 REQ 清单）' ;;
+  esac
+}
+
+djson_arr() { # one argument per element -> JSON string array
+  local it first=1
+  printf '['
+  for it in ${1+"$@"}; do
+    [[ $first -eq 1 ]] || printf ','
+    printf '"%s"' "$(json_escape "$it")"
+    first=0
+  done
+  printf ']'
+}
+
+dispatch_lines() { # one line per argument
+  local it
+  for it in ${1+"$@"}; do printf '%s\n' "$it"; done
+}
+
+dispatch_run() { # <stage> <change-id> <text|--json> — print-only, never writes
+  local stage="$1" id="$2" mode="${3:-text}"
+  local d rec risk ui goal reqs des tcs needs f m mt cnt cap roles
+  local -a p0 p1 p2 p3 p4 p5 p6 p7 p8 gaps
+  local so io to vo
+  d=$(change_dir "$id")
+  rec=$(gov_record "$d/00-governance.json" "$id" || true)
+  risk=$(json_field "$rec" risk_level); [[ -n "$risk" ]] || risk="未声明"
+  if [[ -s "$d/01-spec.md" ]]; then
+    if review_ui_change "$d"; then ui=true; else ui=false; fi
+  else
+    ui="未声明（缺 01-spec.md）"
+  fi
+  goal=$(awk '/^#{1,6}[[:space:]]*预期结果/{f=1;next} f&&/^[-*][[:space:]]+[^[:space:]]/{sub(/^[-*][[:space:]]+/,"");print;exit}' \
+    "$d/00-intent.md" 2>/dev/null || true)
+  goal=$(printf '%s' "$goal" | cut -c1-90 | sed -E 's/[[:space:]]+$//')
+  # Requirement rows first (headings/tables), not every REQ token in prose: a
+  # spec that cites a long-standing REQ-004 once must not read as "this change
+  # touches 9 requirements".
+  reqs=$(grep -E '^#{2,4}[[:space:]]+REQ-[0-9]+|\|[[:space:]]*REQ-[0-9]+[[:space:]]*\|' "$d/01-spec.md" 2>/dev/null | grep -oE 'REQ-[0-9]+' | sort -u | tr '\n' ' ' || true)
+  if [[ -z "$reqs" ]]; then
+    reqs=$(grep -oE 'REQ-[0-9]+' "$d/01-spec.md" 2>/dev/null | sort -u | tr '\n' ' ' || true)
+  fi
+  reqs=${reqs% }
+  des=$(grep -oE 'DES-[0-9]+' "$d/01.5-rtvm-matrix.md" 2>/dev/null | sort -u | tr '\n' ' ' || true); des=${des% }
+  tcs=$(grep -oE 'TC-[0-9]+' "$d/01.5-rtvm-matrix.md" 2>/dev/null | sort -u | tr '\n' ' ' || true); tcs=${tcs% }
+
+  p0+=("角色：$(dispatch_role "$stage")")
+  p0+=("阶段：${stage} · 变更：${id}（风险 ${risk} · ui_change ${ui}）")
+  p0+=("读写边界与完成判据：$(dispatch_boundary "$stage")")
+  p0+=("写法：按本骨架装配 prompt；收到缺项 prompt 时按 P8 声明缺口，只做最小必要读盘")
+
+  for m in P12-product-context.md P01-requirements-master.md P02-architecture-master.md P03-interface-registry.md P04-data-dictionary.md; do
+    if [[ -s "$docs_dir/project/$m" ]]; then
+      mt=$(grep -m1 -E '^#[[:space:]]+' "$docs_dir/project/$m" 2>/dev/null | sed -E 's/^#[[:space:]]+//' || true)
+      p1+=("${m}：${mt:-（无标题）} — $docs_dir/project/$m")
+    else
+      p1+=("${m}：缺失")
+      gaps+=("P1 缺 $m（$docs_dir/project/$m）：项目背景维度未装载")
+    fi
+  done
+  p1+=("仓库入口与约定：$repo_root/AGENTS.md + $docs_dir/DEVELOPMENT_STANDARDS.md")
+
+  p2+=("风险等级：$risk；ui_change：$ui")
+  p2+=("功能目的：${goal:-（00-intent 未给出预期结果，先补 00-intent）}")
+  if [[ -n "$reqs" ]]; then p2+=("受影响 REQ：$reqs"); else gaps+=("P2 缺 REQ 清单：$d/01-spec.md 无 REQ-xxx"); fi
+  p2+=("业务规则 / UJ：见 01-spec「用户任务」；非目标：见 00-intent「非目标」")
+
+  needs=$(dispatch_needs "$stage")
+  for f in $needs; do
+    if [[ -s "$d/$f" ]]; then
+      p3+=("$f（$(wc -l < "$d/$f" 2>/dev/null | tr -d ' ') 行）— $d/$f")
+    else
+      p3+=("$f（未产出）")
+      gaps+=("P3 缺 $f：${stage} 阶段必带输入（$d/$f）")
+    fi
+  done
+  [[ -n "$des" || -n "$tcs" ]] && p3+=("DES：${des:-未登记}；TC：${tcs:-未登记}")
+  p3+=("diff 摘要：由编排者贴入 git diff --stat + 关键 hunk（生成器不猜改动面）")
+
+  if [[ -s "$docs_dir/bugfix-log.md" ]]; then
+    cnt=$(grep -cE '^#{2,3}[[:space:]]+BUG-' "$docs_dir/bugfix-log.md" 2>/dev/null || true); cnt=${cnt:-0}
+    p4+=("bugfix-log：$cnt 条 BUG 记录 — $docs_dir/bugfix-log.md（先检索同族教训）")
+  else
+    p4+=("bugfix-log：缺失")
+    gaps+=("P4 缺 $docs_dir/bugfix-log.md：同族教训面为空")
+  fi
+  if [[ -s "$d/06-delivery-summary.md" ]]; then
+    cnt=$(grep -oE 'FU-[0-9]+(-[0-9]+)?' "$d/06-delivery-summary.md" 2>/dev/null | sort -u | wc -l | tr -d ' ' || true)
+    p4+=("本变更 FU 台账：${cnt:-0} 条 — $d/06-delivery-summary.md")
+  fi
+  p4+=("既有约定：$docs_dir/project/P11-decision-log.md；既有评审结论：$d/07-review-report.md")
+
+  cap=$(dispatch_expertise "$stage")
+  if [[ "$stage" == "review" ]]; then
+    roles=$(review_roles_for "$d" "$id" || true)
+    cap="评审角色：${roles:-code handoff}（§3 能力矩阵）"
+  fi
+  p5+=("$cap")
+  p5+=("凭什么认为具备：结论里自述经验证据；无法自述＝能力不匹配，视同未评审")
+
+  so=$(json_field "$rec" spec_author); io=$(json_field "$rec" implementation_owner)
+  to=$(json_field "$rec" test_owner);  vo=$(json_field "$rec" verification_owner)
+  p6+=("生产主体（实现）：${io:-未填}；规格：${so:-未填}；测试：${to:-未填}；验证：${vo:-未填}")
+  case "$risk" in
+    L2|L3) p6+=("独立性要求：L2/L3 评审须与生产跨主体（会话/模型/厂商分离），禁同会话自评") ;;
+    *)     p6+=("独立性要求：四主体互异；同模型独立会话可接受") ;;
+  esac
+  [[ -z "$io" ]] && gaps+=("P6 未填 implementation_owner：四主体互异无法证明（§2.1 规则 10）")
+  if [[ "$stage" == "review" ]]; then
+    if [[ -z "$(json_field "$rec" review_owner)" ]]; then
+      gaps+=("P6 未填 review_owner：评审签署主体缺失")
+    fi
+    p6+=("成本：scripts/agent-gate review-plan $id 探测运行时候选；deep/高成本模型须用户确认（AGENT_REVIEW_USER_APPROVED=1）")
+  else
+    p6+=("成本：沿用会话预算；超预算按 §2.16.6 第 5 条显式声明")
+  fi
+
+  p7+=("$(dispatch_outputs "$stage")")
+
+  p8+=("不自签：不得同时生产本环节产物并签署本环节结论")
+  p8+=("未跑≠通过：没有真实命令输出与 rc 的证据，不得宣称通过")
+  p8+=("超清单读盘须在结论中声明原因；缺依据写「未验证 / 不适用（理由）」，不猜")
+  p8+=("不得改写上游已签署产物；发现上游错误走偏差定责（图纸错 / 代码错 / 理解错）")
+
+  if [[ "$mode" == "--json" ]]; then
+    printf '{"stage":"%s","change":"%s","role":"%s","contract":"v2","sections":{"p0":%s,"p1":%s,"p2":%s,"p3":%s,"p4":%s,"p5":%s,"p6":%s,"p7":%s,"p8":%s},"gaps":%s}\n' \
+      "$stage" "$id" "$(json_escape "$(dispatch_role "$stage")")" \
+      "$(djson_arr ${p0[@]+"${p0[@]}"})" "$(djson_arr ${p1[@]+"${p1[@]}"})" \
+      "$(djson_arr ${p2[@]+"${p2[@]}"})" "$(djson_arr ${p3[@]+"${p3[@]}"})" \
+      "$(djson_arr ${p4[@]+"${p4[@]}"})" "$(djson_arr ${p5[@]+"${p5[@]}"})" \
+      "$(djson_arr ${p6[@]+"${p6[@]}"})" "$(djson_arr ${p7[@]+"${p7[@]}"})" \
+      "$(djson_arr ${p8[@]+"${p8[@]}"})" "$(djson_arr ${gaps[@]+"${gaps[@]}"})"
+    return 0
+  fi
+  printf '# dispatch %s · stage=%s · contract=v2\n' "$id" "$stage"
+  printf '\n## P0 任务\n'; dispatch_lines ${p0[@]+"${p0[@]}"}
+  printf '\n## P1 项目背景\n'; dispatch_lines ${p1[@]+"${p1[@]}"}
+  printf '\n## P2 变更上下文\n'; dispatch_lines ${p2[@]+"${p2[@]}"}
+  printf '\n## P3 证据包\n'; dispatch_lines ${p3[@]+"${p3[@]}"}
+  printf '\n## P4 专业与历史\n'; dispatch_lines ${p4[@]+"${p4[@]}"}
+  printf '\n## P5 专业能力\n'; dispatch_lines ${p5[@]+"${p5[@]}"}
+  printf '\n## P6 独立与成本\n'; dispatch_lines ${p6[@]+"${p6[@]}"}
+  printf '\n## P7 输出契约\n'; dispatch_lines ${p7[@]+"${p7[@]}"}
+  printf '\n## P8 红线\n'; dispatch_lines ${p8[@]+"${p8[@]}"}
+  printf '\n## gaps（缺失项；先补齐，或在 prompt 中按 P8 显式声明）\n'
+  # bash 3.2 + `set -u`: `${#arr[@]}` on an empty array dies as unbound, so the
+  # existence test goes through `${arr[*]+x}` (the same guard the emit calls use).
+  if [[ -z "${gaps[*]+x}" ]]; then
+    printf -- '- 无（骨架齐备）\n'
+  else
+    for m in "${gaps[@]}"; do printf -- '- [gap] %s\n' "$m"; done
+  fi
+  printf '\n> 五标签映射：项目背景=P1 / 变更上下文=P2 / 证据包=P3 / 专业与历史=P4+P5 / 独立与成本=P6（§2.2 契约 v2）\n'
+}
+
 # v3.90.2 (CHG-124, P1-1~P1-3): read-only decision engine. R2 = ADVISE ONLY:
 # nothing here may exit 2 for a coverage judgement, and AGENT_GUARD_ADAPT=0 turns
 # the whole face off (byte-identical to v3.90.2 behaviour).
@@ -3810,25 +4087,45 @@ unverified_req_check() { # <id> — E154: unverified RTVM REQs must be declared 
   d=$(change_dir "$id" 2>/dev/null) || return 0
   [[ -d "$d" ]] || return 0
   spec="$d/01-spec.md"; rtvm="$d/01.5-rtvm-matrix.md"; log="$d/09-changelog.md"
-  [[ -f "$spec" && -f "$rtvm" && -f "$log" ]] || return 0
-  for req in $(grep -oE 'REQ-[0-9]+' "$spec" | sort -u); do
-    row=$(grep -E "^\|[[:space:]]*$req[[:space:]]*\|" "$rtvm" | head -1)
-    [[ -n "$row" ]] || continue
-    # Verification state = LAST non-empty column (the template's 验证状态 column).
-    status=$(printf '%s' "$row" | awk -F'|' '{for(i=NF;i>=2;i--){gsub(/^[ \t]+|[ \t]+$/,"",$i); if($i!=""){print $i; exit}}}')
-    case "$status" in *✅*|*PASS*|*Pass*|*pass*|*已验*|*通过*) ;; *) unverified="${unverified}${unverified:+ }$req" ;; esac
-  done
-  # v3.92.2: the contract only bites when something is actually unverified.
-  # All-✅ changes (and fixtures with no REQ rows) have nothing to declare.
-  [[ -n "$unverified" ]] || return 0
-  section=$(awk '/^#{3,4}[[:space:]]*未验证 REQ 清单/{f=1;next} f&&/^#{1,4}[[:space:]]/{exit} f{print}' "$log" 2>/dev/null)
-  if [[ -z "$section" ]]; then
-    e154="09-changelog.md has no 『未验证 REQ 清单』 section (must list: $unverified)"
-  else
-    for req in $unverified; do
-      grep -qF "$req" <<< "$section" || missing="${missing}${missing:+ }$req"
+  # Review F3 (CHG-131): 01.5 missing while 01-spec exists used to be judged
+  # "rtvm gate green" — the matrix is a spec-stage deliverable (v3.91.5), so a
+  # spec without one is a broken artifact set at ANY stage: judge it
+  # CANNOT-PASS through the same single die site. 09 stays a silent skip when
+  # absent: its existence is the change's closed/delivery marker (begin
+  # REFUSES when 09 exists, CHG-007), so mid-change staged/pre-commit runs
+  # legitimately have no 09 yet — the E154 declaration contract bites at stop,
+  # where the changelog is already mandatory. `-f` not `-s`: only absent
+  # artifacts count here; absent matrix ROWS stay the FU-130-9 "nothing to
+  # verify" case.
+  e154=""
+  if [[ -f "$spec" && ! -f "$rtvm" ]]; then
+    e154="cannot judge: 01.5-rtvm-matrix.md is missing while 01-spec exists"
+  fi
+  if [[ -z "$e154" ]]; then
+    [[ -f "$spec" && -f "$rtvm" && -f "$log" ]] || return 0
+    for req in $(grep -oE 'REQ-[0-9]+' "$spec" | sort -u); do
+      # FU-130-9 (CHG-131): `grep … | head -1` exits rc=1 under pipefail when the
+      # REQ has no 01.5 row (e.g. 01-spec citing an older change's REQ), and set -e
+      # then aborts the WHOLE gate with zero output. An absent row is a legitimate
+      # "nothing to verify here" — absorb it and continue.
+      row=$(grep -m1 -E "^\|[[:space:]]*$req[[:space:]]*\|" "$rtvm" || true)
+      [[ -n "$row" ]] || continue
+      # Verification state = LAST non-empty column (the template's 验证状态 column).
+      status=$(printf '%s' "$row" | awk -F'|' '{for(i=NF;i>=2;i--){gsub(/^[ \t]+|[ \t]+$/,"",$i); if($i!=""){print $i; exit}}}')
+      case "$status" in *✅*|*PASS*|*Pass*|*pass*|*已验*|*通过*) ;; *) unverified="${unverified}${unverified:+ }$req" ;; esac
     done
-    [[ -z "$missing" ]] || e154="unverified REQ(s) not declared: $missing"
+    # v3.92.2: the contract only bites when something is actually unverified.
+    # All-✅ changes (and fixtures with no REQ rows) have nothing to declare.
+    [[ -n "$unverified" ]] || return 0
+    section=$(awk '/^#{3,4}[[:space:]]*未验证 REQ 清单/{f=1;next} f&&/^#{1,4}[[:space:]]/{exit} f{print}' "$log" 2>/dev/null)
+    if [[ -z "$section" ]]; then
+      e154="09-changelog.md has no 『未验证 REQ 清单』 section (must list: $unverified)"
+    else
+      for req in $unverified; do
+        grep -qF "$req" <<< "$section" || missing="${missing}${missing:+ }$req"
+      done
+      [[ -z "$missing" ]] || e154="unverified REQ(s) not declared: $missing"
+    fi
   fi
   [[ -n "$e154" ]] || return 0
   if [[ "${AGENT_GUARD_RTVM_UNVERIFIED:-1}" != "1" ]]; then
@@ -4112,7 +4409,10 @@ validate_stop() {
   # repos whose tests read EXTERNAL mutable state must opt out (usage +
   # CHANGELOG). Non-git repos (empty fingerprint) degrade to always-run.
   # Bump the literal below with the version chain (single source: DS footer).
-  vc_rc_file="$repo_root/.agent-state/verify-receipt.json"
+  # v3.93.0 (CHG-130, REQ-1302): the cache has its own file. It shared
+  # .agent-state/verify-receipt.json with verify-all.sh, so each writer clobbered
+  # the other's receipt (verify-all's status is read by the count generator).
+  vc_rc_file="$repo_root/.agent-state/gate-verify-cache.json"
   vc_hit=0
   vc_fp=""
   vc_cmd_sha=""
@@ -4151,7 +4451,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.92.4" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.95.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4203,7 +4503,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.92.4","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.95.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -4783,8 +5083,11 @@ case "$command" in
           # the PRIMARY remediation path the die message names), and an empty
           # change id must not degrade to scanning docs/changes/ itself.
           e89_dirs=()
-          [[ -n "$l_change" ]] && e89_dirs+=("$repo_root/docs/changes/$l_change/")
-          e89_dirs+=("$repo_root"/docs/changes/BATCH-*/)
+          e89_root="$change_root"
+          case "$e89_root" in /*) ;; *) e89_root="$repo_root/$e89_root" ;; esac
+          e89_rel="${e89_root#"$repo_root"/}"
+          [[ -n "$l_change" ]] && e89_dirs+=("$e89_root/$l_change/")
+          e89_dirs+=("$e89_root"/BATCH-*/)
           for hd in "${e89_dirs[@]}"; do
             [[ -d "$hd" ]] || continue
             for hf in "$hd"handoff*.md; do
@@ -4794,7 +5097,7 @@ case "$command" in
             done
           done
           if [[ "$handoff_ok" != 1 ]]; then
-            die "GATE-E89: last delivery (${l_change:-<change>} @ ${l_delivered}) happened in THIS session without a handoff doc — write the handoff record under docs/changes/${l_change:-<change>}/ (or the active BATCH dir), run /handoff and continue in a fresh session, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification recorded in 09「重要上下文」 (standards §2.9.6)"
+            die "GATE-E89: last delivery (${l_change:-<change>} @ ${l_delivered}) happened in THIS session without a handoff doc — write the handoff record under ${e89_rel}/${l_change:-<change>}/ (or the active BATCH dir), run /handoff and continue in a fresh session, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification recorded in 09「重要上下文」 (standards §2.9.6)"
           fi
         fi
       fi
@@ -5023,7 +5326,12 @@ case "$command" in
     fi
     bjs=$(baseline_snapshot)
     echo "baseline: $bjs"
-    [[ "$bmode" == "--write" ]] && baseline_write "$bdir" "$bjs"
+    # v3.93.0 (CHG-130, REQ-1293): an if/fi, not `[[ ... ]] && write` — the
+    # short-circuit left the case arm (and the script) at rc=1 for a read-only
+    # baseline, which callers read as an environment failure.
+    if [[ "$bmode" == "--write" ]]; then
+      baseline_write "$bdir" "$bjs"
+    fi
     ;;
   tc-index)
     # v3.90.5 (CHG-126, P1-2): three-source union (04 + script headers + 01.5).
@@ -5062,6 +5370,9 @@ case "$command" in
       die "GATE-E138: usage: scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>] (got '${rcid:-<none>}' '${rmode:-}' '${rmodel:-}') — expected an existing change; fix: pass a real change id and a known option; ref: standards §2.1 rule 11 / v3.90.4"
     fi
     case "$rmode" in
+      # v3.93.0 (CHG-130, REQ-1309): an explicit arm — the flag used to fall
+      # through to the default, so `--json` was accepted but indistinguishable.
+      --json) js=$(review_plan_json "$rcid") ;;
       --write) js=$(review_plan_write "$rcid") ;;
       --approve)
         [[ -n "$rmodel" ]] || die "GATE-E139: review-plan --approve needs a model id — fix: review-plan $rcid --approve <model>; ref: standards §2.1 rule 11"
@@ -5085,6 +5396,40 @@ case "$command" in
       echo "review-plan: USER CONSENT REQUIRED — choose a model from the candidates above, then run: AGENT_REVIEW_USER_APPROVED=1 scripts/agent-gate review-plan $rcid --approve <model> (AI must not choose for you)" >&2
     fi
     ;;
+  dispatch)
+    # v3.94.0 (CHG-131, REQ-1315): read-only prompt assembler (never on a gate
+    # chain). Usage errors are usage errors — E155, not a silent empty prompt.
+    # ONE die site per E-code (T41): every branch passes its detail here.
+    dispatch_usage() {
+      die "GATE-E155: usage: scripts/agent-gate dispatch <stage> [CHG] [--json] ($1) — allowed stages: exploration|intent|spec|impact|design|testplan|code|test|review|delivery; fix: pass one stage and at most one existing change id; ref: standards §2.2 / review-intelligence §2.1 / CHG-131"
+    }
+    dstage=""; dcid=""; dmode=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --json) dmode="--json" ;;
+        -*) dispatch_usage "unknown option '$1'" ;;
+        *)
+          if [[ -z "$dstage" ]]; then dstage="$1"
+          elif [[ -z "$dcid" ]]; then dcid="$1"
+          else dispatch_usage "too many arguments, extra '$1'"
+          fi ;;
+      esac
+      shift
+    done
+    case "$dstage" in
+      exploration|intent|spec|impact|design|testplan|code|test|review|delivery) ;;
+      *) dispatch_usage "got stage '${dstage:-<none>}'" ;;
+    esac
+    if [[ -z "$dcid" ]]; then dcid=$(active_change_quiet); fi
+    if [[ -z "$dcid" ]]; then
+      dispatch_usage "no active change pointer; pass the change id explicitly"
+    fi
+    if [[ ! -d "$(change_dir "$dcid")" ]]; then
+      dispatch_usage "change '$dcid' has no directory ($(change_dir "$dcid"))"
+    fi
+    dispatch_run "$dstage" "$dcid" "$dmode"
+    ;;
   status)
     runtime_status
     ;;
@@ -5097,7 +5442,11 @@ case "$command" in
     emit_metrics
     ;;
   --stage)
-    stage="${2:-}"; shift 2
+    # v3.93.0 (CHG-130, REQ-1301): a missing stage name is a usage error, not a
+    # silent `shift 2` that overruns into the unknown-stage branch. E78 keeps the
+    # one-code-one-die-site invariant T41 enforces.
+    [[ $# -ge 2 && -n "${2:-}" ]] || unknown_stage "${2:-}"
+    stage="${2}"; shift 2
     case "$stage" in
       pre-write)
         file=""
@@ -5181,6 +5530,7 @@ Usage:
   scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)
   scripts/agent-gate tc-index <change-id> [--write]          # v3.90.5: three-source TC index cache (P1-2)
   scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>]  # v3.90.4: runtime-aware review plan; deep/high-cost needs USER consent
+  scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]
   scripts/agent-gate --stage spec | --stage design | --stage testplan   # v3.89.0: stateless stage gates (CHG-117)

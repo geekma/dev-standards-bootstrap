@@ -951,6 +951,10 @@ runtime_id="${AGENT_RUNTIME:-}"
 [[ -n "$runtime_id" ]] || runtime_id=$(printf '%s\n' "$matrix" | head -1)
 [[ -n "$runtime_id" ]] || runtime_id="unknown"
 runtime_fam=$(runtime_family "$runtime_id")
+# REQ-1307 withdrawn (CHG-130): --detect is the runtime *detection* ledger's only
+# writer (T26c pins .agent-state/runtime.json + the transition line), so the
+# probe is deliberately stateful. Making it read-only would break the documented
+# handshake rather than fix a defect.
 runtime_record "$runtime_id" "$runtime_fam" "$(printf '%s' "$matrix" | tr '\n' ' ')"
 
 if [[ "$mode_install" == false ]]; then

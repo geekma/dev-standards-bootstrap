@@ -184,9 +184,11 @@ if [[ "$verify" = 1 ]]; then
   done <<EOF
 $body
 EOF
-  # (4) case_id 唯一（v3.75.0 收尾整改 F-8）：去重后仍重复 = 派生逻辑被破坏，静默重复计分
-  dup=$(printf '%s\n' "$body" | awk -F'\t' 'NR>1 && $1!="" { c[$1]++ } END { n=0; for (k in c) if (c[k]>1) n++; print n+0 }')
-  [[ "$dup" = 0 ]] || { echo "eval-cases: verify: duplicate case_id ($dup)" >&2; rc=1; }
+  # (4) case_id 唯一：REQ-1306 撤回（CHG-130 独立评审）——本脚本只收集
+  # `01-diagnosis.md`（每个目录至多一份），单文件内锚点又经 `sort -u` 去重，
+  # 因此「同 case_id 且同 landing」的行在数据构造上不可达；跨 landing 的同
+  # case_id 是 F-8 明确允许的双形态。保留去重（下面 body 的 `!seen[$1]++`）
+  # 作为输出契约，不再保留一条恒 0 的“校验”。
   exit "$rc"
 fi
 

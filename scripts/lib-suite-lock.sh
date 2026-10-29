@@ -60,6 +60,46 @@ suite_lock_release() {
   rm -rf "$d" 2>/dev/null || true
 }
 
+# v3.93.0 (CHG-130, REQ-1303): rm -rf + mkdir was a TOCTOU — between the stale
+# read and the removal another process could acquire the lock, and the removal
+# deleted the fresh owner's dir. Takeovers now run under a second mutex and
+# re-evaluate the full owner triple (pid + lstart + repo) inside it.
+suite_lock_reclaim() { # <dir> -> 0 when this process re-created the lock
+  local d="$1" r="$1.reclaim" pid ls repo rnow rmtime rage grace_min
+  if ! mkdir "$r" 2>/dev/null; then
+    # A takeover that crashes between mkdir and rmdir must not disable every
+    # future reclaim. Reclaim dirs are held for milliseconds, so one older than
+    # the same grace window is abandoned; a fresh one means a live takeover.
+    grace_min="${AGENT_GUARD_SUITE_LOCK_GRACE_MIN:-1}"
+    case "$grace_min" in ''|*[!0-9]*) grace_min=1 ;; esac
+    rnow=$(date +%s 2>/dev/null || echo 0)
+    rmtime=$(stat -c %Y "$r" 2>/dev/null || stat -f %m "$r" 2>/dev/null || echo 0)
+    case "$rmtime" in ''|*[!0-9]*) rmtime=0 ;; esac
+    rage=$((rnow - rmtime))
+    [[ "$rmtime" -gt 0 && "$rage" -gt $((grace_min * 60)) ]] || return 1
+    rm -rf "$r" 2>/dev/null || true
+    mkdir "$r" 2>/dev/null || return 1
+  fi
+  pid=$(sed -n '1p' "$d/pid" 2>/dev/null || true)
+  ls=$(sed -n '1p' "$d/lstart" 2>/dev/null || true)
+  repo=$(sed -n '1p' "$d/repo" 2>/dev/null || true)
+  case "$pid" in ''|*[!0-9]*) pid="" ;; esac
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null \
+     && [[ -n "$ls" && "$ls" == "$(suite_lock_lstart "$pid")" ]] \
+     && [[ -n "$repo" && "$repo" == "$(suite_lock_repo)" ]]; then
+    rmdir "$r" 2>/dev/null || true
+    return 1
+  fi
+  rm -rf "$d" 2>/dev/null || true
+  if mkdir "$d" 2>/dev/null; then
+    suite_lock_write_owner "$d" "$$"
+    rmdir "$r" 2>/dev/null || true
+    return 0
+  fi
+  rmdir "$r" 2>/dev/null || true
+  return 1
+}
+
 # 0 = acquired, 1 = another live owner, 2 = filesystem failure.
 suite_lock_acquire() {
   local d pid age now mtime grace_min ls repo
@@ -83,11 +123,7 @@ suite_lock_acquire() {
       return 1
     fi
     printf 'suite lock pid %s is a zombie (owner triple mismatch) — reclaiming (%s)\n' "$pid" "$d" >&2
-    rm -rf "$d" 2>/dev/null || true
-    if mkdir "$d" 2>/dev/null; then
-      suite_lock_write_owner "$d" "$$"
-      return 0
-    fi
+    suite_lock_reclaim "$d" && return 0
     return 1
   fi
   # Corrupt/empty pid (crash between mkdir and write) needs a grace window so a
@@ -100,11 +136,7 @@ suite_lock_acquire() {
   case "$mtime" in ''|*[!0-9]*) mtime=0 ;; esac
   age=$((now - mtime))
   if [[ -n "$pid" ]] || [[ "$mtime" -eq 0 ]] || [[ "$age" -gt $((grace_min * 60)) ]]; then
-    rm -rf "$d" 2>/dev/null || true
-    if mkdir "$d" 2>/dev/null; then
-      suite_lock_write_owner "$d" "$$"
-      return 0
-    fi
+    suite_lock_reclaim "$d" && return 0
   fi
   printf 'suite lock present but owner is unknown and lock is younger than %smin (%s)\n' "$grace_min" "$d" >&2
   return 1
