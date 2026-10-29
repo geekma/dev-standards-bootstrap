@@ -123,12 +123,12 @@ if [[ "$mode" == check ]]; then
   fi
   bad=0
   for k in author email commit generated_at generated_by; do
-    printf '%s\n' "$blk" | grep -qE "^${k}:[[:space:]]*[^[:space:]]" || {
+    grep -qE "^${k}:[[:space:]]*[^[:space:]]" <<< "$blk" || {
       echo "stamp-provenance: $f provenance block is missing '$k'" >&2; bad=1; }
   done
-  printf '%s\n' "$blk" | grep -qE '^generated_at:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' || {
+  grep -qE '^generated_at:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' <<< "$blk" || {
     echo "stamp-provenance: $f provenance 'generated_at' is not an ISO-8601 date" >&2; bad=1; }
-  printf '%s\n' "$blk" | grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' || {
+  grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' <<< "$blk" || {
     echo "stamp-provenance: $f provenance block was not produced by this script" >&2; bad=1; }
   # v3.62.0（CHG-080/REQ-1024）：commit 字段 ↔ 文件 last-touch commit 一致性。
   # 块声称的内容来源必须仍是该文件的真实来源；文件已随后续提交演进而块未重盖 → 红

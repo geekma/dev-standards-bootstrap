@@ -490,7 +490,7 @@ at_least "README zh tree lists audit"   1 "$RM_ZH" "audit-docs-consistency"
 GATE_REQ_LINE=$(grep -m1 'required_docs=(' "$ROOT/resources/templates/agent-gate.sh")
 pipe_missing=0
 for f in 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
-  printf '%s' "$GATE_REQ_LINE" | grep -q "$f" || { echo "audit: gate required_docs changed, update A1 list" >&2; pipe_missing=$(( pipe_missing + 1 )); continue; }
+  grep -q "$f" <<< "$GATE_REQ_LINE" || { echo "audit: gate required_docs changed, update A1 list" >&2; pipe_missing=$(( pipe_missing + 1 )); continue; }
   grep -q "docs/changes/\$id/$f" "$PIPE" || pipe_missing=$(( pipe_missing + 1 ))
 done
 report "A1 pipeline scaffolds every gate-required artifact (minus entry files)" 0 "$pipe_missing"
@@ -1757,7 +1757,7 @@ report "A56 the generator delegates receipt trust to the single implementation (
 # v3.93.0 (CHG-130, REQ-1294): is_code_path's exclusion face is replicated in
 # three files with a pinned sync duty. A missing entry makes the SAME path code
 # in one gate and governance in another (fresh-clone-check.sh was absent twice).
-a59_required='agent-gate session-gate.sh install-hook-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh'
+a59_required='agent-gate session-gate.sh install-hook-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh'
 a59_missing=0; a59_seen=0; a59_mutants=0
 for a59_f in "$ROOT/resources/templates/agent-gate.sh" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh"; do
   [[ -f "$a59_f" ]] || continue
@@ -1881,20 +1881,21 @@ a56_job_agg=$(a56_ci_job_block agent-governance)
 # The audit reads committed baselines, so it must not wait for the suite job:
 # serialized, source-audit burned ~4 min of nothing and printed no findings at
 # all whenever the suite was red.
-printf '%s\n' "$a56_job_src" | grep -qE '^[[:space:]]+needs:' \
+grep -qE '^[[:space:]]+needs:' <<< "$a56_job_src" \
   && { echo "A56: source-audit waits on a job again (it only reads committed baselines)" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
 # Without if: always() the aggregate is SKIPPED whenever a job fails, so the
 # branch-protection check disappears instead of going red.
-printf '%s\n' "$a56_job_agg" | grep -qE '^[[:space:]]+if:[[:space:]]+always\(\)[[:space:]]*$' \
+grep -qE '^[[:space:]]+if:[[:space:]]+always\(\)[[:space:]]*$' <<< "$a56_job_agg" \
   || { echo "A56: the agent-governance aggregate lost its if: always() (a red job would hide the required check)" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
 # Both real jobs must be visible to the aggregate, or it is green on half the CI.
 a56_needs=$(printf '%s\n' "$a56_job_agg" | grep -E '^[[:space:]]+needs:')
-printf '%s\n' "$a56_needs" | grep -qF 'golden-case' \
-  && printf '%s\n' "$a56_needs" | grep -qF 'source-audit' \
+grep -qF 'golden-case' <<< "$a56_needs" \
+  && grep -qF 'source-audit' <<< "$a56_needs" \
   || { echo "A56: the aggregate needs-list does not cover both golden-case and source-audit" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
 # The run summary must survive a red suite, otherwise CI loses the very receipt
 # the baseline gate just refused to trust.
-printf '%s\n' "$a56_job_gold" | grep -A1 -- '- name: Golden-case run summary' | grep -qE 'if:[[:space:]]+always\(\)' \
+a56_sum=$(printf '%s\n' "$a56_job_gold" | grep -A1 -- '- name: Golden-case run summary')
+grep -qE 'if:[[:space:]]+always\(\)' <<< "$a56_sum" \
   || { echo "A56: the ci-summary render step is not if: always() (no summary on a failed run)" >&2; a56_ci_bad=$(( a56_ci_bad + 1 )); }
 report "A56 CI carries the baseline gate, a parallel audit job and an un-skippable aggregate/summary (CHG-115)" 0 "$a56_ci_bad"
 
@@ -2151,6 +2152,21 @@ report "A63 run-tests.sh never writes .suite-baseline directly (CHG-132)" 0 "$(g
 at_least_f "A63 audit block-parallel seam exists (CHG-132)" 1 "$ROOT/tests/audit-standards-src.sh" 'AGENT_GUARD_AUDIT_PARALLEL'
 at_least_f "A63 audit blocks are registered for dispatch (CHG-132)" 1 "$ROOT/tests/audit-standards-src.sh" 'AUDIT_BLOCKS=(a b c d)'
 report "A63 audit A10b/A10 stay after the parallel blocks (CHG-132)" 0 "$([[ "$(grep -n 'audit_block_d()' "$ROOT/tests/audit-standards-src.sh" | head -1 | cut -d: -f1)" -lt "$(grep -n 'PART A10b' "$ROOT/tests/audit-standards-src.sh" | head -1 | cut -d: -f1)" ]] && echo 0 || echo 1)"
+
+# --- A64 (v3.96.0, CHG-133, REQ-1330/1332/1333/1334/1335): 证据基建与判定面加固 ---
+at_least_f "A64 AGENTS carries the evidence-round SOP (CHG-133)" 1 "$AGENTS" '证据轮 SOP（v3.96.0，CHG-133）'
+at_least_f "A64 SOP names the default 5 snapshot + 1 live split (CHG-133)" 1 "$AGENTS" '5 快照 + 1 非快照'
+at_least_f "A64 SOP names the round tool (CHG-133)" 1 "$AGENTS" 'scripts/evidence-round.sh'
+report "A64 evidence-round.sh is executable (CHG-133)" 0 "$([[ -x "$ROOT/scripts/evidence-round.sh" ]] && echo 0 || echo 1)"
+at_least_f "A64 evidence-round ledger is append-only state (CHG-133)" 1 "$ROOT/scripts/evidence-round.sh" 'ledger.tsv'
+at_least_f "A64 shard-sum warns on an all-snapshot round (CHG-133)" 1 "$ROOT/scripts/shard-sum.sh" 'logs are worktree snapshots'
+# 警示语不得写死合计/差额：任何一节增删都会让字面数字过期（本变更实测同型：
+# 初版写 "1658 vs 1694 / ~36"，T87 增 22 条后即失真）。机制文字可测，数字不可测。
+report "A64 shard-sum warning carries no frozen totals (CHG-133)" 0 "$(grep -E 'WARN —' "$ROOT/scripts/shard-sum.sh" | grep -cE '[0-9]{3,}' || true)"
+at_least_f "A64 shard-sum refuses --write on an all-snapshot round (CHG-133)" 1 "$ROOT/scripts/shard-sum.sh" 'refusing --write on an all-snapshot round'
+at_least_f "A64 fresh-clone passes the audit-parallel default (CHG-133)" 1 "$ROOT/tests/fresh-clone-check.sh" 'AGENT_GUARD_AUDIT_PARALLEL="${AGENT_GUARD_AUDIT_PARALLEL:-1}"'
+at_least_f "A64 run-tests carries the cost-balanced plan (CHG-133)" 1 "$ROOT/tests/run-tests.sh" 'SHARD_PLAN_6=('
+at_least_f "A64 TC-1280 attributes the inner section first (CHG-133)" 1 "$ROOT/tests/run-tests.sh" '非 T57 责任'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else

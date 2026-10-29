@@ -334,7 +334,7 @@ full_suite_hit() { # <cmd_head> — 命中任一声明 pattern 即 0；非法正
     p="${p#"${p%%[![:space:]]*}"}"   # ltrim（只去首尾空白；pattern 内部空格是语义，保留）
     p="${p%"${p##*[![:space:]]}"}"   # rtrim
     [[ -n "$p" ]] || continue
-    if printf '%s' "$1" | grep -Eq -- "$p" 2>/dev/null; then return 0; fi
+    if grep -Eq -- "$p" 2>/dev/null <<< "$1"; then return 0; fi
   done
   return 1
 }
@@ -474,7 +474,7 @@ sg_is_code_path() { # <path>
   # 改任一侧的排除面/扩展名表，必须同步另一侧与 tests/audit-docs-consistency.sh 的 G16 副本。
   local p="$1"
   [[ "$p" =~ ^(${DOCS_RE}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
-  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${SCRIPTS_RE}/shard-sum\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$|${TESTS_RE}/fresh-clone-check\.sh$) ]] && return 1
+  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${SCRIPTS_RE}/shard-sum\.sh$|${SCRIPTS_RE}/evidence-round\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$|${TESTS_RE}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$p" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -594,7 +594,7 @@ if [[ "$mode" == "count" ]]; then
         *)    o=$(( ${o:-0} + 1 )) ;;
       esac
       if [[ -n "$cmd_head" ]]; then
-        if printf '%s' "$cmd_head" | grep -Eq '^[[:space:]]*sleep[[:space:]]+[0-9]'; then
+        if grep -Eq '^[[:space:]]*sleep[[:space:]]+[0-9]' <<< "$cmd_head"; then
           sp=$(( ${sp:-0} + 1 ))
         fi
         if full_suite_hit "$cmd_head"; then
@@ -645,7 +645,7 @@ if [[ "$mode" == "check" ]]; then
     esac
     # 路径归属：变更产物 02/03/04 面或源码面
     local cid sgdir
-    if [[ "$SG_FILE" =~ ^${CHANGE_ROOT_RE}/([^/]+)/ ]] && printf '%s' "${SG_FILE##*/}" | grep -qE '^(02|03|04)-'; then
+    if [[ "$SG_FILE" =~ ^${CHANGE_ROOT_RE}/([^/]+)/ ]] && grep -qE '^(02|03|04)-' <<< "${SG_FILE##*/}"; then
       # 02/03/04 阶段谓词（REQ-1203）：AGENT_GUARD_STAGE_GATES=0 时整体跳过——
       # 仅源码面保留无账判定（REQ-1199 语义），文档产物面回归放行
       [[ "${AGENT_GUARD_STAGE_GATES:-1}" == "0" ]] && return 0

@@ -810,6 +810,9 @@ run_layer() {
       # v3.95.0 (CHG-132, REQ-1322): shard-sum 随 run-tests.sh 同包下发——目标仓
       # 分片证据轮求和收口用（target 安装为 sum-only，--write 需生成器时具名拒绝）。
       install_file - "$SCRIPTS_DIR/shard-sum.sh" scripts/shard-sum.sh 755
+      # v3.96.0 (CHG-133, REQ-1330): 证据轮编排随同包下发——round 目录 +
+      # 追加式 ledger + 默认 5 快照 + 1 非快照；目标仓同样需要可复查的分片证据。
+      install_file - "$SCRIPTS_DIR/evidence-round.sh" scripts/evidence-round.sh 755
       ;;
     pipeline)
       install_file - ".github/workflows/artifact-pipeline.yml" resources/templates/github-artifact-pipeline.yml

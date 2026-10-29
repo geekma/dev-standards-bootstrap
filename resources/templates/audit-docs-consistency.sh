@@ -489,10 +489,10 @@ else
     entry_anchors=$(sed -nE 's/^##[[:space:]]+([A-Za-z0-9][A-Za-z0-9_-]*)([[:space:]].*)?$/\1/p' \
       "$bd/00-intent.md" 2>/dev/null | sort -u || true)
     for i in $ids; do
-      printf '%s\n' "$entry_anchors" | grep -qx "$i" || b_noentry=$(( b_noentry + 1 ))
+      grep -qx "$i" <<< "$entry_anchors" || b_noentry=$(( b_noentry + 1 ))
     done
     for i in $ids; do
-      printf '%s\n' "$anchors" | grep -qx "$i" || b_unanchored=$(( b_unanchored + 1 ))
+      grep -qx "$i" <<< "$anchors" || b_unanchored=$(( b_unanchored + 1 ))
     done
     for r in $(grep -oE '"risk_level"[[:space:]]*:[[:space:]]*"[^"]*"' "$gov" 2>/dev/null \
       | sed -E 's/.*"([^"]*)"$/\1/' || true); do
@@ -775,7 +775,7 @@ for f10 in "$STD" "$ROOT/$DOCS_DIR/AGENTS.md"; do
   [[ -f "$f10" ]] || continue
   while IFS= read -r l10; do
     g10_hits=$((g10_hits+1))
-    printf '%s' "$l10" | grep -qE 'v3\.[0-9]' \
+    grep -qE 'v3\.[0-9]' <<< "$l10" \
       || { g10_bad=$((g10_bad+1)); echo "     G10 废止标记缺版本指向: $(basename "$f10"): $(printf '%s' "$l10" | cut -c1-72)"; }
   done < <(grep -Fn "废止" "$f10" 2>/dev/null | sed 's/^[0-9]*://')
 done
@@ -878,7 +878,7 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   g16_files=$(git -C "$ROOT" status --porcelain -uall 2>/dev/null | cut -c4- \
     | sed -E 's/.* -> //; s/^"//; s/"$//' \
     | grep -vE "^(${g16_docs_re}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md)" \
-    | grep -vE "^(${g16_githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_scripts_re}/shard-sum\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$|${g16_tests_re}/fresh-clone-check\.sh$)" \
+    | grep -vE "^(${g16_githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_scripts_re}/shard-sum\.sh$|${g16_scripts_re}/evidence-round\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$|${g16_tests_re}/fresh-clone-check\.sh$)" \
     | grep -E "\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$" || true)
   g16_af="$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)"
   # linked worktree 下 --git-path 返回绝对路径；普通仓为相对路径——两种形态都解析

@@ -164,7 +164,10 @@ suite_log="$tmp/.fresh-suite.log"
 # G-ENV proves correctness, not latency: dispatch in parallel so the serial-only
 # wall-clock assertion (T82) does not depend on the host's momentary load.
 fresh_jobs="${AGENT_GUARD_FRESH_CLONE_JOBS:-4}"
-bash "$tmp/$TOOL_REL/$audit_tool" >"$audit_log" 2>&1; audit_rc=$?
+# v3.96.0 (CHG-133, REQ-1334): the audit is the long pole of a receipt (~82s).
+# Parallel blocks are byte-identical to serial (proven by CHG-132/A63), so default
+# to parallel here; an explicit AGENT_GUARD_AUDIT_PARALLEL=0 still forces serial.
+AGENT_GUARD_AUDIT_PARALLEL="${AGENT_GUARD_AUDIT_PARALLEL:-1}" bash "$tmp/$TOOL_REL/$audit_tool" >"$audit_log" 2>&1; audit_rc=$?
 bash "$tmp/$TOOL_REL/run-tests.sh" -T "$sections" -j "$fresh_jobs" >"$suite_log" 2>&1; suite_rc=$?
 passed=$(sed -n 's/^\([0-9][0-9]*\) passed,.*/\1/p' "$suite_log" | tail -1); passed=${passed:-0}
 failed=$(sed -n 's/^[0-9][0-9]* passed, \([0-9][0-9]*\) failed.*/\1/p' "$suite_log" | tail -1); failed=${failed:-0}

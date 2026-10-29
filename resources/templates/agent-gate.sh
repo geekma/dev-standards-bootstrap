@@ -318,7 +318,7 @@ check_smoke_gate() { # <files...> -> dies GATE-E111 on violation; empty input = 
     # defeat the whole gate). The default SMOKE_INFRA_RE is a constant and
     # cannot be invalid; only user-supplied smoke_paths can reach here.
     rc=0
-    printf '%s\n' "$f" | grep -qE "$re" || rc=$?
+    grep -qE "$re" <<< "$f" || rc=$?
     if [[ $rc -eq 0 ]]; then hit="$f"; break; fi
     if [[ $rc -ge 2 ]]; then
       # T41 die-literal uniqueness: route through the aggregate die below
@@ -680,7 +680,7 @@ is_code_path() {
   # v3.92.3：fresh-clone-check.sh 同属治理工具（G-ENV 执行件），漏加会让新装仓第一次
   # commit 与后续 --upgrade 同时死锁（T15/T82 tracked-only 实测暴露）。
   # v3.95.0：shard-sum.sh 同理（CHG-132 随包执行件，漏加 = 首个提交 E125 死锁）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
+  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${scripts_re}/evidence-round\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -971,7 +971,7 @@ delivery_markers_ok() { # <file> -> 0 when 交付触发点 + 背景输入 both c
   [[ -n "$t" && -n "$b" ]] || return 1
   # Placeholders are NOT declarations: scaffold text and hand-written TODO
   # shapes must be filled before the stage gate opens.
-  if printf '%s\n%s\n' "$t" "$b" | grep -qE 'FILL|待填|<[^>]*>'; then return 1; fi
+  if grep -qE 'FILL|待填|<[^>]*>' <<< "$t"$'\n'"$b"; then return 1; fi
   return 0
 }
 
@@ -1151,7 +1151,7 @@ EOF
     ra=$(grep -E '^[[:space:]]*-[[:space:]]*\*\*还原度断言\*\*(：|:)' "$res05" 2>/dev/null | head -1 || true)
     if [[ -z "$ra" ]]; then
       e110="05 lacks a 「还原度断言」 line — ui_change restoration must be machine-checkable (an assertion test file: section-order/placeholder/section-header DOM assertions) or explicitly waived: 「还原度断言」：未命中，不适用（理由）"
-    elif ! printf '%s\n' "$ra" | grep -q '未命中，不适用'; then
+    elif ! grep -q '未命中，不适用' <<< "$ra"; then
       # BSD sed C-locale mangling lesson: multibyte negated classes capture
       # wrong spans — extract with bash parameter expansion (byte-safe).
       ra_file="${ra#*：}"; [[ "$ra_file" == "$ra" ]] && ra_file="${ra#*:}"
@@ -1195,7 +1195,7 @@ EOF
       [[ -n "$bhv" ]] || continue
       # chain behavior = referenced anywhere in 01-spec OUTSIDE the ledger section
       if awk '/^#{1,6} /{f=($0 ~ /拆除\/豁免登记簿/); next} !f' "$spec" | grep -q "$bhv"; then
-        if ! { printf '%s' "$row" | grep -q '00\.5' && printf '%s' "$row" | grep -q '确认'; }; then
+        if ! { grep -q '00\.5' <<< "$row" && grep -q '确认' <<< "$row"; }; then
           e108="行为豁免 $bhv touches a real business chain but carries no inline 00.5 追加沟通轮确认 reference — waivers must not transit (豁免演示数据≠豁免演示所走真实链路) (standards §2.5 stage 2, v3.68.0; narrowed v3.70.0)"
           break
         fi
@@ -1286,15 +1286,15 @@ confirmation_gate_reason() { # <id> <dir>
   local rec05 risk05=""
   rec05=$(gov_record "$d/00-governance.json" "$id")
   [[ -n "$rec05" ]] && risk05=$(json_field "$rec05" risk_level)
-  if printf '%s\n' "$scope05" | grep -qE '^[[:space:]]*-[[:space:]]*\*\*沟通确认\*\*(：|:)[[:space:]]*未命中，不适用（.+）'; then
+  if grep -qE '^[[:space:]]*-[[:space:]]*\*\*沟通确认\*\*(：|:)[[:space:]]*未命中，不适用（.+）' <<< "$scope05"; then
     if [[ "$risk05" == "L0" ]]; then
       : # L0 lightweight single-line declaration satisfies the gate (§2.17.2d)
     else
       CONFIRM_REASON="L0-only single-line declaration found in $comm05 but risk_level is ${risk05:-unknown} — the lightweight channel is L0-exclusive (§2.17.2d)"
     fi
-  elif ! printf '%s\n' "$scope05" | grep -q "用户整体确认记录"; then
+  elif ! grep -q "用户整体确认记录" <<< "$scope05"; then
     CONFIRM_REASON="missing 用户整体确认记录 section in $comm05"
-  elif ! printf '%s\n' "$scope05" | grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)'; then
+  elif ! grep -qE '(确认状态|confirmation)[[:space:]]*(：|:)[[:space:]]*(已整体确认|confirmed)' <<< "$scope05"; then
     CONFIRM_REASON="no user-overall-confirmation marker under 用户整体确认记录 in $comm05"
   fi
   [[ -z "$CONFIRM_REASON" ]] || return 0
@@ -1305,7 +1305,7 @@ confirmation_gate_reason() { # <id> <dir>
   if [[ "$risk05" != "L0" ]]; then
     local a05
     for a05 in 影响范围 风险 候选方案与取舍 测试思路; do
-      printf '%s\n' "$scope05" | grep -qE "^(#{1,6}[[:space:]]*$a05([[:space:]]|\$)|[[:space:]]*[-*][[:space:]]+\*\*$a05\*\*)" \
+      grep -qE "^(#{1,6}[[:space:]]*$a05([[:space:]]|\$)|[[:space:]]*[-*][[:space:]]+\*\*$a05\*\*)" <<< "$scope05" \
         || { CONFIRM_REASON="00.5 substance: missing '$a05' anchor (five-element round-1, §2.17.2d v3.60.0)"; return 0; }
     done
   fi
@@ -1430,7 +1430,7 @@ validate_artifact_content() {
       val=$(printf '%s' "$line" | sed -E "s/^[[:space:]]*-[[:space:]]*${lbl}[[:space:]]*(：|:)[[:space:]]*//")
       [[ -n "$val" ]] \
         || e17_refuse "dispatch-input label '$lbl' is empty (dispatch_contract v2; fix: name the loaded source or write 未命中（理由）)"
-      if printf '%s' "$val" | grep -qE '待填|FILL|<[^>]*>'; then
+      if grep -qE '待填|FILL|<[^>]*>' <<< "$val"; then
         e17_refuse "dispatch-input label '$lbl' still holds a placeholder ('$val') — an unfilled label is not a declaration (dispatch_contract v2)"
       fi
     done
@@ -1605,12 +1605,12 @@ validate_provenance() { # file
     *PENDING*|*TODO*|*TBD*|*待定*) die "GATE-E20: cannot finish: $f provenance block still holds a placeholder — run scripts/stamp-provenance.sh <CHG-id>" ;;
   esac
   for k in author email generated_at generated_by; do
-    printf '%s\n' "$blk" | grep -qE "^${k}:[[:space:]]*[^[:space:]]" \
+    grep -qE "^${k}:[[:space:]]*[^[:space:]]" <<< "$blk" \
       || die "GATE-E21: cannot finish: $f provenance block is missing '$k' — regenerate with scripts/stamp-provenance.sh"
   done
-  printf '%s\n' "$blk" | grep -qE '^generated_at:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' \
+  grep -qE '^generated_at:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' <<< "$blk" \
     || die "GATE-E22: cannot finish: $f provenance 'generated_at' is not an ISO-8601 date — regenerate with scripts/stamp-provenance.sh"
-  printf '%s\n' "$blk" | grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' \
+  grep -qE '^generated_by:[[:space:]]*stamp-provenance\.sh' <<< "$blk" \
     || die "GATE-E23: cannot finish: $f provenance block was not produced by scripts/stamp-provenance.sh (a hand-written block cannot pass this)"
 }
 
@@ -1701,10 +1701,10 @@ validate_governance_state() {
   decl86=$(printf '%s\n' "$scope_i" | awk '/^[[:space:]]*-[[:space:]]*\*\*目录落位\*\*(：|:)/{print; exit}')
   if [[ -z "$decl86" ]]; then
     reason86="missing placement declaration '- **目录落位**：BATCH-YYYYMMDD | 独立目录（<理由>）'"
-  elif printf '%s\n' "$decl86" | grep -q 'BATCH-'; then
+  elif grep -q 'BATCH-' <<< "$decl86"; then
     is_batch_dir "$d" || reason86="'$id' declares BATCH-YYYYMMDD placement but lives in independent dir $d — declaration and directory disagree"
     [[ -n "$reason86" ]] || [[ "$risk" =~ ^L[01]$ ]] || reason86="'$id' risk $risk cannot declare BATCH placement — batches are L0/L1 only"
-  elif printf '%s\n' "$decl86" | grep -q '独立目录'; then
+  elif grep -q '独立目录' <<< "$decl86"; then
     is_batch_dir "$d" && reason86="'$id' declares 独立目录 placement but lives in batch dir $d — declaration and directory disagree"
     # v3.62.2 (CHG-082, REQ-1028): L0/L1 must never declare independent
     # placement — standards §1.1 first-of-day rule (v3.61.2) makes the day
@@ -1777,7 +1777,7 @@ validate_governance_state() {
   # provenance check (stamp-provenance.sh --bug).
   local bug_ref _r
   bug_refs_current=""
-  if printf '%s' "$rec" | grep -q '"bug_ref"'; then
+  if grep -q '"bug_ref"' <<< "$rec"; then
     while IFS= read -r _r; do
       [[ -n "$_r" ]] && bug_refs_current="$bug_refs_current $_r"
     done < <(json_field_values "$rec" bug_ref)
@@ -1785,7 +1785,7 @@ validate_governance_state() {
       # An EXPLICIT empty value ("bug_ref": "" or []) means "no defect bound" —
       # same semantics as the field being absent (golden: 'begin skips bug_ref
       # validation when empty'). Only a present-but-unparseable value fails.
-      if printf '%s' "$rec" | grep -qE "\"bug_ref\"[[:space:]]*:[[:space:]]*(\"\"|\[[[:space:]]*\])"; then
+      if grep -qE "\"bug_ref\"[[:space:]]*:[[:space:]]*(\"\"|\[[[:space:]]*\])" <<< "$rec"; then
         :
       else
         die "GATE-E39: $file field 'bug_ref' is present but unparseable — use a flat string or a flat JSON string array of defect ids"
@@ -2760,8 +2760,8 @@ review_consent_check() { # <id> — E137: a deep/approval model needs user conse
   line=$(tr -d '\n\r' < "$f" 2>/dev/null || true)
   ch=$(json_field "$line" change)
   [[ -z "$ch" || "$ch" == "$id" ]] || return 0
-  printf '%s\n' "$line" | grep -q '"approval_required":true' || return 0
-  printf '%s\n' "$line" | grep -q '"approved":true' && return 0
+  grep -q '"approval_required":true' <<< "$line" || return 0
+  grep -q '"approved":true' <<< "$line" && return 0
   die "GATE-E137: $id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
 }
 
@@ -3449,7 +3449,7 @@ plan_judges_json() { # <change-dir> [changed-csv] -> JSON fragment (no outer bra
   jbasis="engine: risk=$risk; type=$ctype; code-change=$pcode; changed-files=$diffn; profile-size=${psize:-unknown}"
   if [[ -n "${AGENT_GUARD_PLAN_AI_ARTIFACTS:-}${AGENT_GUARD_PLAN_AI_STAGES:-}${AGENT_GUARD_PLAN_AI_MASTERS:-}${AGENT_GUARD_PLAN_AI_REVIEWS:-}" ]]; then
     if [[ ${#aib} -ge 20 ]] \
-      && printf '%s' "$air" | grep -Eq '^[^/]+ / [^/]+ / (task|ses)-[A-Za-z0-9._-]+$'; then
+      && grep -Eq '^[^/]+ / [^/]+ / (task|ses)-[A-Za-z0-9._-]+$' <<< "$air"; then
       jsrc="ai"; jrev="$air"; jbasis="$aib"
       [[ -n "${AGENT_GUARD_PLAN_AI_ARTIFACTS:-}" ]] && art="$AGENT_GUARD_PLAN_AI_ARTIFACTS"
       [[ -n "${AGENT_GUARD_PLAN_AI_STAGES:-}" ]] && stg="$AGENT_GUARD_PLAN_AI_STAGES"
@@ -3582,7 +3582,7 @@ plan_json() { # <id> -> one-line decision JSON (no writes)
     done | sort -k1,1nr -k2,2n)
     # If the TC index maps nothing to ANY candidate section, value is unknown for
     # all of them — treat it as unknown (0) instead of starving the whole run.
-    if [[ -n "$ranked" ]] && ! printf '%s\n' "$ranked" | grep -qv '^-1 '; then
+    if [[ -n "$ranked" ]] && ! grep -qv '^-1 ' <<< "$ranked"; then
       ranked=$(printf '%s\n' "$ranked" | sed 's/^-1 /0 /')
     fi
     secs=""; pred=0
@@ -3689,7 +3689,7 @@ plan_append_intent() { # <change-dir> <decision-json>
     printf -- '- 建议测试：%s\n' "${chosen:-（无映射）}"
     printf -- '- 预计耗时：%s s（预算 %s s，source=%s）\n' "${pred:-0}" "${budget:-120}" "${src:-prior}"
     printf -- '- TC 解析率：%s；gap 见 decision.gaps\n' "${rate:-0/0}"
-    if printf '%s' "$dec" | grep -q '"judgment":"ai"'; then
+    if grep -q '"judgment":"ai"' <<< "$dec"; then
       printf -- '- AI 判断：apply（复核：%s；依据：%s）\n' \
         "$(printf '%s' "$dec" | sed -n 's/.*"judgment_reviewer":"\([^"]*\)".*/\1/p')" \
         "$(printf '%s' "$dec" | sed -n 's/.*"judgment_basis":"\([^"]*\)".*/\1/p')"
@@ -3727,7 +3727,7 @@ plan_explain() { # <id> <decision-json>
     done
   fi
   echo "plan: resolution_rate=$rate gaps=$(printf '%s' "$dec" | sed -n 's/.*"gaps":\(\[[^]]*\]\).*/\1/p')"
-  if printf '%s' "$dec" | grep -q '"judgment":"ai"'; then
+  if grep -q '"judgment":"ai"' <<< "$dec"; then
     echo "plan: judgment=ai reviewer=$(printf '%s' "$dec" | sed -n 's/.*"judgment_reviewer":"\([^"]*\)".*/\1/p') basis=$(printf '%s' "$dec" | sed -n 's/.*"judgment_basis":"\([^"]*\)".*/\1/p')"
   else
     echo "plan: judgment=engine"
@@ -3956,7 +3956,7 @@ stage_close_check() { # <id> [stage-number] — E127 prerequisites + E145/E146 o
   if [[ -n "$prev" && "$prev" != "none" ]]; then
     first=$(awk -v m="阶段 $(( n - 1 )) 关闭" 'index($0,m){f=1;next} f && /Observation/ {print; exit}' "$d/09-changelog.md" 2>/dev/null)
     for p in $(printf '%s' "$prev" | tr ',' ' '); do
-      printf '%s' "$first" | grep -q "$p" 2>/dev/null || missing="$missing $p"
+      grep -q "$p" 2>/dev/null <<< "$first" || missing="$missing $p"
     done
     [[ -z "$missing" ]] || die "GATE-E146: $id stage $n did not read the previous stage's backfill:$missing — expected: the first Observation after '阶段 $(( n - 1 )) 关闭' names every backfilled master; allowed: an Observation line quoting the anchors; fix: add the read-back Observation, then re-run; ref: CHG-126 P2-5 / Q7"
   fi
@@ -4451,7 +4451,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.95.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.96.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4503,7 +4503,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.95.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.96.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -5389,7 +5389,7 @@ case "$command" in
     tier=$(printf '%s' "$js" | sed -n 's/.*"tier":"\([^"]*\)".*/\1/p')
     scheme=$(printf '%s' "$js" | sed -n 's/.*"scheme":"\([^"]*\)".*/\1/p')
     appr=false
-    printf '%s' "$js" | grep -q '"approval_required":true' && appr=true
+    grep -q '"approval_required":true' <<< "$js" && appr=true
     echo "review-plan: runtime=${rt:-unknown} family=${fam:-unknown} scheme=${scheme:-unknown} tier=${tier:-economy} approval_required=${appr:-false}"
     echo "$js"
     if [[ "$appr" == "true" && "$rmode" != "--approve" ]]; then

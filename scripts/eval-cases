@@ -126,7 +126,7 @@ for f in "${diags[@]:-}"; do
     ref=$(printf '%s\n' "$(extract_section "$dir/04-matrix.md" "")" | grep -oE 'TC-[0-9]+' | head -1 || true)
     layer=$(diag_value "$body"); [[ -n "$layer" ]] || layer=未声明
     src=manual
-    if printf '%s\n' "$body" | grep -q '复现记录（自动）'; then
+    if grep -q '复现记录（自动）' <<< "$body"; then
       src=regression
     else
       case "$bug_id" in BUG-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*) src=incident ;; esac
@@ -140,7 +140,7 @@ for f in "${diags[@]:-}"; do
     ref=$(printf '%s\n' "$(extract_section "$dir/04-matrix.md" "$a")" | grep -oE 'TC-[0-9]+' | head -1 || true)
     layer=$(diag_value "$body"); [[ -n "$layer" ]] || layer=未声明
     src=manual
-    if printf '%s\n' "$body" | grep -q '复现记录（自动）'; then
+    if grep -q '复现记录（自动）' <<< "$body"; then
       src=regression
     else
       case "$a" in BUG-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*) src=incident ;; esac

@@ -2416,7 +2416,7 @@ report "T20 a compliant feature-dir repo still passes (no regression)" 0 "$rc"
 t20_ran=1
 # 精确锚定 G3/G5/G6 组（v3.28.0 起 G8/A20/A21 在无 bugs/变更目录的仓库合法打印
 # 自己的空转声明——泛 grep "VACUOUS SKIP" 会把"诚实声明未覆盖"误判成"G3 没跑"）。
-printf '%s' "$out" | grep -q "G3/G5/G6 VACUOUS SKIP" && t20_ran=0
+grep -q "G3/G5/G6 VACUOUS SKIP" <<< "$out" && t20_ran=0
 report "T20 G3/G5/G6 actually ran on the living-doc track (no vacuous skip)" 1 "$t20_ran"
 
 rm -rf "$AC" "$AC2" "$AC3" "$AC4" "$AC5" "$AF"
@@ -2445,6 +2445,8 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # v3.95.0 (CHG-132): guard 清单含 shard-sum.sh——FAKE_SRC 必须同拷（同上，
   # install_file 缺源 = 整链红）。
   cp "$ROOT/scripts/shard-sum.sh" "$FAKE_SRC/scripts/shard-sum.sh"
+  # v3.96.0 (CHG-133): 同型——evidence-round.sh 入 guard 清单，夹具缺它即整链红。
+  cp "$ROOT/scripts/evidence-round.sh" "$FAKE_SRC/scripts/evidence-round.sh"
   cp "$ROOT/SKILL.md" "$FAKE_SRC/SKILL.md"
   cp -R "$ROOT/resources" "$FAKE_SRC/resources"
 
@@ -2467,7 +2469,7 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # 也就没有自更新降级 NOTE——离线性由夹具本身保证）
   out=$(bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" 2>&1); rc=$?
   report "T21 re-run against a governed target succeeds (auto-upgrade)" 0 "$rc"
-  printf '%s' "$out" | grep -q CONFLICT && report "T21 re-run raises no conflict" 0 1 || report "T21 re-run raises no conflict" 0 0
+  grep -q CONFLICT <<< "$out" && report "T21 re-run raises no conflict" 0 1 || report "T21 re-run raises no conflict" 0 0
 
   # TC-143 自动升级：fake 源版本 +0.0.1 → 重跑 → 目标规范页脚跟随（版本无关形态，
   # 与 T14 同型——不再钉死当前版本字面量，版本 bump 无须改本夹具）
@@ -2879,7 +2881,7 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   out=$(bash scripts/session-gate.sh idle 2>&1 || true)
   check_output "T26 idle carries yellow light" "bash calls 26 > 20" "$out"
   out=$(AGENT_GUARD_SESSION_TURN_LIMIT=5 bash scripts/session-gate.sh count turn 2>&1)
-  if printf '%s' "$out" | grep -q "TURN LIMIT"; then report "T26 under-limit stays silent" 1 0; else report "T26 under-limit stays silent" 0 0; fi
+  if grep -q "TURN LIMIT" <<< "$out"; then report "T26 under-limit stays silent" 1 0; else report "T26 under-limit stays silent" 0 0; fi
   # ---- v3.90.1 (CHG-123, P0-15): token / model / context metering ----------
   rm -f .agent-state/model-profile.json
   out=$(bash scripts/session-gate.sh start 2>&1)
@@ -3039,8 +3041,11 @@ if [[ -s "$GT82" ]]; then
   # ≤1s claim is asserted in serial dispatch (local guardrail) and recorded as
   # "not asserted" under parallel dispatch (CI) — same assertion count, no
   # load-induced red, and the latency claim never silently disappears.
-  if [[ "${JOBS:-1}" -ge 2 ]]; then
-    report "T82 plan latency measured (parallel dispatch: wall-clock budget not asserted)" 0 0
+  # v3.96.0 (CHG-133): 证据轮 SOP 让 5 个快照分片进程并发——分片内 JOBS 仍为 1，
+  # 但宿主被兄弟分片压满，同属"非静默主机"，墙体预算同样不成立。分片档一律不判
+  # （含 live 片：它也与五个快照并发）；≤1 s 由 `-T T82` 这类独占运行承担。
+  if [[ "${JOBS:-1}" -ge 2 || -n "${SHARD:-}" || "${AGENT_GUARD_SUITE_IN_WT:-0}" == "1" ]]; then
+    report "T82 plan latency measured (parallel/shard/snapshot dispatch: wall-clock budget not asserted)" 0 0
   else
     report "T82 plan runs under 1s (best of 3)" 0 "$(( t82_best > 1 ? 1 : 0 ))"
   fi
@@ -3441,7 +3446,7 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   report "T27 idempotent rerun keeps a single block" 1 "$(grep -c '^<!-- provenance$' docs/changes/CHG-940/00-intent.md | tr -d ' ')"
   scripts/agent-gate end >/dev/null 2>&1
   out=$(bash .githooks/pre-commit 2>&1 || true)
-  if printf '%s' "$out" | grep -q "stamping provenance"; then report "T27 skip path prints no stamping line" 1 0; else report "T27 skip path prints no stamping line" 0 0; fi
+  if grep -q "stamping provenance" <<< "$out"; then report "T27 skip path prints no stamping line" 1 0; else report "T27 skip path prints no stamping line" 0 0; fi
   # bug_ref binding: the hook stamps the bound defect group too
   mkdir -p docs/bugs/BUG-940
   for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
@@ -3588,7 +3593,7 @@ if [[ -f "$AUDIT_SRC" ]]; then
   check_output "T31 G10 flags pointer-less 废止 marker" "废止标记缺版本指向" "$out"
   printf '# 规范\n- 旧条款（v3.22.0 废止，改由 v3.35.0 批次）\n- 好例：旧条款废止（v3.35.0 起由批次承担）\n' > docs/DEVELOPMENT_STANDARDS.md
   out=$(bash tests/audit-docs-consistency.sh 2>&1 || true)
-  if printf '%s' "$out" | grep -q "废止标记缺版本指向"; then report "T31 G10 clean spec passes" 1 0; else report "T31 G10 clean spec passes" 0 0; fi
+  if grep -q "废止标记缺版本指向" <<< "$out"; then report "T31 G10 clean spec passes" 1 0; else report "T31 G10 clean spec passes" 0 0; fi
   check_output "T31 G10 ok line present (anti-crash-false-green)" "G10 every 废止 marker carries a superseding v3.x pointer" "$out"
 else
   echo "SKIP T31: audit-docs-consistency.sh absent — 跳过 G10 golden cases"
@@ -4409,7 +4414,7 @@ report "T49-04 no plugin left behind" 0 "$(test -f .opencode/plugins/dev-standar
 # T49-04b (SC-998): 载入但零功能标记（schema-过-功能-死）→ E12 —— 假绿防线（本缺陷同族形态）
 out=$(SG_STUB_MARKER=0 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
 report "T49-04b loaded-but-no-function dies (rc2)" 2 "$rc"
-report "T49-04b names the functional-marker failure" 1 "$(printf '%s' "$out" | grep -q 'loaded-but-no-functional-marker' && echo 1 || echo 0)"
+report "T49-04b names the functional-marker failure" 1 "$(grep -q 'loaded-but-no-functional-marker' <<< "$out" && echo 1 || echo 0)"
 
 # T49-04c (E12 restore-with-backup)：已装好（T49-02 产物在位）→ 拒载重装 → E12 + 还原旧生成物
 SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode >/dev/null 2>&1
@@ -4469,7 +4474,7 @@ section_T50() {
   # run died with "conditional binary operator expected").
   t50_n39=$(printf '%s\n' "$t50_out" | grep -c '^ok   T39')
   t50_n38=$(printf '%s\n' "$t50_out" | grep -c '^ok   T38')
-  t50_green=$(printf '%s\n' "$t50_out" | grep -q ', 0 failed$' && echo 1 || echo 0)
+  t50_green=$(grep -q ', 0 failed$' <<< "$t50_out" && echo 1 || echo 0)
   # v3.92.3: T39 reads resources/CLAUSE_REGISTRY.md, which a target repo does
   # not have (it lives under <docs>/). The explicit SKIP is the adaptive face;
   # requiring >=3 ok lines here made T50 red in every installed repo.
@@ -5537,8 +5542,17 @@ section_T57() {
   out=$(bash "$ROOT/tests/run-tests.sh" -T T19 2>&1 || true)
   report "T57 TC-1279 T19 standalone passes after hoisting (order-independence)" 1 "$(printf '%s\n' "$out" | grep -cE '^[0-9]+ passed, 0 failed$')"
   # TC-1280: CHG-500 续仓链（T5→T22a→T16）经 SERIAL_CHAIN 在 -j 下串行保续，须全绿
-  out=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a,T16 -j 2 2>&1 || true)
-  report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 "$(( $(printf '%s\n' "$out" | grep -cE '^FAIL ') > 0 || $(printf '%s\n' "$out" | grep -cE '^ok ') < 51 ? 1 : 0 ))"
+  # v3.96.0 (CHG-133, REQ-1333): attribute the inner failure first. T22a continues
+  # T5's fixture (it never calls new_repo, so `-T T22a` alone is red by design),
+  # hence the attribution baseline is the chain PREFIX T5+T22a. A red prefix means
+  # the chain red has the SAME root cause — report it under its own name and do
+  # not double-count it as T57's. Only a green prefix + red full chain is T57's.
+  _t57_pre=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a 2>&1); _t57_pre_rc=$?
+  report "T57 TC-1280 前置段 T5+T22a 健康（内层红非 T57 责任）" 0 "$_t57_pre_rc"
+  if [[ "$_t57_pre_rc" -eq 0 ]]; then
+    out=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a,T16 -j 2 2>&1 || true)
+    report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 "$(( $(printf '%s\n' "$out" | grep -cE '^FAIL ') > 0 || $(printf '%s\n' "$out" | grep -cE '^ok ') < 51 ? 1 : 0 ))"
+  fi
 }
 
 section_T58() {
@@ -5567,7 +5581,7 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   bash scripts/session-gate.sh start >/dev/null 2>&1
   DEV_STDARDS_CMD_HEAD='sleep 60' bash scripts/session-gate.sh count tool bash >/dev/null 2>&1
   out=$(bash scripts/session-gate.sh status 2>&1)
-  if printf '%s' "$out" | grep -q "长任务等待"; then report "T58 TC-1282 default threshold stays silent at 1" 1 0; else report "T58 TC-1282 default threshold stays silent at 1" 0 0; fi
+  if grep -q "长任务等待" <<< "$out"; then report "T58 TC-1282 default threshold stays silent at 1" 1 0; else report "T58 TC-1282 default threshold stays silent at 1" 0 0; fi
   out=$(AGENT_GUARD_SLEEP_POLL_LIMIT=1 bash scripts/session-gate.sh status 2>&1)
   check_output "T58 TC-1282 sleep-limit env override fires at 1" "YELLOW.*长任务等待" "$out"
   # TC-1283 (REQ-1102 declared): anchored ERE counts the exact full form; variants miss
@@ -6299,7 +6313,7 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   bash scripts/session-gate.sh start >/dev/null 2>&1
   for i in $(seq 1 39); do bash scripts/session-gate.sh count tool edit >/dev/null 2>&1; done
   out=$(bash scripts/session-gate.sh status 2>&1)
-  if printf '%s' "$out" | grep -q "调用批处理"; then report "T62 TC-1350 below threshold stays silent at 39" 1 0; else report "T62 TC-1350 below threshold stays silent at 39" 0 0; fi
+  if grep -q "调用批处理" <<< "$out"; then report "T62 TC-1350 below threshold stays silent at 39" 1 0; else report "T62 TC-1350 below threshold stays silent at 39" 0 0; fi
   bash scripts/session-gate.sh count tool edit >/dev/null 2>&1
   out=$(bash scripts/session-gate.sh status 2>&1)
   check_output "T62 TC-1350 yellow at threshold 40" "YELLOW.*调用批处理" "$out"
@@ -6314,7 +6328,7 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   check_output "T62 TC-1352 legacy schema migrates (edits reads 0 then 1)" '"edits":1' "$(cat .agent-state/session-tool-stats.json)"
   rm -f .agent-state/session-gate-last.md # stale report yellow lines would leak into status cat
   out=$(bash scripts/session-gate.sh status 2>&1)
-  if printf '%s' "$out" | grep -q "调用批处理"; then report "T62 TC-1352 legacy schema no false yellow at 1" 1 0; else report "T62 TC-1352 legacy schema no false yellow at 1" 0 0; fi
+  if grep -q "调用批处理" <<< "$out"; then report "T62 TC-1352 legacy schema no false yellow at 1" 1 0; else report "T62 TC-1352 legacy schema no false yellow at 1" 0 0; fi
   # SC-1105: reset writes initial edits key
   bash scripts/session-gate.sh start >/dev/null 2>&1
   check_output "T62 TC-1353 reset writes edits:0" '"edits":0' "$(cat .agent-state/session-tool-stats.json)"
@@ -6504,10 +6518,10 @@ section_T64() {
   (cd "$t64" && AGENT_GUARD_ALLOW_NO_PROJECT_MASTERS=1 bash "$GATE_SRC" begin t9 >/dev/null 2>&1); rc=$?
   report "T64 TC-1400b second member begin passes (gov_record per-member)" 0 "$rc"
   out=$(cd "$t64" && bash "$GATE_SRC" begin t1 --scaffold 2>&1); rc=$?
-  report "T64 TC-1401 re-scaffold same id refuses (E121)" 0 "$([[ $rc -ne 0 ]] && printf '%s\n' "$out" | grep -q 'GATE-E121' && echo 0 || echo 1)"
+  report "T64 TC-1401 re-scaffold same id refuses (E121)" 0 "$([[ $rc -ne 0 ]] && grep -q 'GATE-E121' <<< "$out" && echo 0 || echo 1)"
   mkdir -p "$t64/docs/changes/t1c" && echo x > "$t64/docs/changes/t1c/junk.md"
   out=$(cd "$t64" && bash "$GATE_SRC" begin t1c --risk L2 --scaffold 2>&1); rc=$?
-  report "T64 TC-1401 non-empty dedicated dir refuses (E120)" 0 "$([[ $rc -ne 0 ]] && printf '%s\n' "$out" | grep -q 'GATE-E120' && echo 0 || echo 1)"
+  report "T64 TC-1401 non-empty dedicated dir refuses (E120)" 0 "$([[ $rc -ne 0 ]] && grep -q 'GATE-E120' <<< "$out" && echo 0 || echo 1)"
   (cd "$t64" && bash "$GATE_SRC" begin t2 --risk L2 --scaffold >/dev/null 2>&1); rc=$?
   report "T64 TC-1402 L2 lands dedicated dir (not BATCH)" 0 "$([[ $rc -eq 0 && -f "$t64/docs/changes/t2/00-intent.md" ]] && echo 0 || echo 1)"
   report "T64 TC-1403 AGENTS carries the phase read-set discipline" 1 "$(grep -c '分阶段最小读集（v3.80.0' "$ROOT/resources/AGENTS.md")"
@@ -6541,7 +6555,7 @@ t65_07 <<'EOF'
 通过
 EOF
 t65_out=$(scripts/agent-gate preflight CHG-1092 2>&1)
-report "T65 TC-1411 probe reds on malformed 07" 1 "$(printf '%s\n' "$t65_out" | grep -q 'GATE-E' && echo 1 || echo 0)"
+report "T65 TC-1411 probe reds on malformed 07" 1 "$(grep -q 'GATE-E' <<< "$t65_out" && echo 1 || echo 0)"
 report "T65 TC-1411 E85 collected" 1 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E85')"
 report "T65 TC-1411 E115 collected" 1 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E115')"
 report "T65 TC-1411 E116 absent from probe (round ledger excluded)" 0 "$(printf '%s\n' "$t65_out" | grep -c 'GATE-E116')"
@@ -6792,11 +6806,21 @@ section_T68() {
   report "T68 interrupt traps exit after releasing" 2 "$(grep -cE "trap 'exit 1(30|43)' (INT|TERM)" "$ROOT/tests/run-tests.sh")"
   mkdir -p "$t68_d/held"; printf '%s\n' "$$" > "$t68_d/held/pid"
   t68_rc=0; AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T T39 >/dev/null 2>&1 || t68_rc=$?
-  # v3.91.7 (CHG-127): --shard is a filtered run too (never takes the lock) and
-  # its deterministic partition must still place the SERIAL_CHAIN members together.
-  t68_shard_rc=0; t68_shard=$(AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" --shard 1/6 2>&1) || t68_shard_rc=$?
+  # v3.91.7 (CHG-127): --shard is a filtered run too (never takes the lock). The
+  # v3.96.0 plan is only a valid partition if every section appears exactly once
+  # and the SERIAL_CHAIN groups stay inside one shard (cwd continuity).
+  t68_shard_rc=0; t68_shard=$(
+    for _i in 1 2 3 4 5 6; do
+      AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" \
+        bash "$ROOT/tests/run-tests.sh" --shard "$_i/6" 2>&1 || exit 1
+    done
+  ) || t68_shard_rc=$?
   report "T68 filtered/sharded run ignores the workspace lock (no deadlock)" 0 \
-    "$([[ $t68_rc -eq 0 && $t68_shard_rc -eq 0 ]] && printf '%s' "$t68_shard" | grep -q 'T1 T1b.*T5 T22a T16' && echo 0 || echo 1)"
+    "$([[ $t68_rc -eq 0 && $t68_shard_rc -eq 0 ]] && echo 0 || echo 1)"
+  report "T68 N=6 plan keeps the T5/T22a/T16 chain in one shard" 1 \
+    "$(printf '%s\n' "$t68_shard" | grep -cE '^shard-resolve-only:.* T5 T22a T16( |$)')"
+  report "T68 N=6 plan covers every section exactly once" 97 \
+    "$(printf '%s\n' "$t68_shard" | sed -n 's/^shard-resolve-only: //p' | tr ' ' '\n' | grep -c .)"
   t68_rc=0; t68_out=$(AGENT_GUARD_SUITE_LOCK_HELD=0 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T "" 2>&1 >/dev/null) || t68_rc=$?
   # v3.91.7: a host with the kill marker refuses a full run (rc3) and names the
   # shard escape hatch — the mechanical stop for repeated 10-minute kills.
@@ -6804,7 +6828,7 @@ section_T68() {
   printf 'Killed: 9 (test marker)\n' > "$t68_d/kill/full-suite-kill.$(hostname -s 2>/dev/null || echo host)"
   t68_kill_rc=0; t68_kill_out=$(AGENT_GUARD_SUITE_KILL_STATE_DIR="$t68_d/kill" AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/nolock" bash "$ROOT/tests/run-tests.sh" -T "" 2>&1 >/dev/null) || t68_kill_rc=$?
   report "T68 full run refuses a held lock with rc2" 2 \
-    "$([[ $t68_rc -eq 2 && $t68_kill_rc -eq 3 ]] && printf '%s' "$t68_kill_out" | grep -q -- '--shard' && echo 2 || echo 0)"
+    "$([[ $t68_rc -eq 2 && $t68_kill_rc -eq 3 ]] && grep -q -- '--shard' <<< "$t68_kill_out" && echo 2 || echo 0)"
   # The rc2 above must come from the LOCK refusal, not from argument parsing:
   # `-T ""` is a full run, and a parser that rejects the empty operand would make
   # this assertion pass for the wrong reason (v3.87.0 R4, review finding #1).
@@ -8287,20 +8311,20 @@ section_T87() {
   # REQ-1321: snapshot carry — the inner run must find T87 in the snapshot.
   _t87_wt=$(bash tests/run-tests.sh -T T87 --worktree 2>&1); _t87_rc=$?
   report "T87 -T T87 --worktree exits 0 (uncommitted-code carry)" 0 "$_t87_rc"
-  printf '%s\n' "$_t87_wt" | grep -Fq 'T87 executes inside the worktree snapshot'
+  grep -Fq 'T87 executes inside the worktree snapshot' <<< "$_t87_wt"
   report "T87 snapshot output contains the in-worktree self-report" 0 "$?"
-  printf '%s\n' "$_t87_wt" | grep -Fq '1 passed, 0 failed'
+  grep -Fq '1 passed, 0 failed' <<< "$_t87_wt"
   report "T87 snapshot run summary matches the single self-report" 0 "$?"
   # recursion + environment guards
   _t87_rg=$(AGENT_GUARD_SUITE_IN_WT=1 bash tests/run-tests.sh -T T1 --worktree 2>&1); _t87_rgrc=$?
   report "T87 --worktree recursion guard exits 2" 2 "$_t87_rgrc"
-  printf '%s\n' "$_t87_rg" | grep -Fq 'already inside a suite worktree'
+  grep -Fq 'already inside a suite worktree' <<< "$_t87_rg"
   report "T87 recursion guard names the reason" 0 "$?"
   _t87_ng=$(mktemp -d "${TMPDIR:-/tmp}/t87-ng.XXXXXX"); mkdir -p "$_t87_ng/tests"
   cp "$ROOT/tests/run-tests.sh" "$_t87_ng/tests/run-tests.sh"
   _t87_ngout=$(cd "$_t87_ng" && bash tests/run-tests.sh -T T1 --worktree 2>&1); _t87_ngrc=$?
   report "T87 --worktree outside a git repo exits 2" 2 "$_t87_ngrc"
-  printf '%s\n' "$_t87_ngout" | grep -Fq 'requires a git repository'
+  grep -Fq 'requires a git repository' <<< "$_t87_ngout"
   report "T87 non-git refusal names the reason" 0 "$?"
   rm -rf "$_t87_ng"
   # two concurrent worktree invocations stay isolated and both green
@@ -8314,9 +8338,16 @@ section_T87() {
   _t87_w2rc=0
   bash tests/run-tests.sh -T T87 --worktree >/dev/null 2>&1 || _t87_w2rc=$?
   report "T87 second --worktree run is idempotent (exit 0)" 0 "$_t87_w2rc"
-  # cleanup hygiene: no snapshot dirs, no registered wt-shard worktrees
-  report "T87 leaves no worktree residue under .agent-state" 0 "$([[ -z "$(ls -d "$ROOT"/.agent-state/wt-shard-* 2>/dev/null)" ]] && echo 0 || echo 1)"
-  report "T87 leaves no wt-shard worktrees registered" 0 "$(git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -c 'wt-shard')"
+  # cleanup hygiene: the nested run's OWN snapshot worktree must be removed and
+  # deregistered. v3.96.0 (CHG-133): a global `grep -c wt-shard` registry count is
+  # not concurrency-safe — an evidence round runs 5 snapshot shards in parallel
+  # with this live shard, so sibling registrations are legitimate at this instant.
+  # Scope the check to the path the nested run printed.
+  _t87_wtpath=$(sed -n 's/^worktree: snapshot .* at \(.*\)$/\1/p' <<< "$_t87_wt" | tail -1)
+  report "T87 nested --worktree run removes its own snapshot dir" 0 \
+    "$([[ -n "$_t87_wtpath" && ! -e "$_t87_wtpath" ]] && echo 0 || echo 1)"
+  report "T87 nested snapshot is deregistered from the worktree list" 0 \
+    "$(if [[ -n "$_t87_wtpath" ]]; then git -C "$ROOT" worktree list --porcelain 2>/dev/null | grep -cF "$_t87_wtpath"; else echo 1; fi)"
   # snapshot creation is lock-serialized + retried; a dirty tree with a failing
   # stash refuses BY NAME (first 6-way round: 5/6 concurrent stash creates
   # silently lost and fell back to HEAD, testing stale code)
@@ -8333,7 +8364,7 @@ section_T87() {
   printf '3 passed, 0 failed\n' > "$_t87_ss/b.log"
   _t87_sum=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" 2>&1); _t87_sumrc=$?
   report "T87 shard-sum green sum exits 0" 0 "$_t87_sumrc"
-  printf '%s\n' "$_t87_sum" | grep -Fq 'total: 5 passed, 0 failed'
+  grep -Fq 'total: 5 passed, 0 failed' <<< "$_t87_sum"
   report "T87 shard-sum totals the shards" 0 "$?"
   printf '9 passed, 1 failed\n' > "$_t87_ss/a.log"
   bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" >/dev/null 2>&1
@@ -8364,11 +8395,11 @@ section_T87() {
   report "T87 cache row lands in section-cache.tsv" 0 "$([[ -f "$_t87_cache" && "$(wc -l < "$_t87_cache" | tr -d ' ')" -ge 1 ]] && echo 0 || echo 1)"
   _t87_c2out=$(AGENT_GUARD_SECTION_CACHE=1 bash tests/run-tests.sh -T T1 2>&1); _t87_c2rc=$?
   report "T87 second cache run exits 0 (hit)" 0 "$_t87_c2rc"
-  printf '%s\n' "$_t87_c2out" | grep -Fq '[cached] T1 (2 passed, 0 failed)'
+  grep -Fq '[cached] T1 (2 passed, 0 failed)' <<< "$_t87_c2out"
   report "T87 hit prints the [cached] marker with counts" 0 "$?"
-  printf '%s\n' "$_t87_c2out" | grep -Fq 'section-cache: 1 hit(s)'
+  grep -Fq 'section-cache: 1 hit(s)' <<< "$_t87_c2out"
   report "T87 hit prints the cache tally" 0 "$?"
-  printf '%s\n' "$_t87_c2out" | grep -Fq '2 passed, 0 failed'
+  grep -Fq '2 passed, 0 failed' <<< "$_t87_c2out"
   report "T87 cached run keeps the summary truthful" 0 "$?"
   AGENT_GUARD_SECTION_CACHE=1 bash tests/run-tests.sh -T T5 >/dev/null 2>&1; _t87_chrc=$?
   report "T87 SERIAL_CHAIN head T5 exits 0 under cache" 0 "$_t87_chrc"
@@ -8381,25 +8412,201 @@ section_T87() {
   # -T auto registry: shard-sum.sh maps to its own section.
   _t87_am=$(AGENT_GUARD_SUITE_AUTO_DIFF=scripts/shard-sum.sh AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash tests/run-tests.sh -T auto 2>&1); _t87_amrc=$?
   report "T87 auto-resolve for shard-sum.sh exits 0" 0 "$_t87_amrc"
-  printf '%s\n' "$_t87_am" | grep -Fq 'auto-resolve-only: T50 T87'
+  grep -Fq 'auto-resolve-only: T50 T87' <<< "$_t87_am"
   report "T87 auto-resolve maps shard-sum.sh to T87 (tail pin keeps T50)" 0 "$?"
+  # REQ-1331 (CHG-133): no `printf ... | grep -q` predicate may survive. Under
+  # pipefail the early-exiting grep can hand printf a SIGPIPE and turn a HIT into
+  # a failure (3 of the 6-way round's reds had this shape). The pattern is built
+  # from pieces so the pin cannot match itself.
+  # Multi-stage pipelines count too: any `printf … | … | grep -q` has the same
+  # early-exit SIGPIPE exposure at the final stage (CHG-133 复核轮发现 A56 一处
+  # 三段落管道躲过了单段钉).
+  _t87_pat='printf[^|]*(\|[^|]*)*\|[[:space:]]*grep[[:space:]]+-[A-Za-z]*q'
+  _t87_pipe=$(
+    { grep -nE "$_t87_pat" "$ROOT/resources/templates/"*.sh "$ROOT/scripts/agent-gate" \
+        "$ROOT/scripts/eval-cases" "$ROOT/scripts/"*.sh "$ROOT/tests/"*.sh 2>/dev/null || true; } \
+      | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' | grep -c . || true
+  )
+  report "T87 no piped printf/grep -q predicate remains in the governance face" 0 "$_t87_pipe"
+  # REQ-1332 (CHG-133): the N=6 plan is a partition, keeps the chain groups
+  # whole, and N!=6 still falls back to the contiguous split.
+  _t87_plan=$(for _i in 1 2 3 4 5 6; do
+      AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 bash tests/run-tests.sh --shard "$_i/6" 2>/dev/null \
+        | sed -n 's/^shard-resolve-only: //p'
+    done)
+  report "T87 cost plan covers every section exactly once" \
+    "$(printf '%s\n' "${SECTIONS[@]}" | sort | tr '\n' ' ')" \
+    "$(printf '%s\n' "$_t87_plan" | tr ' ' '\n' | grep . | sort | tr '\n' ' ')"
+  report "T87 cost plan keeps T5/T22a/T16 in one shard" 1 \
+    "$(printf '%s\n' "$_t87_plan" | grep -cE '(^| )T5 T22a T16( |$)')"
+  report "T87 cost plan keeps T50/T51 in one shard" 1 \
+    "$(printf '%s\n' "$_t87_plan" | grep -cE '(^| )T50 T51( |$)')"
+  report "T87 N!=6 keeps the contiguous fallback (5 shards cover 97)" 97 \
+    "$(for _i in 1 2 3 4 5; do
+        AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 bash tests/run-tests.sh --shard "$_i/5" 2>/dev/null \
+          | sed -n 's/^shard-resolve-only: //p'
+      done | tr ' ' '\n' | grep -c .)"
+  # An empty plan group must be a named refusal, not an unbound-variable crash
+  # under `set -u` (recheck round: ${WANTED[0]} died rc1 with no message, so a
+  # typo'd plan looked like an unrelated suite failure).
+  _t87_dp=$(mktemp -d "$ROOT/.agent-state/t87-drift.XXXXXX")
+  awk '{ if (!done && $0=="SHARD_PLAN_6=(") { print "SHARD_PLAN_6=( \"\""; done=1 } else print }' \
+    "$ROOT/tests/run-tests.sh" > "$_t87_dp/run-tests.sh"
+  _t87_dout=$(AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 bash "$_t87_dp/run-tests.sh" --shard 1/6 2>&1); _t87_drc=$?
+  report "T87 an empty plan group is refused with rc2" 2 "$_t87_drc"
+  report "T87 the empty-group refusal names the shard" 1 \
+    "$(printf '%s\n' "$_t87_dout" | grep -c 'shard 1/6 is empty in SHARD_PLAN_6')"
+  rm -rf "$_t87_dp"
+  # REQ-1332: an all-snapshot round is not the full-suite truth (1658 vs 1694).
+  _t87_sd=$(mktemp -d "${TMPDIR:-/tmp}/t87-sum.XXXXXX")
+  printf 'worktree: snapshot abc at /tmp/x\n3 passed, 0 failed\n' > "$_t87_sd/1.log"
+  printf 'worktree: snapshot abc at /tmp/y\n2 passed, 0 failed\n' > "$_t87_sd/2.log"
+  _t87_sw=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_sd" 2>&1); _t87_swrc=$?
+  report "T87 shard-sum sums snapshot logs" 0 "$_t87_swrc"
+  report "T87 shard-sum warns when every log is a snapshot" 1 \
+    "$(printf '%s\n' "$_t87_sw" | grep -c 'T87 early-exits inside a snapshot')"
+  # --write is the authoritative face: a short all-snapshot total must never land
+  # in .suite-baseline. rc alone is not enough (a missing generator also exits 2),
+  # so the refusal is identified by its own sentence.
+  _t87_ww=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_sd" --write --root "$_t87_sd" 2>&1)
+  report "T87 shard-sum refuses --write on an all-snapshot round" 1 \
+    "$(printf '%s\n' "$_t87_ww" | grep -c 'refusing --write on an all-snapshot round')"
+  # --write is the authoritative face: a short all-snapshot total must never land
+  # in .suite-baseline, so the warning escalates to a refusal when writing.
+  printf 'shard 2/2: 1 sections (T2 .. T2)\n2 passed, 0 failed\n' > "$_t87_sd/2.log"
+  _t87_sw=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_sd" 2>&1)
+  report "T87 shard-sum stays quiet with one live shard" 0 \
+    "$(printf '%s\n' "$_t87_sw" | grep -c 'T87 early-exits inside a snapshot')"
+  # The banner is not always there (a snapshot can die before printing it) and a
+  # live shard can echo a nested banner. When evidence-round's .mode file is
+  # present it wins; the banner stays as the fallback for ad-hoc log dirs.
+  _t87_md=$(mktemp -d "${TMPDIR:-/tmp}/t87-mode.XXXXXX")
+  printf '1 passed, 0 failed\n' > "$_t87_md/1.log"; printf 'worktree\n' > "$_t87_md/1.mode"
+  _t87_mw=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_md" 2>&1)
+  report "T87 shard-sum trusts shard-*.mode over a missing banner" 1 \
+    "$(printf '%s\n' "$_t87_mw" | grep -c 'T87 early-exits inside a snapshot')"
+  printf 'worktree: snapshot zzz at /tmp/z\n1 passed, 0 failed\n' > "$_t87_md/2.log"
+  printf 'live\n' > "$_t87_md/2.mode"
+  _t87_mw=$(bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_md" 2>&1)
+  report "T87 shard-sum trusts shard-*.mode over a live shard's banner" 0 \
+    "$(printf '%s\n' "$_t87_mw" | grep -c 'T87 early-exits inside a snapshot')"
+  rm -rf "$_t87_md"
+  rm -rf "$_t87_sd"
+  # REQ-1330 (CHG-133): evidence rounds are append-only directories driven by a
+  # stub suite; the real runner would cost a full sharded round.
+  _t87_er=$(mktemp -d "${TMPDIR:-/tmp}/t87-er.XXXXXX")
+  cat > "$_t87_er/stub.sh" <<'EOS'
+#!/usr/bin/env bash
+case " $* " in *" --worktree "*) echo "worktree: snapshot stub at /tmp/stub" ;; esac
+if [[ "${STUB_RED:-0}" == "1" ]]; then echo "FAIL T0 stub"; echo "1 passed, 1 failed"; exit 1; fi
+echo "2 passed, 0 failed"
+EOS
+  _t87_dry=$(bash scripts/evidence-round.sh --chg CHG-133 --round 1 --shards 2 --live-shard 2 \
+    --dry-run --state-dir "$_t87_er/state" 2>&1)
+  report "T87 evidence-round dry-run prints the shard plan" 2 \
+    "$(printf '%s\n' "$_t87_dry" | grep -cE '^  shard [12]/2 ')"
+  report "T87 evidence-round dry-run marks the live shard" 1 \
+    "$(printf '%s\n' "$_t87_dry" | grep -c 'shard 2/2 live')"
+  report "T87 evidence-round dry-run creates nothing" 0 \
+    "$([[ -d "$_t87_er/state" ]] && echo 1 || echo 0)"
+  AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
+    --chg CHG-133 --round 1 --shards 2 --live-shard 2 --state-dir "$_t87_er/state" \
+    >"$_t87_er/run1.txt" 2>&1; _t87_errc=$?
+  report "T87 evidence-round green stub exits 0" 0 "$_t87_errc"
+  report "T87 evidence-round keeps logs, rc and mode per shard" 6 \
+    "$(ls "$_t87_er/state/CHG-133/round-1" | grep -cE '^shard-[12]\.(log|rc|mode)$')"
+  report "T87 evidence-round live shard runs without --worktree" 0 \
+    "$(grep -c 'worktree: snapshot' "$_t87_er/state/CHG-133/round-1/shard-2.log")"
+  report "T87 evidence-round snapshot shard carries the banner" 1 \
+    "$(grep -c 'worktree: snapshot' "$_t87_er/state/CHG-133/round-1/shard-1.log")"
+  report "T87 evidence-round appends one ledger row with the tree fingerprint" 1 \
+    "$(awk -F'\t' '$2=="CHG-133" && $3=="1" && $5!="" && $6=="2" && $7=="2" {n++} END{print n+0}' "$_t87_er/state/ledger.tsv")"
+  AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
+    --chg CHG-133 --round 1 --shards 2 --live-shard 2 --state-dir "$_t87_er/state" \
+    >/dev/null 2>&1; _t87_errc2=$?
+  report "T87 evidence-round refuses to overwrite an existing round" 2 "$_t87_errc2"
+  STUB_RED=1 AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
+    --chg CHG-133 --round 2 --shards 2 --live-shard 2 --state-dir "$_t87_er/state" \
+    >/dev/null 2>&1; _t87_errc3=$?
+  report "T87 evidence-round red stub exits 1" 1 "$_t87_errc3"
+  report "T87 evidence-round keeps the failing shard log" 1 \
+    "$(grep -c 'FAIL T0 stub' "$_t87_er/state/CHG-133/round-2/shard-1.log")"
+  report "T87 evidence-round keeps the failing shard rc" 1 \
+    "$(cat "$_t87_er/state/CHG-133/round-2/shard-1.rc")"
+  _t87_next=$(bash scripts/evidence-round.sh --chg CHG-133 --shards 2 --live-shard 2 \
+    --dry-run --state-dir "$_t87_er/state" 2>&1)
+  report "T87 evidence-round auto-selects the next free round" 1 \
+    "$(printf '%s\n' "$_t87_next" | grep -c 'round 3 ->')"
+  # A stub round must be identifiable after the fact: meta records the suite path
+  # and each shard's rc, so "which suite produced this" is answerable from disk.
+  report "T87 evidence-round meta records the suite path and per-shard rc" 1 \
+    "$(awk -F'\t' '$1=="suite" && $2 ~ /stub\.sh$/ {s=1} $1=="shard_1_rc" {r1=$2} $1=="shard_2_rc" {r2=$2} END{print (s==1 && r1!="-" && r2!="-") ? 1 : 0}' \
+        "$_t87_er/state/CHG-133/round-1/meta.tsv")"
+  rm -rf "$_t87_er"
+  # REQ-1334 (CHG-133): the receipt defaults the audit to parallel; explicit 0 wins.
+  report "T87 fresh-clone defaults the audit to parallel" 1 \
+    "$(grep -cF 'AGENT_GUARD_AUDIT_PARALLEL="${AGENT_GUARD_AUDIT_PARALLEL:-1}"' "$ROOT/tests/fresh-clone-check.sh")"
   rm -f "$_t87_cache"
 }
 
 SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84 T85 T86 T87)
 
-# v3.91.7 (CHG-127): --shard i/N — deterministic contiguous partition. Contiguous
-# slices preserve the SERIAL_CHAIN adjacency (T5,T22a,T16 and T50,T51) at N=6,
-# and make shard evidence reproducible without hand-building a 94-key -T list.
+# v3.96.0 (CHG-133, REQ-1332): cost-balanced 6-way partition. LPT over the
+# 2026-10-29 medians in .agent-state/cost-ledger.tsv (T49 161.5s, T57 52s,
+# T16 35.5s, T14/T55 25s, T83 24s, T53 23s, ...; unseen sections 2s). The
+# contiguous 97/6 split cost 111/110/33/215/175/96s — a 6.6x spread and 244s
+# wall clock; T49 alone is the hard floor, the other five level at 115.0-115.5.
+# SECTIONS order is untouched (full-run and -j replay keep source order) and the
+# SERIAL_CHAIN groups are assigned whole. Adding a section to SECTIONS requires
+# adding it here: the drift guard below refuses to shard, and T87 pins coverage.
+SHARD_PLAN_6=(
+  "T49"
+  "T1 T1b T2 T5 T22a T16 T10 T13 T20 T18c T18d T33 T72 T73 T73b T77 T79 T80"
+  "T6b T18 T18b T19 T25 T26 T26b T34 T57 T62 T67 T75 T78 T81 T86 T87"
+  "T6 T7 T14 T15 T17b T22b T24 T27 T29 T36 T44 T47 T50 T51 T63 T66 T84 T85"
+  "T3 T9 T11 T17 T64 T31 T40 T42 T46 T55 T56 T58 T59 T60 T61 T65 T69 T76"
+  "T4 T7b T8 T12 T21 T18d-E58R T23 T26c T28 T30 T32 T37 T38 T39 T41 T43 T48 T52 T53 T54 T68 T70 T71 T74 T82 T83"
+)
+
+# v3.91.7 (CHG-127): --shard i/N — deterministic partition, reproducible without
+# hand-building a 94-key -T list. N=6 uses SHARD_PLAN_6 (cost-balanced); any
+# other N falls back to contiguous slices (which keep SERIAL_CHAIN adjacency
+# for small N). Both make shard evidence reproducible.
 if [[ -n "$SHARD" ]]; then
   [[ "$AUTO" -eq 1 || ${#WANTED[@]} -gt 0 ]] \
     && { printf 'invalid option combination: --shard is exclusive with -T/auto\n' >&2; exit 2; }
   _sh_i="${SHARD%/*}"; _sh_n="${SHARD#*/}"
   [[ "$_sh_i" -le "$_sh_n" ]] || { printf 'invalid --shard value: %s (i must be <= N)\n' "$SHARD" >&2; exit 2; }
-  _sh_total=${#SECTIONS[@]}
-  _sh_start=$(( (_sh_i - 1) * _sh_total / _sh_n ))
-  _sh_end=$(( _sh_i * _sh_total / _sh_n ))
-  WANTED=("${SECTIONS[@]:_sh_start:_sh_end-_sh_start}")
+  if [[ "$_sh_n" -eq 6 ]]; then
+    _plan_flat="${SHARD_PLAN_6[*]}"
+    for _sh_s in "${SECTIONS[@]}"; do
+      case " $_plan_flat " in
+        *" $_sh_s "*) ;;
+        *) printf 'shard plan drift: %s is not in SHARD_PLAN_6 (update the plan in tests/run-tests.sh)\n' "$_sh_s" >&2; exit 2 ;;
+      esac
+    done
+    # 反向同样要守：表内成员不在 SECTIONS（改名/删节后留死名）或重复出现，
+    # 会让某一节在表中被算两次、而某个真节永远跑不到——单向守卫看不出来。
+    for _sh_p in "${SHARD_PLAN_6[@]}"; do
+      for _sh_m in $_sh_p; do
+        case " ${SECTIONS[*]} " in
+          *" $_sh_m "*) ;;
+          *) printf 'shard plan drift: %s is in SHARD_PLAN_6 but not in SECTIONS (update the plan)\n' "$_sh_m" >&2; exit 2 ;;
+        esac
+        _sh_seen=$(printf '%s\n' $_plan_flat | grep -c "^${_sh_m}$")
+        [[ "$_sh_seen" -eq 1 ]] || { printf 'shard plan drift: %s appears %s times in SHARD_PLAN_6 (each section exactly once)\n' "$_sh_m" "$_sh_seen" >&2; exit 2; }
+      done
+    done
+    WANTED=( ${SHARD_PLAN_6[$((_sh_i - 1))]:-} )
+    # An empty group would otherwise die on ${WANTED[0]} below under `set -u`
+    # (rc=1, no named message) instead of the plan-drift refusal.
+    [[ ${#WANTED[@]} -gt 0 ]] || { printf 'shard plan drift: shard %s/%s is empty in SHARD_PLAN_6 (each shard needs at least one section)\n' "$_sh_i" "$_sh_n" >&2; exit 2; }
+  else
+    _sh_total=${#SECTIONS[@]}
+    _sh_start=$(( (_sh_i - 1) * _sh_total / _sh_n ))
+    _sh_end=$(( _sh_i * _sh_total / _sh_n ))
+    WANTED=("${SECTIONS[@]:_sh_start:_sh_end-_sh_start}")
+  fi
   printf 'shard %s/%s: %d sections (%s .. %s)\n' "$_sh_i" "$_sh_n" "${#WANTED[@]}" "${WANTED[0]}" "${WANTED[${#WANTED[@]}-1]}"
   if [[ "${AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY:-0}" == "1" ]]; then
     printf 'shard-resolve-only:%s\n' "$(printf ' %s' "${WANTED[@]}")"; exit 0

@@ -45,6 +45,36 @@ shopt -s nullglob
 logs=("$logs_dir"/*.log)
 shopt -u nullglob
 [[ ${#logs[@]} -gt 0 ]] || { echo "shard-sum: no *.log under '$logs_dir'" >&2; exit 2; }
+# v3.96.0 (CHG-133, REQ-1332): an all-snapshot round is NOT the full-suite truth.
+# --worktree logs open with `worktree: snapshot <sha> at <dir>`; inside such a
+# snapshot T87 early-exits (1 assertion instead of the full section), so the sum
+# is short of the real count by however many assertions T87 carries that round.
+# The 5+1 SOP leaves one live shard, which is what makes the sum comparable with
+# tests/.suite-baseline. The warning names the mechanism, never a frozen number —
+# literal totals go stale the moment any section changes.
+_snap=0; _live=0
+for _f in "${logs[@]}"; do
+  # evidence-round writes a sibling shard-<i>.mode next to each log — trust it
+  # first: a snapshot that dies before printing its banner has no banner, and a
+  # live shard that echoes a nested run's banner would otherwise be misread.
+  # Ad-hoc log dirs (no .mode) still fall back to the banner heuristic.
+  _mode=""
+  [[ -f "${_f%.log}.mode" ]] && _mode=$(tr -d '[:space:]' < "${_f%.log}.mode" 2>/dev/null)
+  if [[ "$_mode" == "worktree" ]]; then _snap=$(( _snap + 1 ))
+  elif [[ "$_mode" == "live" ]]; then _live=$(( _live + 1 ))
+  elif grep -q '^worktree: snapshot ' "$_f" 2>/dev/null; then _snap=$(( _snap + 1 ))
+  else _live=$(( _live + 1 ))
+  fi
+done
+if [[ "$_snap" -gt 0 && "$_live" -eq 0 ]]; then
+  echo "shard-sum: WARN — all ${_snap} logs are worktree snapshots; T87 early-exits inside a snapshot, so this total is short of the full-suite truth. Add one non-snapshot shard (scripts/evidence-round.sh defaults to 5 snapshot + 1 live)." >&2
+  # 告警不足以守住 --write：写入面是权威面，把短合计写进 .suite-baseline 会
+  # 让后续每个 --check 都以错误基线为准（A3/A10b 全绿反而掩盖漏计）。
+  if [[ "$do_write" -eq 1 ]]; then
+    echo "shard-sum: refusing --write on an all-snapshot round — the total is not the full-suite truth; add one non-snapshot shard first" >&2
+    exit 2
+  fi
+fi
 total_p=0; total_f=0; any_bad=0
 # numeric-aware order: 1.log 2.log … 10.log (leading number, then lexical)
 while IFS= read -r f; do
