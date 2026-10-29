@@ -153,10 +153,21 @@ ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [out
     # v3.91.2 erratum: keep every `run-full` row. Pruning them silently erased
     # the whole-run p50 (plan fell back to the 300 s prior) — the retention rule
     # must never destroy the cost-learning baseline.
+    # v3.97.0 (CHG-134, REQ-1344): also keep the latest `sec` row per section.
+    # Heavy sections (T49 fresh-clone, T57 nested chain) run rarely, so a
+    # row-count window pruned exactly the rows the shard planner prices from —
+    # the planner then modelled them at the 2 s "unseen" default and skewed the
+    # plan. Per-id latest rows are bounded by the section count (~97).
     awk 'NR==1 {print; next}
-         $2=="run-full" {rf[++n]=$0; next}
-         {a[++m]=$0}
-         END { for (i=1;i<=n;i++) print rf[i]; s=(m>500?m-499:1); for (i=s;i<=m;i++) print a[i] }' \
+         {a[++m]=$0; ids[m]=$3; lines[m]=NR
+          if ($2=="run-full") keep[NR]=1
+          if ($2=="sec") last[$3]=NR}
+         END {
+           for (i=1;i<=m;i++) if (ids[i] in last && lines[i]==last[ids[i]]) keep[lines[i]]=1
+           s=(m>500?m-499:1)
+           for (i=s;i<=m;i++) keep[lines[i]]=1
+           for (i=1;i<=m;i++) if (keep[lines[i]]) print a[i]
+         }' \
       "$LEDGER_FILE" > "$LEDGER_FILE.rot" 2>/dev/null && mv -f "$LEDGER_FILE.rot" "$LEDGER_FILE" 2>/dev/null || rm -f "$LEDGER_FILE.rot" 2>/dev/null
   fi
 }
@@ -6821,6 +6832,21 @@ section_T68() {
     "$(printf '%s\n' "$t68_shard" | grep -cE '^shard-resolve-only:.* T5 T22a T16( |$)')"
   report "T68 N=6 plan covers every section exactly once" 97 \
     "$(printf '%s\n' "$t68_shard" | sed -n 's/^shard-resolve-only: //p' | tr ' ' '\n' | grep -c .)"
+  # v3.97.0 (CHG-134, REQ-1344): the plan is machine-written — the BEGIN/END
+  # markers must appear exactly once so `scripts/shard-plan.sh --write` can never
+  # rewrite the wrong block, and both new source tools must route to T87 under
+  # `-T auto` (an unmapped governance tool silently falls back to a wider run).
+  # Anchored to the block's own indentation: the marker strings also appear as
+  # literals in the planner's pins, so an unanchored count would drift.
+  report "T68 the shard plan block carries one BEGIN marker" 1 \
+    "$(grep -c '^  # SHARD_PLAN_6_BEGIN$' "$ROOT/tests/run-tests.sh")"
+  report "T68 the shard plan block carries one END marker" 1 \
+    "$(grep -c '^  # SHARD_PLAN_6_END$' "$ROOT/tests/run-tests.sh")"
+  report "T68 auto-resolve routes the two new source tools and their cost pin to T87" 3 \
+    "$(for _f in scripts/shard-plan.sh scripts/pre-round-check.sh tests/.shard-plan-costs.tsv; do
+        AGENT_GUARD_SUITE_AUTO_DIFF="$_f" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+          bash "$ROOT/tests/run-tests.sh" -T auto 2>/dev/null | grep -c 'auto-resolve-only: .*T87'
+      done | grep -c 1)"
   t68_rc=0; t68_out=$(AGENT_GUARD_SUITE_LOCK_HELD=0 AGENT_GUARD_SUITE_LOCK_DIR="$t68_d/held" bash "$ROOT/tests/run-tests.sh" -T "" 2>&1 >/dev/null) || t68_rc=$?
   # v3.91.7: a host with the kill marker refuses a full run (rc3) and names the
   # shard escape hatch — the mechanical stop for repeated 10-minute kills.
@@ -8546,6 +8572,399 @@ EOS
   # REQ-1334 (CHG-133): the receipt defaults the audit to parallel; explicit 0 wins.
   report "T87 fresh-clone defaults the audit to parallel" 1 \
     "$(grep -cF 'AGENT_GUARD_AUDIT_PARALLEL="${AGENT_GUARD_AUDIT_PARALLEL:-1}"' "$ROOT/tests/fresh-clone-check.sh")"
+  # ── v3.97.0 (CHG-134, REQ-1340): static preflight (TC-2340) ───────────────
+  # The fixture is a miniature source layout where every registry is ONE line:
+  # "forgot to register" is exactly "delete that line", so each case below is a
+  # named regression for a class that cost CHG-133 520 s of round time.
+  _t87_pcd=$(mktemp -d "${TMPDIR:-/tmp}/t87-pc.XXXXXX")
+  _t87_pc_make() {
+    rm -rf "$_t87_pcd/tree"
+    mkdir -p "$_t87_pcd/tree/scripts" "$_t87_pcd/tree/tests" "$_t87_pcd/tree/resources/templates"
+    # Manifest shape mirrors scripts/bootstrap.sh: <logical-key> <dest> <src>.
+    cat > "$_t87_pcd/tree/scripts/bootstrap.sh" <<'EOB'
+install_file foo "$SCRIPTS_DIR/foo.sh" "scripts/foo.sh"
+install_file bar "$TESTS_DIR/bar.sh" "tests/bar.sh"
+install_file tpl "$SCRIPTS_DIR/tpl.sh" "resources/templates/tpl.sh"
+install_file gate "$SCRIPTS_DIR/agent-gate" "resources/templates/agent-gate.sh"
+EOB
+    printf '#!/usr/bin/env bash\ntrue\n' > "$_t87_pcd/tree/scripts/foo.sh"
+    printf '#!/usr/bin/env bash\ntrue\n' > "$_t87_pcd/tree/tests/bar.sh"
+    printf '#!/usr/bin/env bash\ntrue\n' > "$_t87_pcd/tree/resources/templates/tpl.sh"
+    cat > "$_t87_pcd/tree/resources/templates/agent-gate.sh" <<'EOG'
+is_code_path() {
+  case "$1" in
+    ${scripts_re}/foo\.sh) return 0 ;;
+    ${scripts_re}/tpl\.sh) return 0 ;;
+    ${tests_re}/bar\.sh) return 0 ;;
+  esac
+  return 1
+}
+EOG
+    # The fixture suite is emitted with printf, not a heredoc: a literal
+    # `SECTIONS=(...)` line at column 0 in THIS file would be picked up by every
+    # sed-based reader (precheck R5, shard-plan) as the real registry.
+    {
+      printf '#!/usr/bin/env bash\n'
+      printf 'SECTIONS=(T1 T2 T3 T4 T6 T7 T8 T9 T50 T51 T5 T22a T16)\n'
+      printf 'SERIAL_CHAIN=(T50 T51 T5 T22a T16)\n'
+      printf 'SHARD_PLAN_6=(\n'
+      printf '  # SHARD_PLAN_6_BEGIN\n'
+      printf '  "T5 T22a T16"\n'
+      printf '  "T1 T6"\n'
+      printf '  "T2 T7"\n'
+      printf '  "T3 T8"\n'
+      printf '  "T4 T9"\n'
+      printf '  "T50 T51"\n'
+      printf '  # SHARD_PLAN_6_END\n'
+      printf ')\n'
+      printf '_fake_src() { cp "$ROOT/scripts/foo.sh" "$FAKE_SRC/scripts/foo.sh"; }\n'
+      printf '_fake_src_bar() { cp "$ROOT/tests/bar.sh" "$FAKE_SRC/tests/bar.sh"; }\n'
+    } > "$_t87_pcd/tree/tests/run-tests.sh"
+    cat >> "$_t87_pcd/tree/tests/run-tests.sh" <<'EOS'
+_i=${2%%/*}
+_mem=${SHARD_PLAN_6[$((_i-1))]}
+printf 'shard %s: %s\n' "$2" "$_mem"
+printf 'shard-resolve-only: %s\n' "$_mem"
+EOS
+    cp "$ROOT/scripts/shard-plan.sh" "$_t87_pcd/tree/scripts/shard-plan.sh"
+  }
+  _t87_pc_mut() { rm -rf "$_t87_pcd/$1"; cp -R "$_t87_pcd/tree" "$_t87_pcd/$1"; }
+  _t87_pc_make
+  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/tree" 2>&1); _t87_rc=$?
+  report "T87 TC-2340 precheck clean fixture exits 0" 0 "$_t87_rc"
+  report "T87 precheck clean fixture reports R1..R5 ok" 5 \
+    "$(printf '%s\n' "$_t87_o" | grep -cE '^ok R[1-5] ')"
+  report "T87 precheck clean fixture reports no failure" 0 \
+    "$(printf '%s\n' "$_t87_o" | grep -cE '^(fail|warn) ')"
+  # R1: a manifest source that is not on disk (the file was renamed/never shipped)
+  _t87_pc_mut r1; rm -f "$_t87_pcd/r1/resources/templates/tpl.sh"
+  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r1" 2>&1)
+  report "T87 precheck R1 misses a vanished source by name" 1 \
+    "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R1 .*resources/templates/tpl\.sh')"
+  # R2: the install fixture (T21 FAKE_SRC) stopped copying the new script
+  _t87_pc_mut r2
+  grep -vF 'cp "$ROOT/scripts/foo.sh"' "$_t87_pcd/r2/tests/run-tests.sh" > "$_t87_pcd/r2/t.tmp" \
+    && mv "$_t87_pcd/r2/t.tmp" "$_t87_pcd/r2/tests/run-tests.sh"
+  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r2" 2>&1)
+  report "T87 precheck R2 misses an uncopied fixture script by name" 1 \
+    "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R2 .*scripts/foo\.sh')"
+  # R3: the gate whitelist does not know the new code file (E125 on first commit)
+  _t87_pc_mut r3
+  grep -vF 'scripts_re}/foo' "$_t87_pcd/r3/resources/templates/agent-gate.sh" > "$_t87_pcd/r3/t.tmp" \
+    && mv "$_t87_pcd/r3/t.tmp" "$_t87_pcd/r3/resources/templates/agent-gate.sh"
+  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r3" 2>&1)
+  report "T87 precheck R3 misses a whitelist entry by name" 1 \
+    "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R3 .*scripts/foo\.sh')"
+  # R4: a template shell script that is installed nowhere
+  _t87_pc_mut r4
+  grep -vF '"resources/templates/tpl.sh"' "$_t87_pcd/r4/scripts/bootstrap.sh" > "$_t87_pcd/r4/t.tmp" \
+    && mv "$_t87_pcd/r4/t.tmp" "$_t87_pcd/r4/scripts/bootstrap.sh"
+  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r4" 2>&1)
+  report "T87 precheck R4 misses an uninstalled template by name" 1 \
+    "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R4 .*resources/templates/tpl\.sh')"
+  # R6 is an observation: LPT packs 10 atoms of ~50 s onto 6 shards as 100 s
+  # max against an 85 s floor, past the 1.15x tolerance. A fixture with fewer
+  # atoms cannot warn: the heaviest atom then *is* the floor, so max <= floor.
+  _t87_pc_mut r6
+  cp "$ROOT/scripts/shard-plan.sh" "$_t87_pcd/r6/scripts/shard-plan.sh"
+  mkdir -p "$_t87_pcd/r6/.agent-state"
+  { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
+    for _id in T1 T2 T3 T4 T6 T7 T8 T9; do
+      printf '2026-10-29T00:00:00Z\tsec\t%s\tsuite\t50\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n' "$_id"
+    done
+    printf '2026-10-29T00:00:00Z\tsec\tT50\tsuite\t25\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT51\tsuite\t25\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    for _id in T5 T22a T16; do
+      printf '2026-10-29T00:00:00Z\tsec\t%s\tsuite\t20\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n' "$_id"
+    done
+  } > "$_t87_pcd/r6/.agent-state/cost-ledger.tsv"
+  # R6 compares the table with the planner's pinned model, so the fixture needs
+  # that pin: --write derives both from the ledger above.
+  bash "$_t87_pcd/r6/scripts/shard-plan.sh" --root "$_t87_pcd/r6" --write >/dev/null 2>&1
+  report "T87 precheck fixture pinned its own plan for R6" 0 "$?"
+  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r6" 2>&1); _t87_rc=$?
+  report "T87 precheck treats cost imbalance as a WARN, not a failure" 0 "$_t87_rc"
+  report "T87 precheck names the predicted load gap" 1 \
+    "$(printf '%s\n' "$_t87_o" | grep -c '^warn R6 ')"
+  bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r6" --strict >/dev/null 2>&1
+  report "T87 precheck --strict escalates the WARN to rc1" 1 "$?"
+  bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/tree" --strict >/dev/null 2>&1
+  report "T87 precheck --strict leaves a clean fixture at rc0" 0 "$?"
+  bash "$ROOT/scripts/pre-round-check.sh" --wat >/dev/null 2>&1
+  report "T87 precheck rejects an unknown option with rc2" 2 "$?"
+  # Integration: a red preflight refuses to start a round and creates nothing.
+  _t87_pc_mut g
+  _t87_pcg="$_t87_pcd/g"
+  cp "$ROOT/scripts/pre-round-check.sh" "$ROOT/scripts/evidence-round.sh" \
+     "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$ROOT/scripts/shard-sum.sh" "$_t87_pcg/scripts/"
+  printf '#!/usr/bin/env bash\necho "2 passed, 0 failed"\n' > "$_t87_pcg/tests/green-stub.sh"
+  ( cd "$_t87_pcg" && git init -q && git add -A \
+      && git -c user.name=t -c user.email=t@example.com commit -qm base ) >/dev/null 2>&1
+  rm -f "$_t87_pcg/resources/templates/tpl.sh"
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FX --round 1 --shards 2 --live-shard 2 \
+      --state-dir "$_t87_pcd/st" ) > "$_t87_pcd/out" 2>&1; _t87_rc=$?
+  report "T87 evidence-round refuses to start on a red preflight" 2 "$_t87_rc"
+  report "T87 the refusal names the preflight" 1 "$(grep -c 'pre-round-check failed' "$_t87_pcd/out")"
+  report "T87 a refused round leaves no round directory" 0 \
+    "$([[ -d "$_t87_pcd/st/CHG-FX/round-1" ]] && echo 1 || echo 0)"
+  ( cd "$_t87_pcg" && git checkout -- resources/templates/tpl.sh ) >/dev/null 2>&1
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FX --round 1 --shards 2 --live-shard 2 \
+      --skip-precheck --state-dir "$_t87_pcd/st" ) >/dev/null 2>&1; _t87_rc=$?
+  report "T87 --skip-precheck starts the round anyway" 0 "$_t87_rc"
+  report "T87 --skip-precheck round keeps its artifacts" 0 \
+    "$([[ -f "$_t87_pcd/st/CHG-FX/round-1/meta.tsv" ]] && echo 0 || echo 1)"
+  # ── REQ-1342: code-face fingerprint + explicit carry (TC-2342) ────────────
+  report "T87 TC-2342 a plain round records the code-face fingerprint" 1 \
+    "$(awk -F'\t' '$1=="code_face_sha" && $2!="-" && $2!=""{n++} END{print n+0}' "$_t87_pcd/st/CHG-FX/round-1/meta.tsv")"
+  report "T87 a plain round is never carried" 1 \
+    "$(awk -F'\t' '$1=="carried_from" && $2=="-"{n++} END{print n+0}' "$_t87_pcd/st/CHG-FX/round-1/meta.tsv")"
+  # A tracked file inside the claim face (docs/changes) moves the tree but not
+  # the code face — the "green round, docs-only edit" case that cost 342 s.
+  mkdir -p "$_t87_pcg/docs/changes/CHG-FX"
+  printf 'v1\n' > "$_t87_pcg/docs/changes/CHG-FX/00-intent.md"
+  ( cd "$_t87_pcg" && git add -A ) >/dev/null 2>&1
+  # Read-only means read-only: the candidate lookup must not migrate the ledger
+  # (a schema migration on this path rewrote the file during a "check").
+  _t87_ledger_before=$(cksum "$_t87_pcd/st/ledger.tsv")
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry-check --state-dir "$_t87_pcd/st" ) \
+    > "$_t87_pcd/out" 2>&1; _t87_rc=$?
+  report "T87 --carry-check finds the green round after a docs-only edit" 0 "$_t87_rc"
+  report "T87 --carry-check names the candidate round" 1 \
+    "$(grep -c '^carryable: round 1 ' "$_t87_pcd/out")"
+  report "T87 --carry-check leaves the ledger byte-identical" 1 \
+    "$([[ "$(cksum "$_t87_pcd/st/ledger.tsv")" == "$_t87_ledger_before" ]] && echo 1 || echo 0)"
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry --chg CHG-FX --state-dir "$_t87_pcd/st" ) \
+    >/dev/null 2>&1; _t87_rc=$?
+  report "T87 --carry creates the inherited round" 0 "$_t87_rc"
+  report "T87 the carried round records carried_from=1" 1 \
+    "$(awk -F'\t' '$1=="carried_from" && $2=="1"{n++} END{print n+0}' "$_t87_pcd/st/CHG-FX/round-2/meta.tsv")"
+  report "T87 the carried round keeps the source total" 4 \
+    "$(awk -F'\t' '$1=="total_passed"{print $2}' "$_t87_pcd/st/CHG-FX/round-2/meta.tsv")"
+  report "T87 the carried round costs zero wall time" 1 \
+    "$(awk -F'\t' '$1=="wall_s" && $2=="0"{n++} END{print n+0}' "$_t87_pcd/st/CHG-FX/round-2/meta.tsv")"
+  report "T87 the carried round copies the shard logs instead of running them" 0 \
+    "$(diff -q "$_t87_pcd/st/CHG-FX/round-1/shard-1.log" "$_t87_pcd/st/CHG-FX/round-2/shard-1.log" >/dev/null 2>&1 && echo 0 || echo 1)"
+  # Carry copies a *result*: a green row from another suite, one with failures, or
+  # one shorter than the pinned baseline is not a result of this suite at all.
+  _t87_meta_edit() { # <meta> <key> <value>
+    awk -F'\t' -v OFS='\t' -v k="$2" -v v="$3" '$1==k{$2=v} {print}' "$1" > "$1.tmp" \
+      && mv "$1.tmp" "$1"
+  }
+  cp "$_t87_pcd/st/CHG-FX/round-1/meta.tsv" "$_t87_pcd/m1.bak"
+  _t87_meta_edit "$_t87_pcd/st/CHG-FX/round-1/meta.tsv" suite /tmp/other-suite.sh
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry --chg CHG-FX --state-dir "$_t87_pcd/st" ) \
+    > "$_t87_pcd/out" 2>&1; _t87_rc=$?
+  report "T87 --carry refuses a round that another suite produced" 2 "$_t87_rc"
+  report "T87 the suite-mismatch refusal names both suites" 1 \
+    "$(grep -c 'ran /tmp/other-suite.sh, not' "$_t87_pcd/out")"
+  cp "$_t87_pcd/m1.bak" "$_t87_pcd/st/CHG-FX/round-1/meta.tsv"
+  _t87_meta_edit "$_t87_pcd/st/CHG-FX/round-1/meta.tsv" total_failed 1
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry --chg CHG-FX --state-dir "$_t87_pcd/st" ) \
+    > "$_t87_pcd/out" 2>&1; _t87_rc=$?
+  report "T87 --carry refuses a source round with failures" 2 "$_t87_rc"
+  report "T87 the failure-count refusal quotes the count" 1 \
+    "$(grep -c "has total_failed='1'" "$_t87_pcd/out")"
+  cp "$_t87_pcd/m1.bak" "$_t87_pcd/st/CHG-FX/round-1/meta.tsv"
+  printf '100\n' > "$_t87_pcg/tests/.suite-baseline"
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry --chg CHG-FX --state-dir "$_t87_pcd/st" ) \
+    > "$_t87_pcd/out" 2>&1; _t87_rc=$?
+  report "T87 --carry refuses a total below the pinned baseline" 2 "$_t87_rc"
+  report "T87 the baseline refusal names the baseline gap" 1 \
+    "$(grep -c 'below tests/.suite-baseline (100)' "$_t87_pcd/out")"
+  rm -f "$_t87_pcg/tests/.suite-baseline"
+  # "Green and same face" is not enough: with every green row at the current
+  # tree, a carry would be a copy of the tree it claims to re-verify.
+  cp "$_t87_pcd/st/ledger.tsv" "$_t87_pcd/ledger.bak"
+  _t87_curtree=$(awk -F'\t' '$1=="tree_sha"{print $2}' "$_t87_pcd/st/CHG-FX/round-2/meta.tsv")
+  awk -F'\t' -v OFS='\t' -v t="$_t87_curtree" \
+    '$2=="CHG-FX" && $3=="1"{$5=t} {print}' "$_t87_pcd/st/ledger.tsv" > "$_t87_pcd/st/ledger.tmp" \
+    && mv "$_t87_pcd/st/ledger.tmp" "$_t87_pcd/st/ledger.tsv"
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry-check --state-dir "$_t87_pcd/st" ) \
+    > "$_t87_pcd/out" 2>&1; _t87_rc=$?
+  report "T87 --carry-check refuses a round of the current tree" 1 "$_t87_rc"
+  report "T87 the same-tree refusal says a different tree is required" 1 \
+    "$(grep -c 'code face and a different tree' "$_t87_pcd/out")"
+  cp "$_t87_pcd/ledger.bak" "$_t87_pcd/st/ledger.tsv"
+  printf '#!/usr/bin/env bash\ntrue # code touched\n' > "$_t87_pcg/scripts/foo.sh"
+  ( cd "$_t87_pcg" && git add -A && bash scripts/evidence-round.sh --carry-check --state-dir "$_t87_pcd/st" ) \
+    >/dev/null 2>&1
+  report "T87 --carry-check refuses after a tracked code change" 1 "$?"
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/green-stub.sh" \
+      bash scripts/evidence-round.sh --carry --chg CHG-FX --state-dir "$_t87_pcd/st" ) \
+    >/dev/null 2>&1
+  report "T87 --carry without a candidate is a named refusal (rc2)" 2 "$?"
+  # ── REQ-1341: --fail-fast stops the siblings (TC-2341) ────────────────────
+  cat > "$_t87_pcg/tests/ff-stub.sh" <<'EOF'
+#!/usr/bin/env bash
+case " $* " in
+  *" --shard 1/"*) echo "FAIL T0 fast-red"; echo "0 passed, 1 failed"; exit 1 ;;
+  *" --shard 2/"*) echo "sleeper start"; sleep "${STUB_SLEEP:-8}"; echo "5 passed, 0 failed"; exit 0 ;;
+esac
+echo "0 passed, 0 failed"
+EOF
+  _t87_t0=$(date +%s)
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/ff-stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FF --round 1 --shards 2 --live-shard 2 \
+      --fail-fast --skip-precheck --state-dir "$_t87_pcd/st" ) >/dev/null 2>&1; _t87_rc=$?
+  _t87_dt=$(( $(date +%s) - _t87_t0 ))
+  report "T87 TC-2341 --fail-fast round exits 1 on the fast red" 1 "$_t87_rc"
+  report "T87 --fail-fast does not wait out the slow sibling" 1 \
+    "$([[ "$_t87_dt" -lt 6 ]] && echo 1 || echo 0)"
+  report "T87 --fail-fast records the terminated sibling as 143" 143 \
+    "$(cat "$_t87_pcd/st/CHG-FF/round-1/shard-2.rc" 2>/dev/null)"
+  report "T87 --fail-fast meta records the switch" 1 \
+    "$(awk -F'\t' '$1=="fail-fast" && $2=="1"{n++} END{print n+0}' "$_t87_pcd/st/CHG-FF/round-1/meta.tsv")"
+  report "T87 --fail-fast meta names the killed shard" 1 \
+    "$(awk -F'\t' '$1=="killed" && $2=="2"{n++} END{print n+0}' "$_t87_pcd/st/CHG-FF/round-1/meta.tsv")"
+  report "T87 --fail-fast writes the not-summed note" 1 \
+    "$(grep -c 'fail-fast: sum not computed' "$_t87_pcd/st/CHG-FF/round-1/sum.txt")"
+  report "T87 --fail-fast still appends a ledger row" 1 \
+    "$(awk -F'\t' '$2=="CHG-FF" && $3=="1"{n++} END{print n+0}' "$_t87_pcd/st/ledger.tsv")"
+  ( cd "$_t87_pcg" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_pcg/tests/ff-stub.sh" STUB_SLEEP=4 \
+      bash scripts/evidence-round.sh --chg CHG-FF --round 2 --shards 2 --live-shard 2 \
+      --skip-precheck --state-dir "$_t87_pcd/st" ) >/dev/null 2>&1; _t87_rc=$?
+  report "T87 without --fail-fast the round waits for every shard" 0 \
+    "$([[ "$_t87_rc" -eq 1 && "$(cat "$_t87_pcd/st/CHG-FF/round-2/shard-2.rc")" == "0" ]] && echo 0 || echo 1)"
+  report "T87 the default round still sums the live shard" 1 \
+    "$(grep -c 'total: 5 passed, 1 failed' "$_t87_pcd/st/CHG-FF/round-2/sum.txt")"
+  # ── REQ-1343: cache retention across fingerprints (TC-2343) ──────────────
+  _t87_cc=$(mktemp -d "${TMPDIR:-/tmp}/t87-cc.XXXXXX")
+  _t87_fp=$(bash -c 'source "$1"; suite_tree_fingerprint "$2"' _ \
+      "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$ROOT")
+  { printf 'AAAA\tT9\t1\t0\t100\n'
+    printf 'BBBB\tT9\t1\t0\t200\n'
+    printf 'CCCC\tT9\t1\t0\t300\n'
+  } > "$_t87_cc/c.tsv"
+  AGENT_GUARD_SECTION_CACHE=1 AGENT_GUARD_SECTION_CACHE_PATH="$_t87_cc/c.tsv" \
+    bash tests/run-tests.sh -T T1 >/dev/null 2>&1
+  report "T87 TC-2343 cache keeps the current fingerprint's row" 1 \
+    "$(grep -c "^${_t87_fp}	" "$_t87_cc/c.tsv")"
+  report "T87 cache keeps the two most recent historical fingerprints" 2 \
+    "$(grep -cE '^(BBBB|CCCC)	' "$_t87_cc/c.tsv")"
+  report "T87 cache prunes the oldest historical fingerprint" 0 \
+    "$(grep -c '^AAAA	' "$_t87_cc/c.tsv")"
+  _t87_o=$(AGENT_GUARD_SECTION_CACHE=1 AGENT_GUARD_SECTION_CACHE_PATH="$_t87_cc/c.tsv" \
+    bash tests/run-tests.sh -T T1 2>&1)
+  report "T87 the retained row serves an exact-fingerprint hit" 1 \
+    "$(printf '%s\n' "$_t87_o" | grep -c '^\[cached\] T1 ')"
+  rm -rf "$_t87_cc"
+  rm -rf "$_t87_pcd"
+  # REQ-1344 (CHG-134): the planner is deterministic, balances, and its marked
+  # block is the committed plan (TC-2344).
+  report "T87 TC-2344 shard-plan.sh is executable" 0 "$([[ -x "$ROOT/scripts/shard-plan.sh" ]] && echo 0 || echo 1)"
+  _t87_spd=$(mktemp -d "${TMPDIR:-/tmp}/t87-sp.XXXXXX")
+  { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT49\tsuite\t170\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT57\tsuite\t52\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT16\tsuite\t35.5\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT14\tsuite\t25\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT55\tsuite\t25\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT83\tsuite\t24\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+    printf '2026-10-29T00:00:00Z\tsec\tT53\tsuite\t23\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
+  } > "$_t87_spd/l.tsv"
+  _t87_p1=$(bash "$ROOT/scripts/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" 2>&1)
+  _t87_p2=$(bash "$ROOT/scripts/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" 2>&1)
+  report "T87 planner is deterministic for the same ledger" 1 \
+    "$([[ "$_t87_p1" == "$_t87_p2" ]] && echo 1 || echo 0)"
+  report "T87 planner covers every section exactly once" \
+    "$(printf '%s\n' "${SECTIONS[@]}" | sort | tr '\n' ' ')" \
+    "$(printf '%s\n' "$_t87_p1" | sed -n 's/^shard [0-9]: //p' | tr ' ' '\n' | grep . | sort | tr '\n' ' ')"
+  report "T87 planner keeps the T5/T22a/T16 atom in one shard" 1 \
+    "$(printf '%s\n' "$_t87_p1" | grep -cE '^shard [0-9]:.*(^| )T5 T22a T16( |$)')"
+  report "T87 planner keeps the T50/T51 atom in one shard" 1 \
+    "$(printf '%s\n' "$_t87_p1" | grep -cE '^shard [0-9]:.*(^| )T50 T51( |$)')"
+  _t87_pj=$(bash "$ROOT/scripts/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" --json 2>&1)
+  report "T87 planner predicts a load within 1.15x the packing floor" 1 \
+    "$(sed -n 's/.*"max":\([0-9.]*\).*"floor":\([0-9.]*\).*/\1 \2/p' <<< "$_t87_pj" \
+       | awk '{ if (NF==2 && $1 <= $2 * 1.15) print 1; else print 0 }')"
+  # --check / --write round-trip on a copy, so the real suite is never touched.
+  mkdir -p "$_t87_spd/r/tests"
+  cp "$ROOT/tests/run-tests.sh" "$_t87_spd/r/tests/run-tests.sh"
+  cp "$ROOT/scripts/shard-plan.sh" "$_t87_spd/r/scripts.sh"
+  chmod 755 "$_t87_spd/r/tests/run-tests.sh"
+  bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --ledger "$_t87_spd/l.tsv" --write >/dev/null 2>&1
+  report "T87 planner --write exits 0 on a marked copy" 0 "$?"
+  report "T87 planner --write keeps the suite's permission bits" 0 \
+    "$([[ -x "$_t87_spd/r/tests/run-tests.sh" ]] && echo 0 || echo 1)"
+  report "T87 planner --write pins one cost per section" "${#SECTIONS[@]}" \
+    "$(( $(wc -l < "$_t87_spd/r/tests/.shard-plan-costs.tsv" | tr -d ' ') - 1 ))"
+  # --check reads the pin, not the ledger: the suite appends its own `sec` rows,
+  # so a live-ledger check would red the plan as a side effect of running it.
+  bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --check >/dev/null 2>&1
+  report "T87 planner --check verifies its own written block from the pin" 0 "$?"
+  report "T87 planner --write emits one member line per shard" 6 \
+    "$(sed -n '/# SHARD_PLAN_6_BEGIN/,/# SHARD_PLAN_6_END/p' "$_t87_spd/r/tests/run-tests.sh" | grep -cE '^  "T')"
+  # --write must be surgical: everything outside the marked block stays byte-
+  # identical, or the tool could silently rewrite prose it does not own.
+  _t87_outside() { awk '/^  # SHARD_PLAN_6_BEGIN$/{f=1;next} /^  # SHARD_PLAN_6_END$/{f=0;next} !f' "$1"; }
+  report "T87 planner --write leaves every line outside the block alone" 0 \
+    "$(diff <(_t87_outside "$ROOT/tests/run-tests.sh") <(_t87_outside "$_t87_spd/r/tests/run-tests.sh") >/dev/null 2>&1 && echo 0 || echo 1)"
+  # Drift from the live ledger is a named WARN, never an rc: the pinned model is
+  # the contract, so a heavier machine cannot red the gate by itself. (T49 at 17 s
+  # is no longer the heaviest atom, so LPT re-plans; the table stays put.)
+  mkdir -p "$_t87_spd/r/.agent-state"
+  awk -F'\t' 'BEGIN{OFS="\t"} $3=="T49"{$5=17} {print}' "$_t87_spd/l.tsv" \
+    > "$_t87_spd/r/.agent-state/cost-ledger.tsv"
+  _t87_drift=$(bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --check 2>&1); _t87_drc=$?
+  report "T87 planner --check stays rc0 when the live ledger has drifted" 0 "$_t87_drc"
+  report "T87 planner names the drift without failing" 1 \
+    "$(printf '%s\n' "$_t87_drift" | grep -c 'WARN cost drift')"
+  # A tampered block must be caught: --check recomputes, it does not trust.
+  awk 'BEGIN{done=0} { print; if (!done && $0 ~ /^  "T/) { print "  \"T1\""; done=1 } }' \
+    "$_t87_spd/r/tests/run-tests.sh" > "$_t87_spd/r/t2"
+  cp "$_t87_spd/r/t2" "$_t87_spd/r/tests/run-tests.sh"
+  bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --check >/dev/null 2>&1
+  report "T87 planner --check rejects a tampered block (rc1)" 1 "$?"
+  # An extra group inside the markers is a plan change too, even though the first
+  # six lines still match — the suite would then shard one section twice.
+  awk 'BEGIN{done=0} { if (!done && $0 == "  # SHARD_PLAN_6_END") { print "  \"T82\""; done=1 } print }' \
+    "$ROOT/tests/run-tests.sh" > "$_t87_spd/r/tests/run-tests.sh"
+  _t87_xg=$(bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --check 2>&1)
+  report "T87 planner --check rejects a seventh group (rc1)" 1 "$?"
+  report "T87 planner names the group-count mismatch" 1 \
+    "$(printf '%s\n' "$_t87_xg" | grep -c 'the block has 7 group(s)')"
+  # A malformed pin is an environment error, not a silent fall-back to the ledger.
+  printf 'cost\tid\n50\tT49\n' > "$_t87_spd/r/tests/.shard-plan-costs.tsv"
+  bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --check >/dev/null 2>&1
+  report "T87 planner refuses a malformed pin (rc2)" 2 "$?"
+  bash "$ROOT/scripts/shard-plan.sh" --shards 5 --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
+  report "T87 planner keeps the contiguous fallback for N!=6" 0 "$?"
+  bash "$ROOT/scripts/shard-plan.sh" --shards 5 --check --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
+  report "T87 planner refuses --check for N!=6 (rc2)" 2 "$?"
+  bash "$ROOT/scripts/shard-plan.sh" --shards 5 --json --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
+  report "T87 planner refuses --json for N!=6 (rc2)" 2 "$?"
+  _t87_nl=$(mktemp -d "${TMPDIR:-/tmp}/t87-nl.XXXXXX"); mkdir -p "$_t87_nl/tests"
+  cp "$ROOT/tests/run-tests.sh" "$_t87_nl/tests/run-tests.sh"
+  bash "$ROOT/scripts/shard-plan.sh" --root "$_t87_nl" --write >/dev/null 2>&1
+  report "T87 planner --write without a ledger is rc2 (never a silent default)" 2 "$?"
+  rm -rf "$_t87_nl"
+  # The real repo's --check compares the shipped table against the committed pin
+  # (tests/.shard-plan-costs.tsv), so it is a stable verdict: rc0 means the table
+  # is exactly what the model produces. rc2 would mean the tool is broken.
+  bash "$ROOT/scripts/shard-plan.sh" --check >/dev/null 2>&1; _t87_spc=$?
+  report "T87 planner --check matches the pinned model on the real plan (rc0)" 0 "$_t87_spc"
+  # TC-2345/2346: the two carriers of the rework-split rule, and the falsified
+  # seventh lever. A65 covers the same carriers from the audit side; this pair
+  # keeps the claims chain (pre-review-check) able to see the TC ids in the
+  # machine face, and pins the decision not to rewrite new_repo.
+  _t87_carriers=0
+  for _t87_c in "resources/AGENTS.md|返工分治（v3.97.0，CHG-134）" \
+                "resources/DEVELOPMENT_STANDARDS.md|返工分治（v3.97.0，CHG-134）" \
+                "resources/templates/entry/05-test-results.md|## 延后补钉登记"; do
+    grep -qF -- "${_t87_c#*|}" "$ROOT/${_t87_c%%|*}" 2>/dev/null && _t87_carriers=$(( _t87_carriers + 1 ))
+  done
+  report "T87 TC-2345 the rework-split rule lands on AGENTS, DS and the 05 template" 3 "$_t87_carriers"
+  report "T87 TC-2346 the setup lever stays falsified (new_repo keeps its one body)" 1 \
+    "$(grep -c '^new_repo()' "$ROOT/tests/run-tests.sh")"
+  rm -rf "$_t87_spd"
   rm -f "$_t87_cache"
 }
 
@@ -8559,13 +8978,22 @@ SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T1
 # SECTIONS order is untouched (full-run and -j replay keep source order) and the
 # SERIAL_CHAIN groups are assigned whole. Adding a section to SECTIONS requires
 # adding it here: the drift guard below refuses to shard, and T87 pins coverage.
+# v3.97.0 (CHG-134, REQ-1344): the marked block is the output of
+# `scripts/shard-plan.sh --write` (median costs, LPT, chain atoms) — do not
+# hand-edit members. --write also pins the costs it used in
+# tests/.shard-plan-costs.tsv, and `--check` recomputes from that pin: the suite
+# appends its own `sec` rows, so checking against the live ledger would red the
+# plan as a side effect of running it. Drift from the live ledger is a WARN;
+# rebalancing is the explicit `--write` in the release ritual.
 SHARD_PLAN_6=(
+  # SHARD_PLAN_6_BEGIN
   "T49"
-  "T1 T1b T2 T5 T22a T16 T10 T13 T20 T18c T18d T33 T72 T73 T73b T77 T79 T80"
-  "T6b T18 T18b T19 T25 T26 T26b T34 T57 T62 T67 T75 T78 T81 T86 T87"
-  "T6 T7 T14 T15 T17b T22b T24 T27 T29 T36 T44 T47 T50 T51 T63 T66 T84 T85"
-  "T3 T9 T11 T17 T64 T31 T40 T42 T46 T55 T56 T58 T59 T60 T61 T65 T69 T76"
-  "T4 T7b T8 T12 T21 T18d-E58R T23 T26c T28 T30 T32 T37 T38 T39 T41 T43 T48 T52 T53 T54 T68 T70 T71 T74 T82 T83"
+  "T8 T57 T59 T66 T73b"
+  "T6b T7 T7b T10 T12 T15 T19 T20 T18c T23 T26 T26c T30 T34 T39 T43 T52 T61 T75 T76 T83 T87"
+  "T4 T5 T22a T16 T13 T18 T18b T22b T18d T25 T28 T31 T36 T44 T53 T63 T65 T71 T73 T77 T78 T82 T84 T85"
+  "T1b T9 T14 T21 T18d-E58R T24 T64 T29 T32 T37 T40 T46 T47 T50 T51 T54 T56 T58 T62 T68 T72 T79 T81"
+  "T1 T2 T3 T6 T11 T17 T17b T26b T27 T33 T38 T41 T42 T48 T55 T60 T67 T69 T70 T74 T80 T86"
+  # SHARD_PLAN_6_END
 )
 
 # v3.91.7 (CHG-127): --shard i/N — deterministic partition, reproducible without
@@ -8652,6 +9080,7 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49 T78' ;;
     scripts/agent-gate|resources/templates/agent-gate.sh) printf 'T19 T26b T30 T41 T50 T78 T82 T83 T86' ;;
     scripts/session-gate.sh|scripts/lib-suite-lock.sh) printf 'T26 T26b T41 T57' ;;
+    tests/.shard-plan-costs.tsv)       printf 'T87' ;;
     tests/*)                           printf 'T50 T51 T75 T76' ;;
     resources/templates/stamp-provenance.sh)        printf 'T16 T17 T17b' ;;
     resources/templates/install-hook-adapter.sh)    printf 'T49' ;;
@@ -8659,6 +9088,7 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     resources/templates/agent-governance.yml|resources/templates/github-*.yml) printf 'T73b' ;;
     resources/METHODOLOGY.md|resources/STAGE_PLAYBOOK.md|resources/methodologies/*|resources/templates/*.md) printf 'T40 T43 T48 T86' ;;
     scripts/shard-sum.sh)              printf 'T87' ;;
+    scripts/shard-plan.sh|scripts/pre-round-check.sh|scripts/evidence-round.sh) printf 'T87' ;;
     scripts/*|resources/templates/*.sh) printf 'T19 T30 T41 T86' ;;
     docs/*)                            return 2 ;;  # 变更产物/评审记录：不影响治理工具，无需套件
     MAINTAINER.md)                     return 2 ;;
@@ -8945,25 +9375,50 @@ if [[ "${AGENT_GUARD_SECTION_CACHE:-0}" == "1" \
 fi
 _cache_fp=""
 _cache_hits=0
+# v3.97.0 (CHG-134, REQ-1343): the cache file path is overridable so a test can
+# drive retention without touching the repo's real cache.
+_cache_file="${AGENT_GUARD_SECTION_CACHE_PATH:-$ROOT/.agent-state/section-cache.tsv}"
 if [[ "$_cache_enabled" -eq 1 ]] && command -v suite_tree_fingerprint >/dev/null 2>&1; then
   _cache_fp=$(suite_tree_fingerprint "$ROOT")
   [[ -n "$_cache_fp" ]] || _cache_enabled=0
 fi
 _cache_lookup() { # <section> -> prints "P F" on hit; rc 1 on miss/disabled
-  [[ -n "$_cache_fp" && -f "$ROOT/.agent-state/section-cache.tsv" ]] || return 1
+  [[ -n "$_cache_fp" && -f "$_cache_file" ]] || return 1
   local _row
-  _row=$(awk -F'\t' -v fp="$_cache_fp" -v sec="$1" '$1==fp && $2==sec {print $3, $4; exit}' "$ROOT/.agent-state/section-cache.tsv" 2>/dev/null) || return 1
+  _row=$(awk -F'\t' -v fp="$_cache_fp" -v sec="$1" '$1==fp && $2==sec {print $3, $4; exit}' "$_cache_file" 2>/dev/null) || return 1
   [[ "$_row" =~ ^[0-9]+[[:space:]][0-9]+$ ]] || return 1
   printf '%s\n' "$_row"
 }
-_cache_store() { # <section> <passed> <failed> — prune to the current tree on store
+# v3.97.0 (CHG-134, REQ-1343): retention keeps the current tree's rows plus the
+# two most recent historical fingerprints (by row ts), capped at 400 rows with
+# current-tree rows always kept. Before this, every code edit wiped the table,
+# so the hit rate inside a change cycle was permanently zero — exactly when a
+# re-run is most likely.
+_cache_store() { # <section> <passed> <failed>
   [[ "$_cache_enabled" -eq 1 && -n "$_cache_fp" ]] || return 0
-  local _cf="$ROOT/.agent-state/section-cache.tsv" _tmp
-  mkdir -p "$ROOT/.agent-state" 2>/dev/null || return 0
+  local _cf="$_cache_file" _tmp
+  mkdir -p "$(dirname "$_cf")" 2>/dev/null || return 0
   _tmp="$_cf.tmp.$$"
-  { [[ -f "$_cf" ]] && awk -F'\t' -v fp="$_cache_fp" '$1==fp' "$_cf"; \
-    printf '%s\t%s\t%s\t%s\t%s\n' "$_cache_fp" "$1" "$2" "$3" "$(date +%s)"; } > "$_tmp" 2>/dev/null \
-    && mv -f "$_tmp" "$_cf" 2>/dev/null || rm -f "$_tmp" 2>/dev/null
+  { [[ -f "$_cf" ]] && cat "$_cf"; \
+    printf '%s\t%s\t%s\t%s\t%s\n' "$_cache_fp" "$1" "$2" "$3" "$(date +%s)"; } > "$_tmp.raw" 2>/dev/null
+  awk -F'\t' -v fp="$_cache_fp" -v cap=400 '
+    { rows[NR]=$0; f[NR]=$1; if ($5+0 > last[$1]) last[$1]=$5+0 }
+    END {
+      n=0
+      for (k in last) if (k != fp) hist[++n]=k
+      for (i=2;i<=n;i++) { key=hist[i]; q=i-1; while (q>=1 && last[hist[q]] < last[key]) { hist[q+1]=hist[q]; q-- } hist[q+1]=key }
+      cn=0; hn=0
+      for (i=1;i<=NR;i++) {
+        if (f[i] == fp) cur[++cn]=rows[i]
+        else if (f[i] == hist[1] || f[i] == hist[2]) hrows[++hn]=rows[i]
+      }
+      budget=cap-cn; if (budget < 0) budget=0
+      start=hn-budget+1; if (start < 1) start=1
+      for (i=start;i<=hn;i++) print hrows[i]
+      for (i=1;i<=cn;i++) print cur[i]
+    }' "$_tmp.raw" > "$_tmp" 2>/dev/null \
+    && mv -f "$_tmp" "$_cf" 2>/dev/null || { rm -f "$_tmp" "$_tmp.raw" 2>/dev/null; }
+  rm -f "$_tmp.raw" 2>/dev/null
   return 0
 }
 # v3.72.0 erratum (CHG-095, DES-1868): replay/re-export anchors — defined ONCE

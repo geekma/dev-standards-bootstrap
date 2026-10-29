@@ -1537,7 +1537,9 @@ at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/sc
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-report "A48 standards body ratchet (CHG-107; recalibrated v3.94.0 CHG-131 +dispatch-contract clause)" 1 "$([[ "$std_bytes" -le 171600 ]] && echo 1 || echo 0)"
+# v3.97.0（CHG-134）：§2.13.4 返工分治条款入 DS，三轮压缩后仍在 171,600B 之上；本条收紧棘轮
+# 与硬上界收敛（172,032）——**收敛即信号**：下一次 DS 增长必须结构性减法，或走 A11 的 +4KiB 重校准仪式。
+report "A48 standards body ratchet (CHG-107; converged at hard cap v3.97.0 CHG-134)" 1 "$([[ "$std_bytes" -le 172032 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -2167,6 +2169,21 @@ at_least_f "A64 shard-sum refuses --write on an all-snapshot round (CHG-133)" 1 
 at_least_f "A64 fresh-clone passes the audit-parallel default (CHG-133)" 1 "$ROOT/tests/fresh-clone-check.sh" 'AGENT_GUARD_AUDIT_PARALLEL="${AGENT_GUARD_AUDIT_PARALLEL:-1}"'
 at_least_f "A64 run-tests carries the cost-balanced plan (CHG-133)" 1 "$ROOT/tests/run-tests.sh" 'SHARD_PLAN_6=('
 at_least_f "A64 TC-1280 attributes the inner section first (CHG-133)" 1 "$ROOT/tests/run-tests.sh" '非 T57 责任'
+
+# --- A65 (v3.97.0, CHG-134, REQ-1340..1345): 证据轮返工治理 ---
+# 返工分治必须是两载体同句：只写一处等于规则只对读过那处的人生效。
+at_least_f "A65 AGENTS carries the rework-split rule (CHG-134)" 1 "$AGENTS" '返工分治（v3.97.0，CHG-134）'
+at_least_f "A65 the rule names the deferral ledger (CHG-134)" 1 "$AGENTS" '延后补钉登记'
+at_least_f "A65 DS §2.13.4 carries the same rule (CHG-134)" 1 "$STD" '返工分治（v3.97.0，CHG-134）'
+at_least_f "A65 the 05 template has the deferral section (CHG-134)" 1 "$ROOT/resources/templates/entry/05-test-results.md" '## 延后补钉登记'
+at_least_f "A65 AGENTS names the preflight tool (CHG-134)" 1 "$AGENTS" 'scripts/pre-round-check.sh'
+at_least_f "A65 AGENTS names the fail-fast and carry switches (CHG-134)" 1 "$AGENTS" '--carry-check'
+report "A65 pre-round-check.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/pre-round-check.sh" ]] && echo 0 || echo 1)"
+report "A65 shard-plan.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/shard-plan.sh" ]] && echo 0 || echo 1)"
+at_least_f "A65 evidence-round refuses to start on a red preflight (CHG-134)" 1 "$ROOT/scripts/evidence-round.sh" 'pre-round-check failed'
+at_least_f "A65 the plan block is machine-written (CHG-134)" 1 "$ROOT/tests/run-tests.sh" '# SHARD_PLAN_6_BEGIN'
+at_least_f "A65 the cache has a path seam (CHG-134)" 1 "$ROOT/tests/run-tests.sh" 'AGENT_GUARD_SECTION_CACHE_PATH'
+at_least_f "A65 the cache keeps recent fingerprints (CHG-134)" 1 "$ROOT/tests/run-tests.sh" 'hist[1]'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else
