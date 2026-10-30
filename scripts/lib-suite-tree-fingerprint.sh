@@ -15,8 +15,12 @@
 # → tree OID (hex). Covers tracked modifications/deletions AND untracked
 # file contents (porcelain only lists paths — that blind spot is exactly the
 # hole this fingerprint closes). gitignored files (.agent-state) are excluded
-# by `git add -A` semantics. A clean tree fingerprints as HEAD^{tree}, so the
-# value is deterministic and stable across no-op re-computes.
+# by `git add -A` semantics; .agent-state is ALSO reset explicitly (v3.97.1,
+# CHG-135 REQ-1350) so a repo that does not ignore it still never fingerprints
+# runtime state — the evidence-round lock lives there, and counting it would
+# shift the fingerprint between the round's two samples and between receipts.
+# A clean tree fingerprints as HEAD^{tree}, so the value is deterministic and
+# stable across no-op re-computes.
 #
 # Claim-file exclusion (v3.79.0, live-incident-driven): the upstream assertion
 # sync tool REWRITES README.md / README.zh-CN.md / tests/.audit-baseline / tests/.suite-baseline AFTER
@@ -50,9 +54,9 @@ suite_tree_fingerprint() {
          git read-tree HEAD 2>/dev/null || exit 1
          git add -A -- 2>/dev/null || exit 1
          if (( ${#claims[@]} )); then
-           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline tests/.suite-baseline "${claims[@]}" 2>/dev/null || true
+           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline tests/.suite-baseline .agent-state "${claims[@]}" 2>/dev/null || true
          else
-           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline tests/.suite-baseline 2>/dev/null || true
+           git reset -q HEAD -- README.md README.zh-CN.md tests/.audit-baseline tests/.suite-baseline .agent-state 2>/dev/null || true
          fi
          git write-tree 2>/dev/null || exit 1 ) || {
     rm -rf "$tmpdir" 2>/dev/null || true

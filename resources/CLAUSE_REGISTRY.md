@@ -239,6 +239,7 @@
 | GATE-E154 | 09 缺「未验证 REQ 清单」或漏列 01.5 验证状态非 ✅ 的 REQ（静默降级） | agent-gate.sh::unverified_req_check()（v3.92.2，CHG-128，REQ-1284） |
 | GATE-E155 | dispatch 用法错误（阶段缺失/非法、变更号缺失或不存在、未知选项）——只报用法，不写文件 | agent-gate.sh::dispatch 子命令（v3.94.0，CHG-131，REQ-1315） |
 | GATE-E153 | 被测核心变更缺 fresh-clone receipt 或 receipt 陈旧/红（环境等价） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1278） |
+| GATE-E156 | 证据轮运行中写入计入树指纹的文件（会使该轮作废；claim 文件与 gitignored 路径豁免，`AGENT_GUARD_ALLOW_FREEZE_WRITE=1` 降级为 WARN） | agent-gate.sh::validate_freeze_window()（v3.97.1，CHG-135，REQ-1350） |
 | GATE-E149 | `resume` 子命令用法错误（缺变更号） | agent-gate.sh::resume 分支（v3.91.0，CHG-127，G17） |
 | GATE-E75 | 会话审计红灯未清（红报告新于最后交付 changelog） | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E76 | hook 输入无法确定目标文件 | agent-gate.sh::命令分发（case "$command"） |

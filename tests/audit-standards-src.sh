@@ -2184,6 +2184,20 @@ at_least_f "A65 evidence-round refuses to start on a red preflight (CHG-134)" 1 
 at_least_f "A65 the plan block is machine-written (CHG-134)" 1 "$ROOT/tests/run-tests.sh" '# SHARD_PLAN_6_BEGIN'
 at_least_f "A65 the cache has a path seam (CHG-134)" 1 "$ROOT/tests/run-tests.sh" 'AGENT_GUARD_SECTION_CACHE_PATH'
 at_least_f "A65 the cache keeps recent fingerprints (CHG-134)" 1 "$ROOT/tests/run-tests.sh" 'hist[1]'
+
+# --- A66 (v3.97.1, CHG-135, REQ-1350): 冻结规则的两层机制必须在下发载荷里 ---
+# 条文写在 AGENTS（每个目标仓的强制入口），机制写在 evidence-round（已下发）
+# 与 agent-gate（hooks 已下发）。DS 本版贴 A11 硬上界（FU-135-4），条文只落 AGENTS。
+at_least_f "A66 AGENTS carries the freeze rule (CHG-135)" 1 "$AGENTS" '冻结规则（v3.97.1，CHG-135）'
+at_least_f "A66 evidence-round holds a round-scoped lock (CHG-135)" 1 "$ROOT/scripts/evidence-round.sh" '_ER_LOCK="${AGENT_GUARD_EVIDENCE_LOCK_DIR:-$ROOT/.agent-state/evidence-round.lock}"'
+at_least_f "A66 evidence-round re-reads the fingerprint after the shards (CHG-135)" 1 "$ROOT/scripts/evidence-round.sh" "printf 'tree_drift\\t%s\\n' \"\$_drift\""
+at_least_f "A66 agent-gate refuses counted writes in a live round (CHG-135)" 1 "$ROOT/resources/templates/agent-gate.sh" 'die "GATE-E156:'
+at_least_f "A66 the gate calls the freeze check on every pre-write (CHG-135)" 1 "$ROOT/resources/templates/agent-gate.sh" 'validate_freeze_window "$file"'
+at_least_f "A66 evidence-round re-reads the fingerprint at the end (CHG-135)" 1 "$ROOT/scripts/evidence-round.sh" '_tree_end=$(_tree_sha)'
+at_least_f "A66 evidence-round takes the round lock before any shard (CHG-135)" 1 "$ROOT/scripts/evidence-round.sh" '_er_lock_take || exit 2'
+at_least_f "A66 evidence-round releases the lock on every exit (CHG-135)" 1 "$ROOT/scripts/evidence-round.sh" "trap '_er_lock_release' EXIT"
+at_least_f "A66 the 05 template marks drifted rounds as void (CHG-135)" 1 "$ROOT/resources/templates/entry/05-test-results.md" 'tree_drift（必须为 0）'
+at_least_f "A66 the fingerprint excludes runtime state (CHG-135)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'tests/.suite-baseline .agent-state "${claims[@]}"'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else

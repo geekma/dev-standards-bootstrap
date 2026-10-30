@@ -1850,6 +1850,96 @@ validate_active_change() {
   validate_governance_state "$id"
 }
 
+# v3.97.1 (CHG-135, REQ-1350): freeze window. An evidence round testifies for
+# exactly one tracked tree; an edit made while it runs silently voids it (nine
+# CHG-135 rounds were voided or reddened this way). scripts/evidence-round.sh
+# holds .agent-state/evidence-round.lock with pid + lstart for the round's whole
+# life; while that owner is alive, writes to fingerprint-counted files are
+# refused HERE — the only layer that prevents the mistake instead of detecting
+# it afterwards (the round's own drift check is the backstop).
+# Exemptions are exactly what the fingerprint recipe excludes for free: the four
+# claim files the suite rewrites at the end of a green run, plus gitignored paths
+# (docs/, .agent-state/) which never counted. A dead owner never blocks — a
+# leaked lock must not brick the repository.
+# Resolve a hook-supplied path to a physical absolute path even when its parent
+# directory does not exist yet (Write/Edit create new directories). Canonicalize
+# the deepest existing ancestor through the filesystem, then re-append the
+# missing tail lexically; a path whose parent is missing must never fall through
+# to "outside the repo" and skip the freeze check (CHG-135 review, E156 bypass).
+_freeze_abs() { # <path> -> absolute physical path
+  local p="$1" tail="" anc
+  case "$p" in
+    /*) ;;
+    *) p="$(pwd -P 2>/dev/null || pwd)/$p" ;;
+  esac
+  while :; do
+    if anc=$(cd "$(dirname "$p")" 2>/dev/null && pwd -P); then
+      printf '%s/%s%s\n' "$anc" "$(basename "$p")" "$tail"
+      return 0
+    fi
+    tail="/$(basename "$p")$tail"
+    p=$(dirname "$p")
+    if [[ "$p" == "/" || -z "$p" ]]; then printf '/%s\n' "${tail#/}"; return 0; fi
+  done
+}
+# Collapse "." and ".." lexically. A lexical tail re-appended to the deepest
+# existing ancestor can still name a path that leaves the repo through a
+# directory that does not exist yet (`sub/../../x`); counting that as inside
+# would refuse writes that never touch a counted file.
+_freeze_norm() { # <absolute path> -> normalized absolute path
+  local _p="$1" _out="" _seg
+  local IFS=/
+  for _seg in $_p; do
+    case "$_seg" in
+      ''|.) continue ;;
+      ..) [[ -n "$_out" ]] && _out="${_out%/*}"; continue ;;
+    esac
+    _out="$_out/$_seg"
+  done
+  printf '%s\n' "${_out:-/}"
+}
+validate_freeze_window() {
+  local f="$1" rel lock pid lstart cur _chg _round _round_tree
+  # Canonicalize through the directory's physical path: a hook may hand us an
+  # absolute path built from a symlinked cwd (/tmp -> /private/tmp, a symlinked
+  # $HOME), which would otherwise never match the physical repo root and would
+  # be mistaken for "outside the repo". A path in a directory that does not
+  # exist yet is resolved through its deepest existing ancestor.
+  rel=$(_freeze_norm "$(_freeze_abs "$f")")
+  case "$rel" in
+    "$repo_root"/*) rel="${rel#"$repo_root"/}" ;;
+    /*) return 0 ;;   # outside this repo (or cwd unknowable): never counted
+  esac
+  # Exemptions mirror the fingerprint recipe (scripts/lib-suite-tree-fingerprint.sh)
+  # exactly: the four claim files the suite rewrites at the end of a green run,
+  # .agent-state (runtime state, never counted), and gitignored paths.
+  case "$rel" in
+    README.md|README.zh-CN.md|tests/.audit-baseline|tests/.suite-baseline) return 0 ;;
+    .agent-state|.agent-state/*) return 0 ;;
+  esac
+  git -C "$repo_root" check-ignore -q -- "$rel" 2>/dev/null && return 0
+  lock="$repo_root/.agent-state/evidence-round.lock"
+  [[ -e "$lock" ]] || return 0
+  # The lock is a single stamped file published with link(2) (v3.97.1); a
+  # directory at that path is a foreign object and carries no owner.
+  [[ -f "$lock" ]] || return 0
+  pid=$(sed -n 's/^pid=//p' "$lock" 2>/dev/null | head -1)
+  # Both sides are padded by `ps -o lstart=`; compare them trimmed.
+  lstart=$(sed -n 's/^lstart=//p' "$lock" 2>/dev/null | head -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  [[ -n "$pid" ]] || return 0
+  cur=$(LC_ALL=C ps -p "$pid" -o lstart= 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true)
+  [[ -n "$cur" ]] || return 0
+  { [[ -z "$lstart" ]] || [[ "$cur" == "$lstart" ]]; } || return 0
+  if [[ "${AGENT_GUARD_ALLOW_FREEZE_WRITE:-0}" == "1" ]]; then
+    echo "agent-gate: WARN — GATE-E156 bypassed (AGENT_GUARD_ALLOW_FREEZE_WRITE=1): $rel lands in a running round; that round will report itself INVALID" >&2
+    return 0
+  fi
+  _chg=$(sed -n 's/^chg=//p' "$lock" 2>/dev/null | head -1)
+  _round=$(sed -n 's/^round=//p' "$lock" 2>/dev/null | head -1)
+  _round_tree=$(sed -n 's/^tree_sha=//p' "$lock" 2>/dev/null | head -1)
+  die "GATE-E156: evidence round ${_chg:-?} round ${_round:-?} is running (pid $pid, tree ${_round_tree:-?}) — writing $rel would void it; expected: finish the round first, then edit, or stop the round; allowed: AGENT_GUARD_ALLOW_FREEZE_WRITE=1 records the round as INVALID instead of blocking; fix: wait for the round to finish, re-run it after the edit; ref: CHG-135 REQ-1350 / §2.13.5"
+}
+
 working_code_changed() {
   local files f
   files=$( {
@@ -4451,7 +4541,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.97.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.97.1" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4503,7 +4593,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.97.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.97.1","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -5455,6 +5545,7 @@ case "$command" in
         # A hook that cannot identify a path must fail closed: otherwise a
         # client schema change silently turns this policy into a no-op.
         [[ -n "$file" ]] || die "GATE-E76: cannot determine the target file from hook input"
+        validate_freeze_window "$file"
         if is_code_path "$file"; then
           validate_active_change
         fi

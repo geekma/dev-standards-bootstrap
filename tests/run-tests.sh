@@ -117,20 +117,181 @@ check_output() { # name pattern actual_output -- pass if pattern matches
 LEDGER_FILE="${AGENT_GUARD_COST_LEDGER:-$ROOT/.agent-state/cost-ledger.tsv}"
 NEW_REPO_SETUP_S=0
 
+# v3.97.1 (CHG-135, REQ-1348): one ledger, several concurrent writers (an
+# evidence round launches five snapshot shards plus the live one). Migration and
+# retention both rewrite the file (read -> awk -> mv), so an append that lands
+# inside that window is lost — measured with six writers: 30 appends kept 12-24
+# rows. A mkdir lock (owner = pid + lstart, owner-less reclaim by dir age)
+# serializes migration, append and retention. A writer that cannot take the lock
+# within ~2.5 s still APPENDS and only skips the rewrite — that path is LOUD,
+# because appending while another process replaces the file is the one residual
+# way to lose a row.
+_LEDGER_LOCK_MINE=0
+_ledger_lstart() { # <pid> -> process start stamp (empty when unknown)
+  LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || true
+}
+# review #2 round 3: `kill -0` answers EPERM for another user's live process, which
+# this code would read as "dead" and delete a live lock. ps is ownership-agnostic.
+_ledger_alive() { [[ -n "$(_ledger_lstart "$1")" ]]; }
+_ledger_write_owner() { # <dir>
+  local d="$1"
+  printf '%s\n' "$$" > "$d/pid.tmp" 2>/dev/null && mv -f "$d/pid.tmp" "$d/pid" 2>/dev/null
+  _ledger_lstart "$$" > "$d/lstart.tmp" 2>/dev/null && mv -f "$d/lstart.tmp" "$d/lstart" 2>/dev/null
+}
+# review #2 round 3: breaking into an abandoned mutex with rm -rf + mkdir is the
+# same TOCTOU one level up. The break-in renames the mutex away (rename is atomic,
+# so exactly one breaker can win) and then checks what it actually got: a fresh
+# mutex belongs to a LIVE reclaimer and is put back / abandoned. Only a mutex older
+# than a minute — i.e. one whose holder died inside the critical section — is
+# discarded.
+_ledger_mutex_take() { # <mutex> -> 0 when this process holds a fresh mutex
+  local r="$1" t i=0 now mt age
+  while [[ "$i" -lt 50 ]]; do
+    if mkdir "$r" 2>/dev/null; then return 0; fi
+    now=$(date +%s 2>/dev/null || echo 0)
+    mt=$(stat -c %Y "$r" 2>/dev/null || stat -f %m "$r" 2>/dev/null || echo 0)
+    case "$now$mt" in ''|*[!0-9]*) now=0; mt=0 ;; esac
+    age=$(( now - mt ))
+    if [[ "$mt" -gt 0 && "$age" -gt 60 ]]; then
+      t="$r.stale.$$.$i"
+      if mv "$r" "$t" 2>/dev/null; then
+        mt=$(stat -c %Y "$t" 2>/dev/null || stat -f %m "$t" 2>/dev/null || echo 0)
+        case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
+        age=$(( now - mt ))
+        if [[ "$mt" -gt 0 && "$age" -gt 60 ]]; then
+          rm -rf "$t" 2>/dev/null || true
+          mkdir "$r" 2>/dev/null && return 0
+        else
+          mv "$t" "$r" 2>/dev/null || rm -rf "$t" 2>/dev/null
+        fi
+        return 1
+      fi
+    fi
+    sleep 0.05 2>/dev/null || sleep 1
+    i=$((i+1))
+  done
+  return 1
+}
+# v3.97.1 (review #2, N1): rm -rf + mkdir was a TOCTOU — two waiters that both
+# judged the owner dead could delete and re-create the dir, leaving BOTH holding
+# the lock, and the next awk->mv rewrite then dropped the other's append. Same
+# shape as the workspace lock (CHG-130): takeovers run under a .reclaim mutex
+# and re-verify the owner inside it. The owner predicate is pid + lstart only —
+# NOT the repo, because snapshot shards share one ledger from different
+# worktrees, so a repo check would read a peer's live lock as a zombie.
+_ledger_lock_reclaim() { # <dir> -> 0 when THIS process re-created the lock
+  local d="$1" r="$1.reclaim" op ls now mt age
+  _ledger_mutex_take "$r" || return 1
+  # Re-verify inside the mutex: the stale owner we judged may already have been
+  # replaced by a fresh live one while we waited for the mutex.
+  op=$(sed -n '1p' "$d/pid" 2>/dev/null || true)
+  case "$op" in ''|*[!0-9]*) op="" ;; esac
+  if [[ -n "$op" ]] && _ledger_alive "$op"; then
+    ls=$(sed -n '1p' "$d/lstart" 2>/dev/null || true)
+    if [[ -z "$ls" || "$ls" == "$(_ledger_lstart "$op")" ]]; then
+      rmdir "$r" 2>/dev/null || true
+      return 1
+    fi
+  elif [[ -z "$op" ]]; then
+    now=$(date +%s 2>/dev/null || echo 0)
+    mt=$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)
+    case "$now$mt" in ''|*[!0-9]*) now=0; mt=0 ;; esac
+    age=$(( now - mt ))
+    if [[ "$mt" -eq 0 || "$age" -le 5 ]]; then
+      rmdir "$r" 2>/dev/null || true
+      return 1
+    fi
+  fi
+  rm -rf "$d" 2>/dev/null || true
+  if mkdir "$d" 2>/dev/null; then
+    _ledger_write_owner "$d"
+    rmdir "$r" 2>/dev/null || true
+    # Observable so a probe can assert the takeover ran exactly once.
+    printf 'ledger lock: reclaimed a stale owner (%s)\n' "$d" >&2
+    return 0
+  fi
+  rmdir "$r" 2>/dev/null || true
+  return 1
+}
+_ledger_lock_acquire() { # -> 0 when this process owns the lock
+  local d="${LEDGER_FILE}.lock" i=0 op ls now mt age
+  while [[ "$i" -lt 50 ]]; do
+    if mkdir "$d" 2>/dev/null; then
+      _ledger_write_owner "$d"
+      _LEDGER_LOCK_MINE=1
+      return 0
+    fi
+    op=$(sed -n '1p' "$d/pid" 2>/dev/null || true)
+    case "$op" in ''|*[!0-9]*) op="" ;; esac
+    if [[ -n "$op" ]] && _ledger_alive "$op"; then
+      ls=$(sed -n '1p' "$d/lstart" 2>/dev/null || true)
+      # A live pid with matching start stamp is the real owner: wait it out. A
+      # different stamp is PID reuse and falls through to reclaim.
+      if [[ -z "$ls" || "$ls" == "$(_ledger_lstart "$op")" ]]; then
+        sleep 0.05 2>/dev/null || sleep 1
+        i=$((i+1))
+        continue
+      fi
+    elif [[ -z "$op" ]]; then
+      # Owner-less lock (crashed between mkdir and the owner write): reclaim on
+      # age alone, or a torn lock disables retention forever. The window is
+      # microseconds, so a young one is never evidence of a crash.
+      now=$(date +%s 2>/dev/null || echo 0)
+      mt=$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)
+      case "$now$mt" in ''|*[!0-9]*) now=0; mt=0 ;; esac
+      age=$(( now - mt ))
+      if [[ "$mt" -eq 0 || "$age" -le 5 ]]; then
+        sleep 0.05 2>/dev/null || sleep 1
+        i=$((i+1))
+        continue
+      fi
+    fi
+    if _ledger_lock_reclaim "$d"; then
+      _LEDGER_LOCK_MINE=1
+      return 0
+    fi
+    sleep 0.05 2>/dev/null || sleep 1
+    i=$((i+1))
+  done
+  return 1
+}
+_ledger_lock_release() { # owner-only release (ownership is process-local)
+  local d="${LEDGER_FILE}.lock" op
+  [[ "$_LEDGER_LOCK_MINE" == "1" ]] || return 0
+  op=$(cat "$d/pid" 2>/dev/null || true)
+  [[ -z "$op" || "$op" == "$$" ]] || return 0
+  rm -rf "$d" 2>/dev/null || true
+  _LEDGER_LOCK_MINE=0
+}
+
+# v3.97.1 (CHG-135): T87 early-exits inside a worktree snapshot (1 assertion,
+# ~0 s). Now that snapshot shards share the ledger, such a row would sit beside
+# the live section's ~40 s row and drag the planner's median down to the 2 s
+# floor — the same mispricing this change removes from the other direction.
+_sec_row_wanted() { [[ "$1" != "T87" || "${AGENT_GUARD_SUITE_IN_WT:-0}" != "1" ]]; }
+
 ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [outcome]
   local rk mid mwin
   mkdir -p "$(dirname "$LEDGER_FILE")" 2>/dev/null || return 0
+  local lk=0
+  _ledger_lock_acquire && lk=1
+  # Loud, not silent: an unlocked append can still land in an inode another
+  # writer is about to replace (mv) — visible so a lost row is traceable.
+  [[ "$lk" -eq 1 ]] || printf 'warning: ledger lock busy on %s — appended without rotation\n' "$LEDGER_FILE" >&2
   # v3.91.0 (CHG-127, G1): the 13-column schema. The historical 8 columns keep
   # their positions (readers stay compatible); asserts/rc/outcome/repo_key/
   # model_id/ctx_window are appended. Old 8-column rows are migrated in place.
   rk="$(id -un 2>/dev/null || echo user)@$(hostname 2>/dev/null || echo host)/$(basename "$ROOT")"
-  if [[ -s "$LEDGER_FILE" ]] && ! head -1 "$LEDGER_FILE" | grep -q 'asserts'; then
+  if [[ "$lk" -eq 1 && -s "$LEDGER_FILE" ]] && ! grep -q 'asserts' <<< "$(head -1 "$LEDGER_FILE")"; then
     awk -F'\t' -v rk="$rk" 'BEGIN{OFS="\t"}
       NR==1 {print "ts","kind","id","suite_key","cost_s","setup_s","cache","exit","asserts","rc","outcome","repo_key","model_id","ctx_window"; next}
       { o=($8=="0"?"green":"red"); if ($6=="0" && $8=="0") o="wasted"; print $0,"-1",$8,o,rk,"","" }' \
       "$LEDGER_FILE" > "$LEDGER_FILE.mig" 2>/dev/null && mv -f "$LEDGER_FILE.mig" "$LEDGER_FILE"
   fi
-  [[ -s "$LEDGER_FILE" ]] || printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$LEDGER_FILE" 2>/dev/null || return 0
+  if [[ ! -s "$LEDGER_FILE" ]]; then
+    printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n' > "$LEDGER_FILE" 2>/dev/null \
+      || { [[ "$lk" -eq 1 ]] && _ledger_lock_release; return 0; }
+  fi
   mid=""; mwin=""
   if [[ -s "$ROOT/.agent-state/model-profile.json" ]]; then
     mid=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$ROOT/.agent-state/model-profile.json" | head -1)
@@ -143,13 +304,17 @@ ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [out
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "${SUITE_KEY:-}" "$3" "$4" "$5" "$6" \
     "$a_" "$6" "$out" "$rk" "$mid" "$mwin" \
     >> "$LEDGER_FILE" 2>/dev/null \
-    || { printf 'warning: could not append to %s (non-fatal)\n' "$LEDGER_FILE" >&2; return 0; }
+    || { printf 'warning: could not append to %s (non-fatal)\n' "$LEDGER_FILE" >&2; [[ "$lk" -eq 1 ]] && _ledger_lock_release; return 0; }
   # v3.91.1 (CHG-127 self-audit, final-plan §2.2): retention — header + last 500
   # rows (or 90 days), whichever comes first, so the ledger cannot grow forever.
+  # v3.97.1 (CHG-135, REQ-1348): hysteresis — rotate only above 600 lines, keep
+  # the last 500. At a 501 trigger the window and the cap coincide, so EVERY
+  # append rewrote the file: one rewrite per row, i.e. the unlocked-append window
+  # stayed permanently open and each writer paid an awk pass per row.
   local _ln
   _ln=$(wc -l < "$LEDGER_FILE" 2>/dev/null | tr -d ' ')
   case "$_ln" in ''|*[!0-9]*) _ln=0 ;; esac
-  if [[ "$_ln" -gt 501 ]]; then
+  if [[ "$lk" -eq 1 && "$_ln" -gt 600 ]]; then
     # v3.91.2 erratum: keep every `run-full` row. Pruning them silently erased
     # the whole-run p50 (plan fell back to the 300 s prior) — the retention rule
     # must never destroy the cost-learning baseline.
@@ -170,6 +335,7 @@ ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [out
          }' \
       "$LEDGER_FILE" > "$LEDGER_FILE.rot" 2>/dev/null && mv -f "$LEDGER_FILE.rot" "$LEDGER_FILE" 2>/dev/null || rm -f "$LEDGER_FILE.rot" 2>/dev/null
   fi
+  [[ "$lk" -eq 1 ]] && _ledger_lock_release
 }
 
 # v3.90.1 (CHG-123, P0-13): source-vs-target layout predicate. The old proxy was
@@ -3099,11 +3265,20 @@ if [[ -s "$GT82" ]]; then
   report "T82 tc-index --write persists the cache" 0 "$([[ -s tests/tc-index.tsv ]] && echo 0 || echo 1)"
   report "T82 tc-index names its source" 1 "$(grep -c '^TC-9999' tests/tc-index.tsv 2>/dev/null || true)"
   # v3.91.2: ledger retention — header + at most 500 data rows.
+  # v3.97.1 (CHG-135): hysteresis — rotation starts above 600 lines, so a ledger
+  # inside the 501..600 band is left alone instead of rewritten on every append.
+  { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
+    _ri=0; while [[ "$_ri" -lt 605 ]]; do _ri=$(( _ri + 1 )); printf '2026-01-01T00:00:00Z\tsec\tT1\tx\t1\t0\tnone\t0\t1\t0\tgreen\tr\tm\t128\n'; done; } > .ledger-rot.tsv
+  AGENT_GUARD_COST_LEDGER="$PWD/.ledger-rot.tsv" bash "$ROOT/tests/run-tests.sh" -T T41 >/dev/null 2>&1 || true
+  report "T82 ledger rotation bounds the file at the hysteresis cap" 1 \
+    "$([[ "$(wc -l < .ledger-rot.tsv 2>/dev/null | tr -d ' ')" -gt 500 && "$(wc -l < .ledger-rot.tsv 2>/dev/null | tr -d ' ')" -le 600 ]] && echo 1 || echo 0)"
+  report "T82 ledger rotation keeps the header" 1 "$(grep -c '^ts' .ledger-rot.tsv 2>/dev/null || true)"
+  rm -f .ledger-rot.tsv
   { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
     _ri=0; while [[ "$_ri" -lt 505 ]]; do _ri=$(( _ri + 1 )); printf '2026-01-01T00:00:00Z\tsec\tT1\tx\t1\t0\tnone\t0\t1\t0\tgreen\tr\tm\t128\n'; done; } > .ledger-rot.tsv
   AGENT_GUARD_COST_LEDGER="$PWD/.ledger-rot.tsv" bash "$ROOT/tests/run-tests.sh" -T T41 >/dev/null 2>&1 || true
-  report "T82 ledger keeps header + last 500 rows" 1 "$([[ "$(wc -l < .ledger-rot.tsv 2>/dev/null | tr -d ' ')" -le 501 ]] && echo 1 || echo 0)"
-  report "T82 ledger rotation keeps the header" 1 "$(grep -c '^ts' .ledger-rot.tsv 2>/dev/null || true)"
+  report "T82 ledger inside the hysteresis band is not rewritten" 505 \
+    "$(awk -F'\t' '$2 == "sec" && $3 == "T1" {c++} END {print c+0}' .ledger-rot.tsv 2>/dev/null)"
   rm -f .ledger-rot.tsv
   # v3.93.0 (CHG-130, REQ-1290): the audit ledger writer is a 14-column contract.
   # Execute the real derivation + header + writer with fail=1 so rc/outcome are
@@ -8335,12 +8510,20 @@ section_T87() {
     return 0
   fi
   # REQ-1321: snapshot carry — the inner run must find T87 in the snapshot.
-  _t87_wt=$(bash tests/run-tests.sh -T T87 --worktree 2>&1); _t87_rc=$?
+  # v3.97.1 (CHG-135): the nested run gets its own ledger so its rows cannot
+  # disturb the real one, and so the two rows below can prove _sec_row_wanted.
+  _t87_wtl=$(mktemp "${TMPDIR:-/tmp}/t87-ledger.XXXXXX")
+  _t87_wt=$(AGENT_GUARD_COST_LEDGER="$_t87_wtl" bash tests/run-tests.sh -T T87 --worktree 2>&1); _t87_rc=$?
   report "T87 -T T87 --worktree exits 0 (uncommitted-code carry)" 0 "$_t87_rc"
   grep -Fq 'T87 executes inside the worktree snapshot' <<< "$_t87_wt"
   report "T87 snapshot output contains the in-worktree self-report" 0 "$?"
   grep -Fq '1 passed, 0 failed' <<< "$_t87_wt"
   report "T87 snapshot run summary matches the single self-report" 0 "$?"
+  report "T87 the snapshot run wrote its aggregate run row" 1 \
+    "$(awk -F'\t' '$2 ~ /^run/ {c++} END {print c+0}' "$_t87_wtl")"
+  report "T87 TC-2350 a stubbed snapshot section leaves no sec row for the planner" 0 \
+    "$(awk -F'\t' '$2 == "sec" && $3 == "T87" {c++} END {print c+0}' "$_t87_wtl")"
+  rm -f "$_t87_wtl"
   # recursion + environment guards
   _t87_rg=$(AGENT_GUARD_SUITE_IN_WT=1 bash tests/run-tests.sh -T T1 --worktree 2>&1); _t87_rgrc=$?
   report "T87 --worktree recursion guard exits 2" 2 "$_t87_rgrc"
@@ -8535,7 +8718,11 @@ EOS
     "$(printf '%s\n' "$_t87_dry" | grep -c 'shard 2/2 live')"
   report "T87 evidence-round dry-run creates nothing" 0 \
     "$([[ -d "$_t87_er/state" ]] && echo 1 || echo 0)"
-  AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
+  # v3.97.1 (CHG-135): this fixture runs from $ROOT, so without the override the
+  # round lock of an outer live round would (correctly) refuse it. The override is
+  # a self-test seam only.
+  AGENT_GUARD_EVIDENCE_LOCK_DIR="$_t87_er/lock" \
+    AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
     --chg CHG-133 --round 1 --shards 2 --live-shard 2 --state-dir "$_t87_er/state" \
     >"$_t87_er/run1.txt" 2>&1; _t87_errc=$?
   report "T87 evidence-round green stub exits 0" 0 "$_t87_errc"
@@ -8547,11 +8734,13 @@ EOS
     "$(grep -c 'worktree: snapshot' "$_t87_er/state/CHG-133/round-1/shard-1.log")"
   report "T87 evidence-round appends one ledger row with the tree fingerprint" 1 \
     "$(awk -F'\t' '$2=="CHG-133" && $3=="1" && $5!="" && $6=="2" && $7=="2" {n++} END{print n+0}' "$_t87_er/state/ledger.tsv")"
-  AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
+  AGENT_GUARD_EVIDENCE_LOCK_DIR="$_t87_er/lock" \
+    AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
     --chg CHG-133 --round 1 --shards 2 --live-shard 2 --state-dir "$_t87_er/state" \
     >/dev/null 2>&1; _t87_errc2=$?
   report "T87 evidence-round refuses to overwrite an existing round" 2 "$_t87_errc2"
-  STUB_RED=1 AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
+  STUB_RED=1 AGENT_GUARD_EVIDENCE_LOCK_DIR="$_t87_er/lock" \
+    AGENT_GUARD_EVIDENCE_SUITE="$_t87_er/stub.sh" bash scripts/evidence-round.sh \
     --chg CHG-133 --round 2 --shards 2 --live-shard 2 --state-dir "$_t87_er/state" \
     >/dev/null 2>&1; _t87_errc3=$?
   report "T87 evidence-round red stub exits 1" 1 "$_t87_errc3"
@@ -8801,6 +8990,50 @@ EOS
       bash scripts/evidence-round.sh --carry --chg CHG-FX --state-dir "$_t87_pcd/st" ) \
     >/dev/null 2>&1
   report "T87 --carry without a candidate is a named refusal (rc2)" 2 "$?"
+  # A carry that copies while the tree moves must be INVALID — and its ledger
+  # row must say so. A stub lib forces the two fingerprint reads apart, so the
+  # rc / wall_s columns are asserted on the drift path (the green path writes
+  # 0/0 either way and cannot catch a shifted column).
+  _t87_cd=$(mktemp -d "${TMPDIR:-/tmp}/t87-carrydrift.XXXXXX")
+  ( cd "$_t87_cd" && git init -q . && git config user.email t@t && git config user.name t \
+      && mkdir -p scripts tests && echo keep > keep.txt \
+      && printf '#!/bin/bash\nexit 0\n' > tests/run-tests.sh && chmod +x tests/run-tests.sh \
+      && cp "$ROOT/scripts/evidence-round.sh" scripts/ \
+      && git add -A && git commit -qm init ) >/dev/null 2>&1
+  cat > "$_t87_cd/scripts/lib-suite-tree-fingerprint.sh" <<'EOF'
+#!/bin/bash
+suite_tree_fingerprint() {
+  case "$*" in
+    *docs/changes*) echo face-fixed; return 0 ;;
+  esac
+  local f n
+  f="$ROOT/scripts/.tree-calls"
+  n=$(cat "$f" 2>/dev/null || echo 0); n=$((n + 1)); printf '%s\n' "$n" > "$f"
+  if (( n <= 2 )); then echo treeA; else echo treeB; fi
+}
+EOF
+  _t87_cdsrc="$_t87_cd/st/CHG-CR/round-1"
+  # ROOT is physical (`git rev-parse --show-toplevel`): macOS /tmp -> /private/tmp.
+  _t87_cdp=$( cd "$_t87_cd" && pwd -P )
+  mkdir -p "$_t87_cdsrc"
+  printf 'key\tvalue\nchg\tCHG-CR\nround\t1\ntree_sha\ttreeOLD\ntree_drift\t0\ntotal_passed\t4\ntotal_failed\t0\nshards\t2\nlive_shard\t1\nsuite\t%s\n' \
+    "$_t87_cdp/tests/run-tests.sh" > "$_t87_cdsrc/meta.tsv"
+  printf 'ok\n' > "$_t87_cdsrc/shard-1.log"
+  printf '0\n' > "$_t87_cdsrc/shard-1.rc"
+  printf 'ts\tchg\tround\thead\ttree_sha\tshards\tlive_shard\ttotal\tfailed\trc\twall_s\tdir\tcode_face_sha\tcarried_from\n' \
+    > "$_t87_cd/st/ledger.tsv"
+  printf 't\tCHG-CR\t1\th\ttreeOLD\t2\t1\t4\t0\t0\t0\t%s\tface-fixed\t-\n' "$_t87_cdsrc" >> "$_t87_cd/st/ledger.tsv"
+  ( cd "$_t87_cd" && \
+      bash scripts/evidence-round.sh --carry --chg CHG-CR --state-dir "$_t87_cd/st" ) \
+    > "$_t87_cd/out" 2>&1; _t87_cdrc=$?
+  report "T87 a carry whose tree moves mid-copy is INVALID (rc2)" 2 "$_t87_cdrc"
+  report "T87 the invalid carry records tree_drift=1 in its meta" 1 \
+    "$(awk -F'\t' '$1=="tree_drift"{print $2}' "$_t87_cd/st/CHG-CR/round-2/meta.tsv" 2>/dev/null)"
+  report "T87 the invalid carry's ledger row keeps rc=2 in the rc column" 2 \
+    "$(awk -F'\t' 'END{print $10}' "$_t87_cd/st/ledger.tsv")"
+  report "T87 the invalid carry's ledger row keeps wall_s=0 in the wall column" 0 \
+    "$(awk -F'\t' 'END{print $11}' "$_t87_cd/st/ledger.tsv")"
+  rm -rf "$_t87_cd"
   # ── REQ-1341: --fail-fast stops the siblings (TC-2341) ────────────────────
   cat > "$_t87_pcg/tests/ff-stub.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -8964,6 +9197,250 @@ EOF
   report "T87 TC-2345 the rework-split rule lands on AGENTS, DS and the 05 template" 3 "$_t87_carriers"
   report "T87 TC-2346 the setup lever stays falsified (new_repo keeps its one body)" 1 \
     "$(grep -c '^new_repo()' "$ROOT/tests/run-tests.sh")"
+  # TC-2348..2350 (v3.97.1, CHG-135): the cost ledger is one file with several
+  # writers — the lock must cover migration, append AND retention, and an
+  # evidence round must hand every shard the same absolute path.
+  _t87_lkf=$(sed -n '/^ledger_append() {/,/^}/p' "$ROOT/tests/run-tests.sh")
+  # Split, not summed: 2 acquires + 2 releases must not look like 1 + 3.
+  report "T87 TC-2350 ledger_append acquires the lock exactly once" 1 \
+    "$(printf '%s\n' "$_t87_lkf" | grep -c '_ledger_lock_acquire && lk=1')"
+  report "T87 TC-2350 ledger_append releases on every exit path" 3 \
+    "$(printf '%s\n' "$_t87_lkf" | grep -c '_ledger_lock_release')"
+  report "T87 TC-2350 the stub sec row is skipped inside a snapshot" 1 \
+    "$(grep -c '^_sec_row_wanted() {' "$ROOT/tests/run-tests.sh")"
+  _t87_lgd=$(mktemp -d "${TMPDIR:-/tmp}/t87-ledger.XXXXXX")
+  _t87_fixture() { # <path>: legacy 8-column ledger above the rotation trigger
+    # 605 legacy rows + an 8-column header: a first locked append then MIGRATES
+    # the schema and ROTATES (>600) — two rewrites inside the critical section.
+    # A fixture below the trigger never enters the window the lock exists for,
+    # and an unlocked ledger_append would score 30/30 too (review #2 finding).
+    { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\n'
+      _fi=1
+      while [[ "$_fi" -le 605 ]]; do
+        printf '2026-08-01T00:00:00Z\trun\tF%s\tprobe\t1\t0\tnone\t0\n' "$_fi"
+        _fi=$(( _fi + 1 ))
+      done
+    } > "$1"
+  }
+  { # BSD sed has no address-range-with-command form; drop the duplicated last line.
+    sed -n '/^_LEDGER_LOCK_MINE=0$/,/^ledger_append() {/p' "$ROOT/tests/run-tests.sh" | sed '$d'
+    sed -n '/^ledger_append() {/,/^}/p' "$ROOT/tests/run-tests.sh"; } > "$_t87_lgd/fn.sh"
+  { printf 'ROOT="$1"; LEDGER_FILE="$2"; SUITE_KEY=probe; source "$3"\n'
+    printf 'i=1; while [ "$i" -le 5 ]; do ledger_append sec "S$4-$i" 1 0 none 0 1; i=$((i+1)); done\n'
+  } > "$_t87_lgd/w.sh"
+  # Three repetitions: one run passes the unlocked writer ~1 time in 3 (measured
+  # 30/18/12 on HEAD), so a single probe would be a coin flip.
+  _t87_kept=0; _t87_lkleft=0; _rep=1
+  while [[ "$_rep" -le 3 ]]; do
+    _t87_fixture "$_t87_lgd/ledger-$_rep.tsv"
+    _t87_lgp=""; _p=1
+    while [[ "$_p" -le 6 ]]; do
+      bash "$_t87_lgd/w.sh" "$_t87_lgd" "$_t87_lgd/ledger-$_rep.tsv" "$_t87_lgd/fn.sh" "$_p" \
+        2>> "$_t87_lgd/writers.err" & _t87_lgp="$_t87_lgp $!"
+      _p=$(( _p + 1 ))
+    done
+    for _w in $_t87_lgp; do wait "$_w"; done
+    _t87_one=$(awk -F'\t' '$3 ~ /^S[1-6]-/ {c++} END {print c+0}' "$_t87_lgd/ledger-$_rep.tsv")
+    _t87_kept=$(( _t87_kept + _t87_one ))
+    [[ -d "$_t87_lgd/ledger-$_rep.tsv.lock" ]] && _t87_lkleft=$(( _t87_lkleft + 1 ))
+    _rep=$(( _rep + 1 ))
+  done
+  report "T87 TC-2348 six concurrent writers keep every appended row (3x 30/30)" 90 "$_t87_kept"
+  report "T87 TC-2348 the legacy ledger was migrated to the 14-column schema" 0 \
+    "$(awk -F'\t' 'NF != 14 {c++} END {print c+0}' "$_t87_lgd/ledger-3.tsv")"
+  report "T87 TC-2348 retention ran inside the critical section" 1 \
+    "$([[ "$(wc -l < "$_t87_lgd/ledger-3.tsv" 2>/dev/null | tr -d ' ')" -le 600 ]] && echo 1 || echo 0)"
+  report "T87 TC-2348 no writer falls back to an unlocked append" 0 \
+    "$(grep -c 'appended without rotation' "$_t87_lgd/writers.err" 2>/dev/null || true)"
+  report "T87 TC-2348 no writer leaves the ledger lock behind" 0 "$_t87_lkleft"
+  # A DEAD owner is the reclaim race review #2 (N1/N1-pin) found: every waiter
+  # sees the same corpse and, without a serialized takeover, more than one
+  # re-creates the dir. The fixture must sit ABOVE the rotation trigger, because
+  # row loss needs a rewrite (migration/rotation) — a 530-line ledger would score
+  # 30/30 even with the unserialized reclaim (review #2 round 3).
+  bash -c 'exit 0' & _t87_dead=$!
+  wait "$_t87_dead" 2>/dev/null || true
+  _t87_fixture "$_t87_lgd/ledger-dead.tsv"
+  mkdir "$_t87_lgd/ledger-dead.tsv.lock"
+  printf '%s\n' "$_t87_dead" > "$_t87_lgd/ledger-dead.tsv.lock/pid"
+  _t87_gp=""; _p=1
+  while [[ "$_p" -le 6 ]]; do
+    bash "$_t87_lgd/w.sh" "$_t87_lgd" "$_t87_lgd/ledger-dead.tsv" "$_t87_lgd/fn.sh" "G$_p" \
+      2>> "$_t87_lgd/dead.err" & _t87_gp="$_t87_gp $!"
+    _p=$(( _p + 1 ))
+  done
+  for _w in $_t87_gp; do wait "$_w"; done
+  report "T87 TC-2348 six writers reclaim a dead owner exactly once (30/30)" 30 \
+    "$(awk -F'\t' '$3 ~ /^SG[1-6]-/ {c++} END {print c+0}' "$_t87_lgd/ledger-dead.tsv")"
+  report "T87 TC-2348 the reclaimed ledger also crossed the rotation trigger" 1 \
+    "$([[ "$(awk -F'\t' '$3 ~ /^SG[1-6]-/ {c++} END {print c+0}' "$_t87_lgd/ledger-dead.tsv")" == "30" ]] && [[ "$(wc -l < "$_t87_lgd/ledger-dead.tsv" | tr -d ' ')" -le 600 ]] && echo 1 || echo 0)"
+  # v3.97.1 (CHG-135): "exactly once" was over-specified — round-8 caught a
+  # second takeover whose re-verify found the dir's owner genuinely gone (ps
+  # reports no such pid), i.e. a leaked lock being recovered again, not two
+  # live holders: rows stayed 30/30 in every observed run (40 loaded + 60
+  # instrumented reps). The safety property is "the takeover ran" + rows +
+  # no residue; the count itself is incidental.
+  report "T87 TC-2348 the dead owner was reclaimed (takeover ran)" 1 \
+    "$([[ "$(grep -c 'reclaimed a stale owner' "$_t87_lgd/dead.err" 2>/dev/null || true)" -ge 1 ]] && echo 1 || echo 0)"
+  _t87_resid=0
+  [[ -d "$_t87_lgd/ledger-dead.tsv.lock" ]] && _t87_resid=$(( _t87_resid + 1 ))
+  [[ -d "$_t87_lgd/ledger-dead.tsv.lock.reclaim" ]] && _t87_resid=$(( _t87_resid + 1 ))
+  report "T87 TC-2348 the dead-owner lock is gone and no takeover mutex is left" 0 "$_t87_resid"
+  report "T87 TC-2348 no dead-owner writer falls back to an unlocked append" 0 \
+    "$(grep -c 'appended without rotation' "$_t87_lgd/dead.err" 2>/dev/null || true)"
+  # An owner-less lock (mkdir landed, the pid write never did) must not disable
+  # retention forever: an aged empty lock is reclaimed, not waited out.
+  mkdir "$_t87_lgd/ledger-3.tsv.lock"
+  touch -t 202001010000 "$_t87_lgd/ledger-3.tsv.lock"
+  bash "$_t87_lgd/w.sh" "$_t87_lgd" "$_t87_lgd/ledger-3.tsv" "$_t87_lgd/fn.sh" 7 2>> "$_t87_lgd/s7.err"
+  report "T87 TC-2348 an owner-less lock is reclaimed and the row still lands" 5 \
+    "$(awk -F'\t' '$3 ~ /^S7-/ {c++} END {print c+0}' "$_t87_lgd/ledger-3.tsv")"
+  report "T87 TC-2348 the reclaimed lock is gone" 0 \
+    "$([[ -d "$_t87_lgd/ledger-3.tsv.lock" ]] && echo 1 || echo 0)"
+  report "T87 TC-2348 the owner-less probe also kept the lock (no silent fallback)" 0 \
+    "$(grep -c 'appended without rotation' "$_t87_lgd/s7.err" 2>/dev/null || true)"
+  # v3.97.1 (CHG-135): evidence-round resolves ROOT physically (`pwd -P`), so a
+  # repo reached through a symlink (macOS /tmp -> /private/tmp, and the fresh-clone
+  # receipt's mktemp dir) prints the physical path. Compare against that, or the
+  # assertion only holds on un-symlinked checkouts.
+  _t87_rootp=$(cd "$ROOT" && pwd -P)
+  _t87_erlg=$(env -u AGENT_GUARD_COST_LEDGER bash "$ROOT/scripts/evidence-round.sh" --chg CHG-ER --shards 2 \
+      --state-dir "$_t87_lgd/state" --dry-run 2>/dev/null \
+      | grep -c "AGENT_GUARD_COST_LEDGER=\"$_t87_rootp/.agent-state/cost-ledger.tsv\"")
+  report "T87 TC-2349 evidence-round hands every shard the same absolute ledger path" 2 "$_t87_erlg"
+  _t87_erlo=$(AGENT_GUARD_COST_LEDGER=rel/l.tsv bash "$ROOT/scripts/evidence-round.sh" --chg CHG-ER --shards 2 \
+      --state-dir "$_t87_lgd/state" --dry-run 2>/dev/null \
+      | grep -c "AGENT_GUARD_COST_LEDGER=\"$_t87_rootp/rel/l.tsv\"")
+  report "T87 TC-2349 a relative override is absolutized for snapshot shards" 2 "$_t87_erlo"
+  report "T87 TC-2349 the shard launch actually exports the shared path" 1 \
+    "$(grep -c 'AGENT_GUARD_COST_LEDGER="$_shared_ledger" bash "$SUITE"' "$ROOT/scripts/evidence-round.sh")"
+  # v3.97.1 (CHG-135, REQ-1350): freeze window — a round testifies for exactly
+  # one tracked tree. (a) a live round's lock refuses fingerprint-counted writes
+  # at pre-write, (b) the lock's own directory and gitignored paths stay
+  # writable, (c) a leaked dead-owner lock never blocks, (d) a write that still
+  # lands (raw sed, no hook) marks the round INVALID instead of leaving a
+  # clean-looking meta.tsv behind.
+  _t87_fz=$(mktemp -d "${TMPDIR:-/tmp}/t87-freeze.XXXXXX")
+  ( cd "$_t87_fz" && git init -q . && git config user.email t@t && git config user.name t \
+      && printf '.agent-state/\n' > .gitignore && mkdir -p scripts \
+      && echo keep > keep.txt && cp "$ROOT/scripts/evidence-round.sh" scripts/ \
+      && cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/ \
+      && git add -A && git commit -qm init ) >/dev/null 2>&1
+  printf '#!/bin/bash\n[ "${PWD}" = "${DRIFT_ROOT:-}" ] && echo drift >> keep.txt\nexit 0\n' > "$_t87_fz/stub.sh"
+  chmod +x "$_t87_fz/stub.sh"
+  # The round's lock is one stamped file (link(2) publish); the gate reads it.
+  _t87_lock() { # <pid> [lock path]
+    local lk="${2:-$_t87_fz/.agent-state/evidence-round.lock}"
+    mkdir -p "$(dirname "$lk")"
+    { printf 'pid=%s\n' "$1"
+      printf 'lstart=%s\n' "$(LC_ALL=C ps -p $$ -o lstart= 2>/dev/null || true)"
+      printf 'chg=CHG-FZ\nround=1\ntree_sha=-\n'; } > "$lk"
+  }
+  _t87_lock "$$"
+  _t87_fzo=$( cd "$_t87_fz" && bash "$GATE_SRC" --stage pre-write --file keep.txt 2>&1 )
+  report "T87 TC-2351 a live round's lock refuses a counted-file write (E156)" 1 \
+    "$(grep -c 'GATE-E156' <<< "$_t87_fzo")"
+  _t87_fzo2=$( cd "$_t87_fz" && bash "$GATE_SRC" --stage pre-write --file .agent-state/evidence-round.lock 2>&1 )
+  report "T87 TC-2351 the lock path and gitignored paths stay writable" 0 \
+    "$(grep -c 'GATE-E156' <<< "$_t87_fzo2")"
+  _t87_lock 999999
+  _t87_fzo3=$( cd "$_t87_fz" && bash "$GATE_SRC" --stage pre-write --file keep.txt 2>&1 )
+  report "T87 TC-2351 a leaked dead-owner lock never blocks" 0 \
+    "$(grep -c 'GATE-E156' <<< "$_t87_fzo3")"
+  rm -f "$_t87_fz/.agent-state/evidence-round.lock"
+  # The round resolves ROOT physically (pwd -P), so the stub must compare against
+  # the physical path or macOS /tmp -> /private/tmp silently defeats the drift.
+  _t87_fzp=$( cd "$_t87_fz" && pwd -P )
+  ( cd "$_t87_fz" && DRIFT_ROOT="$_t87_fzp" AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FZ --shards 2 --skip-precheck --no-sum >/dev/null 2>&1 ); _t87_fzrc=$?
+  report "T87 TC-2351 a mid-round tracked edit makes the round INVALID (rc2)" 2 "$_t87_fzrc"
+  report "T87 TC-2351 the invalid round says so in meta (tree_drift=1)" 1 \
+    "$(awk -F'\t' '$1=="tree_drift"{print $2}' "$_t87_fz/.agent-state/evidence/CHG-FZ/round-1/meta.tsv" 2>/dev/null)"
+  # A second round must not start while the first one's owner is alive.
+  _t87_lock "$$"
+  ( cd "$_t87_fz" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FZ3 --shards 2 --skip-precheck --no-sum \
+      > "$_t87_fz/live.out" 2>&1 ); _t87_fzlrc=$?
+  report "T87 TC-2351 a live owner refuses a second round (rc2)" 2 "$_t87_fzlrc"
+  report "T87 TC-2351 the refusal names the live owner" 1 \
+    "$(grep -c 'held by a live round' "$_t87_fz/live.out" 2>/dev/null || true)"
+  # A dead owner must not brick the tree: the next round reclaims and runs.
+  _t87_lock 999999
+  ( cd "$_t87_fz" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FZ4 --shards 2 --skip-precheck --no-sum \
+      >/dev/null 2>&1 ); _t87_fzsrc=$?
+  report "T87 TC-2351 a dead owner's lock is reclaimed and the round runs" 0 "$_t87_fzsrc"
+  report "T87 TC-2351 the reclaimed round releases the lock" 0 \
+    "$([[ -e "$_t87_fz/.agent-state/evidence-round.lock" ]] && echo 1 || echo 0)"
+  # SIGTERM must abort the round (no evidence), not just drop the lock and keep
+  # going. The stub ignores TERM: a shard that survives the signal would keep
+  # writing into the tree after the freeze window closed.
+  printf '#!/bin/bash\ntrap "" TERM\nsleep 8\nexit 0\n' > "$_t87_fz/slow.sh"
+  chmod +x "$_t87_fz/slow.sh"
+  # --live-shard 1: skip the 6-way resolution loop so the lock appears at once.
+  ( cd "$_t87_fz" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/slow.sh" \
+      exec bash scripts/evidence-round.sh --chg CHG-FZ5 --shards 2 --live-shard 1 \
+      --skip-precheck --no-sum >/dev/null 2>&1 ) &
+  _t87_fzsigpid=$!
+  _t87_fzgotlock=1
+  for _i in $(seq 1 60); do
+    [[ -e "$_t87_fz/.agent-state/evidence-round.lock" ]] && { _t87_fzgotlock=0; break; }
+    sleep 0.1
+  done
+  report "T87 TC-2351 the round held the lock before the signal" 0 "$_t87_fzgotlock"
+  # Every descendant, not just the direct children: the real writer is the
+  # suite process below the wrapper, and an orphaned grandchild would survive a
+  # check that only looks at `pgrep -P <round>`.
+  _t87_desc() { # <pid>
+    local _c
+    for _c in $(pgrep -P "$1" 2>/dev/null); do
+      printf '%s\n' "$_c"
+      _t87_desc "$_c"
+    done
+  }
+  _t87_fzkids=$(_t87_desc "$_t87_fzsigpid" | tr '\n' ' ')
+  sleep 0.2
+  kill -TERM "$_t87_fzsigpid" 2>/dev/null || true
+  wait "$_t87_fzsigpid" 2>/dev/null; _t87_fzsigrc=$?
+  report "T87 TC-2351 SIGTERM aborts the round (rc143)" 143 "$_t87_fzsigrc"
+  report "T87 TC-2351 the aborted round releases the lock" 0 \
+    "$([[ -e "$_t87_fz/.agent-state/evidence-round.lock" ]] && echo 1 || echo 0)"
+  # A just-killed child can still answer kill -0 as a zombie until it is reaped;
+  # only a live (non-Z) process counts as a surviving writer.
+  _t87_fzalive=0
+  for _i in 1 2 3 4 5; do
+    _t87_fzalive=0
+    for _p in $_t87_fzkids; do
+      _st=$(ps -p "$_p" -o stat= 2>/dev/null | tr -d ' ')
+      [[ -n "$_st" && "$_st" != Z* ]] && _t87_fzalive=1
+    done
+    (( _t87_fzalive )) || break
+    sleep 0.2
+  done
+  report "T87 TC-2351 the aborted round leaves no shard writer behind" 0 "$_t87_fzalive"
+  # Without a fingerprint there is no drift check: refusing beats a blind green.
+  mv "$_t87_fz/scripts/lib-suite-tree-fingerprint.sh" "$_t87_fz/scripts/lib.hold"
+  ( cd "$_t87_fz" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/stub.sh" \
+      bash scripts/evidence-round.sh --chg CHG-FZ6 --shards 2 --skip-precheck --no-sum \
+      >/dev/null 2>&1 ); _t87_fznorc=$?
+  mv "$_t87_fz/scripts/lib.hold" "$_t87_fz/scripts/lib-suite-tree-fingerprint.sh"
+  report "T87 TC-2351 no start fingerprint refuses the round (rc2)" 2 "$_t87_fznorc"
+  # Runtime state stays writable even where .agent-state is not gitignored: the
+  # exemption must mirror the fingerprint recipe, not depend on ignore rules.
+  _t87_fz2=$(mktemp -d "${TMPDIR:-/tmp}/t87-freeze2.XXXXXX")
+  ( cd "$_t87_fz2" && git init -q . && git config user.email t@t && git config user.name t \
+      && mkdir -p .agent-state && echo keep > keep.txt && echo rt > .agent-state/tracked.txt \
+      && git add -A && git commit -qm init ) >/dev/null 2>&1
+  _t87_lock "$$" "$_t87_fz2/.agent-state/evidence-round.lock"
+  _t87_fzo5=$( cd "$_t87_fz2" && bash "$GATE_SRC" --stage pre-write --file .agent-state/tracked.txt 2>&1 )
+  report "T87 TC-2351 runtime state stays writable without an ignore rule" 0 \
+    "$(grep -c 'GATE-E156' <<< "$_t87_fzo5")"
+  _t87_fzo6=$( cd "$_t87_fz2" && bash "$GATE_SRC" --stage pre-write --file keep.txt 2>&1 )
+  report "T87 TC-2351 the same repo still refuses a counted write" 1 \
+    "$(grep -c 'GATE-E156' <<< "$_t87_fzo6")"
+  rm -rf "$_t87_fz2"
+  rm -rf "$_t87_fz"
+  rm -rf "$_t87_lgd"
   rm -rf "$_t87_spd"
   rm -f "$_t87_cache"
 }
@@ -9527,7 +10004,7 @@ if [[ "$JOBS" -ge 2 ]]; then
     _se=$(cat "${TMPDIR:-/tmp}/suite-${_s}.$$.sec" 2>/dev/null || echo 0)
     _ss=$(cat "${TMPDIR:-/tmp}/suite-${_s}.$$.setup" 2>/dev/null || echo 0)
     printf '[done] %s %ss\n' "$_s" "$_se"
-    ledger_append sec "$_s" "$_se" "$_ss" none 0 "$(( p + f ))"
+    if _sec_row_wanted "$_s"; then ledger_append sec "$_s" "$_se" "$_ss" none 0 "$(( p + f ))"; fi
     _TIMINGS+=("${_s}:${_se}:${_ss}")
     rm -f "$_sf" "${TMPDIR:-/tmp}/suite-${_s}.$$.sec" "${TMPDIR:-/tmp}/suite-${_s}.$$.setup"
   done
@@ -9558,7 +10035,7 @@ else
       esac
       _el=$(( $(date +%s) - _t0 ))
       printf '[done] %s %ss\n' "$_s" "$_el"
-      ledger_append sec "$_s" "$_el" "${NEW_REPO_SETUP_S:-0}" none 0 "$(( _p + _f ))"
+      if _sec_row_wanted "$_s"; then ledger_append sec "$_s" "$_el" "${NEW_REPO_SETUP_S:-0}" none 0 "$(( _p + _f ))"; fi
       _TIMINGS+=("${_s}:${_el}:${NEW_REPO_SETUP_S:-0}")
       progress_write running
     fi
