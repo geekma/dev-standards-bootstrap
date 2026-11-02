@@ -25,6 +25,10 @@
 # commit 字段（v3.62.0，CHG-080/REQ-1024 方案 A）：对**每个盖章文件**取
 # `git log -1 --format=%h -- <file>`（该文件最后触碰的 commit＝内容来源真值）；
 # 文件从未入库时回退 rev-parse HEAD。同 HEAD 二次盖章除 generated_at 墙钟外零漂移。
+# 时间戳幂等（v3.97.2，CHG-136/REQ-1351）：变换输出与现文件剥掉 generated_at 行
+# 后逐字节相等 → 跳过落盘（墙钟不是内容——无条件重写=每次提交全目录秒级漂移、
+# 无限追尾）。判据在变换输出上：脏形照常收敛（v3.62.1 契约不破）；commit 字段
+# 参与比较：失配仍重写，last-touch 自愈完整保留。
 # id 形状（v3.62.0，REQ-1023，FU-023 no-dot 形状）：`^[A-Za-z0-9][A-Za-z0-9_-]*$`——
 # 点号 id 拒盖（与 agent-gate E02 / new-change id 契约同形）。
 #
@@ -474,6 +478,7 @@ fi
 # 默认目标（未显式给文件名）缺失时**不**自动建空文件：门禁对 04.5 只查"存在且非空"，
 # 自动建骨架会让"空壳也算交付"——那正是本脚本要收窄的缺口。改为给出可执行的下一步。
 stamped=0
+unchanged=0
 for f in "${targets[@]}"; do
   if [[ ! -f "$f" ]]; then
     if [[ "$default_target" == true ]]; then
@@ -542,13 +547,27 @@ for f in "${targets[@]}"; do
     echo "stamp-provenance: transform failed (rc=$awkrc) for $f" >&2
     exit 2
   fi
+  # v3.97.2（CHG-136/REQ-1351）：时间戳幂等不动点——**最终**变换输出（含 rc=4 无 H1
+  # 兜底构造的输出）与现文件剥掉 generated_at 行后逐字节相等 → 跳过落盘：文件字节
+  # 不动（含时间戳行），输出 unchanged（pre-commit 回填过滤器只认 stamped/
+  # trace-derive，零 index 搅动）。评审 R1 硬项①：判据必须在 rc 分支之后对最终 out
+  # 执行——放 rc==0 分支会漏掉无 H1 兜底族（每次重盖刷新墙钟，追尾不根治，TC-2357）。
+  # 判据在**变换输出**上而非块内容比对：脏形文件（块尾空行堆积等）变换后仍有差异
+  # → 照常落盘收敛，v3.62.1 脏形收敛契约不被跳过打破（TC-1081 回归实证）；
+  # commit 字段参与比较（不剥）——失配仍重写，v3.62.0 last-touch 自愈完整保留。
+  if diff -q <(sed 's/^generated_at: .*/generated_at: X/' "$out") <(sed 's/^generated_at: .*/generated_at: X/' "$f") >/dev/null 2>&1; then
+    rm -f "$out" "$out_f" "$blk_f"
+    echo "unchanged    $f"
+    unchanged=$(( unchanged + 1 ))
+    continue
+  fi
   cat "$out" > "$f"
   rm -f "$out" "$out_f" "$blk_f"
   echo "stamped      $f"
   stamped=$(( stamped + 1 ))
 done
 
-[[ "$stamped" -gt 0 ]] || { echo "stamp-provenance: nothing stamped" >&2; exit 2; }
+[[ $((stamped + unchanged)) -gt 0 ]] || { echo "stamp-provenance: nothing stamped" >&2; exit 2; }
 if [[ "$stamp_all" == true ]]; then
   derive_trace_block "$chg" "$CHG_DIR"
 fi

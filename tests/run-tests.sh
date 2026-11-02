@@ -2149,6 +2149,45 @@ if [[ -f "$STAMP_SRC" ]]; then
   scripts/stamp-provenance.sh --check docs/changes/CHG-700/04.5-coding-record.md >/dev/null 2>&1
   report "T17 --check commit consistency accepts a fresh stamp" 0 $?
 
+  # ③c-2 时间戳幂等（v3.97.2，CHG-136/REQ-1351/TC-2352..2355）：新块与现存块剥
+  #     generated_at 行后逐字节相等 → 跳过重写（墙钟不是内容；无条件重写=每次提交
+  #     全目录秒级漂移、无限追尾，目标仓真实事故（2026-11-01 批次交付后 5 文件纯
+  #     时间戳残留）实证）。
+  #     commit 字段不剥：失配仍重写（v3.62.0 自愈保留）；全 unchanged 批 exit 0；
+  #     无块/篡改照常全盖（回归守卫）。
+  cp docs/changes/CHG-700/04.5-coding-record.md .t136-a
+  sleep 1
+  out=$(scripts/stamp-provenance.sh CHG-700 2>&1); rc=$?
+  report "T17 TC-2352 timestamp-only re-stamp exits 0" 0 "$rc"
+  check_output "T17 TC-2352 timestamp-only re-stamp reports unchanged" "^unchanged    docs/changes/CHG-700/04[.]5-coding-record[.]md$" "$out"
+  report "T17 TC-2352 skipped rewrite leaves the file byte-identical (incl. generated_at)" 0 "$(cmp -s .t136-a docs/changes/CHG-700/04.5-coding-record.md; echo $?)"
+  sed 's/^commit: .*/commit: deadbee/' docs/changes/CHG-700/04.5-coding-record.md > .t136-t1 && mv .t136-t1 docs/changes/CHG-700/04.5-coding-record.md
+  scripts/stamp-provenance.sh CHG-700 >/dev/null 2>&1
+  blk_commit3=$(sed -n '/^<!-- provenance$/,/^-->$/p' docs/changes/CHG-700/04.5-coding-record.md | sed -nE 's/^commit:[[:space:]]*//p')
+  report "T17 TC-2353 tampered commit is healed on re-stamp" 1 "$(git log -1 --format=%h -- docs/changes/CHG-700/04.5-coding-record.md | grep -cF "$blk_commit3")"
+  report "T17 TC-2353 healed commit differs from the tampered value" 0 "$(test "$blk_commit3" != "deadbee"; echo $?)"
+  scripts/stamp-provenance.sh --all CHG-700 >/dev/null 2>&1
+  out=$(scripts/stamp-provenance.sh --all CHG-700 2>&1); rc=$?
+  report "T17 TC-2354 all-unchanged --all re-run exits 0 (not nothing-stamped)" 0 "$rc"
+  check_output "T17 TC-2354 all-unchanged --all reports unchanged lines" "^unchanged    " "$out"
+  printf '# 无块夹具\n\n正文\n' > .t136-noblk
+  out=$(scripts/stamp-provenance.sh CHG-700 .t136-noblk 2>&1)
+  check_output "T17 TC-2355 blockless file is stamped" "^stamped      [.]t136-noblk$" "$out"
+  sed 's/^generated_by: .*/generated_by: hand-written/' docs/changes/CHG-700/04.5-coding-record.md > .t136-t2 && mv .t136-t2 docs/changes/CHG-700/04.5-coding-record.md
+  out=$(scripts/stamp-provenance.sh CHG-700 2>&1)
+  check_output "T17 TC-2355 tampered producer is re-stamped" "^stamped      docs/changes/CHG-700/04[.]5-coding-record[.]md$" "$out"
+  # TC-2357（评审 R1 硬项①）：无 H1 兜底族同样受不动点保护——判据对最终（兜底
+  # 构造）输出执行；否则该族每次重盖刷新墙钟，追尾不根治。
+  printf '## 非 H1 标题\n\n正文（无 H1 夹具）\n' > .t136-noh1
+  scripts/stamp-provenance.sh CHG-700 .t136-noh1 >/dev/null 2>&1
+  cp .t136-noh1 .t136-noh1-a
+  sleep 1
+  out=$(scripts/stamp-provenance.sh CHG-700 .t136-noh1 2>&1); rc=$?
+  report "T17 TC-2357 no-H1 fallback second stamp exits 0" 0 "$rc"
+  check_output "T17 TC-2357 no-H1 fallback reports unchanged" "^unchanged    [.]t136-noh1$" "$out"
+  report "T17 TC-2357 no-H1 fallback skip is byte-identical" 0 "$(cmp -s .t136-noh1-a .t136-noh1; echo $?)"
+  rm -f .t136-a .t136-noh1 .t136-noh1-a
+
   # ③d 整文件字节幂等（v3.62.1，CHG-081/REQ-1025/TC-1080）：旧 TC-1079 只比块内
   #     抽取——空行累积恰在块外，测试自遮蔽恒绿（CHG-080 教训）。整文件 diff +
   #     块尾空行恒 1 双断言。
