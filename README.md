@@ -310,6 +310,12 @@ Any change that fails any gate is **blocked from merge to main**.
   <sub>The rework is then verified by a <b>new</b> independent reviewer: the author cannot self-certify, so "fixed" requires evidence produced after the fix.</sub>
 </p>
 
+<p align="center">
+  <img src="screenshots/defect-fix-loop-cross-vendor-review.png" alt="After the test subject caught a real defect and dispatched the fix back to the implementation subject, the 5-stage independent review batch went to Claude Code cross-vendor" width="760">
+  <br>
+  <sub>The full loop in practice: the test subject caught a real defect (DEF-063-1) and dispatched it back to the implementation subject for the fix (770 all green); after the green recheck, the reviewer's CLI is probed first, then the 5-stage independent review batch is dispatched to <b>Claude Code</b> (cross-vendor) — fixer and reviewer differ in both entity and model vendor.</sub>
+</p>
+
 ## Risk Classification Matrix
 
 | Level | Criteria | Independence | Cross-Platform | Human Approval |

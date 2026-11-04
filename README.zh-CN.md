@@ -310,6 +310,12 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
   <sub>返工由<b>新的</b>独立评审者验证：作者不能自证，所以"修好了"必须由修复之后产生的证据支撑。</sub>
 </p>
 
+<p align="center">
+  <img src="screenshots/defect-fix-loop-cross-vendor-review.png" alt="测试主体抓到真缺陷派回实现主体修复后，向 Claude Code 跨厂商派发 5 阶段独立评审批" width="760">
+  <br>
+  <sub>完整闭环实战：测试主体抓到真缺陷（DEF-063-1）按流程派回实现主体修复（770 全绿），复跑确认后先探测评审厂商 CLI 在位，再把 5 阶段独立评审批派给 <b>Claude Code</b>（跨厂商）——修复者与评审者不同主体、不同模型厂商。</sub>
+</p>
+
 ## 风险分级矩阵
 
 | 等级 | 判定依据 | 独立性要求 | 跨平台要求 | 人类授权 |
