@@ -523,9 +523,30 @@ _kill_tree() {
   kill -TERM "$_p" 2>/dev/null || true
 }
 _kill_tree_hard() {
+  # CHG-139: no live callers — the KILL escalation shoots the recorded roster
+  # (see _record_tree). Removed body; the re-walk form it embodied is the
+  # orphan-leak antialias this fix removes. Residuals (review #3/#5):
+  # (a) pids spawned between roster snapshot and the TERM pass are TERM'd by
+  # the re-walk but never KILL'd (narrow window; full closure needs a
+  # process-group design); (b) KILL by roster can hit a reused pid in the
+  # <=2.2s window — same exposure class as the old re-walk, accepted.
+  :
+}
+# v3.98.1 erratum (CHG-139): record the descendant set BEFORE any signal. The
+# KILL escalation must shoot a recorded roster, NOT re-walk `pgrep -P` at kill
+# time: an intermediate wrapper can exit between the TERM pass and the KILL
+# pass, orphaning a TERM-immune grandchild (SIG_IGN is inherited across fork —
+# a `trap "" TERM` stub's `sleep` ignores TERM too). A reparented process is
+# invisible to `pgrep -P`, so a re-walk loses it and it keeps writing into the
+# tree after the freeze window closed (CI run 41964644653: 6 writers survived
+# 25x0.2s grace; local timing always hid the window).
+_er_tree_pids=""
+_record_tree() {
   local _p="$1" _c
-  for _c in $(pgrep -P "$_p" 2>/dev/null); do _kill_tree_hard "$_c"; done
-  kill -KILL "$_p" 2>/dev/null || true
+  for _c in $(pgrep -P "$_p" 2>/dev/null); do
+    _er_tree_pids="$_er_tree_pids $_c"
+    _record_tree "$_c"
+  done
 }
 # A shard killed between `worktree add` and its own cleanup leaves a registered
 # worktree under .agent-state/wt-shard.* and, if it died inside the 10 s
@@ -547,18 +568,24 @@ _sweep_worktrees() {
 # write into the tree after the freeze window was supposed to close.
 _er_stop_shards() {
   local _p _i _alive _n=0
+  # Roster first (see _record_tree): every descendant visible NOW, before the
+  # TERM pass can orphan any of them.
+  _er_tree_pids=""
   for _p in ${_pids[@]+"${_pids[@]}"}; do
+    _record_tree "$_p"
     _kill_tree "$_p"
     _n=$(( _n + 1 ))
   done
   (( _n )) || return 0
+  # Liveness over the RECORDED set + direct pids: an orphaned grandchild is
+  # exactly the process a `pgrep -P` re-walk would never see again.
   for _i in 1 2 3 4 5 6 7 8 9 10; do
     _alive=0
-    for _p in ${_pids[@]+"${_pids[@]}"}; do kill -0 "$_p" 2>/dev/null && _alive=1; done
+    for _p in $_er_tree_pids ${_pids[@]+"${_pids[@]}"}; do kill -0 "$_p" 2>/dev/null && _alive=1; done
     (( _alive )) || break
     sleep 0.2
   done
-  for _p in ${_pids[@]+"${_pids[@]}"}; do _kill_tree_hard "$_p"; done
+  for _p in $_er_tree_pids ${_pids[@]+"${_pids[@]}"}; do kill -KILL "$_p" 2>/dev/null || true; done
   for _p in ${_pids[@]+"${_pids[@]}"}; do wait "$_p" 2>/dev/null || true; done
 }
 # A trap that only releases and returns would leave the shards running and the

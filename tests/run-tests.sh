@@ -9296,7 +9296,27 @@ EOF
         cp "$_t87_lgd/ledger-$_fl.tsv" "$_fd/ledger-$_fl-$1.tsv" 2>/dev/null
       done
       [[ -f "$_t87_lgd/writers.err" ]] && cp "$_t87_lgd/writers.err" "$_fd/writers-$1.err" 2>/dev/null
-      ps -eo pid,ppid,stat,comm 2>/dev/null | head -120 > "$_fd/ps-$1.txt"
+      # ps snapshot targets the kids explicitly (and keeps a full tail as
+      # context): the old `ps -eo ... | head -120` sorts by pid, so on a busy
+      # runner the suite's own (high) pids were cut and the snapshot carried
+      # zero evidence (CHG-139).
+      {
+        _t87_fkids="${_t87_fzkids:-}"
+        # CHG-139 review #1: filter to LIVE pids first — macOS `ps -p` fails
+        # wholesale (rc1, zero lines) when the list contains one reaped pid,
+        # which is exactly the red-scene case.
+        _t87_flive=""
+        for _k in $_t87_fkids; do
+          kill -0 "$_k" 2>/dev/null && _t87_flive="$_t87_flive $_k"
+        done
+        _t87_flive="${_t87_flive# }"
+        if [[ -n "$_t87_flive" ]]; then
+          ps -o pid,ppid,stat,etime,args -p "${_t87_flive// /,}" 2>/dev/null
+        fi
+        echo "dead kids: $(for _k in $_t87_fkids; do kill -0 "$_k" 2>/dev/null || printf '%s ' "$_k"; done)"
+        echo "--- full table tail ---"
+        ps -eo pid,ppid,stat,args 2>/dev/null | tail -40
+      } > "$_fd/ps-$1.txt" 2>/dev/null
       # stdin echo only when redirected (heredoc/pipe): an interactive caller
       # would otherwise block on the tty (CHG-138 review L1).
       [[ ! -t 0 ]] && cat
@@ -9524,6 +9544,40 @@ EOT
 tc2351: surviving writer(s) after SIGTERM + ${_t87_fztries}x0.2s grace: kids=[$_t87_fzkids]
 EOT
   report "T87 TC-2351 the aborted round leaves no shard writer behind" 0 "$_t87_fzalive"
+  # TC-2366 (v3.98.1 CHG-139/REQ-1358 review #2): a DETERMINISTIC orphan probe —
+  # the shard process dies on TERM while its TERM-immune grandchild (SIG_IGN
+  # inherited by `bash -c`) survives and is reparented. The old re-walk lost it
+  # (pgrep -P of a dead pid is empty); the recorded roster must KILL it. This
+  # is structure, not timing, so it discriminates locally too — the slow.sh
+  # probe above only discriminated under CI load.
+  printf '#!/bin/bash\ntrap "exit 0" TERM\nbash -c '"'"'trap "" TERM; sleep 8'"'"' &\nwait $!\nexit 0\n' > "$_t87_fz/wrap.sh"
+  chmod +x "$_t87_fz/wrap.sh"
+  ( cd "$_t87_fz" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/wrap.sh" \
+      exec bash scripts/evidence-round.sh --chg CHG-FZ8 --shards 1 --live-shard 1 \
+      --skip-precheck --no-sum >/dev/null 2>&1 ) &
+  _t87_fzwpid=$!
+  for _i in $(seq 1 60); do
+    [[ -e "$_t87_fz/.agent-state/evidence-round.lock" ]] && break
+    sleep 0.1
+  done
+  _t87_fzwkids=$(_t87_desc "$_t87_fzwpid" | tr '\n' ' ')
+  sleep 0.2
+  kill -TERM "$_t87_fzwpid" 2>/dev/null || true
+  wait "$_t87_fzwpid" 2>/dev/null
+  _t87_fzwalive=0
+  for _i in 1 2 3 4 5; do
+    _t87_fzwalive=0
+    for _p in $_t87_fzwkids; do
+      _st=$(ps -p "$_p" -o stat= 2>/dev/null | tr -d ' ')
+      [[ -n "$_st" && "$_st" != Z* ]] && _t87_fzwalive=1
+    done
+    (( _t87_fzwalive )) || break
+    sleep 0.2
+  done
+  (( _t87_fzwalive )) && _t87_forensic tc2366 <<EOT
+tc2366: orphaned TERM-immune sleeper survived roster KILL: kids=[$_t87_fzwkids]
+EOT
+  report "T87 TC-2366 an orphaned TERM-immune sleeper dies via the roster" 0 "$_t87_fzwalive"
   # Without a fingerprint there is no drift check: refusing beats a blind green.
   mv "$_t87_fz/scripts/lib-suite-tree-fingerprint.sh" "$_t87_fz/scripts/lib.hold"
   ( cd "$_t87_fz" && AGENT_GUARD_EVIDENCE_SUITE="$_t87_fz/stub.sh" \
