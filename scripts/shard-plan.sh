@@ -285,7 +285,14 @@ case "$MODE" in
     ' "$SUITE" > "$_tmp" || { rm -f "$_tmp"; exit 2; }
     # mktemp creates 0600; a bare mv would strip the suite's permission bits
     # (and its +x) for good.
-    _perm=$(stat -f '%Lp' "$SUITE" 2>/dev/null || stat -c '%a' "$SUITE" 2>/dev/null)
+    # v3.98.1 (CHG-138/REQ-1356): probe GNU first (`stat -c '%a'`) — the BSD
+    # form `stat -f '%Lp'` is NOT portable: GNU stat reads `-f` as
+    # --file-system, where %Lp is an invalid directive that still exits 0 with
+    # garbage output, and the old macOS-first order fed that garbage to chmod
+    # (silently, no set -e), leaving the mv'd copy 0600 on Linux. The numeric
+    # whitelist rejects anything non-octal on either platform.
+    _perm=$(stat -c '%a' "$SUITE" 2>/dev/null || stat -f '%Lp' "$SUITE" 2>/dev/null)
+    case "$_perm" in ''|*[!0-7]*) _perm='' ;; esac
     [[ -n "$_perm" ]] && chmod "$_perm" "$_tmp"
     mv "$_tmp" "$SUITE" || exit 2
     # Pin the model the table was built from, in SECTIONS order, including the

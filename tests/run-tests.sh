@@ -3707,6 +3707,21 @@ if [[ -f "$STAMP_SRC" && -f "$HOOK_SRC" ]]; then
   out=$(bash .githooks/pre-commit 2>&1 || true)
   report "T27 TC-1072 skip warning emitted for beyond-stamp delta" 1 "$(printf '%s' "$out" | grep -cF 'skip index backfill')"
   report "T27 TC-1072 unstaged hunk stays unstaged (not swept into index)" 1 "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
+  # TC-2363 (v3.98.1 CHG-138/REQ-1355 review L2): the POSITIVE backfill path
+  # under the idempotence regime — first converge index==tree (clears the
+  # TC-1072 leftover so it cannot leak into this probe), then poison the INDEX
+  # with a stale generated_at while the tree stays a fixed point; the hook must
+  # still `git add` (the filter now includes `unchanged`) so the index
+  # converges to the tree in one sync (strip strips the timestamp — no chasing).
+  git add -- docs/changes/CHG-944/00-intent.md
+  _t27_blob=$(sed 's/^generated_at: .*/generated_at: 2000-01-01T00:00:00Z/' docs/changes/CHG-944/00-intent.md \
+    | git hash-object -w --stdin)
+  git update-index --cacheinfo "100644,$_t27_blob,docs/changes/CHG-944/00-intent.md"
+  report "T27 TC-2363 stale-timestamp index delta exists before hook" 1 \
+    "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
+  bash .githooks/pre-commit >/dev/null 2>&1
+  report "T27 TC-2363 unchanged backfill syncs a stale index timestamp" 0 \
+    "$(git diff --name-only -- docs/changes/CHG-944/00-intent.md | wc -l | tr -d ' ')"
   # TC-1082 (v3.62.1 CHG-081 REQ-1026): iteration-boundary backfill — index holds
   # stamped v1, hook re-stamps v2. Old strip compare swallowed exactly one
   # trailing blank, so any accumulated blank made strips differ and the backfill
@@ -9167,6 +9182,19 @@ EOF
   report "T87 planner --write exits 0 on a marked copy" 0 "$?"
   report "T87 planner --write keeps the suite's permission bits" 0 \
     "$([[ -x "$_t87_spd/r/tests/run-tests.sh" ]] && echo 0 || echo 1)"
+  # TC-2364 (v3.98.1 CHG-138/REQ-1356 review L3): the whitelist branch itself,
+  # via PATH injection — a hostile `stat` that always emits garbage must not
+  # crash --write (rc0, chmod skipped fail-open), and a GNU-shaped `stat` must
+  # feed chmod a numeric mode so the copy stays executable.
+  mkdir -p "$_t87_spd/r/bin"
+  printf '#!/bin/sh\necho "not-a-mode"\n' > "$_t87_spd/r/bin/stat"
+  chmod 755 "$_t87_spd/r/bin/stat"
+  PATH="$_t87_spd/r/bin:$PATH" bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --ledger "$_t87_spd/l.tsv" --write >/dev/null 2>&1
+  report "T87 TC-2364 garbage-stat write survives (whitelist fail-open rc0)" 0 "$?"
+  printf '#!/bin/sh\ncase "$*" in -c*) echo 755 ;; *) echo garbage ;; esac\n' > "$_t87_spd/r/bin/stat"
+  PATH="$_t87_spd/r/bin:$PATH" bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --ledger "$_t87_spd/l.tsv" --write >/dev/null 2>&1
+  report "T87 TC-2364 numeric-stat write keeps the copy executable" 0 \
+    "$([[ -x "$_t87_spd/r/tests/run-tests.sh" ]] && echo 0 || echo 1)"
   report "T87 planner --write pins one cost per section" "${#SECTIONS[@]}" \
     "$(( $(wc -l < "$_t87_spd/r/tests/.shard-plan-costs.tsv" | tr -d ' ') - 1 ))"
   # --check reads the pin, not the ledger: the suite appends its own `sec` rows,
@@ -9249,6 +9277,32 @@ EOF
   report "T87 TC-2350 the stub sec row is skipped inside a snapshot" 1 \
     "$(grep -c '^_sec_row_wanted() {' "$ROOT/tests/run-tests.sh")"
   _t87_lgd=$(mktemp -d "${TMPDIR:-/tmp}/t87-ledger.XXXXXX")
+  # v3.98.1 (CHG-138/REQ-1357): CI-only concurrency probes (TC-2348 legacy
+  # migration, TC-2351 aborted-round writers) have red without a proven root
+  # cause — dump the live scene on failure so the next red run carries its own
+  # evidence. Best effort: forensics must never turn a red case green or mask
+  # a green one (no assertion reads anything it writes).
+  _t87_forensic() { # <tag> [extra summary text via stdin]
+    local _fd="$ROOT/.agent-state/t87-forensics"
+    mkdir -p "$_fd" 2>/dev/null || return 0
+    {
+      echo "tag: $1"
+      echo "utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "cores: $(getconf _NPROCESSORS_ONLN 2>/dev/null || echo '?')"
+      echo "suite_jobs: ${AGENT_GUARD_SUITE_JOBS:-unset}"
+      for _fl in 1 2 3; do
+        [[ -f "$_t87_lgd/ledger-$_fl.tsv" ]] || continue
+        echo "ledger-$_fl: lines=$(wc -l < "$_t87_lgd/ledger-$_fl.tsv" | tr -d ' ') nf_hist=($(awk -F'\t' '{n[NF]++} END {for (f in n) printf "NF%s=%s ", f, n[f]}' "$_t87_lgd/ledger-$_fl.tsv"))"
+        cp "$_t87_lgd/ledger-$_fl.tsv" "$_fd/ledger-$_fl-$1.tsv" 2>/dev/null
+      done
+      [[ -f "$_t87_lgd/writers.err" ]] && cp "$_t87_lgd/writers.err" "$_fd/writers-$1.err" 2>/dev/null
+      ps -eo pid,ppid,stat,comm 2>/dev/null | head -120 > "$_fd/ps-$1.txt"
+      # stdin echo only when redirected (heredoc/pipe): an interactive caller
+      # would otherwise block on the tty (CHG-138 review L1).
+      [[ ! -t 0 ]] && cat
+    } > "$_fd/summary-$1.txt" 2>/dev/null
+    return 0
+  }
   _t87_fixture() { # <path>: legacy 8-column ledger above the rotation trigger
     # 605 legacy rows + an 8-column header: a first locked append then MIGRATES
     # the schema and ROTATES (>600) — two rewrites inside the critical section.
@@ -9286,8 +9340,11 @@ EOF
     _rep=$(( _rep + 1 ))
   done
   report "T87 TC-2348 six concurrent writers keep every appended row (3x 30/30)" 90 "$_t87_kept"
-  report "T87 TC-2348 the legacy ledger was migrated to the 14-column schema" 0 \
-    "$(awk -F'\t' 'NF != 14 {c++} END {print c+0}' "$_t87_lgd/ledger-3.tsv")"
+  _t87_bad14=$(awk -F'\t' 'NF != 14 {c++} END {print c+0}' "$_t87_lgd/ledger-3.tsv")
+  (( _t87_bad14 > 0 )) && _t87_forensic tc2348 <<EOT
+tc2348: ledger-3.tsv has $_t87_bad14 row(s) with NF != 14 (expected 0)
+EOT
+  report "T87 TC-2348 the legacy ledger was migrated to the 14-column schema" 0 "$_t87_bad14"
   report "T87 TC-2348 retention ran inside the critical section" 1 \
     "$([[ "$(wc -l < "$_t87_lgd/ledger-3.tsv" 2>/dev/null | tr -d ' ')" -le 600 ]] && echo 1 || echo 0)"
   report "T87 TC-2348 no writer falls back to an unlocked append" 0 \
@@ -9447,8 +9504,14 @@ EOF
     "$([[ -e "$_t87_fz/.agent-state/evidence-round.lock" ]] && echo 1 || echo 0)"
   # A just-killed child can still answer kill -0 as a zombie until it is reaped;
   # only a live (non-Z) process counts as a surviving writer.
+  # v3.98.1 (CHG-138/REQ-1357): grace floor scales with core count — CI runners
+  # (2 vCPU, AGENT_GUARD_SUITE_JOBS=4) need more than the fixed 5x0.2s for a
+  # SIGTERM'd round to reap its shard writers; a healthy local run still breaks
+  # out on the first green pass, so the common path pays nothing.
+  _t87_fztries=$(( 5 + $(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2) * 5 ))
   _t87_fzalive=0
-  for _i in 1 2 3 4 5; do
+  # C-style loop, not `seq`: pure bash builtin, no external dependency (CHG-138 review L4).
+  for ((_i = 1; _i <= _t87_fztries; _i++)); do
     _t87_fzalive=0
     for _p in $_t87_fzkids; do
       _st=$(ps -p "$_p" -o stat= 2>/dev/null | tr -d ' ')
@@ -9457,6 +9520,9 @@ EOF
     (( _t87_fzalive )) || break
     sleep 0.2
   done
+  (( _t87_fzalive )) && _t87_forensic tc2351 <<EOT
+tc2351: surviving writer(s) after SIGTERM + ${_t87_fztries}x0.2s grace: kids=[$_t87_fzkids]
+EOT
   report "T87 TC-2351 the aborted round leaves no shard writer behind" 0 "$_t87_fzalive"
   # Without a fingerprint there is no drift check: refusing beats a blind green.
   mv "$_t87_fz/scripts/lib-suite-tree-fingerprint.sh" "$_t87_fz/scripts/lib.hold"

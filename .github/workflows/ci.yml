@@ -53,6 +53,17 @@ jobs:
       # receipt, and the receipt/baselines are rendered into the job summary.
       - name: Baseline vs receipt hard gate
         run: bash scripts/ci-summary.sh --check
+      # v3.98.1 (CHG-138, REQ-1357): the T87 concurrency probes red on CI
+      # without a proven root cause; when they do, this carries the live scene
+      # (ledger copies, writer stderr, ps snapshot, core count) for forensics.
+      - name: Upload T87 forensics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t87-forensics
+          path: .agent-state/t87-forensics/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Golden-case run summary
         if: always()
         run: bash scripts/ci-summary.sh
