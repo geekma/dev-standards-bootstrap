@@ -99,6 +99,8 @@
 | R69 | 既有范式关系声明（§2.5 阶段 3，N4，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | universal | 硬 | 结构 |
 | R70 | 同族推演扩邻接面（§2.5 阶段 6，N3，v3.84.0） | STAGE_PLAYBOOK.md::**邻接面走查（v3.84.0，CHG-111，REQ-1166/N3）** | universal | 软 | 评审 |
 | R71 | 业务上下文装载与合理性自检（§2.2/专家卡 §0.2，N5，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务上下文装载（v3.84.0，CHG-111，N5）** | universal | 软 | 评审 |
+| R72 | subagent 硬预算（§2.2 派发契约，v3.98.0） | DEVELOPMENT_STANDARDS.md::**subagent 硬预算（v3.98.0，CHG-137，REQ-1353）** | universal | 软 | 评审 |
+| R73 | 评审修复批验证（§2.5 阶段 8，v3.98.0） | DEVELOPMENT_STANDARDS.md::**评审修复批验证（v3.98.0，CHG-137，REQ-1354）** | universal | 软 | 评审 |
 
 | 码 | 语义 | 落点 |
 | --- | --- | --- |
