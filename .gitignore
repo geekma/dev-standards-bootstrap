@@ -61,3 +61,4 @@ scripts/agent-gate
 scripts/stamp-provenance.sh
 .githooks/
 .oc-xdg/
+graphify-out

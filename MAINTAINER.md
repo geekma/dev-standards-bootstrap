@@ -165,7 +165,7 @@ bash scripts/update-assertion-count.sh --check --require-receipt
 
 ### 5.1 规范体量上界（A11）与它的重校准
 
-`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **172 KB / 176,128 字节**，v3.97.2 自 168KB 按 +4KiB 步进重校准——CHG-136）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
+`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **176 KB / 180,224 字节**，v3.97.2 自 168KB 按 +4KiB 步进重校准——CHG-136）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
 
 **重校准是设计内的动作，不是破例**，但必须满足两个条件：
 

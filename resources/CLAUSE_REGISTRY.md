@@ -8,7 +8,7 @@
 
 ## Schema
 
-- 列定义：`| Rxx | 条款标题 | 权威落点(path::唯一锚点串) | 类型标签 | 强制级别 | 生命周期类别 |`
+- 列定义：`| Rxx | 条款标题 | 权威落点(path::唯一锚点串) | 类型标签 | 强制级别 | 生命周期类别 | 机制 |`（机制列 v3.99.0 起：封闭词表 盘点/参照/自视/断言/见证/收口/元，依据 DS §0.6+§2.14；新行必填）
 - 行 ID：`Rxx` 十进制连续无跳号（无连字符形态，不进入 REQ/DES/TC/SC/BUG/CHG/FU 编号面，A6c/G2 不误扫）。
 - 权威落点：`path::anchor`——path 为仓根相对路径（须为随治理包分发的文件），anchor 为该文件中
   **唯一存在**的字符串（写行前必须 grep 验真 =1）；生成器按 `grep -F` 定位并解析行号，失配即 fail-closed。
@@ -16,91 +16,99 @@
 - 强制级别：`硬`=违反即退回；`软`=黄灯登记可申诉。
 - 生命周期类别（四类，口径见本段）：`结构` `措辞` `行为` `计数`。
 - 维护规则：变更新加/改标题条款时**必须同步**本表加行/改锚点（新锚点先 grep 验真），
-  并跑 `generate-reading-pack.sh --verify` 绿态后方可交付；删除条款同步删行。
+  并跑 `generate-reading-pack.sh <type> --verify`（type∈五封闭词表）绿态后方可交付；删除条款同步删行。
 
 ## 注册表
 
-| Rxx | 条款标题 | 权威落点 | 类型标签 | 强制级别 | 生命周期 |
-| --- | --- | --- | --- | --- | --- |
-| R01 | 缺陷处置主线（阶段 6） | DEVELOPMENT_STANDARDS.md::### 阶段 6：缺陷诊断与根因推导（Bug 专用） | L0-bugfix | 硬 | 结构 |
-| R02 | 缺陷双登记（log 索引 + CHG 条目） | DEVELOPMENT_STANDARDS.md::**Bug 修复必须双登记** | L0-bugfix | 硬 | 行为 |
-| R03 | 缺陷六件套必含清单 | DEVELOPMENT_STANDARDS.md::复现步骤、完整调用链 | L0-bugfix | 硬 | 结构 |
-| R04 | 根因表与同族推演 | DEVELOPMENT_STANDARDS.md::**根因·同族推演（v3.4.0）** | L0-bugfix | 硬 | 结构 |
-| R05 | Bug 修复记录七要素 | DEVELOPMENT_STANDARDS.md::Bug 修复记录七要素 | L0-bugfix | 硬 | 结构 |
-| R06 | 缺陷发现入口（bug-autointent/交互三选项/无账源码改动信号③——编辑时刻硬拦+交付边界 fail-closed+阶段感知谓词，v3.89.0） | DEVELOPMENT_STANDARDS.md::#### 2.17.2b 缺陷发现入口扩展 | L0-bugfix | 硬 | 结构 |
-| R07 | 诊断前必读总册 | DEVELOPMENT_STANDARDS.md::诊断前必读总册 | L0-bugfix | 硬 | 行为 |
-| R08 | TC 覆盖强制（修复必被 TC 覆盖） | DEVELOPMENT_STANDARDS.md::TC 覆盖强制 | L0-bugfix | 硬 | 行为 |
-| R09 | Bug 修复回填清单 | DEVELOPMENT_STANDARDS.md::#### Bug 修复回填清单 | L0-bugfix | 硬 | 结构 |
-| R10 | 缺陷修复类 CHG 专项评审核对 | DEVELOPMENT_STANDARDS.md::缺陷修复类 CHG 专项 | L0-bugfix | 硬 | 结构 |
-| R11 | 已闭合变更禁止改写（勘误新开组） | DEVELOPMENT_STANDARDS.md::已闭合 CHG 禁止改写 | universal | 硬 | 结构 |
-| R12 | 防覆盖与变更逻辑（§2.15） | DEVELOPMENT_STANDARDS.md::## 2.15 文档更新与变更逻辑 | universal | 硬 | 结构 |
-| R13 | 变更完成判定（DoD，§2.16.3） | DEVELOPMENT_STANDARDS.md::### 2.16.3 变更完成判定 | universal | 硬 | 结构 |
-| R14 | AI 防漏自检（§2.16.4） | DEVELOPMENT_STANDARDS.md::### 2.16.4 AI 防漏自检 | universal | 硬 | 结构 |
-| R15 | 防跳过红线（§2.16.6） | DEVELOPMENT_STANDARDS.md::### 2.16.6 防遗漏 | universal | 硬 | 结构 |
-| R16 | 歧义分级裁定（§2.1 规则 8） | DEVELOPMENT_STANDARDS.md::歧义分级裁定 | universal | 硬 | 行为 |
-| R17 | 四主体自查表（§2.1 规则 10） | DEVELOPMENT_STANDARDS.md::四主体自查表 | universal | 硬 | 行为 |
-| R18 | AI 子代理派发输入契约 P0–P8 五标签（§2.2，v3.94.0 起） | DEVELOPMENT_STANDARDS.md::**AI 子代理派发输入契约（v3.94.0，dispatch_contract v2）** | universal | 硬 | 行为 |
-| R19 | 会话与上下文纪律（§2.9.6 水位/换挡/事件型触发） | DEVELOPMENT_STANDARDS.md::### 2.9.6 会话与上下文纪律 | universal | 半硬（check/水位/GATE-E89 begin 硬校+豁免；活性自检软） | 行为 |
-| R20 | 遗留项闭环管理（FU，§2.12） | DEVELOPMENT_STANDARDS.md::## 2.12 遗留项闭环管理 | universal | 硬 | 结构 |
-| R21 | 项目总册回填清单（§1.3） | DEVELOPMENT_STANDARDS.md::#### 项目总册回填清单 | L1-standards | 硬 | 结构 |
-| R22 | 执行前置（§2.16.1） | DEVELOPMENT_STANDARDS.md::### 2.16.1 执行前置 | L1-standards | 硬 | 结构 |
-| R23 | 执行主线（§2.16.2） | DEVELOPMENT_STANDARDS.md::### 2.16.2 执行主线 | L1-standards | 硬 | 结构 |
-| R24 | 配置/DB 变更规范（§2.6） | DEVELOPMENT_STANDARDS.md::## 2.6 部署、配置与数据库变更规范 | L2-architecture | 硬 | 结构 |
-| R25 | 热修复快速通道（§2.11） | DEVELOPMENT_STANDARDS.md::## 2.11 热修复快速通道 | L3-critical | 硬 | 结构 |
-| R26 | AGENTS 路由入口（锚点表速览） | resources/AGENTS.md::交付前文档互证 | universal | 硬 | 结构 |
-| R27 | 缺陷入口速查（AGENTS 门禁 4） | resources/AGENTS.md::bug-autointent | L0-bugfix | 硬 | 结构 |
-| R28 | bugfix 场景路由（"只是改 bug"行） | resources/AGENTS.md::只是改 bug | L0-bugfix | 硬 | 结构 |
-| R29 | 统一编号规范（§1.1） | DEVELOPMENT_STANDARDS.md::### 1.1 统一编号规范 | L1-standards | 硬 | 结构 |
-| R30 | RTVM 矩阵文件与编号顺序（§1.2） | DEVELOPMENT_STANDARDS.md::### 1.2 独立 RTVM 矩阵文件与编号顺序规范 | L1-standards | 硬 | 结构 |
-| R31 | 分阶段产物与规格（§2.5） | DEVELOPMENT_STANDARDS.md::## 2.5 分阶段产物与规格 | L1-standards | 硬 | 结构 |
-| R32 | 标准升级与存量回填（§2.14） | DEVELOPMENT_STANDARDS.md::## 2.14 标准升级与存量文档回填 | L1-standards | 硬 | 结构 |
-| R33 | 产物落点总表（§2.16.5） | DEVELOPMENT_STANDARDS.md::### 2.16.5 变更执行产物落点总表 | L1-standards | 硬 | 结构 |
-| R34 | Changelog 格式规范（§4） | DEVELOPMENT_STANDARDS.md::## 4. Changelog 格式规范 | L1-standards | 硬 | 结构 |
-| R35 | 发布与上线流程（§2.7） | DEVELOPMENT_STANDARDS.md::## 2.7 发布与上线流程规范 | L2-architecture | 硬 | 结构 |
-| R36 | 监控告警门禁（§2.8） | DEVELOPMENT_STANDARDS.md::## 2.8 监控、告警与可观测门禁 | L2-architecture | 硬 | 结构 |
-| R37 | AI/LLM 专项规范（§2.9） | DEVELOPMENT_STANDARDS.md::## 2.9 AI/LLM 专项规范 | L2-architecture | 硬 | 结构 |
-| R38 | 测试数据与环境隔离（§2.10） | DEVELOPMENT_STANDARDS.md::## 2.10 测试数据与环境隔离 | L2-architecture | 硬 | 结构 |
-| R39 | 协作/供应链/接口生命周期（§2.13） | DEVELOPMENT_STANDARDS.md::## 2.13 协作、依赖供应链与接口生命周期 | L2-architecture | 硬 | 结构 |
-| R40 | 回滚标准与决策（§2.7.3） | DEVELOPMENT_STANDARDS.md::### 2.7.3 回滚标准与决策 | L3-critical | 硬 | 结构 |
-| R41 | 风险等级判定表（§0.5.1） | DEVELOPMENT_STANDARDS.md::### 0.5.1 风险等级判定表 | L3-critical | 硬 | 结构 |
-| R42 | 版本载体全链清单（§2.14） | DEVELOPMENT_STANDARDS.md::版本载体全链清单 | universal | 硬 | 结构 |
-| R43 | 沟通先行门（§2.17.2d） | DEVELOPMENT_STANDARDS.md::#### 2.17.2d 沟通先行门 | universal | 硬 | 结构 |
-| R44 | 项目上下文包 10 域（§2.5 阶段 1 条 7） | DEVELOPMENT_STANDARDS.md::**项目上下文包（v3.67.0，强制先于 REQ）** | universal | 硬 | 结构 |
-| R45 | 用户任务 UJ 与 ui_change 声明（§2.5 阶段 1 条 8） | DEVELOPMENT_STANDARDS.md::**用户任务（`UJ-xxx`，v3.67.0）** | universal | 硬 | 结构 |
-| R46 | 禁裸主键作用户入口（§2.5 阶段 3 条 9） | DEVELOPMENT_STANDARDS.md::禁止 DB 主键 | L2-architecture | 硬 | 行为 |
-| R47 | 用户旅程 E2E 阈值（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**用户旅程 E2E（v3.67.0）** | L2-architecture | 硬 | 行为 |
-| R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节** | L2-architecture | 硬 | 结构 |
-| R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 |
-| R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 |
-| R51 | 原始锚点与机械抽取（§2.5 阶段 1） | DEVELOPMENT_STANDARDS.md::**原始锚点与机械抽取（v3.68.0，CHG-043）** | universal | 硬 | 结构 |
-| R52 | 事件流切分与数据流规格（§2.5 阶段 2） | DEVELOPMENT_STANDARDS.md::**事件流切分与数据流规格（v3.68.0，CHG-043）** | universal | 硬 | 结构 |
-| R53 | 否定测试抽查（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**否定测试抽查（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
-| R54 | 运行时证据硬门（§2.5 阶段 7） | DEVELOPMENT_STANDARDS.md::**运行时证据硬门（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
-| R55 | 评审跑旅程与上游错误计数（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**评审跑旅程与上游错误计数（v3.68.0，CHG-043）** | universal | 硬 | 行为 |
-| R56 | 发现处置闭环与来源维（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**发现处置（v3.74.0；逐条处置，严重/安全发现未处置即拒 E114/E115，无发现可单行声明；v3.75.0 增「来源」列——本次引入/既有存量，E117）** | universal | 硬 | 行为 |
-| R57 | 评审轮次收敛与超限处置（§2.1.8） | DEVELOPMENT_STANDARDS.md::**评审收敛（v3.74.0）** | universal | 硬 | 行为 |
-| R58 | 评审质效度量的七项字段（§2.17.5；缺「来源」列时后两项输出 `null`，不臆造 0） | templates/agent-gate.sh::metrics prints one JSON object per change | universal | 软 | 计数 |
-| R59 | 事故/回归复盘「应捕获层」与补强（§2.17.2） | DEVELOPMENT_STANDARDS.md::**复盘义务（v3.75.0，CHG-099，REQ-1112）** | universal | 硬 | 行为 |
-| R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 |
-| R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 |
-| R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 |
-| R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 |
-| R64 | 冻结树并行派发评审/验证子代理（§2.2；前提三条=树冻结、输入契约互斥、不共写 `.agent-state`） | DEVELOPMENT_STANDARDS.md::**冻结树并行派发（REQ-1140）** | universal | 软 | 行为 |
-| R65 | 分阶段最小读集（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 15） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软 | 行为 |
+| Rxx | 条款标题 | 权威落点 | 类型标签 | 强制级别 | 生命周期 | 机制 |
+| --- | --- | --- | --- | --- | --- | --- |
+| R01 | 缺陷处置主线（阶段 6） | DEVELOPMENT_STANDARDS.md::### 阶段 6：缺陷诊断与根因推导（Bug 专用） | L0-bugfix | 硬 | 结构 | 元 |
+| R02 | 缺陷双登记（log 索引 + CHG 条目） | DEVELOPMENT_STANDARDS.md::**Bug 修复必须双登记** | L0-bugfix | 硬 | 行为 | 收口 |
+| R03 | 缺陷六件套必含清单 | DEVELOPMENT_STANDARDS.md::复现步骤、完整调用链 | L0-bugfix | 硬 | 结构 | 收口 |
+| R04 | 根因表与同族推演 | DEVELOPMENT_STANDARDS.md::**根因·同族推演（v3.4.0）** | L0-bugfix | 硬 | 结构 | 盘点 |
+| R05 | Bug 修复记录七要素 | DEVELOPMENT_STANDARDS.md::Bug 修复记录七要素 | L0-bugfix | 硬 | 结构 | 收口 |
+| R06 | 缺陷发现入口（bug-autointent/交互三选项/无账源码改动信号③——编辑时刻硬拦+交付边界 fail-closed+阶段感知谓词，v3.89.0） | DEVELOPMENT_STANDARDS.md::#### 2.17.2b 缺陷发现入口扩展 | L0-bugfix | 硬 | 结构 | 收口 |
+| R07 | 诊断前必读总册 | DEVELOPMENT_STANDARDS.md::诊断前必读总册 | L0-bugfix | 硬 | 行为 | 参照 |
+| R08 | TC 覆盖强制（修复必被 TC 覆盖） | DEVELOPMENT_STANDARDS.md::TC 覆盖强制 | L0-bugfix | 硬 | 行为 | 断言 |
+| R09 | Bug 修复回填清单 | DEVELOPMENT_STANDARDS.md::#### Bug 修复回填清单 | L0-bugfix | 硬 | 结构 | 收口 |
+| R10 | 缺陷修复类 CHG 专项评审核对 | DEVELOPMENT_STANDARDS.md::缺陷修复类 CHG 专项 | L0-bugfix | 硬 | 结构 | 见证 |
+| R11 | 已闭合变更禁止改写（勘误新开组） | DEVELOPMENT_STANDARDS.md::已闭合 CHG 禁止改写 | universal | 硬 | 结构 | 元 |
+| R12 | 防覆盖与变更逻辑（§2.15） | DEVELOPMENT_STANDARDS.md::## 2.15 文档更新与变更逻辑 | universal | 硬 | 结构 | 元 |
+| R13 | 变更完成判定（DoD，§2.16.3） | DEVELOPMENT_STANDARDS.md::### 2.16.3 变更完成判定 | universal | 硬 | 结构 | 收口 |
+| R14 | AI 防漏自检（§2.16.4） | DEVELOPMENT_STANDARDS.md::### 2.16.4 AI 防漏自检 | universal | 硬 | 结构 | 收口 |
+| R15 | 防跳过红线（§2.16.6） | DEVELOPMENT_STANDARDS.md::### 2.16.6 防遗漏 | universal | 硬 | 结构 | 收口 |
+| R16 | 歧义分级裁定（§2.1 规则 8） | DEVELOPMENT_STANDARDS.md::歧义分级裁定 | universal | 硬 | 行为 | 元 |
+| R17 | 四主体自查表（§2.1 规则 10） | DEVELOPMENT_STANDARDS.md::四主体自查表 | universal | 硬 | 行为 | 见证 |
+| R18 | AI 子代理派发输入契约 P0–P8 五标签（§2.2，v3.94.0 起） | DEVELOPMENT_STANDARDS.md::**AI 子代理派发输入契约（v3.94.0，dispatch_contract v2）** | universal | 硬 | 行为 | 见证 |
+| R19 | 会话与上下文纪律（§2.9.6 水位/换挡/事件型触发） | DEVELOPMENT_STANDARDS.md::### 2.9.6 会话与上下文纪律 | universal | 半硬（check/水位/GATE-E89 begin 硬校+豁免；活性自检软） | 行为 | 元 |
+| R20 | 遗留项闭环管理（FU，§2.12） | DEVELOPMENT_STANDARDS.md::## 2.12 遗留项闭环管理 | universal | 硬 | 结构 | 收口 |
+| R21 | 项目总册回填清单（§1.3） | DEVELOPMENT_STANDARDS.md::#### 项目总册回填清单 | L1-standards | 硬 | 结构 | 收口 |
+| R22 | 执行前置（§2.16.1） | DEVELOPMENT_STANDARDS.md::### 2.16.1 执行前置 | L1-standards | 硬 | 结构 | 元 |
+| R23 | 执行主线（§2.16.2） | DEVELOPMENT_STANDARDS.md::### 2.16.2 执行主线 | L1-standards | 硬 | 结构 | 元 |
+| R24 | 配置/DB 变更规范（§2.6） | DEVELOPMENT_STANDARDS.md::## 2.6 部署、配置与数据库变更规范 | L2-architecture | 硬 | 结构 | 元 |
+| R25 | 热修复快速通道（§2.11） | DEVELOPMENT_STANDARDS.md::## 2.11 热修复快速通道 | L3-critical | 硬 | 结构 | 元 |
+| R26 | AGENTS 路由入口（锚点表速览） | resources/AGENTS.md::交付前文档互证 | universal | 硬 | 结构 | 元 |
+| R27 | 缺陷入口速查（AGENTS 门禁 4） | resources/AGENTS.md::bug-autointent | L0-bugfix | 硬 | 结构 | 元 |
+| R28 | bugfix 场景路由（"只是改 bug"行） | resources/AGENTS.md::只是改 bug | L0-bugfix | 硬 | 结构 | 元 |
+| R29 | 统一编号规范（§1.1） | DEVELOPMENT_STANDARDS.md::### 1.1 统一编号规范 | L1-standards | 硬 | 结构 | 元 |
+| R30 | RTVM 矩阵文件与编号顺序（§1.2） | DEVELOPMENT_STANDARDS.md::### 1.2 独立 RTVM 矩阵文件与编号顺序规范 | L1-standards | 硬 | 结构 | 元 |
+| R31 | 分阶段产物与规格（§2.5） | DEVELOPMENT_STANDARDS.md::## 2.5 分阶段产物与规格 | L1-standards | 硬 | 结构 | 元 |
+| R32 | 标准升级与存量回填（§2.14） | DEVELOPMENT_STANDARDS.md::## 2.14 标准升级与存量文档回填 | L1-standards | 硬 | 结构 | 元 |
+| R33 | 产物落点总表（§2.16.5） | DEVELOPMENT_STANDARDS.md::### 2.16.5 变更执行产物落点总表 | L1-standards | 硬 | 结构 | 元 |
+| R34 | Changelog 格式规范（§4） | DEVELOPMENT_STANDARDS.md::## 4. Changelog 格式规范 | L1-standards | 硬 | 结构 | 元 |
+| R35 | 发布与上线流程（§2.7） | DEVELOPMENT_STANDARDS.md::## 2.7 发布与上线流程规范 | L2-architecture | 硬 | 结构 | 元 |
+| R36 | 监控告警门禁（§2.8） | DEVELOPMENT_STANDARDS.md::## 2.8 监控、告警与可观测门禁 | L2-architecture | 硬 | 结构 | 元 |
+| R37 | AI/LLM 专项规范（§2.9） | DEVELOPMENT_STANDARDS.md::## 2.9 AI/LLM 专项规范 | L2-architecture | 硬 | 结构 | 元 |
+| R38 | 测试数据与环境隔离（§2.10） | DEVELOPMENT_STANDARDS.md::## 2.10 测试数据与环境隔离 | L2-architecture | 硬 | 结构 | 元 |
+| R39 | 协作/供应链/接口生命周期（§2.13） | DEVELOPMENT_STANDARDS.md::## 2.13 协作、依赖供应链与接口生命周期 | L2-architecture | 硬 | 结构 | 元 |
+| R40 | 回滚标准与决策（§2.7.3） | DEVELOPMENT_STANDARDS.md::### 2.7.3 回滚标准与决策 | L3-critical | 硬 | 结构 | 元 |
+| R41 | 风险等级判定表（§0.5.1） | DEVELOPMENT_STANDARDS.md::### 0.5.1 风险等级判定表 | L3-critical | 硬 | 结构 | 元 |
+| R42 | 版本载体全链清单（§2.14） | DEVELOPMENT_STANDARDS.md::版本载体全链清单 | universal | 硬 | 结构 | 元 |
+| R43 | 沟通先行门（§2.17.2d） | DEVELOPMENT_STANDARDS.md::#### 2.17.2d 沟通先行门 | universal | 硬 | 结构 | 元 |
+| R44 | 项目上下文包 10 域（§2.5 阶段 1 条 7） | DEVELOPMENT_STANDARDS.md::**项目上下文包（v3.67.0，强制先于 REQ）** | universal | 硬 | 结构 | 参照 |
+| R45 | 用户任务 UJ 与 ui_change 声明（§2.5 阶段 1 条 8） | DEVELOPMENT_STANDARDS.md::**用户任务（`UJ-xxx`，v3.67.0）** | universal | 硬 | 结构 | 盘点 |
+| R46 | 禁裸主键作用户入口（§2.5 阶段 3 条 9） | DEVELOPMENT_STANDARDS.md::禁止 DB 主键 | L2-architecture | 硬 | 行为 | 参照 |
+| R47 | 用户旅程 E2E 阈值（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**用户旅程 E2E（v3.67.0）** | L2-architecture | 硬 | 行为 | 断言 |
+| R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节** | L2-architecture | 硬 | 结构 | 见证 |
+| R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 | 断言 |
+| R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 | 收口 |
+| R51 | 原始锚点与机械抽取（§2.5 阶段 1） | DEVELOPMENT_STANDARDS.md::**原始锚点与机械抽取（v3.68.0，CHG-043）** | universal | 硬 | 结构 | 断言 |
+| R52 | 事件流切分与数据流规格（§2.5 阶段 2） | DEVELOPMENT_STANDARDS.md::**事件流切分与数据流规格（v3.68.0，CHG-043）** | universal | 硬 | 结构 | 盘点 |
+| R53 | 否定测试抽查（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**否定测试抽查（v3.68.0，CHG-043）** | universal | 硬 | 行为 | 断言 |
+| R54 | 运行时证据硬门（§2.5 阶段 7） | DEVELOPMENT_STANDARDS.md::**运行时证据硬门（v3.68.0，CHG-043）** | universal | 硬 | 行为 | 自视 |
+| R55 | 评审跑旅程与上游错误计数（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**评审跑旅程与上游错误计数（v3.68.0，CHG-043）** | universal | 硬 | 行为 | 见证 |
+| R56 | 发现处置闭环与来源维（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**发现处置（v3.74.0；逐条处置，严重/安全发现未处置即拒 E114/E115，无发现可单行声明；v3.75.0 增「来源」列——本次引入/既有存量，E117）** | universal | 硬 | 行为 | 收口 |
+| R57 | 评审轮次收敛与超限处置（§2.1.8） | DEVELOPMENT_STANDARDS.md::**评审收敛（v3.74.0）** | universal | 硬 | 行为 | 元 |
+| R58 | 评审质效度量的七项字段（§2.17.5；缺「来源」列时后两项输出 `null`，不臆造 0） | templates/agent-gate.sh::metrics prints one JSON object per change | universal | 软 | 计数 | 元 |
+| R59 | 事故/回归复盘「应捕获层」与补强（§2.17.2） | DEVELOPMENT_STANDARDS.md::**复盘义务（v3.75.0，CHG-099，REQ-1112）** | universal | 硬 | 行为 | 盘点 |
+| R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 | 元 |
+| R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 | 参照 |
+| R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 | 断言 |
+| R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 | 元 |
+| R64 | 冻结树并行派发评审/验证子代理（§2.2；前提三条=树冻结、输入契约互斥、不共写 `.agent-state`） | DEVELOPMENT_STANDARDS.md::**冻结树并行派发（REQ-1140）** | universal | 软 | 行为 | 元 |
+| R65 | 分阶段最小读集（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 15） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软 | 行为 | 元 |
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
 - 来源唯一权威：`resources/templates/agent-gate.sh` 的 `die "GATE-Exx:` 字符串（dev 份 `scripts/agent-gate` 与模板份单源同文）；语义逐码从 die 字符串提炼，不臆造。
 - 每码一行：码 / 一句话语义 / 落点（模板份函数或节名——**不写行号**，行号漂移，计数断言才稳）。
 - 计数互锁：本节 GATE-E 行数 == 模板 `die "GATE-E[0-9]+` 去重计数，由源层审计断言执法（`tests/audit-standards-src.sh`，源层脚本不随 Skill 下发；「CLAUSE_REGISTRY GATE-E rows == template die codes」）；agent-gate 新增 E 码必须同步加行，废止 E 码必须同步删行。本节只做索引，不复述门禁正文。
-| R66 | 业务合理性终审（§2.5 阶段 8，N1 依据独立性，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务合理性终审（v3.84.0，CHG-111，N1 依据独立性）** | L2-architecture | 硬 | 结构 |
-| R67 | 现实质询：来源物禁作事实依据（§2.5 阶段 1，v3.84.0） | STAGE_PLAYBOOK.md::**现实质询（v3.84.0，CHG-111，REQ-1167）** | universal | 软 | 评审 |
-| R68 | 来源物映射完备性（§2.5 阶段 3 条 10，N2，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | L2-architecture | 硬 | 结构 |
-| R69 | 既有范式关系声明（§2.5 阶段 3，N4，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | universal | 硬 | 结构 |
-| R70 | 同族推演扩邻接面（§2.5 阶段 6，N3，v3.84.0） | STAGE_PLAYBOOK.md::**邻接面走查（v3.84.0，CHG-111，REQ-1166/N3）** | universal | 软 | 评审 |
-| R71 | 业务上下文装载与合理性自检（§2.2/专家卡 §0.2，N5，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务上下文装载（v3.84.0，CHG-111，N5）** | universal | 软 | 评审 |
-| R72 | subagent 硬预算（§2.2 派发契约，v3.98.0） | DEVELOPMENT_STANDARDS.md::**subagent 硬预算（v3.98.0，CHG-137，REQ-1353）** | universal | 软 | 评审 |
-| R73 | 评审修复批验证（§2.5 阶段 8，v3.98.0） | DEVELOPMENT_STANDARDS.md::**评审修复批验证（v3.98.0，CHG-137，REQ-1354）** | universal | 软 | 评审 |
+| R66 | 业务合理性终审（§2.5 阶段 8，N1 依据独立性，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务合理性终审（v3.84.0，CHG-111，N1 依据独立性）** | L2-architecture | 硬 | 结构 | 见证 |
+| R67 | 现实质询：来源物禁作事实依据（§2.5 阶段 1，v3.84.0） | STAGE_PLAYBOOK.md::**现实质询（v3.84.0，CHG-111，REQ-1167）** | universal | 软 | 评审 | 参照 |
+| R68 | 来源物映射完备性（§2.5 阶段 3 条 10，N2，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | L2-architecture | 硬 | 结构 | 参照 |
+| R69 | 既有范式关系声明（§2.5 阶段 3，N4，v3.84.0） | STAGE_PLAYBOOK.md::**来源物映射与范式关系（v3.84.0，CHG-111，REQ-1164/1165）细则** | universal | 硬 | 结构 | 参照 |
+| R70 | 同族推演扩邻接面（§2.5 阶段 6，N3，v3.84.0） | STAGE_PLAYBOOK.md::**邻接面走查（v3.84.0，CHG-111，REQ-1166/N3）** | universal | 软 | 评审 | 盘点 |
+| R71 | 业务上下文装载与合理性自检（§2.2/专家卡 §0.2，N5，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务上下文装载（v3.84.0，CHG-111，N5）** | universal | 软 | 评审 | 参照 |
+| R72 | subagent 硬预算（§2.2 派发契约，v3.98.0） | DEVELOPMENT_STANDARDS.md::**subagent 硬预算（v3.98.0，CHG-137，REQ-1353）** | universal | 软 | 评审 | 元 |
+| R73 | 评审修复批验证（§2.5 阶段 8，v3.98.0） | DEVELOPMENT_STANDARDS.md::**评审修复批验证（v3.98.0，CHG-137，REQ-1354）** | universal | 软 | 评审 | 断言 |
+| R74 | 六机制词表（§0.6，封闭集） | DEVELOPMENT_STANDARDS.md::## 0.6 专业判断力六机制 | universal | 硬 | 结构 | 元 |
+| R75 | 防生长元规则（新条款三声明+合拢审计） | DEVELOPMENT_STANDARDS.md::### 防生长元规则 | universal | 硬 | 行为 | 元 |
+| R76 | 专业质询三件（00.5 沟通稿，清单式+选择式） | templates/entry/00.5-communication.md::## 专业质询三件 | universal | 硬 | 结构 | 盘点 |
+| R77 | 动作全集矩阵（01-spec 条件节） | templates/entry/01-spec.md::## 动作全集矩阵 | L2-architecture | 硬 | 结构 | 盘点 |
+| R78 | 参照界面对照表+编辑预填完整性（03.6 条件节） | templates/entry/03.6-ui-spec.md::## 参照界面对照表 | L2-architecture | 硬 | 结构 | 参照 |
+| R79 | UI 范式卡（P12 单源） | templates/project/P12-product-context.md::## UI 范式卡 | L2-architecture | 硬 | 结构 | 参照 |
+| R80 | 证据类型分层（真实点击链路+视觉证据） | DEVELOPMENT_STANDARDS.md::### 阶段 7：运行测试与证据闭环 | L2-architecture | 硬 | 行为 | 断言 |
+| R81 | 评审见证实义（自产证据+所见即所评） | DEVELOPMENT_STANDARDS.md::### 阶段 8：代码审查与安全门禁 | L2-architecture | 硬 | 行为 | 见证 |
 
 | 码 | 语义 | 落点 |
 | --- | --- | --- |

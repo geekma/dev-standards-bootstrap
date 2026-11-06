@@ -4112,7 +4112,7 @@ if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
   # v3.78.0 (CHG-102): 64 rows — R64（冻结树并行派发）joins the registry.
   # v3.98.0 (CHG-137): 73 rows — R72/R73（subagent 硬预算/评审修复批验证）join.
-  report "T39 registry row count" 73 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  report "T39 registry row count" 81 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:12"; do
@@ -7004,7 +7004,7 @@ report "T67 TC-1432 E56/E57 report BOTH incomplete groups in one shot" 2 "$(prin
 # TC-1429：同族推演行名存续（N3 不改行名防机校断链）
 report "T67 TC-1429 同族推演 row name survives in bug-diagnosis template" 1 "$(grep -c '同族推演' "$ROOT/resources/templates/bug-diagnosis.md" | awk '{print ($1>=2)?1:0}')"
 # TC-1430：A11 体积上界
-report "T67 TC-1430 DS body within A11 bound (<=172032B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 172032 ]] && echo 1 || echo 0)"
+report "T67 TC-1430 DS body within A11 bound (<=180224B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 180224 ]] && echo 1 || echo 0)"
 # TC-1431：版本链字面
 report "T67 TC-1431 SKILL version literals resolve to the DS footer" 4 "$(grep -cF "$CURRENT_VERSION" "$ROOT/SKILL.md")"
 # TC-1433：多字节方括号类在 C locale 下不匹配全角冒号（本环境实测）——发布面

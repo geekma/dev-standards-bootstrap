@@ -810,13 +810,13 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #   ③ 按 +4KB 步进重设为 168KB（172,032 字节），余量 6,095B——**不是**按当前体量贴合；
 #      软警线随上界 −4KiB = 167,936B。独立评审核回+8KB 步进放宽过多，此处兑现 +4KB。
 # std_bytes hoisted to the setup region (REQ-1323 cross-block reads).
-report "A11 standards body size <= 172KB (FU-017; ratchet-up v3.97.2 CHG-136, +4KiB step)" 1 "$([[ "$std_bytes" -le 176128 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 176KB (FU-017; ratchet-up v3.99.0 CHG-140, +4KiB step)" 1 "$([[ "$std_bytes" -le 180224 ]] && echo 1 || echo 0)"
 # A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥172,032B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 172,032B)" 0 "$([[ "$std_bytes" -ge 172032 ]] && echo 1 || echo 0)"
+report_soft "A11s standards body approaching hard cap (soft warn >= 176,128B)" 0 "$([[ "$std_bytes" -ge 176128 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '172 KB / 176,128 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '176 KB / 180,224 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
@@ -1539,7 +1539,7 @@ report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
 # v3.97.0（CHG-134）：§2.13.4 返工分治条款入 DS，三轮压缩后仍在 171,600B 之上；本条收紧棘轮
 # 与硬上界收敛（172,032）——**收敛即信号**：下一次 DS 增长必须结构性减法，或走 A11 的 +4KiB 重校准仪式。
-report "A48 standards body ratchet (CHG-107; ratcheted v3.97.2 CHG-136)" 1 "$([[ "$std_bytes" -le 176128 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; ratcheted v3.99.0 CHG-140)" 1 "$([[ "$std_bytes" -le 180224 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
