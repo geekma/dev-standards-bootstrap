@@ -1355,9 +1355,9 @@ report "A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)" "
 # 触发面与 E107 自产标记文本存在。防「改了叙事忘改机校」的静默失执法。
 report "A49 E104 word table single-source: die site + hint case (CHG-141)" 2 "$(grep_count_f "$GATE_TPL" 'HTTP|DB|响应体|快照|点击链路|截图|几何断言')"
 at_least "A49 E104 head comment declares the three new marker words (CHG-141)" 1 "$GATE_TPL" '点击链路|截图|几何断言'
-at_least_unique "A49 gate_version write literal matches footer (CHG-141/142)" "$GATE_TPL" '"gate_version":"3\.99\.2"'
-at_least_unique "A49 gate_version read literal matches write (CHG-141/142)" "$GATE_TPL" 'vc_r_ver" == "3\.99\.2"'
-report "A49 no stale gate_version literal (CHG-141/142)" 0 "$(grep_count "$GATE_TPL" 'gate_version":"3\.99\.[01]')"
+at_least_unique "A49 gate_version write literal matches footer (CHG-141/142/143)" "$GATE_TPL" '"gate_version":"4\.0\.0"'
+at_least_unique "A49 gate_version read literal matches write (CHG-141/142/143)" "$GATE_TPL" 'vc_r_ver" == "4\.0\.0"'
+report "A49 no stale gate_version literal (CHG-141/142/143)" 0 "$(grep_count "$GATE_TPL" 'gate_version":"3\.')"
 at_least "A49 E104 head comment declares the v3.99.1 evidence classes (CHG-141)" 1 "$GATE_TPL" 'v3.99.1 扩两类'
 at_least "A49 E107 self-produced marker die text (CHG-141)" 1 "$GATE_TPL" '评审会话自产 (session-produced)'
 report "A49 E157 die site is unique (CHG-141)" 1 "$(grep_count_f "$GATE_TPL" 'GATE-E157:')"
