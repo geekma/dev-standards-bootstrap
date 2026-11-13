@@ -109,6 +109,9 @@
 | R79 | UI 范式卡（P12 单源） | templates/project/P12-product-context.md::## UI 范式卡 | L2-architecture | 硬 | 结构 | 参照 |
 | R80 | 证据类型分层（真实点击链路+视觉证据） | DEVELOPMENT_STANDARDS.md::### 阶段 7：运行测试与证据闭环 | L2-architecture | 硬 | 行为 | 断言 |
 | R81 | 评审见证实义（自产证据+所见即所评） | DEVELOPMENT_STANDARDS.md::### 阶段 8：代码审查与安全门禁 | L2-architecture | 硬 | 行为 | 见证 |
+| R82 | E104 证据词表扩两类（点击链路/视觉证据） | templates/agent-gate.sh::证据行格式（唯一权威） | L2-architecture | 硬 | 行为 | 断言 |
+| R83 | E107 自产证据标记机校 | templates/agent-gate.sh::validate_dimensional_stop() | L2-architecture | 硬 | 行为 | 见证 |
+| R84 | 三查与判定卡触发面（E157-E159） | templates/agent-gate.sh::validate_mechanism_stop() | L2-architecture | 硬 | 结构 | 收口 |
 
 | 码 | 语义 | 落点 |
 | --- | --- | --- |
@@ -265,3 +268,6 @@
 | GATE-E86 | 目录落位声明↔目录/风险一致性 + L0/L1 声明独立目录一律拒（正向并入/反向首个即建）+ 批成员缺自身锚点 fail-closed | agent-gate.sh::validate_governance_state() |
 | GATE-E87 | 缺陷组锚点散落兄弟文档但 01-diagnosis 缺失 | agent-gate.sh::validate_bug_groups() |
 | GATE-E88 | 缺 review_owner（评审主体强制，最低线 L0/L1 亦必填） | agent-gate.sh::validate_governance_state() |
+| GATE-E157 | 00.5 三件节在位但含未填占位符/缺三锚点/未命中豁免，或触及被测核心缺判定卡三选一（整节缺失 legacy 形态告警放行；节内探针=preflight） | agent-gate.sh::validate_mechanism_stop() |
+| GATE-E158 | ui_change:true 时 01-spec「动作全集矩阵」节在位但含未填占位符/缺入口维度（整节缺失 legacy 形态告警放行；节内探针=preflight） | agent-gate.sh::validate_mechanism_stop() |
+| GATE-E159 | ui_change:true 时 03.6「参照界面对照表」节在位但含未填占位符/缺 P12 UI 范式卡引用（整节缺失 legacy 形态告警放行；节内探针=preflight） | agent-gate.sh::validate_mechanism_stop() |

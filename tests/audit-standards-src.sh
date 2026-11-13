@@ -1349,6 +1349,32 @@ nc10=$(grep -cF 'NC-E10: scripts/agent-gate not found' "$ROOT/resources/template
 nc11=$(grep -cF 'NC-E11: check-confirm failed' "$ROOT/resources/templates/new-change.sh" || true)
 report "A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)" "1/1" "${nc10}/${nc11}"
 
+# ── A49 六机制机校承接面（v3.99.1，CHG-141/REQ-1375）──────────────────────
+# 语义：CHG-140 的语义层执法不得只留在叙事——①E104 词表头注释（A43 单源）与 die
+# 站点词面一致；②E157/158/159 三个新 die 码在模板与 REGISTRY 双向注册；③判定卡
+# 触发面与 E107 自产标记文本存在。防「改了叙事忘改机校」的静默失执法。
+report "A49 E104 word table single-source: die site + hint case (CHG-141)" 2 "$(grep_count_f "$GATE_TPL" 'HTTP|DB|响应体|快照|点击链路|截图|几何断言')"
+at_least "A49 E104 head comment declares the three new marker words (CHG-141)" 1 "$GATE_TPL" '点击链路|截图|几何断言'
+at_least_unique "A49 gate_version write literal matches footer (CHG-141/142)" "$GATE_TPL" '"gate_version":"3\.99\.2"'
+at_least_unique "A49 gate_version read literal matches write (CHG-141/142)" "$GATE_TPL" 'vc_r_ver" == "3\.99\.2"'
+report "A49 no stale gate_version literal (CHG-141/142)" 0 "$(grep_count "$GATE_TPL" 'gate_version":"3\.99\.[01]')"
+at_least "A49 E104 head comment declares the v3.99.1 evidence classes (CHG-141)" 1 "$GATE_TPL" 'v3.99.1 扩两类'
+at_least "A49 E107 self-produced marker die text (CHG-141)" 1 "$GATE_TPL" '评审会话自产 (session-produced)'
+report "A49 E157 die site is unique (CHG-141)" 1 "$(grep_count_f "$GATE_TPL" 'GATE-E157:')"
+at_least "A49 E157 判定卡 trigger die site exists (CHG-141)" 1 "$GATE_TPL" 'diff touches 被测核心'
+at_least_unique "A49 E158 die site is unique (CHG-141)" "$GATE_TPL" 'GATE-E158:'
+at_least_unique "A49 E159 die site is unique (CHG-141)" "$GATE_TPL" 'GATE-E159:'
+at_least_unique "A49 REGISTRY indexes GATE-E157 (CHG-141)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E157 '
+at_least_unique "A49 REGISTRY indexes GATE-E158 (CHG-141)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E158 '
+at_least_unique "A49 REGISTRY indexes GATE-E159 (CHG-141)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| GATE-E159 '
+at_least_unique "A49 REGISTRY registers R84 三查 clause (CHG-141)" "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R84 '
+
+# ── A50 目标仓耗时优化面（v3.99.2，CHG-142/REQ-1378~1379）──────────────────
+# 语义：①preflight 必须探到 stop 侧内容面（validate_mechanism_stop 探针在位）；
+# ②--from-evidence 取数源在参数与互斥/错误提示双处声明（防半接线）。
+at_least "A50 preflight probes the stop content face (CHG-142)" 1 "$GATE_TPL" 'p_run validate_mechanism_stop'
+at_least "A50 update-assertion-count --from-evidence is wired (CHG-142)" 2 "$ROOT/scripts/update-assertion-count.sh" '--from-evidence'
+
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达
 # 死调用）而未同步基线 → 红；红即提示跑 scripts/update-assertion-count.sh 同步。

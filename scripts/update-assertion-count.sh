@@ -35,19 +35,25 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 check=0
 from_baseline=0
 require_receipt=0
-for arg in "$@"; do
-  case "$arg" in
+from_evidence=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
     --check) check=1 ;;
     --from-baseline) from_baseline=1 ;;
     --require-receipt) require_receipt=1 ;;
+    --from-evidence)
+      shift
+      from_evidence="${1:-}"
+      [[ -n "$from_evidence" ]] || { echo "update-assertion-count: --from-evidence requires an evidence round directory" >&2; exit 2; } ;;
     -h|--help)
       awk 'NR>1 && /^#/{sub(/^# ?/,"");print;next} NR>1{exit}' "$0"
       exit 0 ;;
-    *) echo "update-assertion-count: unknown argument '$arg' (supported: --check --from-baseline --require-receipt)" >&2; exit 2 ;;
+    *) echo "update-assertion-count: unknown argument '$1' (supported: --check --from-baseline --require-receipt --from-evidence <round-dir>)" >&2; exit 2 ;;
   esac
+  shift
 done
-if [[ "$from_baseline" -eq 1 && "$require_receipt" -eq 1 ]]; then
-  echo "update-assertion-count: --from-baseline and --require-receipt are mutually exclusive evidence sources" >&2
+if [[ "$from_baseline" -eq 1 && "$require_receipt" -eq 1 ]] || [[ -n "$from_evidence" && ( "$from_baseline" -eq 1 || "$require_receipt" -eq 1 ) ]]; then
+  echo "update-assertion-count: --from-baseline / --require-receipt / --from-evidence are mutually exclusive evidence sources" >&2
   exit 2
 fi
 SUITE_BASELINE="$ROOT/tests/.suite-baseline"
@@ -77,6 +83,33 @@ SUITE_BASELINE="$ROOT/tests/.suite-baseline"
 N=""
 F=""
 RECEIPT="${AGENT_GUARD_SUITE_RECEIPT_PATH:-$ROOT/.agent-state/last-suite-receipt.json}"
+
+# v3.99.2 (CHG-142, REQ-1379): shard-log sum as an evidence source. Every
+# shard-*.log must carry a terminal 'N passed, M failed' line; the per-shard
+# sum must match the round's sum.txt 'total:' line (dual-source, tamper-evident)
+# and the round must be green before any baseline/README write.
+if [[ -n "$from_evidence" ]]; then
+  [[ -d "$from_evidence" ]] || { echo "update-assertion-count: --from-evidence '$from_evidence' is not a directory" >&2; exit 2; }
+  sum_p=0; sum_f=0; n_shards=0
+  for lg in "$from_evidence"/shard-*.log; do
+    [[ -f "$lg" ]] || continue
+    line=$(grep -E '^[0-9]+ passed, [0-9]+ failed$' "$lg" | tail -n 1 || true)
+    [[ -n "$line" ]] || { echo "update-assertion-count: $(basename "$lg") lacks a 'N passed, M failed' summary line (truncated log?) — refusing" >&2; exit 2; }
+    sp=${line%% passed*}; sf=${line#* passed, }; sf=${sf% failed}
+    sum_p=$((sum_p+sp)); sum_f=$((sum_f+sf)); n_shards=$((n_shards+1))
+  done
+  [[ "$n_shards" -ge 1 ]] || { echo "update-assertion-count: no shard-*.log under '$from_evidence'" >&2; exit 2; }
+  [[ -f "$from_evidence/sum.txt" ]] || { echo "update-assertion-count: sum.txt missing under '$from_evidence' — 双源互证不可达，拒写（合法 round 必有 shard-sum 产物）" >&2; exit 2; }
+  if [[ -f "$from_evidence/sum.txt" ]]; then
+    tl=$(grep -E '^total: [0-9]+ passed, [0-9]+ failed$' "$from_evidence/sum.txt" | tail -n 1 || true)
+    tp=${tl#total: }; tp=${tp%% passed*}; tf=${tl#* passed, }; tf=${tf% failed}
+    [[ "$tp" == "$sum_p" && "$tf" == "$sum_f" ]] \
+      || { echo "update-assertion-count: drift — shard sum ($sum_p/$sum_f) != sum.txt total ($tp/$tf); refusing to sync" >&2; exit 2; }
+  fi
+  [[ "$sum_f" -eq 0 ]] || { echo "update-assertion-count: evidence round reported $sum_f failed — refusing to sync claims off a red suite" >&2; exit 2; }
+  N=$sum_p; F=0
+  echo "update-assertion-count: trusting evidence round ($n_shards shards, passed=$N, failed=0)" >&2
+fi
 # --from-baseline: the committed suite baseline is the evidence. Never touch the
 # receipt or the suite here — A3 (source audit) depends on this being a pure
 # read/compare path, so a stale receipt can no longer turn an 8s audit into a
@@ -153,6 +186,13 @@ if [[ -z "$N" || -z "$F" ]]; then
 fi
 [[ -n "$N" && -n "$F" ]] || { echo "cannot determine assertion count from run-tests output: ${run_out:-<empty>}" >&2; exit 2; }
 [[ "$F" == 0 ]] || { echo "run-tests reported ${F} failed — refusing to sync claims off a red suite" >&2; exit 2; }
+# v3.99.2 (CHG-142 评审低3)：写前校验 README×2 在场——防「baseline 已动/README 未动」半写。
+# 基线三件缺失属合法回填面（T69 TC-1443 语义），不在拒写之列。
+if [[ "$check" -eq 0 ]]; then
+  for wf in "$ROOT/README.md" "$ROOT/README.zh-CN.md"; do
+    [[ -f "$wf" ]] || { echo "update-assertion-count: write target missing: $wf — refusing partial sync" >&2; exit 2; }
+  done
+fi
 status=0
 # The committed baseline tracks the same evidence the README claims use. Write
 # mode updates it; --check reports drift only when the file already exists (a

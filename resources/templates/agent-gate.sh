@@ -58,7 +58,10 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
     GATE-E73|GATE-E74|GATE-E75|GATE-E89|GATE-E112) printf 'expected: session hygiene holds (batch placement / water level / red list / shift)\nallowed: join BATCH-YYYYMMDD for L0/L1; write handoff.md + a shift declaration\nfix: follow the named action; bypass keys need a 09「重要上下文」 entry\nref: standards §1.1 / §2.9.6' ;;
     GATE-E76|GATE-E77|GATE-E78|GATE-E79|GATE-E69|GATE-E120) printf 'expected: a valid command form\nallowed: see scripts/agent-gate help (begin/preflight/--stage/metrics/plan …)\nfix: correct the arguments; scaffold needs a fresh empty change id\nref: standards §2.17.1' ;;
     GATE-E82|GATE-E96|GATE-E98|GATE-E114|GATE-E116|GATE-E123|GATE-E124) printf 'expected: 07 carries signatures, dispositions and the required verdict sections\nallowed: platform / model / task-id signatures; ≥5-column finding table; 来源 = 本次引入|既有存量\nfix: patch the named 07 section/row, then re-run\nref: standards §2.1.7 / §2.5 stage 8' ;;
-    GATE-E90|GATE-E92|GATE-E93|GATE-E94|GATE-E95|GATE-E97|GATE-E99|GATE-E101|GATE-E102|GATE-E103|GATE-E104|GATE-E106|GATE-E109) printf 'expected: UI / behaviour-inventory conditional evidence is present\nallowed: UJ anchors, 03.6-ui-spec, E2E cases, runtime evidence rows, waiver lines\nfix: add the conditional artifact/evidence the message names, or declare the waiver\nref: standards §2.5 stage 1-4 / v3.67.0' ;;
+    GATE-E90|GATE-E92|GATE-E93|GATE-E94|GATE-E95|GATE-E97|GATE-E99|GATE-E101|GATE-E102|GATE-E103|GATE-E104|GATE-E106|GATE-E109) printf 'expected: UI / behaviour-inventory conditional evidence is present\nallowed: UJ anchors, 03.6-ui-spec, E2E cases, runtime evidence rows (7-word table: HTTP|DB|响应体|快照|点击链路|截图|几何断言), waiver lines\nfix: add the conditional artifact/evidence the message names, or declare the waiver\nref: standards §2.5 stage 1-4 / v3.67.0' ;;
+    GATE-E157) printf 'expected: 00.5 沟通期锚点 — 专业质询三件节内(三子项或未命中豁免)；触及被测核心时另需判定卡三选一；整节缺失的存量形态告警放行(E113 范式)\nallowed: 参照物指认/动作全集初盘/缺口显式裁决 三锚点齐备，或节内单行未命中豁免\nfix: fill the 00.5 section per template (entry/00.5-communication.md), record the 判定卡 if the diff touches run-tests/agent-gate/DS\nref: standards §0.6 / v3.99.1' ;;
+    GATE-E158) printf 'expected: 01-spec 「动作全集矩阵」 section in place (ui_change: true; 整节缺失 legacy 形态告警放行)\nallowed: 对象×动作×入口维度 matrix, or the one-line 未命中 declaration\nfix: add the section per template (entry/01-spec.md) — 盘点机制: 全集枚举后逐格裁决\nref: standards §0.6 / §2.5 stage 1 / v3.99.1' ;;
+    GATE-E159) printf 'expected: 03.6 「参照界面对照表」 + P12 UI 范式卡 reference (ui_change: true; 整节缺失 legacy 形态告警放行)\nallowed: per-control 对照 or explicit 无同类界面 declaration; first ui_change change 沉淀范式卡到 P12\nfix: add the section per template (entry/03.6-ui-spec.md) — 参照机制: 指认仓内同类实现\nref: standards §0.6 / §2.5 stage 3 / v3.99.1' ;;
     GATE-E126|GATE-E127|GATE-E128|GATE-E129|GATE-E130) printf 'expected: the stage-gate preconditions hold for this change\nallowed: required artifacts + confirmation + one non-empty reviews/Pxx.review.md per claim\nfix: backfill the named stage artifacts, then re-run the same stage command\nref: standards §2.5 / §2.17.2d' ;;
     GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149|GATE-E155) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan|dispatch <change-id> [flags]\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127/131' ;;
     *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
@@ -576,6 +579,10 @@ sig_head='[A-Za-z0-9][A-Za-z0-9 ._()-]* / [A-Za-z0-9._-]+ / '
 #   E104 逐 UJ 运行痕迹行（落 05「运行时证据」节，ui_change: true 时强制）：
 #     - UJ-001：POST /api/xxx 响应体片段 {…关键字段…} + DB 行 <表>(id=…) + <UTC 时间戳>
 #     机校条件：同一行含 UJ-xxx 且含证据词 HTTP|DB|响应体|快照 之一。
+#     v3.99.1 扩两类（DS 阶段 7 证据分层；无歧义标记词，禁裸动词——DES-2326）：
+#     - UJ-002：点击链路：<入口页>→点击 <控件>→提交→跳转 <完成态 URL> + <UTC 时间戳>
+#     - UJ-003：截图：<路径>.png + 几何断言（堆叠/尺寸/间距）+ <UTC 时间戳>
+#     机校条件扩：证据词再含 点击链路|截图|几何断言 之一（旧词全保留，历史合法形态兼容）。
 #   E103 剧本回放行（落 05，01-spec demo_script: <N> 时强制）：
 #     REPLAY: 句N → <结果> → <证据片段>
 #     裁判=原始工件（批准者已把正确答案写进工件）。
@@ -1089,7 +1096,7 @@ shift_gate_check() { # <change-id> — E112 single die site
 }
 
 validate_dimensional_stop() { # <change-dir>
-  local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row bhv="" n_bhv="" n_wv=""
+  local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row jsec="" bhv="" n_bhv="" n_wv=""
   [[ -s "$spec" ]] || return 0
   oa=$(spec_decl "$spec" "origin_artifact")
   cc=$(spec_decl "$spec" "chain_change")
@@ -1125,8 +1132,8 @@ validate_dimensional_stop() { # <change-dir>
     ujs=$(grep -oE 'UJ-[0-9]+' "$spec" 2>/dev/null | sort -u || true)
     while IFS= read -r uj; do
       [[ -n "$uj" ]] || continue
-      grep -E "$uj.*(HTTP|DB|响应体|快照)" "$res05" >/dev/null 2>&1 \
-        || die "GATE-E104: 05 lacks runtime evidence row for $uj (HTTP body/DB row/快照+timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0)"
+      grep -E "$uj.*(HTTP|DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
+        || die "GATE-E104: 05 lacks runtime evidence row for $uj (HTTP/响应体/DB/快照/点击链路/截图/几何断言 + timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0/v3.99.1)"
     done <<EOF
 $ujs
 EOF
@@ -1134,14 +1141,23 @@ EOF
     [[ -s "$res07" ]] || e107="ui_change declared but 07-review-report.md missing"
     if [[ -z "$e107" ]]; then
       grep -q "运行时走查" "$res07" \
-        || e107="07 lacks 「运行时走查」 journey-evidence section — document-level walkthrough alone is not availability acceptance"
+        || e107="07 lacks 「运行时走查」 journey-evidence section — 走查证据须评审会话自产，结论所见即所评；document-level walkthrough alone is not availability acceptance"
     fi
     if [[ -z "$e107" ]]; then
       grep -qE 'ses-[a-z0-9-]+|task-[a-z0-9-]+' "$res07" \
         || e107="07 运行时走查 lacks a traceable ses-/task- id"
     fi
+    if [[ -z "$e107" ]]; then
+      # v3.99.1: section-scoped read (whole-file grep would false-green on an
+      # unrelated 07 section mentioning 截图). awk slices the 运行时走查 section;
+      # herestring greps avoid the pipefail/SIGPIPE false-red (CHG-127 lesson).
+      jsec=$(awk '/^## .*运行时走查/{f=1;next} f && /^## /{exit} f{print}' "$res07" 2>/dev/null)
+      grep -qE '截图|浏览器|视觉证据包' <<< "$jsec" \
+        || { grep -q '工具面缺失' <<< "$jsec" && grep -q '视觉证据包' <<< "$jsec"; } \
+        || e107="07 「运行时走查」节内 lacks a self-produced evidence marker (截图/浏览器), and no 工具面缺失声明+视觉证据包补偿 pair — 走查证据须评审会话自产 (session-produced), 结论所见即所评 (standards §2.5 stage 8, v3.99.1)"
+    fi
     [[ -z "$e107" ]] \
-      || die "GATE-E107: $e107 (standards §2.5 stage 8, v3.68.0)"
+      || die "GATE-E107: $e107 (standards §2.5 stage 8, v3.68.0/v3.99.1)"
     # v3.71.0 (CHG-046, REQ-1087): restoration-assertion gate — the E92–E98/E104
     # family checks artifact EXISTENCE only (external-project retro: five review rounds
     # all returned "build+unit green ≠ done"); the restoration bar must be
@@ -4408,12 +4424,82 @@ plan_consume_check() { # <id>
   coverage_gap_check "$id" "$d" "$(plan_decision_value "$d" chosen)"
 }
 
+# v3.99.1 (CHG-141, REQ-1373/1374): GATE-E157 — 沟通期锚点执法 (§0.6 盘点/参照/
+# 收口机制实例). ①00.5「专业质询三件」节内 (awk slice: heading → next ^##, not
+# whole-file) carries either the one-line 未命中 exemption or all three sub-item
+# anchors; ②when the diff touches 被测核心 (gate/test 治理件), 00.5 must record
+# the 套件范围判定卡 (三选一). ③GATE-E158/E159 live HERE (not inside
+# validate_dimensional_stop): that function early-returns when origin_artifact
+# is declared and behavior-inventory.json is absent — the ui_change checks must
+# never be skipped by an unrelated dimensional lane (review L2).
+validate_mechanism_stop() { # <change-dir>
+  local d="$1" comm05 spec scope05 jsec reason157="" reason158="" reason159="" core_diff
+  comm05="$d/00.5-communication.md"
+  spec="$d/01-spec.md"
+  [[ -s "$comm05" ]] || return 0 # begin lane (E03/E83) owns file presence
+  # E113 范式（v3.71.0 存量形态先例）：**整节缺失=legacy shape → WARN 放行**；
+  # 新节在位但缺格 = 拦。这样新模板生成的新变更全受机校，存量在跑夹具不回溯。
+  # 节内 awk 切片（heading → next ^##）防他节撞词假绿；herestring 防 SIGPIPE 假红。
+  if ! grep -q '专业质询三件' "$comm05" 2>/dev/null; then
+    echo "agent-gate: GATE-E157 legacy 00.5 shape (no 专业质询三件 section) — pass unblocked, new changes must fill it (v3.99.1)" >&2
+  else
+    scope05=$(awk '/^## .*专业质询三件/{f=1;next} f && /^## /{exit} f{print}' "$comm05" 2>/dev/null | sed -E 's/<!--[^>]*-->//g')
+    if grep -qE '<[^>]*>' <<< "$scope05"; then
+      reason157="00.5 「专业质询三件」节内仍含未填模板占位符（<...>）— 填实三件或写节内单行未命中豁免（占位符不充当锚点/豁免，E17 同型；v3.99.2）"
+    elif ! grep -qE '未命中|不适用' <<< "$scope05" \
+        && ! { grep -q "参照物指认" <<< "$scope05" \
+            && grep -q "动作全集初盘" <<< "$scope05" \
+            && grep -q "缺口显式裁决" <<< "$scope05"; }; then
+      reason157="00.5 「专业质询三件」节内 neither the 未命中 one-line exemption nor all three anchors (参照物指认/动作全集初盘/缺口显式裁决) — 沟通期锚点执法 (standards §0.6, v3.99.1)"
+    fi
+  fi
+  # M6: core face = installed/source gate + suite only (governance prose/yml 不计入，
+  # 防 T16 反篡改夹具被无关在途 yml 误触发；源层「被测核心」不外溢到 payload)。
+  core_diff=$(git diff --name-only HEAD 2>/dev/null \
+    | grep -E '(^|/)(resources/templates/agent-gate\.sh|scripts/agent-gate|scripts/agent-gate\.sh|tests/run-tests\.sh)$' || true)
+  if [[ -n "$core_diff" ]] && ! grep -qE '判定卡.*未命中，不适用' "$comm05" 2>/dev/null; then
+    grep -q "判定卡" "$comm05" 2>/dev/null && grep -q "三选一" "$comm05" 2>/dev/null \
+      || reason157="${reason157:+$reason157; }diff touches 被测核心 (gate/test 治理件: $core_diff) but 00.5 records no 套件范围判定卡 (三选一裁定) — 套件范围裁定执法 (v3.98.0 修复批验证条款, v3.99.1)"
+  fi
+  [[ -z "$reason157" ]] \
+    || die "GATE-E157: $reason157"
+  # GATE-E158/E159 — ui_change 条件面，落本函数（不被 dimensional 早退跳过）；
+  # 同样 E113 范式：整节缺失 legacy 放行，节在位即逐格执法。
+  if [[ -s "$spec" ]] && ui_change_true "$spec"; then
+    if ! grep -q "动作全集矩阵" "$spec" 2>/dev/null; then
+      echo "agent-gate: GATE-E158 legacy 01-spec shape (no 动作全集矩阵 section) — pass unblocked, new changes must fill it (v3.99.1)" >&2
+    else
+      msec=$(awk '/^## .*动作全集矩阵/{f=1;next} f && /^## /{exit} f{print}' "$spec" 2>/dev/null | sed -E 's/<!--[^>]*-->//g')
+      if grep -qE '<[^>]*>' <<< "$msec"; then
+        reason158="01-spec 「动作全集矩阵」节内仍含未填模板占位符（<...>）— 填实对象×动作×入口维度或写未命中声明（v3.99.2）"
+      elif ! grep -qE '入口维度|动作全集矩阵.*(未命中|不适用)|未命中.*动作全集矩阵' <<< "$msec"; then
+        reason158="01-spec 「动作全集矩阵」 lacks 入口维度 columns or a 未命中 declaration — 沟通期锚点执法 (standards §2.5 stage 1, v3.99.1)"
+      fi
+    fi
+    if [[ ! -s "$d/03.6-ui-spec.md" ]] || ! grep -q "参照界面对照表" "$d/03.6-ui-spec.md" 2>/dev/null; then
+      echo "agent-gate: GATE-E159 legacy 03.6 shape (no 参照界面对照表 section) — pass unblocked, new changes must fill it (v3.99.1)" >&2
+    else
+      osec=$(awk '/^## .*参照界面对照表/{f=1;next} f && /^## /{exit} f{print}' "$d/03.6-ui-spec.md" 2>/dev/null | sed -E 's/<!--[^>]*-->//g')
+      if grep -qE '<[^>]*>' <<< "$osec"; then
+        reason159="03.6 「参照界面对照表」节内仍含未填模板占位符（<...>）— 填实逐控件对照或写无同类界面声明（v3.99.2）"
+      elif ! grep -qE 'UI 范式卡|范式卡|无同类界面' <<< "$osec"; then
+        reason159="03.6 参照界面对照表 references neither the P12 「UI 范式卡」 nor declares 无同类界面 — 参照机制执法 (standards §2.5 stage 3, v3.99.1)"
+      fi
+    fi
+  fi
+  [[ -z "$reason158" ]] || die "GATE-E158: $reason158"
+  [[ -z "$reason159" ]] || die "GATE-E159: $reason159"
+}
+
 validate_stop() {
   local id
   working_code_changed || return 0
   validate_active_change
   id=$(active_change)
   validate_delivery "$id"
+  # v3.99.1 (CHG-141): 沟通期锚点执法 (E157) — before the dimensional lane so
+  # the check survives the spec-missing early return (00.5 is begin-required).
+  validate_mechanism_stop "$(change_dir "$id")"
   # v3.68.0 (CHG-043): G13/G14 stop lane — three-way reconciliation, replay,
   # per-UJ runtime evidence, review journey, waiver transitivity (E101–E108).
   validate_dimensional_stop "$(change_dir "$id")"
@@ -4541,7 +4627,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "3.99.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "3.99.2" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4593,7 +4679,7 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"3.99.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
+      printf '{"gate_version":"3.99.2","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
         "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
@@ -5362,6 +5448,11 @@ case "$command" in
       # v3.90.5: the decision-consume face joins the probe too, so a missing
       # hard artifact surfaces at second-level instead of at stop.
       p_run plan_consume_check "$id"
+      # v3.99.2 (CHG-142, REQ-1378): stop 侧内容面探针——E104/E107/E110/E157-159
+      # 缺口秒级列出（collect-all 同语义）。两函数纯读（track_review_round 写面
+      # 留在 validate_delivery / stop lane），round ledger 仍 stop-lane only。
+      p_run validate_mechanism_stop "$pf_d"
+      p_run validate_dimensional_stop "$pf_d"
     fi
     if [[ "$p_n" -eq 0 ]]; then
       echo "agent-gate: preflight: $id: all artifact gates clean"

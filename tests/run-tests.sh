@@ -110,6 +110,14 @@ check_output() { # name pattern actual_output -- pass if pattern matches
   fi
 }
 
+# v3.99.1 (CHG-141): BSD/GNU portable in-place sed for fixture mutations.
+# macOS needs `-i ''`; GNU treats the empty string as the script. Source-layer
+# fixtures run in CI (ubuntu-latest) too, so every new mutation must fall back.
+sedi() { # <script> <files...>
+  local s="$1"; shift
+  sed -i '' "$s" "$@" 2>/dev/null || sed -i "$s" "$@"
+}
+
 # ---- v3.90.1 (CHG-123, P0-3/P0-14): cost ledger + per-section timing ------
 # One append-only TSV for every measurable action: section / TC / audit / verify.
 # Columns: ts kind id suite_key cost_s setup_s cache exit   (8 columns, header once).
@@ -466,6 +474,8 @@ risk: r
 options: A vs B
 ## 测试思路
 test: t
+## 专业质询三件
+- 专业质询三件：未命中（fixture 通用夹具，无沟通期新增面）
 ## 用户整体确认记录
 ### 第 1 轮
 - 结论：确认（按 §2.17.2d 呈现 Round-1 沟通稿后整体确认）
@@ -4112,7 +4122,8 @@ if [[ -s "$REG_T39" ]]; then
   report "T39 registry schema header" 1 "$(grep -c '权威关系声明' "$REG_T39")"
   # v3.78.0 (CHG-102): 64 rows — R64（冻结树并行派发）joins the registry.
   # v3.98.0 (CHG-137): 73 rows — R72/R73（subagent 硬预算/评审修复批验证）join.
-  report "T39 registry row count" 81 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
+  # v3.99.1 (CHG-141): R82-R84（E104 词表/E107 自产标记/三查+判定卡）join — 84 rows.
+  report "T39 registry row count" 84 "$(grep -cE '^\| R[0-9]+[[:space:]]*\|' "$REG_T39")"
   report "T39 Rxx numbering continuous" 0 "$(awk -F'|' '/^\| R[0-9]+/{gsub(/[[:space:]]/,"",$2); n=substr($2,2)+0; if(n!=prev+1)bad++; prev=n} END{print bad+0}' "$REG_T39")"
   report "T39 labels in closed vocab" 0 "$(grep -E '^\| R[0-9]+' "$REG_T39" | awk -F'|' '{gsub(/[[:space:]]/,"",$5); if($5!="L0-bugfix"&&$5!="L1-standards"&&$5!="L2-architecture"&&$5!="L3-critical"&&$5!="universal")bad++} END{print bad+0}')"
   for t39_t in "L0-bugfix:12" "L1-standards:9" "L2-architecture:6" "L3-critical:3" "universal:12"; do
@@ -4860,6 +4871,40 @@ R51FAKE
   r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
   report "T51 MAX_AGE_MIN=0 disables trusting (TC-1122d)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
 
+  # TC-2390（CHG-142，REQ-1379）：--from-evidence 分片求和 → 基线/README 同步
+  r142=$(mktemp -d "${TMPDIR:-/tmp}/evidence-sync.XXXXXX")
+  mkdir -p "$r142/scripts" "$r142/tests" "$r142/evidence/CHG-990/round-1"
+  cp "$ROOT/scripts/update-assertion-count.sh" "$r142/scripts/"
+  printf '# readme\n(999 golden-case assertions)\n' > "$r142/README.md"
+  printf '# readme\n（999 项 golden-case 断言）\n' > "$r142/README.zh-CN.md"
+  printf '999\n' > "$r142/tests/.suite-baseline"
+  printf 'ok shard-1\n10 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-1.log"
+  printf '5 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-2.log"
+  printf 'total: 15 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/sum.txt"
+  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142e_rc=$?
+  report "T51 TC-2390 --from-evidence syncs baseline from shard sum" 0 "$t142e_rc"
+  report "T51 TC-2390 suite baseline equals shard sum" 15 "$(cat "$r142/tests/.suite-baseline" | tr -d '[:space:]')"
+  report "T51 TC-2390 README claim rewritten to shard sum" 1 "$(grep -c '15 golden-case assertions' "$r142/README.md")"
+
+  # TC-2391（REQ-1379 负例）：分片求和 ≠ sum.txt total → 拒写、基线不动
+  printf '9 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-1.log"
+  printf '999\n' > "$r142/tests/.suite-baseline"
+  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142f_rc=$?
+  report "T51 TC-2391 drift between shard sum and sum.txt refuses" 2 "$t142f_rc"
+  report "T51 TC-2391 baseline untouched on refusal" 999 "$(cat "$r142/tests/.suite-baseline" | tr -d '[:space:]')"
+
+  # TC-2396（REQ-1379 负例）：红轮（failed>0，双源一致）→ 拒写
+  printf '10 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-1.log"
+  printf '0 passed, 1 failed\n' > "$r142/evidence/CHG-990/round-1/shard-2.log"
+  printf 'total: 10 passed, 1 failed\n' > "$r142/evidence/CHG-990/round-1/sum.txt"
+  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142g_rc=$?
+  report "T51 TC-2396 red round refuses to sync" 2 "$t142g_rc"
+
+  # TC-2397（REQ-1379 负例）：无分片日志 → 拒写
+  rm -f "$r142"/evidence/CHG-990/round-1/shard-*.log
+  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142h_rc=$?
+  report "T51 TC-2397 no shard logs refuses" 2 "$t142h_rc"
+
   # v3.79.0 (CHG-103, REQ-1143/1144)：树指纹语义 golden（缺口主证 = SC-1841）
   # TC-1379 tracked 文件内容变更 → 指纹不等 → 拒采（含 mismatch 提示行）
   # 注：改的是 tests/run-tests.sh（套件输入面）——README×2 是声明文件（消费方改写面），
@@ -5273,9 +5318,15 @@ cat > docs/changes/CHG-1040/01-spec.md <<'EOF'
 - **origin_artifact**: 未命中（无原型页，改版基线=线上页）
 - **chain_change**: 未命中（无数据链变更）
 - **ui_change**: true
+
+## 动作全集矩阵
+- 对象=演示页；入口维度：桌面命中/移动未命中；改命中、其余格既有
 EOF
 cat > docs/changes/CHG-1040/03.6-ui-spec.md <<'EOF'
 # ui
+## 参照界面对照表
+- 仓内同类既有界面：未命中（首次 ui_change，P12 UI 范式卡已沉淀）
+- UI 范式卡：引用 P12（操作位置/弹窗家法随卡）
 ## 显示名↔主键映射
 - 记录显示名 → record_id
 EOF
@@ -5301,6 +5352,7 @@ cat > docs/changes/CHG-1040/07-review-report.md <<'EOF'
 - 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）
 - **业务终审主体**：platform / glm / ses-t53a
 - **发现处置**：未命中，不适用（T53 可用性夹具，无发现）
+- **超限处置**：T53 夹具多轮 stop 为同一树多次终验的指纹变体，非重复评审批次；收敛证据=本节 E104/E107 三态绿
 - 评审主体：platform / glm-5.3-flash / ses-t53c
 EOF
 scripts/agent-gate begin CHG-1040 >/dev/null 2>&1
@@ -5319,9 +5371,141 @@ scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T53 TC-1134 E107 stop red: 07 lacks 运行时走查 journey section" 2 $?
 out=$(scripts/agent-gate --stage stop 2>&1 || true)
 check_output "T53 TC-1134 refusal names GATE-E107" "GATE-E107" "$out"
-printf '\n## 运行时走查\n- 走查记录：ses-t53c（UJ-001 全程真人入口可走通）\n' >> docs/changes/CHG-1040/07-review-report.md
+printf '\n## 运行时走查\n- 走查记录：ses-t53c（UJ-001 全程真人入口可走通，截图 t53c-home.png 留痕）\n' >> docs/changes/CHG-1040/07-review-report.md
+scripts/agent-gate --stage stop >/dev/null 2>&1; t53_1134_green_rc=$?
+report "T53 TC-1134 stop green with per-UJ evidence + journey walkthrough" 0 "$t53_1134_green_rc"
+report "T53 TC-2379 E104 old-word compatibility: HTTP row still passes" 0 "$t53_1134_green_rc"
+# ---- TC-2378~2385（CHG-141，REQ-1371~1374：E104 词表扩两类 / E107 自产标记 / E157 三查 / E158-E159 锚点）----
+new_repo
+seed_artifacts CHG-1060 L0 claude/s-1
+cat > docs/changes/CHG-1060/01-spec.md <<'EOF'
+# spec
+- REQ-001: 演示页收口二批
+- **挂靠 UJ**：UJ-001
+- **origin_artifact**: 未命中（无原型页）
+- **chain_change**: 未命中（无数据链变更）
+- **ui_change**: true
+
+## 动作全集矩阵
+- 对象=演示页；入口维度：桌面命中/移动未命中；改命中、其余格既有
+EOF
+cat > docs/changes/CHG-1060/03.6-ui-spec.md <<'EOF'
+# ui
+## 参照界面对照表
+- 仓内同类既有界面：未命中（首次 ui_change，P12 UI 范式卡已沉淀）
+- UI 范式卡：引用 P12（操作位置/弹窗家法随卡）
+## 显示名↔主键映射
+- 记录显示名 → record_id
+EOF
+cat > docs/changes/CHG-1060/03.5-tasks.md <<'EOF'
+# tasks
+| 任务 | 类型 | 依赖 | 里程碑 | 说明 |
+|---|---|---|---|---|
+| T-001 | UX | 无 | M1 | 演示页收口二批 |
+- 评审输入: 变更文件清单 + 待核对产物 + 行号锚点
+EOF
+cat > docs/changes/CHG-1060/04-test-scripts.md <<'EOF'
+# tests
+- TC-001 用户旅程 E2E：入口到结果全程真人可走
+覆盖维度: 正常流 / 边界 / 异常
+- SC-001: 演示页主流程（覆盖: TC-001）
+EOF
+cat > docs/changes/CHG-1060/07-review-report.md <<'EOF'
+# review
+## 用户可用性验收
+- 结论：通过（依据 03.6 与 UJ-001）
+- **建议人类走查（非阻塞）**：建议交付前真人走查一次
+## 业务合理性终审
+- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）
+- **业务终审主体**：platform / glm / ses-t53a
+- **发现处置**：未命中，不适用（T53 可用性夹具，无发现）
+- 评审主体：platform / glm-5.3-flash / ses-t53c
+## 运行时走查
+- 走查记录：ses-t53e（UJ-001 点击链路全程可走通，截图 t53e-home.png 留痕）
+EOF
+scripts/agent-gate begin CHG-1060 >/dev/null 2>&1
+seed_t53_delivery CHG-1060
+echo y > src/t53e.js
+# TC-2379b（E104 负例，DES-2326 防假绿）：追加裸动词 POST 行（无标记词）→ 红（append 保 provenance，E19 先例）
+printf -- '- UJ-001 运行时证据：提交表单 POST /api/demo 收 200（裸动词无标记词）\n' >> docs/changes/CHG-1060/05-test-results.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
-report "T53 TC-1134 stop green with per-UJ evidence + journey walkthrough" 0 $?
+report "T53 TC-2379b E104 stop red: bare-verb POST row lacks marker word" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-2379b refusal names GATE-E104" "GATE-E104" "$out"
+# TC-2378（E104 正例）：删裸动词行，追加 点击链路/截图 两类新证据词 → 绿
+sedi '/提交表单 POST \/api\/demo 收 200/d' docs/changes/CHG-1060/05-test-results.md
+printf -- '- UJ-001 运行时证据：点击链路：首页→点击 演示→提交→跳转 /done + 2026-11-06T05:00:00Z\n' >> docs/changes/CHG-1060/05-test-results.md
+printf -- '- UJ-001 视觉证据：截图 t53e-home.png + 几何断言（间距 8px 网格）+ 2026-11-06T05:00:00Z\n' >> docs/changes/CHG-1060/05-test-results.md
+printf -- '- **还原度断言**：未命中，不适用（T53 夹具）\n' >> docs/changes/CHG-1060/05-test-results.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2378 E104 stop green: 点击链路/截图 marker words accepted" 0 $?
+# TC-2381（E107 负例）：走查行撤自产标记（留 ses-）→ 红；TC-2380 die 文本断言
+sedi 's/截图 t53e-home.png 留痕//' docs/changes/CHG-1060/07-review-report.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2381 E107 stop red: walkthrough lacks self-produced marker" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-2380 E107 refusal demands 自产 evidence" "自产" "$out"
+check_output "T53 TC-2380 E107 refusal demands 所见即所评" "所见即所评" "$out"
+sedi 's/（UJ-001 点击链路全程可走通，）/（UJ-001 点击链路全程可走通，截图 t53e-home.png 留痕）/' docs/changes/CHG-1060/07-review-report.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2381 E107 stop green after marker restored" 0 $?
+# TC-2382（E157 两独立负例+绿例）：①节内仅一锚点 ②豁免行置节外（证明节内切片）③节内豁免 → 绿
+sedi 's/^- 专业质询三件：未命中（.*）/- 参照物指认：仅一锚点（负例）/' docs/changes/CHG-1060/00.5-communication.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2382 E157 stop red: section has one anchor only (anchors branch)" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-2382 refusal names GATE-E157" "GATE-E157" "$out"
+sedi '/^- 参照物指认：仅一锚点（负例）/d' docs/changes/CHG-1060/00.5-communication.md
+printf -- '- 专业质询三件：未命中（fixture 节外豁免不应放行）\n' >> docs/changes/CHG-1060/00.5-communication.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2382 E157 stop red: exemption outside the section is rejected" 2 $?
+sedi '/节外豁免不应放行/d' docs/changes/CHG-1060/00.5-communication.md
+awk 'BEGIN{done=0} /^## 用户整体确认记录/ && !done {print "- 专业质询三件：未命中（fixture 复原豁免单行）"; done=1} {print}' docs/changes/CHG-1060/00.5-communication.md > docs/changes/CHG-1060/00.5.tmp && mv docs/changes/CHG-1060/00.5.tmp docs/changes/CHG-1060/00.5-communication.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2382 E157 stop green with in-section one-line exemption" 0 $?
+# TC-2383（E157 判定卡触发面）：触及被测核心（scripts/agent-gate 入 diff）缺判定卡 → 红
+printf '# t53 core touch\n' >> scripts/agent-gate
+git add scripts/agent-gate
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2383 E157 stop red: core-file diff without 判定卡" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-2383 refusal demands 判定卡 三选一" "三选一" "$out"
+printf '\n## 判定卡（套件范围）\n- 判定卡三选一：FULL（触及被测核心，交付门一次全量）\n' >> docs/changes/CHG-1060/00.5-communication.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2383 E157 stop green with 判定卡 recorded" 0 $?
+# TC-2384（E158 负例）：01-spec 撤动作全集矩阵节 → 红
+sedi 's/；入口维度：桌面命中\/移动未命中//' docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2384 E158 stop red: 01-spec lacks 动作全集矩阵" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-2384 refusal names GATE-E158" "GATE-E158" "$out"
+printf -- '- 入口维度：桌面命中/移动未命中\n' >> docs/changes/CHG-1060/01-spec.md
+# TC-2385（E159 负例）：03.6 撤范式卡引用 → 红；复原 → 全绿收口
+sedi '/仓内同类既有界面/d; /UI 范式卡/d' docs/changes/CHG-1060/03.6-ui-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2385 E159 stop red: 03.6 lacks 参照界面对照表/范式卡 reference" 2 $?
+out=$(scripts/agent-gate --stage stop 2>&1 || true)
+check_output "T53 TC-2385 refusal names GATE-E159" "GATE-E159" "$out"
+awk 'BEGIN{done=0} /^## 参照界面对照表/ && !done {print; print "- 仓内同类既有界面：未命中（首次 ui_change，P12 UI 范式卡已沉淀）"; print "- UI 范式卡：引用 P12（操作位置/弹窗家法随卡）"; done=1; next} {print}' docs/changes/CHG-1060/03.6-ui-spec.md > docs/changes/CHG-1060/03.6.tmp && mv docs/changes/CHG-1060/03.6.tmp docs/changes/CHG-1060/03.6-ui-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2378~2385 final stop green (all anchors restored)" 0 $?
+# TC-2392（CHG-142，REQ-1380）：三件节占位符不再充当豁免 → E157 红
+sedi 's/^- 专业质询三件：未命中（fixture 复原豁免单行）/- 专业质询三件：<路径或「未命中（理由）」>（占位符负例）/' docs/changes/CHG-1060/00.5-communication.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2392 E157 stop red: placeholder-only exemption rejected" 2 $?
+sedi 's/^- 专业质询三件：<路径或「未命中（理由）」>（占位符负例）/- 专业质询三件：未命中（fixture 复原豁免单行）/' docs/changes/CHG-1060/00.5-communication.md
+# TC-2393（REQ-1380）：矩阵节占位符 → E158 红
+sedi 's/^- 入口维度：桌面命中\/移动未命中$/- 对象=<实体>；入口维度=<桌面\/移动>（占位符负例）/' docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2393 E158 stop red: placeholder-only matrix rejected" 2 $?
+sedi 's/^- 对象=<实体>；入口维度=<桌面\/移动>（占位符负例）/- 入口维度：桌面命中\/移动未命中/' docs/changes/CHG-1060/01-spec.md
+# TC-2394（REQ-1380）：对照节占位符 → E159 红；复原 → 绿
+sedi 's/^- UI 范式卡：引用 P12（操作位置\/弹窗家法随卡）/- <UI 范式卡：引用 P12>（占位符负例）/' docs/changes/CHG-1060/03.6-ui-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2394 E159 stop red: placeholder-only reference rejected" 2 $?
+sedi 's/^- <UI 范式卡：引用 P12>（占位符负例）/- UI 范式卡：引用 P12（操作位置\/弹窗家法随卡）/' docs/changes/CHG-1060/03.6-ui-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-2392~2394 final stop green after placeholder cleanup" 0 $?
 # ---- TC-1135 负例（防门禁疲劳）：三行声明全 未命中 → begin/stop 全绿且零新门输出 ----
 new_repo
 seed_artifacts CHG-1050 L0 claude/s-1
@@ -5463,7 +5647,7 @@ printf '# tests\n- TC-001 用户旅程 E2E（真人入口）\n覆盖维度: 正�
 scripts/agent-gate begin CHG-1070 >/dev/null 2>&1
 printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-1070/04.5-coding-record.md
 printf '# 05 测试结果\n- UJ-001 HTTP 200 响应体 {"ok":true} @2026-10-14T00:00:00Z\n' > docs/changes/CHG-1070/05-test-results.md
-printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 业务合理性终审\n- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）\n- **业务终审主体**：platform / glm / ses-t55a\n- **发现处置**：未命中，不适用（T55 交付四门夹具，无发现）\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
+printf '# review\n## 用户可用性验收\n- 结论：通过（依据 03.6 与 UJ-001）\n- **建议人类走查（非阻塞）**：建议走查一次\n## 业务合理性终审\n- 逐 UJ 质询结论：UJ-001 通过（业务现实依据，未引本变更图纸）\n- **业务终审主体**：platform / glm / ses-t55a\n- **发现处置**：未命中，不适用（T55 交付四门夹具，无发现）\n## 评审结论\n通过\n## 运行时走查\n- ses-rev-1 走查 UJ-001，截图 t55-home.png 留痕\n\n署名：agent-platform / llm-model / task-rev-1\n' > docs/changes/CHG-1070/07-review-report.md
 printf '# 06.5 部署/配置/DB 记录\n未命中，不适用：本变更无配置项、无 DB 变更。\n' > docs/changes/CHG-1070/06.5-deployment-config.md
 printf '# 06-delivery-summary\n## 遗留事项（FU 台账）\n| 编号 | 说明 | 负责人 | 期限 |\n|---|---|---|---|\n| FU-901 | 样例遗留 | claude/s-1 | 2026-10-01 |\n' > docs/changes/CHG-1070/06-delivery-summary.md
 printf 'chg\n#### 执行记录（ReAct）\n| 阶段 | Thought | Observation |\n|---|---|---|\n| 阶段1 | t | grep -c REQ- 01-spec.md -> 1 |\n' > docs/changes/CHG-1070/09-changelog.md
@@ -5706,6 +5890,30 @@ section_T56() {
   t56_friction_after=$([[ -f .agent-state/gate-friction.tsv ]] && wc -l < .agent-state/gate-friction.tsv || echo 0)  # -f 守卫免 "No such file" stderr 噪声（TC-1275，CHG-095）
   report "T56 TC-1270 friction ledger unchanged" 0 "$([[ "$t56_friction_after" == "$t56_friction_before" ]] && echo 0 || echo 1)"
   report "T56 TC-1270 active-change pointer not written" 0 "$([[ -e .git/agent-governance/active-change ]] && echo 1 || echo 0)"
+
+  # TC-2388（CHG-142，REQ-1378）：delivery-phase 探针——stop 内容面缺口秒级同屏（collect-all）
+  new_repo
+  seed_artifacts CHG-1074 L1 claude/s-56
+  printf '# spec\n- REQ-001: 演示页收口\n- **挂靠 UJ**：UJ-001\n- **origin_artifact**: 未命中（无原型页）\n- **chain_change**: 未命中（无数据链变更）\n- **ui_change**: true\n' > docs/changes/CHG-1074/01-spec.md
+  printf '<!-- provenance\nauthor: fixture\nemail: fixture@test\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# 编码记录\ncr\n' > docs/changes/CHG-1074/04.5-coding-record.md
+  printf '# 05 测试结果\n- **测试证据**：未命中，不适用（L0 轻量通道）\n' > docs/changes/CHG-1074/05-test-results.md
+  printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-1074/09-changelog.md
+  append_masters docs/changes/CHG-1074/09-changelog.md
+  stamp_all docs/changes/CHG-1074
+  sedi 's/^- 专业质询三件：未命中（fixture 通用夹具，无沟通期新增面）/- 参照物指认：仅一锚点（TC-2388 负例）/' docs/changes/CHG-1074/00.5-communication.md
+  t142_out=$(scripts/agent-gate preflight CHG-1074 2>&1); t142_rc=$?
+  report "T56 TC-2388 preflight delivery-phase exits 1 (content-face gaps)" 1 "$t142_rc"
+  report "T56 TC-2388 collects GATE-E157 (three-item anchors gap)" 1 "$(printf '%s\n' "$t142_out" | grep -c 'GATE-E157')"
+  report "T56 TC-2388 collects GATE-E104 (runtime evidence gap)" 1 "$(printf '%s\n' "$t142_out" | grep -c 'GATE-E104')"
+  report "T56 TC-2388 two content-face codes same screen" 0 "$([[ $(printf '%s\n' "$t142_out" | grep -cE 'GATE-E(157|104)') -ge 2 ]] && echo 0 || echo 1)"
+
+  # TC-2389（REQ-1378 反例）：begin-era 干净夹具 → preflight rc0（探针不误报）
+  new_repo
+  seed_artifacts CHG-1075 L1 claude/s-56
+  scripts/agent-gate begin CHG-1075 >/dev/null 2>&1
+  t142b_out=$(scripts/agent-gate preflight CHG-1075 2>&1); t142b_rc=$?
+  report "T56 TC-2389 preflight begin-era clean exits 0" 0 "$t142b_rc"
+  report "T56 TC-2389 clean probe prints all-clean line" 1 "$(printf '%s\n' "$t142b_out" | grep -c 'all artifact gates clean')"
   # TC-1268: 干净夹具（seed_begin 全件）→ exit 0 + clean 行
   new_repo
   seed_begin CHG-1074 L1 claude/s-56
