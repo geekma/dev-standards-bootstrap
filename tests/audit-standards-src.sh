@@ -759,7 +759,7 @@ report "A8 delivery declarations are line-anchored (FU-014)" 1 "$(grep -cF '[#>-
 at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" '取号前必须核实占用'
 
 # A11 规范体量上界（CHG-010 引入 / CHG-011、v3.21.2、v3.25.0、v3.43.0、v3.89.0、v3.97.2 重校准）：治理内容演进时上界随之重校准
-# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 172KB（176,128 字节，v3.97.2 +4KiB 步进）。
+# （新条款须有 CHANGELOG 条目对应），硬上界只防"无序回弹"。当前上界 180KB（184,320 字节，v3.97.2 +4KiB 步进；CHG-147 重校准 176KB→180KB，FU-1013 R42 勘误 +60B 压线触发）。
 # v3.29.0（CHG-028）重校准 132KB → 140KB 的依据：§2.1 九专家行 + §2.2 分阶段专家评审矩阵为
 # 新增规范性内容（两轮措辞压缩后仍超 136KB 约 1.6KB），按 KiB 步进 +4KB；STANDARDS_CHANGELOG v3.29.0 行即依据。
 # v3.25.0（CHG-025）重校准 128KB → 132KB 的依据（按既有三个条件）：
@@ -810,13 +810,13 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #   ③ 按 +4KB 步进重设为 168KB（172,032 字节），余量 6,095B——**不是**按当前体量贴合；
 #      软警线随上界 −4KiB = 167,936B。独立评审核回+8KB 步进放宽过多，此处兑现 +4KB。
 # std_bytes hoisted to the setup region (REQ-1323 cross-block reads).
-report "A11 standards body size <= 176KB (FU-017; ratchet-up v3.99.0 CHG-140, +4KiB step)" 1 "$([[ "$std_bytes" -le 180224 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 180KB (FU-017; ratchet-up v3.99.0 CHG-140, +4KiB step; CHG-147 重校准 FU-1013)" 1 "$([[ "$std_bytes" -le 184320 ]] && echo 1 || echo 0)"
 # A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥172,032B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
 # 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 176,128B)" 0 "$([[ "$std_bytes" -ge 176128 ]] && echo 1 || echo 0)"
+report_soft "A11s standards body approaching hard cap (soft warn >= 180,224B)" 0 "$([[ "$std_bytes" -ge 180224 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '176 KB / 180,224 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '180 KB / 184,320 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
@@ -1355,9 +1355,9 @@ report "A40 new-change NC-E10/NC-E11 message single-source (CHG-080/REQ-1022)" "
 # 触发面与 E107 自产标记文本存在。防「改了叙事忘改机校」的静默失执法。
 report "A49 E104 word table single-source: die site + hint case (CHG-141)" 2 "$(grep_count_f "$GATE_TPL" 'HTTP|DB|响应体|快照|点击链路|截图|几何断言')"
 at_least "A49 E104 head comment declares the three new marker words (CHG-141)" 1 "$GATE_TPL" '点击链路|截图|几何断言'
-at_least_unique "A49 gate_version write literal matches footer (CHG-141/142/143)" "$GATE_TPL" '"gate_version":"4\.0\.0"'
-at_least_unique "A49 gate_version read literal matches write (CHG-141/142/143)" "$GATE_TPL" 'vc_r_ver" == "4\.0\.0"'
-report "A49 no stale gate_version literal (CHG-141/142/143)" 0 "$(grep_count "$GATE_TPL" 'gate_version":"3\.')"
+at_least_unique "A49 gate_version write literal matches footer (CHG-141/142/143)" "$GATE_TPL" 'gate_receipt_json "\$vc_gver"'
+at_least_unique "A49 gate_version read literal matches write (CHG-141/142/143)" "$GATE_TPL" 'vc_r_ver" == "\$vc_gver"'
+report "A49 no stale gate_version literal (CHG-141/142/143)" 0 "$(grep_count "$GATE_TPL" 'gate_version":"[0-9][0-9.]*"')"
 at_least "A49 E104 head comment declares the v3.99.1 evidence classes (CHG-141)" 1 "$GATE_TPL" 'v3.99.1 扩两类'
 at_least "A49 E107 self-produced marker die text (CHG-141)" 1 "$GATE_TPL" '评审会话自产 (session-produced)'
 report "A49 E157 die site is unique (CHG-141)" 1 "$(grep_count_f "$GATE_TPL" 'GATE-E157:')"
@@ -1565,7 +1565,7 @@ report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
 # v3.97.0（CHG-134）：§2.13.4 返工分治条款入 DS，三轮压缩后仍在 171,600B 之上；本条收紧棘轮
 # 与硬上界收敛（172,032）——**收敛即信号**：下一次 DS 增长必须结构性减法，或走 A11 的 +4KiB 重校准仪式。
-report "A48 standards body ratchet (CHG-107; ratcheted v3.99.0 CHG-140)" 1 "$([[ "$std_bytes" -le 180224 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; ratcheted v3.99.0 CHG-140; CHG-147 重校准)" 1 "$([[ "$std_bytes" -le 184320 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -1626,7 +1626,7 @@ at_least "A53 lib takes optional reset claims (CHG-110)" 1 "$ROOT/scripts/lib-su
 at_least "A53 lib documents the claim face (CHG-110)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'docs/changes) so doc-only edits'
 at_least "A53 gate sources the fingerprint lib (CHG-110)" 1 "$GATE_TPL" 'lib-suite-tree-fingerprint.sh'
 at_least "A53 gate fingerprints with the docs/changes claim (CHG-110)" 1 "$GATE_TPL" 'suite_tree_fingerprint "$repo_root" "docs/changes"'
-at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"[0-9][0-9.]*"'
+at_least "A53 receipt carries the gate version key (CHG-110)" 1 "$GATE_TPL" '"gate_version":"%s"'
 at_least "A53 receipt is rc0-only and change-bound (CHG-110)" 1 "$GATE_TPL" '"rc":0'
 at_least "A53 TTL is env-tunable with a numeric guard (CHG-110)" 1 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE_TTL'
 at_least "A53 opt-out env is honored at both read and write (CHG-110)" 2 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE:-1'
@@ -1871,7 +1871,7 @@ for a56_s in $a56_secs; do
     || { echo "A56: section $a56_s has no source-only SKIP branch (target-repo layout)" >&2; a56_sec_bad=$(( a56_sec_bad + 1 )); }
 done
 report "A56 run-tests sections T69~T76 exist and skip when the tools are absent (CHG-115/116)" 0 "$a56_sec_bad"
-at_least_unique "A56 golden section T87 closes the SECTIONS registry (CHG-132 tail)" "$a56_suite" '^SECTIONS=.* T87)'
+at_least_unique "A56 golden section T87 closes the SECTIONS registry (CHG-132 tail; CHG-145 recalibrated T87→T88 E160 golden joins)" "$a56_suite" '^SECTIONS=.* T88)'
 
 # The SKIP string alone is a vacuous pin: a section can put its first assertions
 # above the guard and still print the string. In a target-repo layout (only
@@ -2162,7 +2162,7 @@ report "A62 STAGE_PLAYBOOK points at the sole skeleton authority (CHG-131)" 1 \
   "$(grep_count_f "$ROOT/resources/STAGE_PLAYBOOK.md" '**子代理派发骨架（v3.94.0，CHG-131）**')"
 at_least_unique "A62 registry updates the dispatch clause (CHG-131)" "$A62_CR" '^| R18 | AI 子代理派发输入契约'
 at_least_unique "A62 registry indexes E155 (CHG-131)" "$A62_CR" '^| GATE-E155 |'
-at_least_e "A62 suite registers the dispatch section (CHG-131)" 1 "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T87\)'
+at_least_e "A62 suite registers the dispatch section (CHG-131; CHG-145 tail recalibrated to T88)" 1 "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T88\)'
 
 # --- A63 (v3.95.0, CHG-132, REQ-1320~1324): 套件基建五手段的源层接线 ---
 at_least_f "A63 AGENTS carries the version-chain-first suite rule (CHG-132)" 1 "$AGENTS" '版本链先行（v3.95.0，CHG-132）'
@@ -2224,6 +2224,28 @@ at_least_f "A66 evidence-round takes the round lock before any shard (CHG-135)" 
 at_least_f "A66 evidence-round releases the lock on every exit (CHG-135)" 1 "$ROOT/scripts/evidence-round.sh" "trap '_er_lock_release' EXIT"
 at_least_f "A66 the 05 template marks drifted rounds as void (CHG-135)" 1 "$ROOT/resources/templates/entry/05-test-results.md" 'tree_drift（必须为 0）'
 at_least_f "A66 the fingerprint excludes runtime state (CHG-135)" 1 "$ROOT/scripts/lib-suite-tree-fingerprint.sh" 'tests/.suite-baseline .agent-state "${claims[@]}"'
+
+# --- A67 (v4.1.0, CHG-145, FU-1011/REQ-1371~): 评审机校化执法面五互锁 ---
+# 语义：五类 diff-watch 不得只留在 §8 叙事——①E160 die 站点在模板与源仓双落；
+# ②§6 严重度表 A 层化（表头带「阻断交付」机校列，三档行数钉）；③五类枚举行
+# 注明 E160 执法；④staged 链挂载点存在。防「改了叙事忘改机校」静默失执法。
+at_least_f "A67 E160 die site in gate template (CHG-145)" 1 "$ROOT/resources/templates/agent-gate.sh" 'die "GATE-E160: 测试弱化命中'
+# 源仓 scripts/agent-gate 被 .gitignore 覆盖（source/payload 分离）——fresh-clone 无此
+# 文件。按 A6a 惯用法：同名断言恒执行（保 A10/A10b/GEN 基线集合跨环境稳定），
+# 缺文件时 SKIP 行声明 + 自洽值；执法面由上方模板钉承载。
+if [[ -f "$ROOT/scripts/agent-gate" ]]; then
+  at_least_f "A67 E160 die site in source gate (CHG-145)" 1 "$ROOT/scripts/agent-gate" 'die "GATE-E160: 测试弱化命中'
+else
+  echo "SKIP A67: scripts/agent-gate absent in a fresh source checkout (gitignored mirror; template pin enforces)"
+  report "A67 E160 die site in source gate (CHG-145)" 1 1
+fi
+at_least_f "A67 E160 staged-chain mount (CHG-145)" 1 "$ROOT/resources/templates/agent-gate.sh" 'staged) validate_test_weakening staged;'
+a67_sev_hdr=$(grep_count_f "$A62_RI" '| 严重度 | 阻断交付 | 判定判据 | 处置动作 |')
+report "A67 §6 severity table carries the machine-decidable header (CHG-145)" 1 "$a67_sev_hdr"
+a67_sev_rows=$(awk '/^\| 严重度 \| 阻断交付/{f=1;next} f&&/^## /{exit} f&&/^\| (严重|中|低) /{n++} END{print n+0}' "$A62_RI")
+report "A67 §6 severity table keeps the three-tier rows (CHG-145)" 3 "$a67_sev_rows"
+at_least_f "A67 §6 严重 row is delivery-blocking (CHG-145)" 1 "$A62_RI" '| 严重 | 是 |'
+at_least_f "A67 §8 five-class line names the E160 enforcement (CHG-145)" 1 "$A62_RI" 'gate E160 执法 A 层 + 评审复核 B 层'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else

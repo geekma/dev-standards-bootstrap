@@ -4618,6 +4618,27 @@ validate_stop() {
       fi
     fi
   fi
+  # v4.4.0 (CHG-148, FU-1012): the receipt version derives from the DS footer —
+  # the version chain's single source of truth (R42). A version bump no longer
+  # edits this file; receipts auto-invalidate when the carried version changes.
+  # Fail-soft: no readable DS footer -> "unknown" (cache may miss -> re-verify;
+  # the gate never caches a forged version). The receipt JSON is emitted by
+  # gate_receipt_json with the derived version — pinned by audit A49 / release
+  # check / mutation gate-version-drift.
+  # v4.4.0 (CHG-148, FU-1012): receipt emitter — the version argument comes
+  # from the DS footer derivation below; single write shape, pinned by audit
+  # A49/A53, release check and mutation gate-version-drift.
+  gate_receipt_json() { # <ver> <sha> <fp> <id> <ts>
+    printf '{"gate_version":"%s","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' "$1" "$2" "$3" "$4" "$5"
+  }
+  vc_gver=""
+  for vc_ds_src in "$repo_root/docs/DEVELOPMENT_STANDARDS.md" \
+                   "$repo_root/resources/DEVELOPMENT_STANDARDS.md"; do
+    [[ -f "$vc_ds_src" ]] || continue
+    vc_gver=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$vc_ds_src" 2>/dev/null | head -1)
+    [[ -n "$vc_gver" ]] && break
+  done
+  [[ -n "$vc_gver" ]] || vc_gver="unknown"
   if [[ -n "$vcmd" && -n "$vc_cmd_sha" && -f "$vc_rc_file" ]]; then
     vc_r_ver=$(sed -n 's/.*"gate_version":"\([^"]*\)".*/\1/p' "$vc_rc_file" | head -1)
     vc_r_sha=$(sed -n 's/.*"vcmd_sha":"\([^"]*\)".*/\1/p' "$vc_rc_file" | head -1)
@@ -4627,7 +4648,7 @@ validate_stop() {
     vc_r_at=$(sed -n 's/.*"finished_at":\([0-9][0-9]*\).*/\1/p' "$vc_rc_file" | head -1)
     vc_ttl="${AGENT_GUARD_VERIFY_CACHE_TTL:-30}"
     case "$vc_ttl" in ''|*[!0-9]*) vc_ttl=30 ;; esac
-    if [[ "$vc_r_ver" == "4.0.0" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
+    if [[ "$vc_r_ver" == "$vc_gver" && "$vc_r_sha" == "$vc_cmd_sha" && "$vc_r_fp" == "$vc_fp" \
           && "$vc_r_id" == "$id" && "$vc_r_rc" == "0" && -n "$vc_r_at" ]] \
        && (( $(date +%s) - vc_r_at <= vc_ttl * 60 )); then
       vc_hit=1
@@ -4679,8 +4700,9 @@ validate_stop() {
     # v3.83.0 (CHG-110): successful runs refresh the receipt (rc=0 only).
     if [[ "$vexit" == "0" && -n "$vc_cmd_sha" && "${AGENT_GUARD_VERIFY_CACHE:-1}" != "0" ]]; then
       mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
-      printf '{"gate_version":"4.0.0","vcmd_sha":"%s","fingerprint":"%s","change_id":"%s","rc":0,"finished_at":%s}\n' \
-        "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
+      # v4.4.0 (CHG-148, FU-1012): receipt JSON lives in gate_receipt_json (the
+      # derived version is its first argument); values are gate-controlled.
+      gate_receipt_json "$vc_gver" "$vc_cmd_sha" "$vc_fp" "$id" "$(date +%s)" > "$vc_rc_file" 2>/dev/null || true
     fi
   fi
   # F8：会话期软执法（skipped）**不落盘**——否则每轮 idle 都用 state=skipped 覆盖
@@ -4743,6 +4765,76 @@ complete_valid_change_exists() {
     done
   done
   return 1
+}
+
+# v4.1.0 (CHG-145, FU-1011): E160 测试弱化五类 diff-watch —— review-intelligence
+# §8 守护行的 A 层执法。确定性纯文本启发式（无 LLM/无网络），仅作用于测试 path
+# 面；命中即拒（①断言删除/弱化 ②skip/only 跳测 ③阈值下调 ④检查器静默
+# ⑤例外无 owner+期限），唯一逃生口=同文件 hunk ±2 行含 owner/负责人 与 期限
+# （ISO 日期或期限/到期/deadline/expires）成对标注 → WARN 放行。全文件删除按 ①。
+validate_test_weakening() {
+  local f dfl del add num_d num_a hit cls esc st
+  local files
+  files=$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true)
+  [[ -n "$files" ]] || return 0
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    case "$f" in
+      tests/*|*/tests/*|*test_*|*_test.*|*.test.js|*.test.ts|*.spec.js|*.spec.ts|*.test.js|*test.go|*_spec.rb|*/spec/*|*/e2e/*) ;;
+      *) continue ;;
+    esac
+    hit=0; cls=""
+    if [[ -f "$f" ]]; then
+      st=$(git diff --cached --name-status -- "$f" 2>/dev/null | head -1 | cut -f1)
+      dfl=$(git diff --cached -U2 -- "$f" 2>/dev/null || true)
+      [[ -n "$dfl" ]] || continue
+      # ①断言删除/弱化：删了断言行且本 diff 未新增断言行（前缀过滤法防吃首字母；
+      # 断言词表拼片防安装 add 自伤）
+      local _dw_assert_re='ass''ert|exp''ect|sho''uld|req''uire'
+      del=$(printf '%s\n' "$dfl" | grep -E '^-' | grep -vE '^---' | grep -cE "$_dw_assert_re" || true)
+      add=$(printf '%s\n' "$dfl" | grep -E '^\+' | grep -vE '^\+\+\+' | grep -cE "$_dw_assert_re" || true)
+      if [[ "$del" -gt 0 && "$add" -eq 0 ]]; then hit=1; cls="①断言删除/弱化"; fi
+      # ②④⑤ 词表正则拼片构造（.sk''ip 形态）：门模板被整文件 add 时正则文本
+      # 不得含活性 token，否则 fresh-install 死锁（T15 D5 教训，同 T87 _t87_pat 手法）。
+      local _dw_skip_re='\.sk''ip\(|\.on''ly\(|mark\.sk''ip|@pytest\.mark\.sk''ip|describe\.sk''ip|it\.sk''ip|test\.sk''ip|context\.sk''ip|xit\('
+      local _dw_silent_re='# n''oqa|eslint-dis''able|@ts-ign''ore|@ts-expect-err''or|pragma: n''o cover|n''olint|pylint: *dis''able'
+      # ②skip/only 跳测
+      if grep -qE "^\+.*($_dw_skip_re)" <<< "$dfl"; then
+        hit=1; cls="${cls:+$cls、}②skip/only 跳测"
+      fi
+      # ③阈值下调：同关键词 -/+ 首数值，加 < 删
+      local kw
+      for kw in coverage threshold timeout budget 覆盖率 阈值 超时; do
+        num_d=$(printf '%s\n' "$dfl" | grep -E '^-' | grep -vE '^---' | grep -E "$kw" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || true)
+        num_a=$(printf '%s\n' "$dfl" | grep -E '^\+' | grep -vE '^\+\+\+' | grep -E "$kw" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || true)
+        if [[ -n "$num_d" && -n "$num_a" ]] && awk "BEGIN{exit !($num_a < $num_d)}"; then
+          hit=1; cls="${cls:+$cls、}③阈值下调($kw)"; break
+        fi
+      done
+      # ④检查器静默
+      if grep -qE "^\+.*($_dw_silent_re)" <<< "$dfl"; then
+        hit=1; cls="${cls:+$cls、}④检查器静默"
+      fi
+      # ⑤例外无 owner+期限——只对既有文件（M*）执法：全新安装整文件 add 携带
+      # 环境默认值（如治理工具自举行）不构成"例外出现"（§8 ⑤ 语义=既有豁免面
+      # 新增豁免）；新文件里的 skip/静默仍由 ②④ 执法。
+      if [[ "$st" == M* ]] && grep -qE '^\+.*(AGENT_GUARD_[A-Z_]+=(1|0)|ALLOW_[A-Z_]+=1)' <<< "$dfl"; then
+        hit=1; cls="${cls:+$cls、}⑤例外无 owner+期限"
+      fi
+    else
+      hit=1; cls="①断言删除/弱化（全文件删除）"
+    fi
+    [[ "$hit" -eq 1 ]] || continue
+    esc=$(printf '%s\n' "$dfl" | awk '
+      /owner[=: ]|负责人(：|:)/ {o=NR}
+      /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]|期限|到期|deadline|expires/ {d=NR}
+      END { if (o && d && o-d<=2 && d-o<=2) print "yes"; else print "no" }')
+    if [[ "$esc" == "yes" ]]; then
+      echo "agent-gate: WARN — E160 测试弱化命中但 owner+期限标注在位，放行：$f" >&2
+    else
+      die "GATE-E160: 测试弱化命中（$cls）$f — 修复弱化或附 owner+期限标注（枚举权威=review-intelligence §8 守护行）"
+    fi
+  done <<< "$files"
 }
 
 validate_diff() {
@@ -5682,7 +5774,7 @@ case "$command" in
         # argument keeps the historical meaning (explicit change id).
         if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
         else stage_close_check "${1:-$(active_change)}"; fi ;;
-      staged) rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      staged) validate_test_weakening staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
       stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
       ci)
         base=""

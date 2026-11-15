@@ -43,13 +43,13 @@
 项目可经 `AGENTS.md`「项目速览·专家扩展」行声明领域专家扩展卡（命名按项目领域自定）：四维卡同构（工具箱/协同/装载/自适应），签署权仍映射规范 §0.5.2 既有角色列，增量承诺与通用契约全适用；扩展专家不改动规范 §2.2 组合表（自进化契约：派生不改源）。
 
 ### 0.6 能力回填
-专家发现的跨项目规律 → 规范 §2.14 标准改进评估；项目内教训 → 阶段 10 记忆沉淀。能力卡本身的修订走规范变更管线。
+专家发现的跨项目规律 → 规范 §2.14 标准改进评估；项目内教训 → 阶段 10 记忆沉淀（**条件阶段**：无新增可复用知识时以一行 `记忆沉淀：skip（理由）` 显式声明跳过，禁静默省略）。能力卡本身的修订走规范变更管线。
 
 ---
 
 ## 1. 业务专家（需求 Agent/业务 Owner 承担；阶段 1）
 
-- **理论工具箱**：基线——用户故事与 INVEST 原则、验收标准可测性（DoD）；扩展——用户故事地图（Patton）、Impact Mapping（Adzic）、Kano 模型（需求分类与优先级）、JTBD（场景动机）；产品可用性协同——用户旅程地图与服务蓝图、竞品与替代方案分析（买 or 建）、成功度量（HEART·North Star）、信息架构（IA）、Nielsen 十大启发式、错误预防（Poká-yoke）、认知负荷、无障碍（WCAG）。
+- **理论工具箱**：基线——用户故事与 INVEST 原则、验收标准可测性（DoD）；扩展——用户故事地图（Patton）、Impact Mapping（Adzic）、Kano 模型（需求分类与优先级）、JTBD（场景动机）；边界三档——需求边界显式分 Always（立即做）/Ask first（先问再做）/Never（禁止），防"什么都要"与"擅自不做"双向失效；产品可用性协同——用户旅程地图与服务蓝图、竞品与替代方案分析（买 or 建）、成功度量（HEART·North Star）、信息架构（IA）、Nielsen 十大启发式、错误预防（Poká-yoke）、认知负荷、无障碍（WCAG）。
 - **广度协同**：向行业专家供业务约束清单；向测试专家供 SC 场景五维枚举输入；**向产品可用性专家供 UJ（用户旅程）与上下文包**（§13）；与 PM 专家对齐验收里程碑。
 - **经验装载**：既有 `01-spec.md` REQ 演进史（同域需求为何改）、SC 清单历史遗漏、`02` 业务影响史。
 - **现实质询（v3.84.0，CHG-111）**：验证步质询对象=业务现实（P12 领域域/行业经验）；**外部来源物（原型/设计稿/上游规格）仅作表达候选，禁作事实依据**；逐领域字段质询值域形态与并列性（细则=STAGE_PLAYBOOK 阶段 1）。
@@ -72,14 +72,14 @@
 
 ## 4. 架构专家（架构-计划 Agent 承担；阶段 2/3）
 
-- **理论工具箱**：基线——深模块原则（Ousterhout）、耦合/内聚评估、接口前后兼容；扩展——C4 模型（架构描述）、ADR、演进式架构与适应度函数、康威定律检查（团队结构 ↔ 模块边界）；弃用与迁移——API/模块弃用走 expand/contract（先建替代→迁移消费方→**零使用验证后**收缩删除）、zombie code（无主且人人依赖）invest-or-remove 二选一禁久挂（删前先理解为何存在——Chesterton's Fence）。
+- **理论工具箱**：基线——深模块原则（Ousterhout）、耦合/内聚评估、接口前后兼容；扩展——C4 模型（架构描述）、ADR、演进式架构与适应度函数、康威定律检查（团队结构 ↔ 模块边界）；接口契约深件——Hyrum 定律（所有可观察行为都会被依赖，"patch"改行为即 major）、错误三态（成功/失败/未知，禁二值吞未知）、幂等键 done-right（意图派生+原子认领+重放窗口覆盖最长重试链）、additive-only 演进；弃用与迁移——API/模块弃用走 expand/contract（先建替代→迁移消费方→**零使用验证后**收缩删除）、zombie code（无主且人人依赖）invest-or-remove 二选一禁久挂（删前先理解为何存在——Chesterton's Fence）。
 - **广度协同**：与技术专家互为取舍双方；向 PM 专家供任务边界（模块=可独立提交/回滚单元）；向安全专家供信任边界图。
 - **经验装载**：`02` 三维影响与隐式链路史、既有分层与坏味道（§5 反模式库）、`resources/methodologies/development.md` §3。
 - **自适应锚点**：偏好声明的架构风格作为适应度函数的判定基线。
 
 ## 5. 项目管理专家（编排 Agent 调度面 + 架构-计划 Agent 拆解面；阶段 3/5）
 
-- **理论工具箱**：基线——WBS（原子任务/依赖/关键路径）、DoR/DoD、漏项检测（规范 §2.2 内化）；扩展——PMBOK 监控过程组、关键链（Goldratt 缓冲管理）、风险登记册、RACI（与 §0.5.2 矩阵同构对照）。
+- **理论工具箱**：基线——WBS（原子任务/依赖/关键路径）、DoR/DoD、漏项检测（规范 §2.2 内化）；扩展——PMBOK 监控过程组、关键链（Goldratt 缓冲管理）、风险登记册、RACI（与 §0.5.2 矩阵同构对照）；任务并行安全分级——safe（可并行）/sequential（须串行）/coordination（需协调点），并行派发前先定级；任务粒度上限——单任务 ~5 文件量级，超出即再拆。
 - **广度协同**：向整体验收专家供里程碑达成证据；向编排 Agent 升级阻塞（§2.1.8）；向各专家催办增量承诺产出。
 - **经验装载**：既有 `03.5` 任务偏差史、批次节奏（BATCH 实测）、RTVM 未映射历史模式。
 - **自适应锚点**：项目声明迭代/瀑布偏好时，里程碑粒度随之适配（规范不强制节奏）。
@@ -100,7 +100,7 @@
 
 ## 8. 测试专家（测试 Agent 承担；阶段 4/7）
 
-- **理论工具箱**：基线——十一类覆盖维度 + NFR 反向核对 + SC 枚举（规范内化）、复用 vs 新增判定；扩展——测试金字塔（Cohn）、HTSM（Kaner 启发式）、契约测试、变异测试思想（断言有效性）、基于会话的探索性测试、缺陷预防与同族推演（规范内化）；stop-the-line——红测试不修完不开下一个功能（错误会复合）。
+- **理论工具箱**：基线——十一类覆盖维度 + NFR 反向核对 + SC 枚举（规范内化）、复用 vs 新增判定；扩展——测试金字塔（Cohn）、HTSM（Kaner 启发式）、契约测试、变异测试思想（断言有效性）、基于会话的探索性测试、缺陷预防与同族推演（规范内化）；stop-the-line——红测试不修完不开下一个功能（错误会复合）；不可复现缺陷四路决策树——时序/环境/状态/随机逐路注入定位，禁"复现不了就跳过"。
 - **广度协同**：向业务专家回供场景盲区；向整体验收专家供回归证据；向数据/LLM 专家（命中时）供评估集与对账用例。
 - **经验装载**：`bugfix-log.md` 全量同族扫描、`05` 历史逃逸缺陷、覆盖率趋势。
 - **自适应锚点**：偏好声明含 TDD/BDD 时，04 先行的形态随之适配（行为式用例可直接映射 SC）。
@@ -128,7 +128,7 @@
 
 ## 12. 可靠性专家（条件命中：§2.7/§2.8）
 
-- **理论工具箱**：基线——发布检查单、冒烟验证、回滚标准（§2.7 内化）；扩展——SLO/错误预算、可观测三支柱（日志/指标/trace）、故障注入与演练、值守交接（§2.11 热修复联动）；遥测自验证——告警要试火、故障要演练，未验证的遥测不算可观测；feature flag 强制清理期限（防堆积）；发布数值锚点（错误率/p95 阈值→推进/暂停/回滚决策表，M1 扩展按 METHODOLOGY 分级注名）。
+- **理论工具箱**：基线——发布检查单、冒烟验证、回滚标准（§2.7 内化）；扩展——SLO/错误预算、可观测三支柱（日志/指标/trace）、故障注入与演练、值守交接（§2.11 热修复联动）；遥测自验证——告警要试火、故障要演练，未验证的遥测不算可观测；值守问题先行——先写 2-4 个 on-call 问题再选信号（metric 答 that/trace 答 where/log 答 why）；feature flag 强制清理期限（防堆积）；发布数值锚点（错误率/p95 阈值→推进/暂停/回滚决策表，M1 扩展按 METHODOLOGY 分级注名）；Build Cop——CI 红的 fix-or-revert 归属轮值，非破坏者义务。
 - **广度协同**：向性能专家对齐容量；向 PM 专家供发布窗口与缓冲；向整体验收专家供监控就绪证据（§2.8"观测 0 字节"防线）。
 - **经验装载**：`06.5` 发布史、告警噪音记录、历史回滚根因。
 - **自适应锚点**：项目声明的环境拓扑（灰度/蓝绿/滚动）决定检查单形态。
@@ -188,12 +188,13 @@
 | 契约测试 / 变异测试 | Martin Fowler / DeMillo, Lipton & Sayward | bliki "Integration Contract Tests"(2014) / 论文 "Hints on Test Data Selection"(1978) |
 | SLO / 错误预算 / 可观测三支柱 | Google SRE 团队 / Cindy Sridharan | 《Site Reliability Engineering》(O'Reilly, 2016) / 《Distributed Systems Observability》(O'Reilly, 2018) |
 | Lost in the middle（长上下文中间塌陷） | Nelson F. Liu 等 | 论文 "Lost in the Middle: How Language Models Use Long Contexts"(arXiv:2307.03172, 2023) |
+| Hyrum 定律 | Hyrum Wright、Titus Winters 等 | hyrumslaw.com；《Software Engineering at Google》(O'Reilly, 2020) |
 | OWASP Top 10 for LLM Applications | OWASP Foundation | OWASP Top 10 for LLM Applications（2025 版） |
 | 安灯（Andon）/ stop-the-line | 丰田生产方式（大野耐一） | 《丰田生产方式》（1978）；"发现异常即停线"原则 |
 | 故障注入 / 混沌工程 | Netflix（Chaos Monkey）；Casey Rosenthal & Nora Jones | Principles of Chaos（principlesofchaos.org）/ 《Chaos Engineering》(O'Reilly, 2019) |
 | 数据质量维度 / 主数据 / 血缘 | DAMA International | 《DAMA-DMBOK》 |
-| ATDD / SCA 依赖扫描 / LLM 评估集（golden set）/ Prompt 版本化与 A/B / 数据迁移双写与对账水位校验 / Release Readiness Review 检查单 / 竞品与替代方案分析 / North Star 指标 / 任务完成率·用时·错误率·放弃率 / 可用性走查与 UAT / expand-contract 迁移 / Chesterton's Fence / Rule of 500 / 官方文档溯源现查现证 / 质量 ratchet 与底线守护 / 带猜测的提问 / rollout 决策表与 flag 生命周期 | 多源社区与工业实践（无单一权威提出者） | （待核） |
+| ATDD / SCA 依赖扫描 / LLM 评估集（golden set）/ Prompt 版本化与 A/B / 数据迁移双写与对账水位校验 / Release Readiness Review 检查单 / 竞品与替代方案分析 / North Star 指标 / 任务完成率·用时·错误率·放弃率 / 可用性走查与 UAT / expand-contract 迁移 / Chesterton's Fence / Rule of 500 / 官方文档溯源现查现证 / 质量 ratchet 与底线守护 / 带猜测的提问 / rollout 决策表与 flag 生命周期 / 边界三档 / 错误三态 / 幂等键契约 / 不可复现缺陷决策树 / 值守问题先行 / 任务并行安全分级 | 多源社区与工业实践（无单一权威提出者） | （待核） |
 
 学理细节以上述原著为唯一权威；本卡只定义"何时动用"（绑定关系），不复制学理内容。
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v4.0.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v4.4.0_

@@ -442,11 +442,18 @@ fi
 [[ "$stamp_bug" == true ]] && risk="n/a"
 
 skill_ver="unknown"
-std="$DOCS_DIR/DEVELOPMENT_STANDARDS.md"
-if [[ -f "$std" ]]; then
+# v4.4.0 (CHG-148, FU-1012): resolve the version from the DS footer; target
+# repos keep DS at docs/, the source repo at resources/ (docs/ is untracked or
+# a stub there). First readable footer wins; otherwise stay "unknown".
+for std in "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" \
+           "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/resources/DEVELOPMENT_STANDARDS.md"; do
+  [[ -f "$std" ]] || continue
   v=$(grep -oE '规范版本：v[0-9.]+' "$std" 2>/dev/null | head -1 | grep -oE '[0-9.]+' || true)
-  [[ -n "$v" ]] && skill_ver="$v"
-fi
+  if [[ -n "$v" ]]; then
+    skill_ver="$v"
+    break
+  fi
+done
 
 BLK=$(mktemp) || exit 2
 trap 'rm -f "$BLK"' EXIT

@@ -65,14 +65,17 @@ check() {
     [[ "$(footer_version "$m")" == "$v" ]] || { bad_m=$((bad_m+1)); bad "methodology footer $m"; }
   done
   eq "methodology footer coverage" "$bad_m" "0"
-  eq "gate_version write literal (template)" "$(grep -cF "\"gate_version\":\"$v\"" resources/templates/agent-gate.sh || true)" "1"
-  eq "gate_version compare literal (template)" "$(grep -cF "\"\$vc_r_ver\" == \"$v\"" resources/templates/agent-gate.sh || true)" "1"
+  # v4.4.0 (CHG-148, FU-1012): the receipt version derives from the DS footer
+  # inside the gate — assert the derivation is wired, not a (now forbidden)
+  # hardcoded literal. A version bump no longer edits the gate.
+  eq "gate receipt version derives from DS footer (template)" "$(grep -cF 'gate_receipt_json "$vc_gver"' resources/templates/agent-gate.sh || true)" "1"
+  eq "gate receipt version compares derived (template)" "$(grep -cF '"$vc_r_ver" == "$vc_gver"' resources/templates/agent-gate.sh || true)" "1"
   # scripts/agent-gate is a gitignored local mirror (source layout), so absence is
   # legal on a fresh clone; when present it must be byte-identical (checked below).
   if [[ -f scripts/agent-gate ]]; then
     eq "gate mirror byte-identical" "$([[ "$(cmp -s scripts/agent-gate resources/templates/agent-gate.sh; echo $?)" == "0" ]] && echo yes || echo no)" "yes"
-    eq "gate_version write literal (mirror)" "$(grep -cF "\"gate_version\":\"$v\"" scripts/agent-gate || true)" "1"
-    eq "gate_version compare literal (mirror)" "$(grep -cF "\"\$vc_r_ver\" == \"$v\"" scripts/agent-gate || true)" "1"
+    eq "gate receipt version derives from DS footer (mirror)" "$(grep -cF 'gate_receipt_json "$vc_gver"' scripts/agent-gate || true)" "1"
+    eq "gate receipt version compares derived (mirror)" "$(grep -cF '"$vc_r_ver" == "$vc_gver"' scripts/agent-gate || true)" "1"
   fi
   # tracked-carrier check: a carrier outside git can never ship with a tag.
   if git rev-parse --git-dir >/dev/null 2>&1; then
@@ -121,12 +124,9 @@ bump() {
   for f in .claude-plugin/plugin.json .claude-plugin/marketplace.json; do
     sed_i "$f" -e "s/\"version\": \"$old\"/\"version\": \"$new\"/"
   done
-  for f in resources/templates/agent-gate.sh scripts/agent-gate; do
-    [[ -f "$f" ]] || continue
-    sed_i "$f" \
-      -e "s/\"gate_version\":\"$old\"/\"gate_version\":\"$new\"/g" \
-      -e "s/\"\\\$vc_r_ver\" == \"$old\"/\"\\\$vc_r_ver\" == \"$new\"/g"
-  done
+  # v4.4.0 (CHG-148, FU-1012): the gate no longer carries version literals —
+  # its receipt version derives from the DS footer at runtime, so a bump has
+  # nothing to rewrite there (the old gate seds became dead code and were removed).
   echo "release: bumped v$old -> v$new"
   check
 }

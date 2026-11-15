@@ -743,7 +743,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - **标准升级日志**：本文件页脚版本号变更时，必须在 `STANDARDS_CHANGELOG.md`（v3.8.0 起日志唯一落点，与本规范同目录分发；目标仓库落 `resources/STANDARDS_CHANGELOG.md`）**追加一行（新条目置顶，历史行不改写）**：版本 / 日期 / 变更条款清单 / 影响哪些既有文档。禁止把升级日志写回本文件正文（历史记录不入规范正文，防体量失控）。
 - **存量回填门禁**：凡标准升级引入**影响既有功能文档的新条款**，必须对**所有既有功能目录**（`docs/<feature>/`）做一次合规回填（新条款回填旧文档）；未回填视为标准未落地，对应功能不得宣称合规。
 - **回填也是变更**：存量回填同样受门禁 1-4（改文档也要更新 changelog / RTVM 回填）。
-- **版本载体全链清单（v3.49.0）**：版本 bump 须同步的载体全链唯一权威（R42 路由）：页脚 ×9＝DEVELOPMENT_STANDARDS/AGENTS 脚注/METHODOLOGY/methodologies ×5/SKILL 共 4 处；分发元数据 ×2＝`.claude-plugin/{plugin,marketplace}.json` 各 1 处；README ×2 各 3 处（badge/树/页脚）；升级记录 ×1＝STANDARDS_CHANGELOG 行。新载体入链/出链同版本修订本条（§5.2）；历史行与条款溯源（v3.x）不在 bump 面。
+- **版本载体全链清单（v3.49.0）**：版本 bump 须同步的载体全链唯一权威（R42 路由）：页脚 ×9＝DEVELOPMENT_STANDARDS/AGENTS 脚注/METHODOLOGY/methodologies ×6（全册页脚，以 `resources/methodologies/` 目录枚举为准，CHG-147 勘误 FU-1013）/SKILL 共 4 处；分发元数据 ×2＝`.claude-plugin/{plugin,marketplace}.json` 各 1 处；README ×2 各 3 处（badge/树/页脚）；升级记录 ×1＝STANDARDS_CHANGELOG 行。机校钉出链（v4.4.0，CHG-148/FU-1012）：gate 收据版本与 audit A49 断言运行时从本页脚派生，不在 bump 面——bump 收敛为「本清单机械同步（`scripts/release.sh bump`）+ changelog 行人写」两步。新载体入链/出链同版本修订本条（§5.2）；历史行与条款溯源（v3.x）不在 bump 面。
 
 ---
 
@@ -1155,4 +1155,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v4.0.0 | 更新时间：2026-11-13 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v4.4.0 | 更新时间：2026-11-14 | 全局维护责任人：geekma (geekma@gmail.com)*

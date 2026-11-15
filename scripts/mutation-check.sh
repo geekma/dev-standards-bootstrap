@@ -137,7 +137,10 @@ mutate() { # name dest
     gate-version-drift)
       f="$dest/resources/templates/agent-gate.sh"
       tmp="$f.mut"
-      sed "s/\"gate_version\":\"$DS_VERSION\"/\"gate_version\":\"0.0.0\"/" "$f" > "$tmp" && mv "$tmp" "$f"
+      # v4.4.0 (CHG-148, FU-1012): the receipt version derives from the DS
+      # footer, so the mutation target moved from the (removed) hardcoded
+      # literal to the derived emitter call — release check must still go red.
+      sed 's/gate_receipt_json "\$vc_gver"/gate_receipt_json "0.0.0"/' "$f" > "$tmp" && mv "$tmp" "$f"
       ;;
     baseline-missing)
       rm -f "$dest/tests/.suite-baseline"

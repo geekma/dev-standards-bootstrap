@@ -8,7 +8,7 @@
 
 ## Schema
 
-- 列定义：`| Rxx | 条款标题 | 权威落点(path::唯一锚点串) | 类型标签 | 强制级别 | 生命周期类别 | 机制 |`（机制列 v3.99.0 起：封闭词表 盘点/参照/自视/断言/见证/收口/元，依据 DS §0.6+§2.14；新行必填）
+- 列定义：`| Rxx | 条款标题 | 权威落点(path::唯一锚点串) | 类型标签 | 强制级别 | 生命周期类别 | 机制 | 栈（可选） |`（机制列 v3.99.0 起：封闭词表 盘点/参照/自视/断言/见证/收口/元，依据 DS §0.6+§2.14；新行必填。栈列 CHG-147 起：可选第 9 列（机制列后），封闭词表 frontend/backend/go/sql，空=全栈通用——generate-reading-pack.sh `--profile <栈>` 按此过滤，非空且≠profile 的行不出包）
 - 行 ID：`Rxx` 十进制连续无跳号（无连字符形态，不进入 REQ/DES/TC/SC/BUG/CHG/FU 编号面，A6c/G2 不误扫）。
 - 权威落点：`path::anchor`——path 为仓根相对路径（须为随治理包分发的文件），anchor 为该文件中
   **唯一存在**的字符串（写行前必须 grep 验真 =1）；生成器按 `grep -F` 定位并解析行号，失配即 fail-closed。
@@ -20,7 +20,7 @@
 
 ## 注册表
 
-| Rxx | 条款标题 | 权威落点 | 类型标签 | 强制级别 | 生命周期 | 机制 |
+| Rxx | 条款标题 | 权威落点 | 类型标签 | 强制级别 | 生命周期 | 机制 | 栈 |
 | --- | --- | --- | --- | --- | --- | --- |
 | R01 | 缺陷处置主线（阶段 6） | DEVELOPMENT_STANDARDS.md::### 阶段 6：缺陷诊断与根因推导（Bug 专用） | L0-bugfix | 硬 | 结构 | 元 |
 | R02 | 缺陷双登记（log 索引 + CHG 条目） | DEVELOPMENT_STANDARDS.md::**Bug 修复必须双登记** | L0-bugfix | 硬 | 行为 | 收口 |
@@ -45,7 +45,7 @@
 | R21 | 项目总册回填清单（§1.3） | DEVELOPMENT_STANDARDS.md::#### 项目总册回填清单 | L1-standards | 硬 | 结构 | 收口 |
 | R22 | 执行前置（§2.16.1） | DEVELOPMENT_STANDARDS.md::### 2.16.1 执行前置 | L1-standards | 硬 | 结构 | 元 |
 | R23 | 执行主线（§2.16.2） | DEVELOPMENT_STANDARDS.md::### 2.16.2 执行主线 | L1-standards | 硬 | 结构 | 元 |
-| R24 | 配置/DB 变更规范（§2.6） | DEVELOPMENT_STANDARDS.md::## 2.6 部署、配置与数据库变更规范 | L2-architecture | 硬 | 结构 | 元 |
+| R24 | 配置/DB 变更规范（§2.6） | DEVELOPMENT_STANDARDS.md::## 2.6 部署、配置与数据库变更规范 | L2-architecture | 硬 | 结构 | 元 | backend |
 | R25 | 热修复快速通道（§2.11） | DEVELOPMENT_STANDARDS.md::## 2.11 热修复快速通道 | L3-critical | 硬 | 结构 | 元 |
 | R26 | AGENTS 路由入口（锚点表速览） | resources/AGENTS.md::交付前文档互证 | universal | 硬 | 结构 | 元 |
 | R27 | 缺陷入口速查（AGENTS 门禁 4） | resources/AGENTS.md::bug-autointent | L0-bugfix | 硬 | 结构 | 元 |
@@ -71,7 +71,7 @@
 | R47 | 用户旅程 E2E 阈值（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**用户旅程 E2E（v3.67.0）** | L2-architecture | 硬 | 行为 | 断言 |
 | R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节** | L2-architecture | 硬 | 结构 | 见证 |
 | R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 | 断言 |
-| R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 | 收口 |
+| R50 | 用户体验 DoD（§2.16.3） | DEVELOPMENT_STANDARDS.md::**用户体验（v3.67.0，命中 | universal | 硬 | 结构 | 收口 | frontend |
 | R51 | 原始锚点与机械抽取（§2.5 阶段 1） | DEVELOPMENT_STANDARDS.md::**原始锚点与机械抽取（v3.68.0，CHG-043）** | universal | 硬 | 结构 | 断言 |
 | R52 | 事件流切分与数据流规格（§2.5 阶段 2） | DEVELOPMENT_STANDARDS.md::**事件流切分与数据流规格（v3.68.0，CHG-043）** | universal | 硬 | 结构 | 盘点 |
 | R53 | 否定测试抽查（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**否定测试抽查（v3.68.0，CHG-043）** | universal | 硬 | 行为 | 断言 |
@@ -105,8 +105,8 @@
 | R75 | 防生长元规则（新条款三声明+合拢审计） | DEVELOPMENT_STANDARDS.md::### 防生长元规则 | universal | 硬 | 行为 | 元 |
 | R76 | 专业质询三件（00.5 沟通稿，清单式+选择式） | templates/entry/00.5-communication.md::## 专业质询三件 | universal | 硬 | 结构 | 盘点 |
 | R77 | 动作全集矩阵（01-spec 条件节） | templates/entry/01-spec.md::## 动作全集矩阵 | L2-architecture | 硬 | 结构 | 盘点 |
-| R78 | 参照界面对照表+编辑预填完整性（03.6 条件节） | templates/entry/03.6-ui-spec.md::## 参照界面对照表 | L2-architecture | 硬 | 结构 | 参照 |
-| R79 | UI 范式卡（P12 单源） | templates/project/P12-product-context.md::## UI 范式卡 | L2-architecture | 硬 | 结构 | 参照 |
+| R78 | 参照界面对照表+编辑预填完整性（03.6 条件节） | templates/entry/03.6-ui-spec.md::## 参照界面对照表 | L2-architecture | 硬 | 结构 | 参照 | frontend |
+| R79 | UI 范式卡（P12 单源） | templates/project/P12-product-context.md::## UI 范式卡 | L2-architecture | 硬 | 结构 | 参照 | frontend |
 | R80 | 证据类型分层（真实点击链路+视觉证据） | DEVELOPMENT_STANDARDS.md::### 阶段 7：运行测试与证据闭环 | L2-architecture | 硬 | 行为 | 断言 |
 | R81 | 评审见证实义（自产证据+所见即所评） | DEVELOPMENT_STANDARDS.md::### 阶段 8：代码审查与安全门禁 | L2-architecture | 硬 | 行为 | 见证 |
 | R82 | E104 证据词表扩两类（点击链路/视觉证据） | templates/agent-gate.sh::证据行格式（唯一权威） | L2-architecture | 硬 | 行为 | 断言 |
@@ -271,3 +271,4 @@
 | GATE-E157 | 00.5 三件节在位但含未填占位符/缺三锚点/未命中豁免，或触及被测核心缺判定卡三选一（整节缺失 legacy 形态告警放行；节内探针=preflight） | agent-gate.sh::validate_mechanism_stop() |
 | GATE-E158 | ui_change:true 时 01-spec「动作全集矩阵」节在位但含未填占位符/缺入口维度（整节缺失 legacy 形态告警放行；节内探针=preflight） | agent-gate.sh::validate_mechanism_stop() |
 | GATE-E159 | ui_change:true 时 03.6「参照界面对照表」节在位但含未填占位符/缺 P12 UI 范式卡引用（整节缺失 legacy 形态告警放行；节内探针=preflight） | agent-gate.sh::validate_mechanism_stop() |
+| GATE-E160 | 测试弱化五类 diff-watch：暂存面测试文件 ①断言删除/弱化②skip/only 跳测③阈值下调④检查器静默⑤既有文件新增豁免无 owner+期限（唯一逃生口=owner+期限标注；枚举权威=review-intelligence §8） | agent-gate.sh::validate_test_weakening() |

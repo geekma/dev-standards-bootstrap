@@ -1,35 +1,58 @@
 #!/usr/bin/env bash
 # generate-reading-pack.sh — 条款注册表 → 按变更类型生成阅读包（v3.46.0，CHG-056 REQ-969）
 #
-# 用法：generate-reading-pack.sh <type> [--verify]
+# 用法：generate-reading-pack.sh <type> [--profile <栈>] [--verify]
 #   <type>     封闭词表：L0-bugfix | L1-standards | L2-architecture | L3-critical | universal
+#   --profile  封闭词表：frontend | backend | go | sql（可选；缺省=全栈通用，不过滤）
 #   --verify   只校验（锚点可解析性），不输出阅读包；绿态静默退出 0
 #
 # 权威关系（防双权威源漂移）：注册表是机器索引层，DS 是叙事唯一权威。本脚本逐条解析
 # 注册表锚点存在性——文件缺失/锚点失配/多命中一律 fail-closed 指名 Rxx，永不产出与权威
 # 漂移的副本。阅读包是按需生成物，不入库、不手编（预生成入库=双权威源，禁止）。
+# profile 维度（CHG-147，FU-1012）：注册表第 9 列「栈」（可选，在机制列后；空=全栈通用）；给定
+# --profile 时跳过「栈非空且≠profile」行；无 --profile 不过滤（向后逐字节兼容）。
 #
-# 退出码：0 成功；2 用法/未知类型/注册表缺失；3 锚点 fail-closed；4 该类型零条款。
+# 退出码：0 成功；2 用法/未知类型/未知 profile/注册表缺失；3 锚点 fail-closed；4 该类型零条款。
 set -euo pipefail
 
 die() { echo "generate-reading-pack: $1" >&2; exit "${2:-2}"; }
 
+PROFILE_VOCAB="frontend backend go sql"
+
 usage() {
   cat >&2 <<'USAGE'
-usage: generate-reading-pack.sh <type> [--verify]
+usage: generate-reading-pack.sh <type> [--profile <栈>] [--verify]
   <type>: L0-bugfix | L1-standards | L2-architecture | L3-critical | universal
+  --profile <栈>: frontend | backend | go | sql（可选；缺省=全栈通用）
   --verify: validate anchors only, no output
 USAGE
   exit 2
 }
 
-TYPE="${1:-}"; VERIFY=0
-[[ "${2:-}" == "--verify" ]] && VERIFY=1
-[[ "$#" -ge 1 && -n "$TYPE" ]] || usage
+TYPE=""; PROFILE=""; VERIFY=0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --verify) VERIFY=1; shift ;;
+    --profile)
+      [[ $# -ge 2 && -n "${2:-}" ]] || die "--profile requires a value (closed vocab: $PROFILE_VOCAB)" 2
+      PROFILE="$2"; shift 2 ;;
+    -*) die "unknown flag '$1'" 2 ;;
+    *)
+      [[ -z "$TYPE" ]] || die "unexpected extra argument '$1' (type already set to '$TYPE')" 2
+      TYPE="$1"; shift ;;
+  esac
+done
+[[ -n "$TYPE" ]] || usage
 case "$TYPE" in
   L0-bugfix|L1-standards|L2-architecture|L3-critical|universal) ;;
   *) die "unknown type '$TYPE' (closed vocab: L0-bugfix L1-standards L2-architecture L3-critical universal)" 2 ;;
 esac
+if [[ -n "$PROFILE" ]]; then
+  case " $PROFILE_VOCAB " in
+    *" $PROFILE "*) ;;
+    *) die "unknown profile '$PROFILE' (closed vocab: $PROFILE_VOCAB)" 2 ;;
+  esac
+fi
 
 # 仓根解析：git 优先，退化为脚本相对（resources/templates/ → 上两级）。
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -78,8 +101,13 @@ while IFS= read -r row; do
   label="$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$5); print $5}')"
   level="$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$6); print $6}')"
   life="$(printf '%s'  "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$7); print $7}')"
+  stack="$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$9); print $9}')"
 
   [[ "$label" == "$TYPE" || "$label" == "universal" ]] || continue
+  # profile 维度（CHG-147，FU-1012）：第 9 列非空且≠profile → 跳过；空=全栈通用。
+  if [[ -n "$PROFILE" && -n "$stack" && "$stack" != "$PROFILE" ]]; then
+    continue
+  fi
 
   path="${loc%%::*}"
   anchor="${loc#*::}"
@@ -119,8 +147,11 @@ pack_body_lines="$(grep -c . "$out" || true)"
   echo "# 阅读包：${TYPE}（生成物，勿手编辑、不入库）"
   echo ""
   echo "- 类型：$TYPE"
+  echo "- 技术栈：${PROFILE:-全栈（未指定 profile，不过滤）}"
   echo "- 条款数：$total"
-  echo "- 生成命令：generate-reading-pack.sh $TYPE"
+  vf=""; [[ "$VERIFY" -eq 1 ]] && vf=" --verify"
+  pf=""; [[ -n "$PROFILE" ]] && pf=" --profile $PROFILE"
+  echo "- 生成命令：generate-reading-pack.sh $TYPE$pf$vf"
   echo "- 生成时间：$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "- 声明：本包由条款注册表按需生成；条款正文以权威文件为准，本包只做路由（落点:行号）。"
   echo ""

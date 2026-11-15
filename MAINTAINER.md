@@ -105,6 +105,7 @@ bash tests/audit-standards-src.sh  # 源层：版本链 / 关键词落点 / §3�
 - **收据复用规则只有一份实现**：`sf_receipt_fresh`（同 HEAD + 同树指纹 + `failed=0` + mtime 新鲜度窗口）。`verify-all.sh` 与 `update-assertion-count.sh --check --require-receipt` 共享它（A56 末钉「verify-all shares the generator receipt-reuse rule」）——两处各写一份就会漂移，而漂移的表现是"某入口偷偷多跑 5 分钟"。
 - `--require-receipt` 是**手动 fail-closed 开关**：无新鲜收据即 rc2，绝不退化成隐式整跑。给任何新入口选证据源时，优先级恒为：入库基线 → 新鲜收据 → 显式要求调用方自己跑。
 - 版本载体、门面对称、基线数字这三类一致性由 `release.sh check` + A 组断言 + CI 硬门分担，**不要在新工具里再造第四份判定**。
+- **版本钉动态化（v4.4.0，CHG-148）**：gate 收据版本与 audit A49/A53 断言运行时从 DS 页脚派生（`docs/` → `resources/` 回退，无则 `unknown` 降级）；`release.sh bump` 不再触碰 gate 代码（bump 面收敛为载体链+changelog 行两步）；`mutation-check` 的 gate-version-drift 变异打派生调用点（`gate_receipt_json`）；`stamp-provenance` 版本解析带 `resources/DS` 回退（源仓 docs/ 不入库，灭 `skill_version: unknown`）。
 
 ### 3.1 第三道：把门禁指向**本仓自己的真实产物**（dogfooding，改门禁后必做）
 
@@ -165,7 +166,7 @@ bash scripts/update-assertion-count.sh --check --require-receipt
 
 ### 5.1 规范体量上界（A11）与它的重校准
 
-`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **176 KB / 180,224 字节**，v3.97.2 自 168KB 按 +4KiB 步进重校准——CHG-136）。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
+`A11` 断言 `resources/DEVELOPMENT_STANDARDS.md` 不超过一个硬上界（当前 **180 KB / 184,320 字节**，v3.97.2 自 168KB 按 +4KiB 步进重校准（CHG-136；CHG-147 再校准））。它不是"防内容变多"，而是**防无序回弹**——上界一旦失效，规范就会无声地膨胀下去。
 
 **重校准是设计内的动作，不是破例**，但必须满足两个条件：
 

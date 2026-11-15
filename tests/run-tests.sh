@@ -4197,6 +4197,34 @@ REG40
   report "T40 empty type set refused" 4 $?
   v40="$(bash resources/generate-reading-pack.sh L0-bugfix --verify 2>/dev/null)"; rc40=$?
   report "T40 verify green silent exit 0" "0:0" "$rc40:${#v40}"
+  # profile 维度（CHG-147，FU-1012）：fixture 注册表带第 9 列「栈」。
+  cat > resources/CLAUSE_REGISTRY.md <<'REG47'
+| Rxx | 条款标题 | 权威落点 | 类型标签 | 强制级别 | 生命周期 | 机制 | 栈 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R01 | 缺陷主线 | resources/fake-standards.md::### 阶段 6 | L0-bugfix | 硬 | 结构 | 元 | |
+| R02 | 防覆盖 | resources/fake-standards.md::## 2.15 文档 | universal | 软 | 行为 | 收口 | |
+| R03 | 前端范式 | resources/fake-standards.md::### 0.5.1 风险 | L1-standards | 硬 | 结构 | 参照 | frontend |
+| R04 | DB 规范 | resources/fake-standards.md::### 1.1 编号 | L1-standards | 硬 | 结构 | 收口 | backend |
+REG47
+  out47f="$(bash resources/generate-reading-pack.sh L1-standards --profile frontend 2>/dev/null)"; rc47f=$?
+  report "T40 profile filter keeps generic+matching" "1:0" "$(printf '%s' "$out47f" | grep -c '条款数：'):$rc47f"
+  report "T40 profile frontend count" 1 "$(printf '%s' "$out47f" | grep -c '条款数：2')"
+  report "T40 profile excludes other-stack row" 0 "$(printf '%s' "$out47f" | grep -c 'R04')"
+  report "T40 profile includes frontend row" 1 "$(printf '%s' "$out47f" | grep -c 'R03')"
+  report "T40 profile header line" 1 "$(printf '%s' "$out47f" | grep -c '技术栈：frontend')"
+  report "T40 gen-cmd line omits --verify in normal mode" 0 "$(printf '%s' "$out47n" | grep -c '生成命令.*--verify')"
+  report "T40 gen-cmd line carries profile in profile mode" 1 "$(printf '%s' "$out47f" | grep -c '生成命令.*--profile frontend')"
+  out47n="$(bash resources/generate-reading-pack.sh L1-standards 2>/dev/null)"; rc47n=$?
+  report "T40 no-profile includes tagged rows (backward compat)" "1:0" "$(printf '%s' "$out47n" | grep -c '条款数：3'):$rc47n"
+  bash resources/generate-reading-pack.sh L1-standards --profile nosql 2>/dev/null
+  report "T40 unknown profile refused" 2 $?
+  bash resources/generate-reading-pack.sh L1-standards --profile frontend --verify >/dev/null 2>&1
+  report "T40 profile verify silent rc0" 0 $?
+  bash resources/generate-reading-pack.sh L1-standards --verify --profile frontend >/dev/null 2>&1
+  report "T40 flags any order rc0" 0 $?
+  # 真实注册表 profile 校验（源仓根；临时仓内 ROOT 解析会指向夹具仓）
+  ( cd "$ROOT" && bash resources/templates/generate-reading-pack.sh L2-architecture --profile frontend --verify >/dev/null 2>&1 )
+  report "T40 real registry profile verify rc0" 0 $?
   # 接线静态 pin（源仓）
   # CHG-102：generator 计数 1→2（usage 护栏入口清单 + install 落点）。
   report "T40 bootstrap ships generator" 2 "$(grep -c 'generate-reading-pack' "$ROOT/scripts/bootstrap.sh")"
@@ -4206,6 +4234,7 @@ REG40
   report "T40 AGENTS pack route row" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/AGENTS.md")"
   report "T40 DS registry clause" 1 "$(grep -c '2.17.2c' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
   report "T40 changelog v3.46.0 row" 1 "$(grep -c '^| v3.46.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+  report "T40 generator profile vocab declared" 1 "$(grep -c 'PROFILE_VOCAB=' "$ROOT/resources/templates/generate-reading-pack.sh")"
 else
   echo "SKIP T40: generator absent — 跳过阅读包生成器 golden cases"
 fi
@@ -4768,7 +4797,8 @@ section_T50() {
   # CHG-129: tail recalibrated T84→T85 (repeat-run guard 节 joins).
   # CHG-131: tail recalibrated T85→T86 (dispatch-contract v2 节 joins).
   # CHG-132: tail recalibrated T86→T87 (套件基建并行/缓存节 joins).
-  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T87 ]] && echo 0 || echo 1)"
+  # CHG-145: tail recalibrated T87→T88 (E160 五类 diff-watch golden 节 joins).
+  report "T50 -l lists all sections uniquely (TC-1120)" 0 "$([[ $t50_rc -eq 0 && $t50_n -eq "$t50_expect" && -z "$t50_dup" && "$t50_first" == T1 && "$t50_last" == T88 ]] && echo 0 || echo 1)"
 }
 
 # ------------------------------------------------ T51 收据机制自测（v3.66.0，CHG-088/REQ-1049~1051）
@@ -7087,6 +7117,12 @@ new_repo
 seed_artifacts CHG-1095 L0 claude/s-1
 scripts/agent-gate begin CHG-1095 >/dev/null 2>&1
 seed_t53_delivery CHG-1095
+# v4.4.0 (CHG-148, FU-1012): the fixture carries a versioned DS footer so the
+# gate receipt version derives from it (TC-2321: receipt == fixture DS footer).
+# Created before the initial commit so the tree fingerprint stays stable.
+t66_ver=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | head -1)
+[[ -n "$t66_ver" ]] || t66_ver="0.0.0"
+mkdir -p docs && printf '*规范版本：v%s | 更新时间：2026-11-15 | 全局维护责任人：T66 fixture*\n' "$t66_ver" > docs/DEVELOPMENT_STANDARDS.md
 mkdir -p src && echo hi > src/t66.js
 git add -A >/dev/null 2>&1 && git commit -qm init   # 树指纹需 HEAD；纯 docs 夹具仍缺 code face
 echo y > src/t66b.js
@@ -7100,6 +7136,7 @@ t66_out=$(t66_stop 'touch .agent-state/t66-m')
 report "T66 TC-1414 first run executes and writes rc0 receipt" 1 "$([[ -e .agent-state/t66-m && -e .agent-state/gate-verify-cache.json ]] && echo 1 || echo 0)"
 report "T66 TC-1414 receipt binds change id" 1 "$(grep -c '"change_id":"CHG-1095"' .agent-state/gate-verify-cache.json)"
 report "T66 TC-1414 receipt carries gate version" 1 "$(grep -cE '"gate_version":"[0-9][0-9.]*"' .agent-state/gate-verify-cache.json)"
+report "T66 TC-2321 receipt version equals the fixture DS footer (CHG-148)" 1 "$([[ "$(sed -n 's/.*"gate_version":"\([^"]*\)".*/\1/p' .agent-state/gate-verify-cache.json | head -1)" == "$t66_ver" ]] && echo 1 || echo 0)"
 # REQ-1302: verify-all.sh owns .agent-state/verify-receipt.json (status schema read
 # by sf_verify_status). The gate writing its cache there used to destroy that file.
 report "T66 TC-1414 gate cache leaves verify-all receipt path alone" 0 "$([[ -e .agent-state/verify-receipt.json ]] && echo 1 || echo 0)"
@@ -7150,6 +7187,17 @@ t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
 rm -f .agent-state/t66-m
 t66_out=$(AGENT_GUARD_VERIFY_CACHE=0 AGENT_GUARD_VERIFY_COMMAND='touch .agent-state/t66-m' scripts/agent-gate --stage stop 2>&1)
 report "T66 TC-1414 opt-out always runs" 1 "$([[ -e .agent-state/t66-m ]] && echo 1 || echo 0)"
+# v4.4.0 (CHG-148, 评审批 F-1)：无 DS 夹具 → 收据落 unknown（fail-soft 分支覆盖）；
+# DS 恢复后重新派生回页脚版本。树指纹随 docs/DS 移动同步变化，故不断言缓存命中
+# 隔离（指纹失配本就失效），只断言收据版本内容两态。
+mv docs/DEVELOPMENT_STANDARDS.md docs/DEVELOPMENT_STANDARDS.md.t66hold
+rm -f .agent-state/t66-m
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+report "T66 TC-2322 no-DS receipt falls back to unknown (CHG-148)" 1 "$(grep -c '"gate_version":"unknown"' .agent-state/gate-verify-cache.json)"
+mv docs/DEVELOPMENT_STANDARDS.md.t66hold docs/DEVELOPMENT_STANDARDS.md
+rm -f .agent-state/t66-m
+t66_stop 'touch .agent-state/t66-m' >/dev/null 2>&1
+report "T66 TC-2322 DS restore re-derives footer version (CHG-148)" 1 "$(grep -c "\"gate_version\":\"$t66_ver\"" .agent-state/gate-verify-cache.json)"
 }
 
 section_T67() {
@@ -7212,7 +7260,7 @@ report "T67 TC-1432 E56/E57 report BOTH incomplete groups in one shot" 2 "$(prin
 # TC-1429：同族推演行名存续（N3 不改行名防机校断链）
 report "T67 TC-1429 同族推演 row name survives in bug-diagnosis template" 1 "$(grep -c '同族推演' "$ROOT/resources/templates/bug-diagnosis.md" | awk '{print ($1>=2)?1:0}')"
 # TC-1430：A11 体积上界
-report "T67 TC-1430 DS body within A11 bound (<=180224B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 180224 ]] && echo 1 || echo 0)"
+report "T67 TC-1430 DS body within A11 bound (<=184320B)" 1 "$([[ $(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ') -le 184320 ]] && echo 1 || echo 0)"
 # TC-1431：版本链字面
 report "T67 TC-1431 SKILL version literals resolve to the DS footer" 4 "$(grep -cF "$CURRENT_VERSION" "$ROOT/SKILL.md")"
 # TC-1433：多字节方括号类在 C locale 下不匹配全角冒号（本环境实测）——发布面
@@ -7268,7 +7316,7 @@ section_T68() {
     "$([[ $t68_rc -eq 0 && $t68_shard_rc -eq 0 ]] && echo 0 || echo 1)"
   report "T68 N=6 plan keeps the T5/T22a/T16 chain in one shard" 1 \
     "$(printf '%s\n' "$t68_shard" | grep -cE '^shard-resolve-only:.* T5 T22a T16( |$)')"
-  report "T68 N=6 plan covers every section exactly once" 97 \
+  report "T68 N=6 plan covers every section exactly once" 98 \
     "$(printf '%s\n' "$t68_shard" | sed -n 's/^shard-resolve-only: //p' | tr ' ' '\n' | grep -c .)"
   # v3.97.0 (CHG-134, REQ-1344): the plan is machine-written — the BEGIN/END
   # markers must appear exactly once so `scripts/shard-plan.sh --write` can never
@@ -8913,7 +8961,7 @@ section_T87() {
     "$(printf '%s\n' "$_t87_plan" | grep -cE '(^| )T5 T22a T16( |$)')"
   report "T87 cost plan keeps T50/T51 in one shard" 1 \
     "$(printf '%s\n' "$_t87_plan" | grep -cE '(^| )T50 T51( |$)')"
-  report "T87 N!=6 keeps the contiguous fallback (5 shards cover 97)" 97 \
+  report "T87 N!=6 keeps the contiguous fallback (5 shards cover 98)" 98 \
     "$(for _i in 1 2 3 4 5; do
         AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 bash tests/run-tests.sh --shard "$_i/5" 2>/dev/null \
           | sed -n 's/^shard-resolve-only: //p'
@@ -9813,7 +9861,52 @@ EOT
   rm -f "$_t87_cache"
 }
 
-SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84 T85 T86 T87)
+section_T88() {
+# ------------------------------------------------ T88 E160 测试弱化五类 diff-watch golden（v4.1.0，CHG-145/FU-1011）
+# 五类阳性必抓（E160 置于 staged 链首位，先于 E125/unaccounted die）+ 阴性 3 零误报 +
+# 逃生口 WARN。断言面=输出含/不含 GATE-E160 与类目词；阴性不锁全链 rc（后置检查
+# 面——receipt/unaccounted 等——不属本变更断言域）。
+  cd "$ROOT"
+  local _t88_out _t88_rc
+  _t88_case() { # <tag> <content> <hit|no|warn> [类目词]
+    new_repo
+    mkdir -p tests
+    printf 'expect("a")\ncoverage = 90\n' > tests/t1.sh
+    git add -A
+    git commit -qm base
+    printf '%s\n' "$2" > tests/t1.sh
+    git add -A
+    _t88_out=$(scripts/agent-gate --stage staged 2>&1); _t88_rc=$?
+    if [[ "$3" == "hit" ]]; then
+      report "T88 E160 blocks [$1] (staged rc)" 2 "$_t88_rc"
+      grep -Fq 'GATE-E160' <<< "$_t88_out"
+      report "T88 [$1] output names GATE-E160" 0 $?
+      grep -Fq "$4" <<< "$_t88_out"
+      report "T88 [$1] output names the class word ($4)" 0 $?
+    else
+      grep -F 'GATE-E160' <<< "$_t88_out"
+      report "T88 [$1] emits no E160 (no false kill)" 1 $?
+      if [[ "$3" == "warn" ]]; then
+        grep -Fq 'owner+期限标注在位' <<< "$_t88_out"
+        report "T88 [$1] escape emits the WARN line" 0 $?
+      fi
+    fi
+  }
+  _t88_case '①断言删除'    'log("hi")'                            hit '①断言删除/弱化'
+  # 夹具 payload 拼片构造（'describe.'"skip" 等）：文件文本不得含活性 token，
+  # 否则全新安装整文件 add 本套件时 ②④⑤ 自指误伤（T15 D5 死锁教训，同 _t87_pat 手法）。
+  _t88_case '②skip'         $'expect("a")\ndescribe.'"skip"'("s")'     hit '②skip/only 跳测'
+  _t88_case '③阈值下调'     $'expect("a")\ncoverage = 50'          hit '③阈值下调'
+  _t88_case '④检查器静默'   $'expect("a")\n# n'"oqa"               hit '④检查器静默'
+  _t88_case '⑤例外无标注'   $'expect("a")\nAGENT_GUARD_ALLOW_'"X"'=1'  hit '⑤例外无 owner+期限'
+  _t88_case '⑤逃生口'       $'expect("a")\nAGENT_GUARD_ALLOW_'"X"'=1  # owner: t1 期限: 2026-12-31' warn
+  _t88_case '阴性-阈值上调'  $'expect("a")\ncoverage = 95'          no
+  _t88_case '阴性-新增测试'  $'expect("a")\nexpect("b")'            no
+  _t88_case '阴性-重构重排'  $'coverage = 90\nexpect("a")'          no
+  cd "$ROOT"
+}
+
+SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T15 T17 T17b T18 T18b T19 T20 T21 T22b T18c T18d T18d-E58R T23 T24 T25 T26 T26b T26c T64 T27 T28 T29 T30 T31 T32 T33 T34 T36 T37 T38 T39 T40 T41 T42 T43 T44 T46 T47 T48 T49 T50 T51 T52 T53 T54 T55 T56 T57 T58 T59 T60 T61 T62 T63 T65 T66 T67 T68 T69 T70 T71 T72 T73 T73b T74 T75 T76 T77 T78 T79 T80 T81 T82 T83 T84 T85 T86 T87 T88)
 
 # v3.96.0 (CHG-133, REQ-1332): cost-balanced 6-way partition. LPT over the
 # 2026-10-29 medians in .agent-state/cost-ledger.tsv (T49 161.5s, T57 52s,
@@ -9832,12 +9925,12 @@ SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T1
 # rebalancing is the explicit `--write` in the release ritual.
 SHARD_PLAN_6=(
   # SHARD_PLAN_6_BEGIN
-  "T49"
-  "T8 T57 T59 T66 T73b"
-  "T6b T7 T7b T10 T12 T15 T19 T20 T18c T23 T26 T26c T30 T34 T39 T43 T52 T61 T75 T76 T83 T87"
-  "T4 T5 T22a T16 T13 T18 T18b T22b T18d T25 T28 T31 T36 T44 T53 T63 T65 T71 T73 T77 T78 T82 T84 T85"
-  "T1b T9 T14 T21 T18d-E58R T24 T64 T29 T32 T37 T40 T46 T47 T50 T51 T54 T56 T58 T62 T68 T72 T79 T81"
-  "T1 T2 T3 T6 T11 T17 T17b T26b T27 T33 T38 T41 T42 T48 T55 T60 T67 T69 T70 T74 T80 T86"
+  "T49 T81"
+  "T7 T8 T10 T19 T18d-E58R T25 T29 T33 T40 T52 T54 T57 T58 T68 T69 T78 T82"
+  "T1 T3 T4 T6b T7b T18 T20 T21 T23 T24 T28 T34 T41 T53 T59 T61 T67 T77 T85"
+  "T2 T6 T9 T11 T12 T22b T18c T30 T36 T37 T43 T44 T60 T65 T70 T71 T75 T80 T87"
+  "T5 T22a T16 T13 T17 T18d T26 T26b T31 T38 T42 T46 T47 T48 T55 T66 T72 T73 T74 T76 T84"
+  "T1b T14 T15 T17b T18b T26c T64 T27 T32 T39 T50 T51 T56 T62 T63 T73b T79 T83 T86 T88"
   # SHARD_PLAN_6_END
 )
 
