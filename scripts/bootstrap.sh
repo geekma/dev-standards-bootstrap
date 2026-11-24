@@ -987,6 +987,10 @@ write_profile_section() { # <yml> <target>
   elif [[ -f "$t/pom.xml" || -f "$t/build.gradle" ]]; then lang="java"
   elif [[ -f "$t/pyproject.toml" || -f "$t/requirements.txt" ]]; then lang="python"
   elif [[ -f "$t/Cargo.toml" ]]; then lang="rust"
+  elif [[ -f "$t/composer.json" ]]; then lang="php"
+  elif [[ -f "$t/Gemfile" ]]; then lang="ruby"
+  elif find "$t" -maxdepth 3 -name '*.asp' -print -quit 2>/dev/null | grep -q .; then lang="asp"
+  elif find "$t" -maxdepth 3 -name '*.aspx' -print -quit 2>/dev/null | grep -q .; then lang="aspnet"
   fi
   nfiles=$(find "$t" -type f -not -path '*/.git/*' -not -path '*/.agent-state/*' 2>/dev/null | wc -l | tr -d ' ')
   case "$nfiles" in ''|*[!0-9]*) nfiles=0 ;; esac
@@ -1007,6 +1011,11 @@ write_profile_section() { # <yml> <target>
   [[ -f "$t/serverless.yml" || -f "$t/serverless.yaml" ]] && arch="serverless"
   [[ -d "$t/src/components" || -d "$t/frontend" || -d "$t/web" ]] && ui="spa"
   { grep -qE '"(react|vue|svelte|next|nuxt)"' "$t/package.json" 2>/dev/null; } && ui="spa"
+  if [[ "$ui" == "none" ]]; then
+    if find "$t" -maxdepth 3 \( -name '*.asp' -o -name '*.aspx' -o -name '*.html' \) -print -quit 2>/dev/null | grep -q .; then
+      ui="server-web"
+    fi
+  fi
   [[ -f "$t/Dockerfile" || -f "$t/docker-compose.yml" ]] && renv="container"
   [[ -d "$t/k8s" || -d "$t/deploy/k8s" ]] && renv="kubernetes"
   [[ -d "$t/tests" || -d "$t/test" ]] && assets="tests"

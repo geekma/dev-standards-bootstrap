@@ -388,11 +388,21 @@ telemetry_liveness() { # v3.63.0（REQ-1037，DES-1825）：事件源活性自�
   now=$(date -u +%s)
   if [[ -s "$STATS_FILE" ]]; then
     ts=$(sed -n 's/.*"updated_at":"\([^"]*\)".*/\1/p' "$STATS_FILE" | head -1)
-    age=$(( now - $(iso_to_epoch "${ts:-}") ))
-    if [[ $age -gt $stale ]]; then
-      emit "session-gate: YELLOW — telemetry stale ($(( age / 60 ))min > ${stale_min}min): event source likely NOT loaded (client plugin schema drift?) — check client logs for 'failed to load plugin'; enforcement degraded to Git hooks + CI"
+    if [[ -z "$ts" ]]; then
+      emit "session-gate: YELLOW — telemetry uninitialized (no updated_at in $STATS_FILE): event source likely NOT loaded — check client hook wiring; enforcement degraded to Git hooks + CI"
+    else
+      local ep
+      ep=$(iso_to_epoch "$ts")
+      if [[ "${ep:-0}" -le 0 ]]; then
+        emit "session-gate: YELLOW — telemetry timestamp unparsable ($ts): check $STATS_FILE; enforcement degraded to Git hooks + CI"
+      else
+        age=$(( now - ep ))
+        if [[ $age -gt $stale ]]; then
+          emit "session-gate: YELLOW — telemetry stale ($(( age / 60 ))min > ${stale_min}min): event source likely NOT loaded (client plugin schema drift?) — check client logs for 'failed to load plugin'; enforcement degraded to Git hooks + CI"
+        fi
+      fi
     fi
-  elif [[ -d .opencode/plugins || -f .claude/settings.json || -f .cursor/hooks.json ]]; then
+  elif [[ -d .opencode/plugins || -f .claude/settings.json || -f .cursor/hooks.json || -f .agents/hooks.json ]]; then
     emit "session-gate: YELLOW — adapter wiring present but zero telemetry: plugin/hook not firing (client did not load it?) — check client logs for 'failed to load plugin' / hook errors"
   fi
 }

@@ -71,30 +71,84 @@ session-enforcement wiring for each:
                                            enforcement line
 
 Flags:
-  --detect        print the detection matrix and exit (writes nothing)
-  --client <name> force-install for one client (claude|opencode|cursor|gemini|codex)
-  --all           install for every detected client (default when no --client)
-  --force         overwrite existing static-schema configs that differ (diff is shown)
+  --detect               print the detection matrix and exit
+  --print-contract       print the client-agnostic 3-event hook contract (for dynamic Agent wiring)
+  --verify-wiring <path> verify a dynamically generated hook config and record runtime.json
+  --client <name>        force-install for one client (claude|opencode|cursor|gemini|codex)
+  --all                  install for every detected client (default when no --client)
+  --force                overwrite existing static-schema configs that differ (diff is shown)
 EOF
 }
 
+print_contract() {
+  cat <<'EOF'
+{
+  "contract_version": "1",
+  "principle": "Capability-driven dynamic wiring (v4.5.0, CHG-149): the running Agent inspects its own client hook docs/schema at install, upgrade, or first skill run and generates a thin repo-scoped wiring file; never hardcode an exhaustive client list.",
+  "events": {
+    "SessionStart": {
+      "command": "bash scripts/session-gate.sh start",
+      "blocking": false
+    },
+    "PreToolUse": {
+      "matcher_intent": "file write / edit tools (e.g. write_file, edit_file, Write, Edit)",
+      "commands": [
+        "bash scripts/agent-gate --stage pre-write --file <target_path>",
+        "bash scripts/session-gate.sh check"
+      ],
+      "blocking": true
+    },
+    "Stop": {
+      "command": "bash scripts/session-gate.sh idle",
+      "blocking": false
+    }
+  },
+  "verify_command": "bash scripts/install-hook-adapter --verify-wiring <generated-config-path>",
+  "fallback": "If the current Agent genuinely has no repository-scoped hook surface, rely on Git hooks (.githooks) + CI without fabricating invalid config."
+}
+EOF
+}
+
+verify_wiring() { # <config-path>
+  local cfg="$1"
+  [[ -n "$cfg" && -f "$cfg" ]] || die "ADAPTER-E14: --verify-wiring target not found: ${cfg:-<empty>}"
+  case "$cfg" in
+    *.json)
+      python3 -m json.tool "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg" ;;
+  esac
+  if ! grep -qE 'session-gate|agent-gate' "$cfg" 2>/dev/null; then
+    die "ADAPTER-E14: $cfg lacks session-gate or agent-gate hook wiring"
+  fi
+  local rid="${AGENT_RUNTIME:-agents-hooks}"
+  local rfam="json-hooks"
+  [[ "$cfg" == *.js || "$cfg" == *.ts ]] && rfam="plugin-api"
+  runtime_record "$rid" "$rfam" "$rid"
+  ok "self-proof: dynamic wiring verified ($cfg carries session-gate/agent-gate hooks; runtime=$rid family=$rfam)"
+}
+
 detect_clients() { # -> whitespace-separated names, one per line
-  # claude: env marker, CLI, or repo config dir
-  if [[ "${CLAUDECODE:-}" == "1" ]] || command -v claude >/dev/null 2>&1 || [[ -d .claude ]]; then
-    echo claude
-  fi
-  # opencode: CLI, repo config file, or plugin dir
-  if command -v opencode >/dev/null 2>&1 || [[ -f opencode.json || -f opencode.jsonc || -d .opencode ]]; then
-    echo opencode
-  fi
-  if [[ -n "${CURSOR_AGENT:-}" || -n "${CURSOR_TRACE_ID:-}" ]] || [[ -d .cursor ]]; then
-    echo cursor
-  fi
-  if [[ "${GEMINI_CLI:-}" == "1" ]] || [[ -d .gemini ]]; then
-    echo gemini
-  fi
-  if [[ -n "${CODEX_HOME:-}" ]] || command -v codex >/dev/null 2>&1 || [[ -d .codex ]]; then
-    echo codex
+  # v4.5.0 (CHG-149, REQ-1389): strict priority — active process env > repo-scoped
+  # config (including generic .agents/hooks.json) > PATH CLI fallback.
+  # Never let a globally installed CLI on PATH hijack a different running Agent.
+  local found=0
+  # 1) Active process environment markers
+  if [[ "${CLAUDECODE:-}" == "1" ]]; then echo claude; found=1; fi
+  if [[ -n "${OPENCODE:-}" || -n "${OPENCODE_SESSION_ID:-}" ]]; then echo opencode; found=1; fi
+  if [[ -n "${CURSOR_AGENT:-}" || -n "${CURSOR_TRACE_ID:-}" ]]; then echo cursor; found=1; fi
+  if [[ "${GEMINI_CLI:-}" == "1" ]]; then echo gemini; found=1; fi
+  if [[ -n "${CODEX_HOME:-}" ]]; then echo codex; found=1; fi
+  # 2) Repository-scoped config in target repo
+  if [[ -f .agents/hooks.json ]]; then echo agents-hooks; found=1; fi
+  if [[ -d .claude && "${CLAUDECODE:-}" != "1" ]]; then echo claude; found=1; fi
+  if [[ ( -f opencode.json || -f opencode.jsonc || -d .opencode ) && -z "${OPENCODE:-}${OPENCODE_SESSION_ID:-}" ]]; then echo opencode; found=1; fi
+  if [[ -d .cursor && -z "${CURSOR_AGENT:-}${CURSOR_TRACE_ID:-}" ]]; then echo cursor; found=1; fi
+  if [[ -d .gemini && "${GEMINI_CLI:-}" != "1" ]]; then echo gemini; found=1; fi
+  if [[ -d .codex && -z "${CODEX_HOME:-}" ]]; then echo codex; found=1; fi
+  # 3) Global PATH CLI fallback (only when neither env nor repo config matched)
+  if [[ "$found" -eq 0 ]]; then
+    if command -v claude >/dev/null 2>&1; then echo claude; fi
+    if command -v opencode >/dev/null 2>&1; then echo opencode; fi
+    if command -v codex >/dev/null 2>&1; then echo codex; fi
   fi
 }
 
@@ -107,10 +161,11 @@ ok() { echo "install-hook-adapter: $1"; }
 # runtime ledger and the "unknown => visible" exit path.
 runtime_family() { # <client-name> -> family
   case "$1" in
-    claude|cursor) printf 'json-hooks' ;;
-    opencode)      printf 'plugin-api' ;;
-    gemini|codex)  printf 'git+ci' ;;
-    *)             printf 'unknown' ;;
+    claude|cursor|agents-hooks) printf 'json-hooks' ;;
+    opencode)                   printf 'plugin-api' ;;
+    gemini)                     [[ -f .agents/hooks.json ]] && printf 'json-hooks' || printf 'git+ci' ;;
+    codex)                      printf 'git+ci' ;;
+    *)                          [[ -f .agents/hooks.json ]] && printf 'json-hooks' || printf 'unknown' ;;
   esac
 }
 
@@ -135,9 +190,16 @@ runtime_record() { # <runtime-id> <family> <clients...>
 
 runtime_layers() { # <id> — what is actually enforcing right now
   case "$1" in
-    claude|cursor|opencode) echo "in-session (hook/plugin) + Git hooks + CI" ;;
-    codex|gemini)           echo "Git hooks + CI (this client has no repo-level hook surface)" ;;
-    *)                      echo "Git hooks + CI only (no in-session layer); AGENTS.md is read-only guidance" ;;
+    claude|cursor|opencode|agents-hooks) echo "in-session (hook/plugin) + Git hooks + CI" ;;
+    gemini)
+      if [[ -f .agents/hooks.json ]]; then echo "in-session (hook/plugin) + Git hooks + CI"
+      else echo "Git hooks + CI (use --print-contract to wire repo hooks dynamically if supported)"
+      fi ;;
+    codex) echo "Git hooks + CI (this client has no repo-level hook surface)" ;;
+    *)
+      if [[ -f .agents/hooks.json ]]; then echo "in-session (hook/plugin) + Git hooks + CI"
+      else echo "Git hooks + CI only (no in-session layer); AGENTS.md is read-only guidance"
+      fi ;;
   esac
 }
 
@@ -912,6 +974,10 @@ all=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --detect) mode_install=false ;;
+    --print-contract) print_contract; exit 0 ;;
+    --verify-wiring)
+      [[ -n "${2:-}" ]] || die "ADAPTER-E14: --verify-wiring requires a file path"
+      verify_wiring "$2"; exit 0 ;;
     --canary)
       # v3.91.0 (CHG-127, G10): behavioural canary — write a marker, verify it
       # survived into the repo's hook scope, then report. Never mutates config.

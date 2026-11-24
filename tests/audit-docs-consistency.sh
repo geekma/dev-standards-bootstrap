@@ -241,15 +241,35 @@ g2_allowed() { # <dir> <prefix>
 
 check_seq() { # feature_dir prefix file_path label
   local dir="$1" prefix="$2" glob="$3" label="$4"
-  local nums min max missing
-  nums=$(grep -ohE "$(DEF_RE "$prefix")" "$glob" 2>/dev/null \
-    | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq || true)
-  [[ -z "$nums" ]] && { report "$label (no numbers, skip)" ok ok; return; }
-  min=$(printf '%s\n' "$nums" | head -1)
-  max=$(printf '%s\n' "$nums" | tail -1)
+  local res min max missing
+  # v4.5.0 (CHG-149, REQ-1392): single-awk pass replaces 6-process grep/sort/uniq/head/tail pipeline.
+  res=$(awk -v p="$prefix" '
+    BEGIN {
+      re1 = "^#{1,6}[ \t]*" p "-[0-9]+"
+      re2 = "^\\|[ \t]*`?" p "-[0-9]+`?[ \t]*\\|"
+      re3 = "^-[ \t]*`?" p "-[0-9]+"
+      mn = -1; mx = -1; cnt = 0
+    }
+    $0 ~ re1 || $0 ~ re2 || $0 ~ re3 {
+      if (match($0, p "-[0-9]+")) {
+        s = substr($0, RSTART + length(p) + 1, RLENGTH - length(p) - 1)
+        n = s + 0
+        if (!(n in seen)) {
+          seen[n] = 1
+          cnt++
+          if (mn < 0 || n < mn) mn = n
+          if (n > mx) mx = n
+        }
+      }
+    }
+    END {
+      if (cnt == 0) print "EMPTY"
+      else print mn, mx, (mx - mn + 1 - cnt)
+    }
+  ' "$glob" 2>/dev/null || echo "EMPTY")
+  [[ -z "$res" || "$res" == "EMPTY" ]] && { report "$label (no numbers, skip)" ok ok; return; }
+  read -r min max missing <<< "$res"
   if [[ "$max" -le 9999 ]]; then
-    missing=$(printf '%s\n' "$nums" \
-      | awk -v mn="$min" -v mx="$max" '{a[$1+0]=1} END{n=0; for(i=mn;i<=mx;i++) if(!(i in a)) n++; print n}')
     if [[ "$missing" -gt 0 ]] && g2_allowed "$dir" "$prefix"; then
       echo "     G2 allowlisted legacy: $(basename "$dir") $prefix — ${min}..${max} has $missing gap(s)"
       report "$label allowlisted legacy (counted, not hidden)" ok ok

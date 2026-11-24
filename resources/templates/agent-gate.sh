@@ -62,6 +62,8 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
     GATE-E157) printf 'expected: 00.5 沟通期锚点 — 专业质询三件节内(三子项或未命中豁免)；触及被测核心时另需判定卡三选一；整节缺失的存量形态告警放行(E113 范式)\nallowed: 参照物指认/动作全集初盘/缺口显式裁决 三锚点齐备，或节内单行未命中豁免\nfix: fill the 00.5 section per template (entry/00.5-communication.md), record the 判定卡 if the diff touches run-tests/agent-gate/DS\nref: standards §0.6 / v3.99.1' ;;
     GATE-E158) printf 'expected: 01-spec 「动作全集矩阵」 section in place (ui_change: true; 整节缺失 legacy 形态告警放行)\nallowed: 对象×动作×入口维度 matrix, or the one-line 未命中 declaration\nfix: add the section per template (entry/01-spec.md) — 盘点机制: 全集枚举后逐格裁决\nref: standards §0.6 / §2.5 stage 1 / v3.99.1' ;;
     GATE-E159) printf 'expected: 03.6 「参照界面对照表」 + P12 UI 范式卡 reference (ui_change: true; 整节缺失 legacy 形态告警放行)\nallowed: per-control 对照 or explicit 无同类界面 declaration; first ui_change change 沉淀范式卡到 P12\nfix: add the section per template (entry/03.6-ui-spec.md) — 参照机制: 指认仓内同类实现\nref: standards §0.6 / §2.5 stage 3 / v3.99.1' ;;
+    GATE-E161) printf 'expected: 01-spec 「出站出口清单」 section (when present) maps every clickable outbound target to UJ-xxx, 豁免, or 降级 with no placeholders\nallowed: UJ-xxx / 豁免（理由） / 降级（隐藏/置灰）\nfix: fill every outbound exit row in 01-spec without <...>/FILL placeholders\nref: standards §0.6 / §2.5 stage 1 / v4.5.0' ;;
+    GATE-E162) printf 'expected: entry-owns-exit delivery completeness — never mark 已交付 while an exposed downstream target is hung/unreachable or deferred via 挂接待其 owner without entry degradation\nallowed: degrade/hide the entry (已降级/已隐藏/已置灰) OR mark change status as 部分完成/阻塞\nfix: degrade the exposed entry or change 09 status from 已交付 to 阻塞/部分完成\nref: standards §0.6 / §2.5 stage 9 / v4.5.0' ;;
     GATE-E126|GATE-E127|GATE-E128|GATE-E129|GATE-E130) printf 'expected: the stage-gate preconditions hold for this change\nallowed: required artifacts + confirmation + one non-empty reviews/Pxx.review.md per claim\nfix: backfill the named stage artifacts, then re-run the same stage command\nref: standards §2.5 / §2.17.2d' ;;
     GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149|GATE-E155) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan|dispatch <change-id> [flags]\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127/131' ;;
     *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
@@ -1134,9 +1136,39 @@ validate_dimensional_stop() { # <change-dir>
       [[ -n "$uj" ]] || continue
       grep -E "$uj.*(HTTP|DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
         || die "GATE-E104: 05 lacks runtime evidence row for $uj (HTTP/响应体/DB/快照/点击链路/截图/几何断言 + timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0/v3.99.1)"
+      # v4.5.0 (CHG-149, REQ-1388): bare HTTP 200 masks 90s+ hung/empty pages —
+      # a UJ row matching HTTP must also carry body/DOM/interaction evidence
+      # (DB/响应体/快照/点击链路/截图/几何断言) or an explicit latency/timeout measure.
+      grep -E "$uj.*(DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
+        || grep -E "$uj.*([0-9]+(\.[0-9]+)?(ms|s)|耗时|max-time)" "$res05" >/dev/null 2>&1 \
+        || die "GATE-E104: 05 runtime evidence for $uj relies on bare HTTP without body/DOM/click-chain/screenshot or latency measure — HTTP 200 alone cannot prove availability (standards §0.6/§2.5 stage 7, v4.5.0)"
     done <<EOF
 $ujs
 EOF
+    # v4.5.0 (CHG-149, REQ-1385): GATE-E161 outbound exit inventory (conditional
+    # on section presence so legacy fixtures stay green; once present, every row
+    # must bind to UJ-xxx / 豁免 / 降级 without placeholders).
+    local osec=""
+    osec=$(awk '/^##+ .*出站出口/{f=1;next} f && /^## /{exit} f{print}' "$spec" 2>/dev/null \
+      | sed 's/<!--[^>]*-->//g' || true)
+    if [[ -n "$osec" ]]; then
+      if grep -qE '(FILL|待填|<[^>]+>)' <<< "$osec"; then
+        die "GATE-E161: 01-spec 「出站出口」 section still contains placeholders (<...>/FILL/待填) — enumerate every clickable outbound target (standards §0.6/§2.5 stage 1, v4.5.0)"
+      fi
+      if ! grep -qE '(UJ-[0-9]+|豁免|降级|未命中)' <<< "$osec"; then
+        die "GATE-E161: 01-spec 「出站出口」 section lacks UJ-xxx / 豁免 / 降级 verdicts — outbound links/cards must enter UJ or be explicitly waived/degraded (standards §0.6/§2.5 stage 1, v4.5.0)"
+      fi
+    fi
+    # v4.5.0 (CHG-149, REQ-1386): GATE-E162 entry-owns-exit delivery completeness —
+    # forbid marking 已交付 while an exposed downstream page is hung/unreachable
+    # or deferred via 挂接待其 owner without entry degradation or blocking status.
+    local c09="$d/09-changelog.md"
+    if [[ -s "$c09" ]] && grep -q '已交付' "$c09" 2>/dev/null; then
+      if grep -qE '下游挂起|下游不可达|挂接待其 ?owner' "$res05" "$res07" "$c09" 2>/dev/null \
+        && ! grep -qE '已降级|已隐藏|已置灰|部分完成|阻塞' "$c09" 2>/dev/null; then
+        die "GATE-E162: 09 declares 已交付 while an exposed downstream target is hung/unreachable or deferred via 挂接待其 owner without entry degradation (已降级/已隐藏/已置灰) or status 阻塞/部分完成 (standards §0.6/§2.5 stage 9, v4.5.0)"
+      fi
+    fi
     e107=""
     [[ -s "$res07" ]] || e107="ui_change declared but 07-review-report.md missing"
     if [[ -z "$e107" ]]; then
@@ -1155,6 +1187,18 @@ EOF
       grep -qE '截图|浏览器|视觉证据包' <<< "$jsec" \
         || { grep -q '工具面缺失' <<< "$jsec" && grep -q '视觉证据包' <<< "$jsec"; } \
         || e107="07 「运行时走查」节内 lacks a self-produced evidence marker (截图/浏览器), and no 工具面缺失声明+视觉证据包补偿 pair — 走查证据须评审会话自产 (session-produced), 结论所见即所评 (standards §2.5 stage 8, v3.99.1)"
+      # v4.5.0 (CHG-149, REQ-1387): compensation coverage reconciliation — when
+      # 工具面缺失 compensation reports a non-empty uncovered gap, 07 must not
+      # conclude bare PASS/通过 (must be 有条件通过/CONDITIONAL/退回).
+      if [[ -z "$e107" ]] && grep -q '工具面缺失' <<< "$jsec" \
+        && grep -qE '未覆盖差集.*(非空|待补|未覆盖)|差集非空' <<< "$jsec"; then
+        local csec=""
+        csec=$(awk '/^## .*评审结论/{f=1;next} f && /^## /{exit} f{print}' "$res07" 2>/dev/null || true)
+        if grep -qE '通过|PASS' <<< "$csec" \
+          && ! grep -qE '有条件通过|CONDITIONAL|退回' <<< "$csec"; then
+          e107="07 「运行时走查」工具面缺失补偿存在未覆盖差集非空，但评审结论仍给 通过/PASS — 差集非空最高仅可给 有条件通过（待补测）或 退回 (standards §0.6/§2.5 stage 8, v4.5.0)"
+        fi
+      fi
     fi
     [[ -z "$e107" ]] \
       || die "GATE-E107: $e107 (standards §2.5 stage 8, v3.68.0/v3.99.1)"
@@ -4152,12 +4196,28 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
     if [[ ! -s "$r" ]]; then
       e153="no fresh-clone receipt ($core_list)"
     else
+      local rc_cface="" want_cface=""
       rc_head=$(sed -n 's/.*"head":"\([^"]*\)".*/\1/p' "$r" | head -1)
       rc_tree=$(sed -n 's/.*"tree_sha":"\([^"]*\)".*/\1/p' "$r" | head -1)
+      rc_cface=$(sed -n 's/.*"code_face_sha":"\([^"]*\)".*/\1/p' "$r" | head -1)
       rc_audit=$(sed -n 's/.*"audit_rc":\([0-9-]*\).*/\1/p' "$r" | head -1)
       rc_suite=$(sed -n 's/.*"suite_rc":\([0-9-]*\).*/\1/p' "$r" | head -1)
-      [[ "$rc_tree" == "$want_tree" && "$rc_audit" == "0" && "$rc_suite" == "0" ]] \
-        || e153="stale/red receipt (tree=$rc_tree want=$want_tree head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+      if [[ "$rc_tree" == "$want_tree" && "$rc_audit" == "0" && "$rc_suite" == "0" ]]; then
+        e153=""
+      elif [[ -n "$rc_cface" && "$rc_audit" == "0" && "$rc_suite" == "0" ]]; then
+        # v4.5.0 (CHG-149, REQ-1393): pure change-doc edits must not invalidate a
+        # green code-face receipt; recompute code_face_sha excluding docs/changes,
+        # docs/bugs, docs/project.
+        want_cface=$(git -C "$repo_root" ls-files -s -- . ':!docs/changes' ':!docs/bugs' ':!docs/project' 2>/dev/null | cksum | awk '{print $1}' || true)
+        if [[ -n "$want_cface" && "$rc_cface" == "$want_cface" ]]; then
+          echo "agent-gate: NOTE — E153 reused green code-face receipt (code_face_sha=$rc_cface; doc-only tree drift)" >&2
+          e153=""
+        else
+          e153="stale/red receipt (tree=$rc_tree want=$want_tree code_face=$rc_cface want_cf=$want_cface head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+        fi
+      else
+        e153="stale/red receipt (tree=$rc_tree want=$want_tree head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+      fi
     fi
     [[ -z "$e153" ]] || die "GATE-E153: $id $e153 — expected: .agent-state/fresh-clone-receipt.json whose tree_sha matches the current tracked tree, with audit_rc=0, suite_rc=0; allowed: AGENT_GUARD_FRESH_CLONE=0 with the reason recorded in 09「重要上下文」; fix: bash tests/fresh-clone-check.sh --sections <affected list> once, after the content freezes; ref: CHG-128 REQ-1278"
   else

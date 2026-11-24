@@ -2246,6 +2246,19 @@ a67_sev_rows=$(awk '/^\| 严重度 \| 阻断交付/{f=1;next} f&&/^## /{exit} f&
 report "A67 §6 severity table keeps the three-tier rows (CHG-145)" 3 "$a67_sev_rows"
 at_least_f "A67 §6 严重 row is delivery-blocking (CHG-145)" 1 "$A62_RI" '| 严重 | 是 |'
 at_least_f "A67 §8 five-class line names the E160 enforcement (CHG-145)" 1 "$A62_RI" 'gate E160 执法 A 层 + 评审复核 B 层'
+
+# --- A68 (v4.5.0, CHG-149, REQ-1385~1394): 交付防假绿四门 + 动态适配 + AGENTS 防截断 + 性能/摩擦 ---
+a68_agents_bytes=$(wc -c < "$AGENTS" | tr -d '[:space:]')
+report "A68 AGENTS.md managed template <= 16384B (no 24KB client truncation, CHG-149)" 1 "$([[ "$a68_agents_bytes" -le 16384 ]] && echo 1 || echo 0)"
+at_least_f "A68 gate carries GATE-E161 outbound exit check (CHG-149)" 1 "$GATE_TPL" 'die "GATE-E161:'
+at_least_f "A68 gate carries GATE-E162 entry-owns-exit check (CHG-149)" 1 "$GATE_TPL" 'die "GATE-E162:'
+at_least_f "A68 E104 rejects bare HTTP without body or latency (CHG-149)" 1 "$GATE_TPL" 'relies on bare HTTP'
+at_least_f "A68 E107 enforces compensation uncovered-gap reconciliation (CHG-149)" 1 "$GATE_TPL" '工具面缺失补偿存在未覆盖差集非空'
+at_least_f "A68 install-hook-adapter supports dynamic --print-contract (CHG-149)" 1 "$ROOT/resources/templates/install-hook-adapter.sh" '--print-contract)'
+at_least_f "A68 install-hook-adapter supports --verify-wiring (CHG-149)" 1 "$ROOT/resources/templates/install-hook-adapter.sh" '--verify-wiring)'
+at_least_f "A68 session-gate guards empty updated_at overflow (CHG-149)" 1 "$ROOT/resources/templates/session-gate.sh" 'telemetry uninitialized (no updated_at'
+at_least_f "A68 fresh-clone-check records code_face_sha for E153 reuse (CHG-149)" 1 "$ROOT/tests/fresh-clone-check.sh" 'code_face_sha'
+at_least_f "A68 bootstrap profile detects classic asp and server-web UI (CHG-149)" 1 "$ROOT/scripts/bootstrap.sh" 'server-web'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else

@@ -158,6 +158,7 @@ prior=$(ledger_dupes)
   || { echo "fresh-clone-check: snapshot commit failed" >&2; exit 2; }
 archive_sha=$( cd "$ROOT" && git ls-files | while IFS= read -r f; do [[ -f "$f" ]] && cksum "$f"; done | cksum | awk '{print $1}' )
 tree_sha=$( cd "$ROOT" && git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' )
+code_face_sha=$( git -C "$ROOT" ls-files -s -- . ':!docs/changes' ':!docs/bugs' ':!docs/project' 2>/dev/null | cksum | awk '{print $1}' )
 
 audit_log="$tmp/.fresh-audit.log"
 suite_log="$tmp/.fresh-suite.log"
@@ -176,8 +177,8 @@ audit_fail=$(sed -n 's/^[0-9][0-9]* passed, \([0-9][0-9]*\) failed.*/\1/p' "$aud
 
 mkdir -p "$(dirname "$RECEIPT")"
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
-printf '{"head":"%s","archive_sha":"%s","tree_sha":"%s","audit_tool":"%s","audit_rc":%s,"audit_passed":%s,"audit_failed":%s,"suite_rc":%s,"sections":"%s","passed":%s,"failed":%s,"generated_at":"%s"}\n' \
-  "$head" "$archive_sha" "$tree_sha" "$audit_tool" "$audit_rc" "$audit_pass" "$audit_fail" "$suite_rc" "$sections" "$passed" "$failed" "$now" \
+printf '{"head":"%s","archive_sha":"%s","tree_sha":"%s","code_face_sha":"%s","audit_tool":"%s","audit_rc":%s,"audit_passed":%s,"audit_failed":%s,"suite_rc":%s,"sections":"%s","passed":%s,"failed":%s,"generated_at":"%s"}\n' \
+  "$head" "$archive_sha" "$tree_sha" "$code_face_sha" "$audit_tool" "$audit_rc" "$audit_pass" "$audit_fail" "$suite_rc" "$sections" "$passed" "$failed" "$now" \
   > "$RECEIPT"
 
 echo "fresh-clone-check: audit(${audit_tool}) ${audit_pass}/${audit_fail} rc=$audit_rc · suite ${passed}/${failed} rc=$suite_rc · sections=$sections"

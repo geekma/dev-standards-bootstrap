@@ -3134,6 +3134,23 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   check_output "T26 full_suite ignores governance self-test" '"full_suite":0' "$(cat .agent-state/session-tool-stats.json)"
   bash scripts/session-gate.sh count tool Bash "mvn test" >/dev/null 2>&1
   check_output "T26 full_suite counts business regression" '"full_suite":1' "$(cat .agent-state/session-tool-stats.json)"
+  # ---- v4.5.0 (CHG-149, REQ-1391): missing updated_at must not overflow to ~29M minutes
+  printf '{"full_suite":2}\n' > .agent-state/session-tool-stats.json
+  out=$(bash scripts/session-gate.sh status 2>&1)
+  check_output "T26 TC-10019 empty updated_at reports uninitialized (no epoch overflow)" "telemetry uninitialized" "$out"
+  # ---- v4.5.0 (CHG-149, REQ-1389): dynamic adapter contract & verify-wiring
+  if [[ -s "$ROOT/resources/templates/install-hook-adapter.sh" ]]; then
+    out=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --print-contract 2>&1)
+    check_output "T26 TC-10016 --print-contract emits 3-event contract" '"PreToolUse"' "$out"
+    mkdir -p .agents
+    printf '{"dev-standards":{"PreToolUse":[{"matcher":"write_file","hooks":[{"type":"command","command":"bash scripts/agent-gate --stage pre-write"}]}]}}\n' > .agents/hooks.json
+    out=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --verify-wiring .agents/hooks.json 2>&1)
+    check_output "T26 TC-10017 --verify-wiring accepts valid .agents/hooks.json" "dynamic wiring verified" "$out"
+    rm -rf .agents
+  else
+    report "T26 TC-10016 --print-contract (skip: template absent)" 0 0
+    report "T26 TC-10017 --verify-wiring (skip: template absent)" 0 0
+  fi
   rm -f .agent-governance.yml
 else
   echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
@@ -5503,6 +5520,38 @@ check_output "T53 TC-2383 refusal demands 判定卡 三选一" "三选一" "$out
 printf '\n## 判定卡（套件范围）\n- 判定卡三选一：FULL（触及被测核心，交付门一次全量）\n' >> docs/changes/CHG-1060/00.5-communication.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
 report "T53 TC-2383 E157 stop green with 判定卡 recorded" 0 $?
+# ---- v4.5.0 (CHG-149, REQ-1385~1388): E104 bare HTTP, E161 outbound exit, E162 entry-owns-exit, E107 compensation gap ----
+# TC-10015 (E104 bare HTTP): replace evidence with bare HTTP 200 (no body/DOM/latency) -> red
+cp docs/changes/CHG-1060/05-test-results.md docs/changes/CHG-1060/05.bak
+printf '# 05\n- UJ-001 运行时证据：HTTP 200 @2026-11-24T00:00:00Z\n- **还原度断言**：未命中，不适用（T53 夹具）\n' > docs/changes/CHG-1060/05-test-results.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10015 E104 stop red: bare HTTP 200 without body/latency rejected" 2 $?
+mv docs/changes/CHG-1060/05.bak docs/changes/CHG-1060/05-test-results.md
+# TC-10012 (E161 outbound exit): add 出站出口节 with placeholder -> red; bind UJ-001 -> green
+cp docs/changes/CHG-1060/01-spec.md docs/changes/CHG-1060/01.bak
+printf '\n## 出站出口清单\n| 出口 | 目标 | 裁决 |\n|---|---|---|\n| 报表卡 | rep_ops.asp | <待填> |\n' >> docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10012 E161 stop red: outbound exit section contains placeholder" 2 $?
+sedi 's/<待填>/UJ-001/' docs/changes/CHG-1060/01-spec.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10012 E161 stop green: outbound exit bound to UJ-001" 0 $?
+mv docs/changes/CHG-1060/01.bak docs/changes/CHG-1060/01-spec.md
+# TC-10013 (E162 entry-owns-exit): 09 declares 已交付 with unmitigated 挂接待其 owner -> red; degrade -> green
+cp docs/changes/CHG-1060/09-changelog.md docs/changes/CHG-1060/09.bak
+printf '\n- 交付状态：已交付（下游页挂接待其 owner）\n' >> docs/changes/CHG-1060/09-changelog.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10013 E162 stop red: 已交付 with unmitigated 挂接待其 owner" 2 $?
+printf -- '- 处置：入口已降级隐藏，待下游闭合后开放\n' >> docs/changes/CHG-1060/09-changelog.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10013 E162 stop green: entry degraded" 0 $?
+mv docs/changes/CHG-1060/09.bak docs/changes/CHG-1060/09-changelog.md
+# TC-10014 (E107 compensation gap): 工具面缺失 + 视觉证据包 + 未覆盖差集：非空 + bare 通过 -> red
+cp docs/changes/CHG-1060/07-review-report.md docs/changes/CHG-1060/07.bak
+sedi 's/截图 t53e-home.png 留痕/工具面缺失，视觉证据包补偿；未覆盖差集：非空（缺卡片下游页）/' docs/changes/CHG-1060/07-review-report.md
+printf '\n## 评审结论\n通过\n' >> docs/changes/CHG-1060/07-review-report.md
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10014 E107 stop red: compensation gap non-empty cannot give PASS" 2 $?
+mv docs/changes/CHG-1060/07.bak docs/changes/CHG-1060/07-review-report.md
 # TC-2384（E158 负例）：01-spec 撤动作全集矩阵节 → 红
 sedi 's/；入口维度：桌面命中\/移动未命中//' docs/changes/CHG-1060/01-spec.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
