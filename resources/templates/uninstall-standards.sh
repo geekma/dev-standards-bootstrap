@@ -75,7 +75,7 @@ if [[ "$FORCE" == 1 ]]; then echo "uninstall-standards: --force ON — Tier3 ass
 # NOT here — run-tests is a MERGED extension point (user projects append their
 # own T-sections), so both live in Tier3 (keep & report; --force backup-moves).
 for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_DIR/new-change" \
-         "$SCRIPTS_DIR/session-gate.sh" "$SCRIPTS_DIR/install-hook-adapter" \
+         "$SCRIPTS_DIR/session-gate.sh" "$SCRIPTS_DIR/install-hook-adapter" "$SCRIPTS_DIR/install-ci-adapter" \
          "$SCRIPTS_DIR/bug-autointent" "$SCRIPTS_DIR/generate-reading-pack.sh" \
          "$SCRIPTS_DIR/eval-cases" "$SCRIPTS_DIR/eval-rescore" \
          "$SCRIPTS_DIR/check-standards-compliance.sh"; do

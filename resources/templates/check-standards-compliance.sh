@@ -119,6 +119,15 @@ CHANGE_RE=$(printf '%s' "$CHANGE_ROOT" | sed 's/[.[\*^$]/\\&/g')
 # 【同步义务】下方扩展名清单须与 resources/templates/agent-gate.sh 的 is_code_path()
 # 一致——机器双守护：源层 audit A2 + tests/run-tests.sh T12；改其一必须同步改另一。
 CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$' || true)
+_cc_extra_ext=$(cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
+if [[ -n "$_cc_extra_ext" && "$_cc_extra_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
+  _cc_extra_re="${_cc_extra_ext//,/|}"
+  _cc_extra_re="${_cc_extra_re//+/\\+}"
+  _cc_extra_hits=$(echo "$CHANGED_FILES" | grep -E "\.(${_cc_extra_re})$" || true)
+  if [[ -n "$_cc_extra_hits" ]]; then
+    CODE_CHANGED=$(printf '%s\n%s\n' "$CODE_CHANGED" "$_cc_extra_hits" | grep -v '^$' | awk '!seen[$0]++' || true)
+  fi
+fi
 # CHG-017 ⑪（v3.21.1）：本正则原先只接受 ${DOCS_RE} 前缀 → 变更轨不在 <docs>/ 下
 # （自定义 change_root，如 specs/changes）时，合规产物被判"缺失"（假红拦人）。
 # 两个前缀都接受，与 agent-gate / audit-docs-consistency 的同源口径对齐。

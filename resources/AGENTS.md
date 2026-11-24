@@ -72,6 +72,7 @@
 | 缺陷修复（六件套 / `docs/bugfix-log.md` 双登记） | DS §2.5 阶段 6 + §1.1（`docs/bugs/BATCH-YYYYMMDD/`） |
 | 按变更类型与栈取阅读包 | `bash scripts/generate-reading-pack.sh <type> [--profile <栈>]` |
 | 交付前跨文档审计（G1–G16，含 G10 废弃条款 / A20–A21） | `bash tests/audit-docs-consistency.sh [--only-fail] [--incremental]` |
+| 动态适配（Hook/CI/画像/评审模型，v4.7.0） | `scripts/install-hook-adapter`、`scripts/install-ci-adapter`、`bootstrap --print-profile-contract`、`agent-gate review-models` |
 | 项目级总册（P00–P12） / 配置与发布 / 终检 | DS §1.3 / §2.6–§2.9 / §2.16.2–§2.16.6 / §4 |
 
 ## 本仓评审要点（按仓定制承载面）
@@ -91,5 +92,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v4.6.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v4.7.0_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

@@ -51,7 +51,7 @@ Flags (layers; default --core when none given):
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/eval-cases + <scripts>/eval-rescore (评测资产派生与重打分, v3.75.0),
                <github>/workflows/github-reviewer-rescore.yml (评测集重打分回路, v3.75.0),
-               <scripts>/session-gate.sh + <scripts>/install-hook-adapter (会话内执法, v3.28.0),
+               <scripts>/session-gate.sh + <scripts>/install-hook-adapter + <scripts>/install-ci-adapter (会话/CI动态适配, v4.7.0),
                <scripts>/bug-autointent (缺陷发现入口, v3.28.0),
                <scripts>/generate-reading-pack.sh (阅读包生成, v3.46.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
@@ -82,6 +82,8 @@ Flags (layers; default --core when none given):
   --derived-report 只读列出从本 Skill 派生出去的 Skill（同目录下声明了 derived_from 的）：
                路径 / derived_from / derived_at / derived_from_version + 本 Skill 携带版本。
                用于判断派生资产是否需要跟上。不写任何文件。
+  --print-profile-contract [TARGET]  只读探测目标仓后缀/Monorepo/测试目录并输出画像 JSON 契约（ITEM-15）。
+  --verify-profile [TARGET]          只读校验 .agent-governance.yml 中 code_extensions 与 scopes 合法性（ITEM-15）。
   --force      覆盖目标仓库中内容不同的既有文件（默认冲突时展示 diff 并拒绝）。
                **不越过派生保护**——--force 的语义是"覆盖内容不同的既有文件"，
                不是"覆盖别人派生出来的资产"。
@@ -121,6 +123,8 @@ upgrade=false
 check_mode=false
 self_update=false
 derived_report=false
+print_profile_contract=false
+verify_profile=false
 layers=""
 layers_explicit=false
 target=""
@@ -156,6 +160,8 @@ for arg in "$@"; do
     --check)          check_mode=true ;;
     --self-update)    self_update=true ;;
     --derived-report) derived_report=true ;;
+    --print-profile-contract) print_profile_contract=true ;;
+    --verify-profile) verify_profile=true ;;
     --force)    force=true ;;
     --docs-dir)     pending=docs ;;
     --scripts-dir)  pending=scripts ;;
@@ -384,6 +390,71 @@ if [[ "$derived_report" == true ]]; then
   exit 0
 fi
 
+# --- --print-profile-contract / --verify-profile (v4.7.0, CHG-152, ITEM-15) --
+if [[ "$print_profile_contract" == true ]]; then
+  _pc_exts=$(find "$target" -maxdepth 4 -type f \
+    -not -path '*/.git/*' -not -path '*/.agent-state/*' -not -path '*/node_modules/*' \
+    -not -path '*/target/*' -not -path '*/dist/*' 2>/dev/null \
+    | awk -F/ '{f=$NF; if (f ~ /\.[A-Za-z0-9_+]+$/) { sub(/^.*\./, "", f); c[f]++ }} END { for (k in c) print k }' \
+    | sort | head -n 20 | paste -sd, - || true)
+  _pc_mono=""
+  for _d in packages apps services modules libs; do
+    [[ -d "$target/$_d" ]] && _pc_mono="${_pc_mono:+${_pc_mono},}\"${_d}\""
+  done
+  _pc_tests=""
+  for _d in tests test spec __tests__; do
+    [[ -d "$target/$_d" ]] && _pc_tests="${_pc_tests:+${_pc_tests},}\"${_d}\""
+  done
+  cat <<EOF
+{
+  "contract_version": "1",
+  "target": "$target",
+  "detected_extensions": "${_pc_exts}",
+  "monorepo_roots": [${_pc_mono}],
+  "test_dirs": [${_pc_tests}],
+  "governance_yml_schema": {
+    "code_extensions": "comma-separated extensions without leading dots (e.g. proto,tf,graphql)",
+    "scopes": "list of workspace/monorepo module paths under repo root",
+    "smoke_paths": "comma-separated ERE triggers for GATE-E111",
+    "full_test_patterns": "comma-separated anchored EREs for session-gate full_suite telemetry",
+    "test_weakening_patterns": "comma-separated EREs extending GATE-E160"
+  }
+}
+EOF
+  exit 0
+fi
+
+if [[ "$verify_profile" == true ]]; then
+  [[ -f "$GOV_YML" ]] || { echo "bootstrap: --verify-profile failed — missing $GOV_YML" >&2; exit 2; }
+  _vp_ext=$(sed -nE "s/^[[:space:]]*code_extensions:[[:space:]]*([^#]*).*$/\1/p" "$GOV_YML" 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
+  if [[ -n "$_vp_ext" ]] && [[ ! "$_vp_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
+    echo "bootstrap: --verify-profile failed — invalid code_extensions '$_vp_ext' (expected comma-separated alphanumeric tokens without leading dots)" >&2
+    exit 2
+  fi
+  if grep -qE '^scopes:[[:space:]]*$' "$GOV_YML" 2>/dev/null; then
+    _vp_scopes=$(awk '
+      /^scopes:[[:space:]]*$/ { in_s=1; next }
+      in_s && /^[^[:space:]#]/ { exit }
+      in_s && /^[[:space:]]+(-|[A-Za-z0-9_.-]+:)/ {
+        s=$0
+        sub(/#.*$/, "", s)
+        sub(/^[[:space:]]*(-|[A-Za-z0-9_.-]+:)[[:space:]]*/, "", s)
+        gsub(/["'\''[:space:]]/, "", s)
+        if (s != "") print s
+      }
+    ' "$GOV_YML" 2>/dev/null || true)
+    while IFS= read -r _vp_sd; do
+      [[ -n "$_vp_sd" ]] || continue
+      if [[ ! -d "$target/$_vp_sd" ]]; then
+        echo "bootstrap: --verify-profile failed — scope directory not found: $target/$_vp_sd" >&2
+        exit 2
+      fi
+    done <<< "$_vp_scopes"
+  fi
+  echo "bootstrap: profile verified ($GOV_YML)"
+  exit 0
+fi
+
 # --- --check (v3.16.0, D3) --------------------------------------------------
 # Read-only three-way version report. --upgrade only ever compared the TARGET
 # repo against the carried version; it never asked whether the skill copy itself
@@ -523,6 +594,7 @@ transform_src() { # src -> stdout
       github-agent-governance.yml|github-artifact-pipeline.yml)
         sed -e "s|branches: \[main\]|branches: [${e_branch}]|g" "$1" \
           | sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
+                -e "s|scripts/install-ci-adapter|$e_scripts/install-ci-adapter|g" \
                 -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
                 -e "s|scripts/check-standards-compliance\.sh|$e_scripts/check-standards-compliance.sh|g" \
                 -e "s|scripts/stamp-provenance\.sh|$e_scripts/stamp-provenance.sh|g" \
@@ -543,6 +615,7 @@ transform_src() { # src -> stdout
     esac
   fi
   sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
+      -e "s|scripts/install-ci-adapter|$e_scripts/install-ci-adapter|g" \
       -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
       -e "s|scripts/check-standards-compliance\.sh|$e_scripts/check-standards-compliance.sh|g" \
       -e "s|scripts/stamp-provenance\.sh|$e_scripts/stamp-provenance.sh|g" \
@@ -852,6 +925,7 @@ run_layer() {
       install_file - "$GITHOOKS_DIR/commit-msg" resources/templates/commit-msg 755
       install_file - ".github/workflows/agent-governance.yml" resources/templates/github-agent-governance.yml
       install_file - "$SCRIPTS_DIR/install-hook-adapter" resources/templates/install-hook-adapter.sh 755
+      install_file - "$SCRIPTS_DIR/install-ci-adapter" resources/templates/install-ci-adapter.sh 755
       install_file - "$SCRIPTS_DIR/session-gate.sh" resources/templates/session-gate.sh 755
       install_file - "$SCRIPTS_DIR/bug-autointent" resources/templates/bug-autointent.sh 755
       install_file - "$SCRIPTS_DIR/generate-reading-pack.sh" resources/templates/generate-reading-pack.sh 755

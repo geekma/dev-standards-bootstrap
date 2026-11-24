@@ -1120,11 +1120,18 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   g16_scripts_re=$(g16_re_escape "$(cfg_path scripts scripts)")
   g16_tests_re=$(g16_re_escape "$(cfg_path tests tests)")
   g16_githooks_re=$(g16_re_escape "$(cfg_path githooks .githooks)")
+  g16_ext_re='c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue'
+  g16_extra_ext=$(cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
+  if [[ -n "$g16_extra_ext" && "$g16_extra_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
+    g16_extra_re="${g16_extra_ext//,/|}"
+    g16_extra_re="${g16_extra_re//+/\\+}"
+    g16_ext_re="${g16_ext_re}|${g16_extra_re}"
+  fi
   g16_files=$(git -C "$ROOT" status --porcelain -uall 2>/dev/null | cut -c4- \
     | sed -E 's/.* -> //; s/^"//; s/"$//' \
     | grep -vE "^(${g16_docs_re}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md)" \
-    | grep -vE "^(${g16_githooks_re}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_scripts_re}/shard-sum\.sh$|${g16_scripts_re}/evidence-round\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$|${g16_tests_re}/fresh-clone-check\.sh$)" \
-    | grep -E "\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$" || true)
+    | grep -vE "^(${g16_githooks_re}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${g16_scripts_re}/agent-gate$|${g16_scripts_re}/session-gate\.sh$|${g16_scripts_re}/install-hook-adapter$|${g16_scripts_re}/install-ci-adapter$|${g16_scripts_re}/check-standards-compliance\.sh$|${g16_scripts_re}/stamp-provenance\.sh$|${g16_scripts_re}/generate-reading-pack\.sh$|${g16_scripts_re}/behavior-extract\.sh$|${g16_scripts_re}/lib-suite-tree-fingerprint\.sh$|${g16_scripts_re}/lib-suite-lock\.sh$|${g16_scripts_re}/shard-sum\.sh$|${g16_scripts_re}/evidence-round\.sh$|${g16_tests_re}/run-tests\.sh$|${g16_tests_re}/audit-docs-consistency\.sh$|${g16_tests_re}/fresh-clone-check\.sh$)" \
+    | grep -E "\.(${g16_ext_re})$" || true)
   g16_af="$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)"
   # linked worktree 下 --git-path 返回绝对路径；普通仓为相对路径——两种形态都解析
   if [[ -n "$g16_af" && "$g16_af" != /* ]]; then g16_af="$ROOT/$g16_af"; fi

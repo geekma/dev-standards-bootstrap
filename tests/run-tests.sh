@@ -1984,6 +1984,37 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T14 TC-10040 linked worktree detects master branch (.git file)" 0 $?
   git -C "$BT6" worktree remove --force "$BT7" 2>/dev/null || rm -rf "$BT7"
   rm -rf "$BT6"
+  # TC-10043/10044/10045 (v4.7.0 CHG-152, REQ-1418~1420): CI/branch-protection adapter & profile/code_extensions
+  BT8=$(mktemp -d)
+  git -C "$BT8" init -q -b master
+  mkdir -p "$BT8/tools" "$BT8/packages/api" "$BT8/tests"
+  printf 'paths:\n  scripts: tools\ncode_extensions: proto,tf\nscopes:\n  - packages/api\n' > "$BT8/.agent-governance.yml"
+  touch "$BT8/.gitlab-ci.yml" "$BT8/packages/api/svc.proto"
+  cp "$ROOT/resources/templates/agent-gate.sh" "$BT8/tools/agent-gate" && chmod +x "$BT8/tools/agent-gate"
+  cp "$ROOT/resources/templates/install-ci-adapter.sh" "$BT8/tools/install-ci-adapter" && chmod +x "$BT8/tools/install-ci-adapter"
+  out=$(bash "$BT8/tools/install-ci-adapter" --detect "$BT8" 2>&1)
+  check_output "T14 TC-10043 install-ci-adapter detects gitlab" "platform: gitlab" "$out"
+  out=$(bash "$BT8/tools/install-ci-adapter" --print-contract --repo "$BT8" 2>&1)
+  check_output "T14 TC-10043 contract uses configured tools/agent-gate" "tools/agent-gate --stage ci" "$out"
+  out=$(bash "$BT8/tools/install-ci-adapter" --print-branch-protection-contract gitlab --repo "$BT8" 2>&1)
+  check_output "T14 TC-10045 branch protection contract names agent-governance" '"required_check": "agent-governance"' "$out"
+  printf 'governance:\n  script:\n    - bash tools/agent-gate --stage ci\n    - bash tools/check-standards-compliance.sh\n' > "$BT8/.gitlab-ci.yml"
+  bash "$BT8/tools/install-ci-adapter" --verify-wiring .gitlab-ci.yml --repo "$BT8" >/dev/null 2>&1
+  report "T14 TC-10043 --verify-wiring passes valid .gitlab-ci.yml" 0 $?
+  printf 'bad:\n\t- echo tab\n' > "$BT8/bad.yml"
+  bash "$BT8/tools/install-ci-adapter" --verify-wiring bad.yml --repo "$BT8" >/dev/null 2>&1
+  report "T14 TC-10043 --verify-wiring rejects tab-indented YAML" 2 $?
+  out=$(bash "$BOOT_SRC" --print-profile-contract "$BT8" 2>&1)
+  check_output "T14 TC-10044 profile contract detects proto and monorepo" '"monorepo_roots": \["packages"\]' "$out"
+  bash "$BOOT_SRC" --verify-profile "$BT8" >/dev/null 2>&1
+  report "T14 TC-10044 --verify-profile accepts valid code_extensions and scopes" 0 $?
+  printf 'paths:\n  scripts: tools\ncode_extensions: .proto\n' > "$BT8/.agent-governance.yml"
+  bash "$BOOT_SRC" --verify-profile "$BT8" >/dev/null 2>&1
+  report "T14 TC-10044 --verify-profile rejects leading-dot code_extensions" 2 $?
+  printf 'code_extensions: proto\n' > "$BT8/.agent-governance.yml"
+  (cd "$BT8" && bash tools/agent-gate --stage pre-write --file api.proto >/dev/null 2>&1)
+  report "T14 TC-10044 dynamic code_extensions flags api.proto as source code" 2 $?
+  rm -rf "$BT8"
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
@@ -3197,16 +3228,29 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     report "T26 TC-10036 session-gate start --full runs without incremental narrowing" 0 "$(grep -c 'incremental: audited' "$t26_inc/.agent-state/session-gate-last.md" 2>/dev/null || true)"
     rm -rf "$t26_inc"
     t26_bin=$(mktemp -d); t26_repo=$(mktemp -d)
-    for _cmd in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env; do
+    for _cmd in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env git; do
       _cmd_path=$(command -v "$_cmd" 2>/dev/null || true)
       [[ -n "$_cmd_path" ]] && ln -sf "$_cmd_path" "$t26_bin/$_cmd"
     done
     mkdir -p "$t26_repo/scripts" "$t26_repo/.agents"
     cp "$ROOT/resources/templates/install-hook-adapter.sh" "$t26_repo/scripts/install-hook-adapter"
-    touch "$t26_repo/scripts/agent-gate"
+    cp "$ROOT/resources/templates/agent-gate.sh" "$t26_repo/scripts/agent-gate"
+    chmod +x "$t26_repo/scripts/agent-gate"
     cp .agents/hooks.json "$t26_repo/.agents/hooks.json"
     out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json 2>&1)
     check_output "T26 TC-10026 zero-dep PATH --verify-wiring passes" "dynamic wiring verified" "$out"
+    # TC-10046 (v4.7.0 CHG-152, REQ-1421): review-models zero-dep PATH discover/contract/verify
+    (cd "$t26_repo" && git init -q && git commit --allow-empty -qm init) >/dev/null 2>&1
+    out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/agent-gate review-models --discover 2>&1)
+    check_output "T26 TC-10046 review-models --discover emits detected_clis" '"detected_clis":' "$out"
+    out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/agent-gate review-models --print-contract 2>&1)
+    check_output "T26 TC-10046 review-models --print-contract emits schema" '"deep_requires_user_approval": true' "$out"
+    printf '{"models":[{"id":"opus","tier":"deep","requires_user_approval":false}]}\n' > "$t26_repo/.agent-review-models.json"
+    (cd "$t26_repo" && PATH="$t26_bin" bash scripts/agent-gate review-models --verify .agent-review-models.json >/dev/null 2>&1)
+    report "T26 TC-10046 zero-dep verify rejects deep model without approval" 2 $?
+    printf '{"models":[{"id":"sonnet","tier":"standard"},{"id":"opus","tier":"deep","requires_user_approval":true}]}\n' > "$t26_repo/.agent-review-models.json"
+    (cd "$t26_repo" && PATH="$t26_bin" bash scripts/agent-gate review-models --verify .agent-review-models.json >/dev/null 2>&1)
+    report "T26 TC-10046 zero-dep verify accepts valid review-models json" 0 $?
     printf '{"broken":
 ' > "$t26_repo/.agents/hooks.json"
     (cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json >/dev/null 2>&1)
@@ -3225,6 +3269,10 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     report "T26 TC-10036 session-gate start --incremental (skip: template absent)" 0 0
     report "T26 TC-10036 session-gate start --full (skip: template absent)" 0 0
     report "T26 TC-10026 zero-dep verify-wiring ok (skip: template absent)" 0 0
+    report "T26 TC-10046 review-models --discover (skip: template absent)" 0 0
+    report "T26 TC-10046 review-models --print-contract (skip: template absent)" 0 0
+    report "T26 TC-10046 review-models rejects unapproved deep (skip: template absent)" 0 0
+    report "T26 TC-10046 review-models verifies valid json (skip: template absent)" 0 0
     report "T26 TC-10026 malformed JSON (skip: template absent)" 0 0
     report "T26 TC-10026 missing script (skip: template absent)" 0 0
   fi
@@ -5735,6 +5783,186 @@ rc=0
 t53d_err=$(bash "$EXTRACT_SRC" .t53-static.html 2>&1 >/dev/null) || rc=$?
 report "T53 TC-1232 zero-pattern static HTML exits 3 (fail-closed empty output)" 3 "$rc"
 check_output "T53 TC-1232 stderr names the zero-behavior diagnosis" "零行为" "$t53d_err"
+
+# ---- TC-10047~10050 (v4.7.0 CHG-152, REQ-1422~1425) ----
+# TC-10047 (ITEM-18): extensible test_weakening_patterns in .agent-governance.yml
+new_repo
+seed_artifacts CHG-1051 L0 claude/s-1
+scripts/agent-gate begin CHG-1051 >/dev/null 2>&1
+printf 'test_weakening_patterns: t\\.Skip\\(\n' > .agent-governance.yml
+mkdir -p tests src
+printf 'package foo\nfunc TestX() { t.%s("wip") }\n' "Skip" > tests/sample_test.go
+git add tests/sample_test.go
+rc=0
+out=$(scripts/agent-gate --stage staged 2>&1) || rc=$?
+report "T53 TC-10047 custom test_weakening_patterns blocks t.Skip via E160" 2 "$rc"
+check_output "T53 TC-10047 die names GATE-E160" "GATE-E160" "$out"
+printf 'package foo\n// owner=geek007 deadline=2099-12-31\nfunc TestX() { t.%s("wip") }\n' "Skip" > tests/sample_test.go
+git add tests/sample_test.go
+rc=0
+scripts/agent-gate --stage staged >/dev/null 2>&1 || rc=$?
+report "T53 TC-10047 custom test_weakening_patterns passes with owner+deadline" 0 "$rc"
+# review F2: trailing comma (empty ERE branch) must not flag every test edit
+printf 'test_weakening_patterns: t\\.Skip\\(,\n' > .agent-governance.yml
+printf 'package foo\nfunc TestY() { assertOK() }\n' > tests/other_test.go
+git add tests/other_test.go
+rc=0
+scripts/agent-gate --stage staged >/dev/null 2>&1 || rc=$?
+report "T53 TC-10047 trailing comma in test_weakening_patterns is not an empty branch" 0 "$rc"
+
+# TC-10048 (ITEM-30): structured KV priority in E104/E107/E157/E161/E162
+new_repo
+seed_artifacts CHG-1052 L0 claude/s-1
+cat > docs/changes/CHG-1052/00.5-communication.md <<'EOF'
+# comm
+## 专业质询三件
+inquiry_status: na
+## 用户整体确认记录
+- 确认状态：已整体确认
+EOF
+cat > docs/changes/CHG-1052/01-spec.md <<'EOF'
+# spec
+- REQ-001: UJ-001 KV check
+- **origin_artifact**: 未命中（无原型）
+- **chain_change**: 未命中（无数据链）
+- **ui_change**: true
+## 出站出口
+outbound_exits: none
+EOF
+cat > docs/changes/CHG-1052/01.5-rtvm-matrix.md <<'EOF'
+| REQ-001 | KV | DES-001 | s | T-1 | CHG-1052 | TC-1 | t | ✅ PASS |
+EOF
+cat > docs/changes/CHG-1052/03.6-ui-spec.md <<'EOF'
+# UI Spec
+## 参照界面对照表
+reference_ui_table: na
+## 显示名↔主键映射
+- 记录显示名 → record_id
+EOF
+cat > docs/changes/CHG-1052/03.5-tasks.md <<'EOF'
+# tasks
+| 任务 | 类型 | 依赖 | 里程碑 | 说明 |
+|---|---|---|---|---|
+| T-001 | UX | 无 | M1 | KV check |
+- 评审输入: 变更文件清单 + 待核对产物 + 行号锚点
+EOF
+cat > docs/changes/CHG-1052/04-test-scripts.md <<'EOF'
+# tests
+- TC-001 用户旅程 E2E：入口到结果全程真人可走
+覆盖维度: 正常流 / 边界 / 异常
+- SC-001: KV 主流程（覆盖: TC-001）
+EOF
+scripts/agent-gate begin CHG-1052 >/dev/null 2>&1
+report "T53 TC-10048 begin CHG-1052 succeeds" 0 $?
+seed_t53_delivery CHG-1052
+printf -- 'red_repro: bash test -> rc1\ngreen_after: bash test -> rc0\nuj_evidence: id=UJ-001 kind=screenshot value=ok\n- **还原度断言**：未命中，不适用（T53 夹具）\n' >> docs/changes/CHG-1052/05-test-results.md
+printf 'delivery_status: delivered\n' >> docs/changes/CHG-1052/09-changelog.md
+cat > docs/changes/CHG-1052/07-review-report.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-01T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# 07
+- 评审主体：antigravity / gemini / task-1052
+## 用户可用性验收
+- 结论：通过（依据 03.6 与 UJ-001）
+- **建议人类走查（非阻塞）**：建议交付前真人走查一次
+## 业务合理性终审
+- 逐 UJ 质询结论：UJ-001 通过（业务现实依据）
+- **业务终审主体**：antigravity / gemini / ses-t53kv
+## 运行时走查
+self_evidence: screenshot
+## 发现处置
+- **发现处置**：未命中，不适用（T53 KV 夹具）
+## 评审结论
+review_verdict: pass
+EOF
+echo y > src/t53kv.js
+rc=0
+scripts/agent-gate --stage stop >/dev/null 2>&1 || rc=$?
+report "T53 TC-10048 structured KV lines pass E104/E107/E157/E161/E162" 0 "$rc"
+cat > docs/changes/CHG-1052/07-review-report.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-01T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# 07
+- 评审主体：antigravity / gemini / task-1052
+## 用户可用性验收
+- 结论：通过（依据 03.6 与 UJ-001）
+- **建议人类走查（非阻塞）**：建议交付前真人走查一次
+## 业务合理性终审
+- 逐 UJ 质询结论：UJ-001 通过（业务现实依据）
+- **业务终审主体**：antigravity / gemini / ses-t53kv
+## 运行时走查
+tool_surface_missing: true
+visual_pack: pack.zip
+compensation_uncovered_gap: non_empty
+## 发现处置
+- **发现处置**：未命中，不适用（T53 KV 夹具）
+## 评审结论
+review_verdict: pass
+EOF
+rc=0
+out=$(scripts/agent-gate --stage stop 2>&1) || rc=$?
+report "T53 TC-10048 structured KV catches E107 pass with non_empty gap" 2 "$rc"
+check_output "T53 TC-10048 names GATE-E107" "GATE-E107" "$out"
+cat > docs/changes/CHG-1052/07-review-report.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-01T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# 07
+- 评审主体：antigravity / gemini / task-1052
+## 用户可用性验收
+- 结论：通过（依据 03.6 与 UJ-001）
+- **建议人类走查（非阻塞）**：建议交付前真人走查一次
+## 业务合理性终审
+- 逐 UJ 质询结论：UJ-001 通过（业务现实依据）
+- **业务终审主体**：antigravity / gemini / ses-t53kv
+## 运行时走查
+self_evidence: screenshot
+## 发现处置
+- **发现处置**：未命中，不适用（T53 KV 夹具）
+## 评审结论
+review_verdict: pass
+EOF
+printf 'downstream_status: hung\n' >> docs/changes/CHG-1052/09-changelog.md
+rc=0
+out=$(scripts/agent-gate --stage stop 2>&1) || rc=$?
+report "T53 TC-10048 structured KV catches E162 delivered with hung downstream" 2 "$rc"
+check_output "T53 TC-10048 names GATE-E162" "GATE-E162" "$out"
+
+# TC-10049 & TC-10050 (ITEM-31 & ITEM-32): GATE-E164 secret scan & AI-LAZY warn
+new_repo
+seed_artifacts CHG-1053 L0 claude/s-1
+scripts/agent-gate begin CHG-1053 >/dev/null 2>&1
+mkdir -p src
+_t53_sec_val='AK''IA1234567890ABCDEF' # agent-guard: allow-secret
+printf 'KEY="%s"\n' "$_t53_sec_val" > src/cfg.py
+git add src/cfg.py
+rc=0
+out=$(scripts/agent-gate --stage staged 2>&1) || rc=$?
+report "T53 TC-10049 GATE-E164 blocks unexempted secret in staged diff" 2 "$rc"
+check_output "T53 TC-10049 names GATE-E164" "GATE-E164" "$out"
+printf 'KEY="%s" # agent-guard: allow-secret\n' "$_t53_sec_val" > src/cfg.py
+git add src/cfg.py
+rc=0
+scripts/agent-gate --stage staged >/dev/null 2>&1 || rc=$?
+report "T53 TC-10049 GATE-E164 allows annotated test fixture secret" 0 "$rc"
+rm -f src/cfg.py && git add -A
+printf 'function stub() { try { work(); } catch (e) {} }\n' > src/stub.js
+git add src/stub.js
+rc=0
+out=$(scripts/agent-gate --stage staged 2>&1) || rc=$?
+report "T53 TC-10050 AI-LAZY soft warn does not block staged (rc0)" 0 "$rc"
+check_output "T53 TC-10050 stderr emits WARN [AI-LAZY]" "WARN \[AI-LAZY\]" "$out"
 }
 
 section_T54() {

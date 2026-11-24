@@ -65,7 +65,8 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
     GATE-E161) printf 'expected: 01-spec 「出站出口清单」 section (when present) maps every clickable outbound target to UJ-xxx, 豁免, or 降级 with no placeholders\nallowed: UJ-xxx / 豁免（理由） / 降级（隐藏/置灰）\nfix: fill every outbound exit row in 01-spec without <...>/FILL placeholders\nref: standards §0.6 / §2.5 stage 1 / v4.5.0' ;;
     GATE-E162) printf 'expected: entry-owns-exit delivery completeness — never mark 已交付 while an exposed downstream target is hung/unreachable or deferred via 挂接待其 owner without entry degradation\nallowed: degrade/hide the entry (已降级/已隐藏/已置灰) OR mark change status as 部分完成/阻塞\nfix: degrade the exposed entry or change 09 status from 已交付 to 阻塞/部分完成\nref: standards §0.6 / §2.5 stage 9 / v4.5.0' ;;
     GATE-E126|GATE-E127|GATE-E128|GATE-E129|GATE-E130) printf 'expected: the stage-gate preconditions hold for this change\nallowed: required artifacts + confirmation + one non-empty reviews/Pxx.review.md per claim\nfix: backfill the named stage artifacts, then re-run the same stage command\nref: standards §2.5 / §2.17.2d' ;;
-    GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149|GATE-E155) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan|dispatch <change-id> [flags]\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127/131' ;;
+    GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149|GATE-E155) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan|dispatch|review-models <args>\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127/131' ;;
+    GATE-E164) printf 'expected: no unexempted hardcoded secrets, API tokens, or private keys in staged added lines\nallowed: move credentials to env/secret-manager, or mark synthetic test fixtures with agent-guard: allow-secret\nfix: remove the leaked secret from the diff or annotate synthetic fixtures with agent-guard: allow-secret\nref: standards §2.5 / v4.7.0' ;;
     *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
   esac
 }
@@ -689,8 +690,24 @@ is_code_path() {
   # v3.92.3：fresh-clone-check.sh 同属治理工具（G-ENV 执行件），漏加会让新装仓第一次
   # commit 与后续 --upgrade 同时死锁（T15/T82 tracked-only 实测暴露）。
   # v3.95.0：shard-sum.sh 同理（CHG-132 随包执行件，漏加 = 首个提交 E125 死锁）。
-  [[ "$path" =~ ^(${githooks_re}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${scripts_re}/evidence-round\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
-  [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
+  [[ "$path" =~ ^(${githooks_re}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/install-ci-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${scripts_re}/evidence-round\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
+  [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]] && return 0
+  local _ag_ext
+  _ag_ext=$(cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
+  if [[ -n "$_ag_ext" && "$_ag_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
+    local _ag_ext_re="${_ag_ext//,/|}"
+    _ag_ext_re="${_ag_ext_re//+/\\+}"
+    [[ "$path" =~ \.(${_ag_ext_re})$ ]] && return 0
+  fi
+  return 1
+}
+
+# v4.7.0 (CHG-152, ITEM-30): extract value of a structured key-value line from
+# markdown text (`key: value`, `- key: value`, `**key**: value`, or fullwidth `：`).
+kv_field() { # <text> <key> -> trimmed value (first match)
+  local txt="$1" key="$2"
+  printf '%s\n' "$txt" | sed -nE "s/^[[:space:]]*([-*][[:space:]]*)?\*?\*?${key}\*?\*?[[:space:]]*(:|：)[[:space:]]*(.*)$/\3/p" 2>/dev/null \
+    | head -n 1 | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true
 }
 
 # v3.89.0 (CHG-117, REQ-1199/1200, DES-1956): unaccounted source-change gate —
@@ -733,7 +750,7 @@ unaccounted_exempt() { # -> 0 when the diff face is accounted for
 validate_unaccounted_changes() { # <staged|worktree>
   local mode="$1" files f hits=""
   case "$mode" in
-    staged) files=$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true) ;;
+    staged) files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true) ;;
     # deletions included: removing source with no account is still 修完不留痕
     worktree)
       # stop-lane merged face: porcelain covers staged + unstaged + untracked
@@ -1134,8 +1151,17 @@ validate_dimensional_stop() { # <change-dir>
     ujs=$(grep -oE 'UJ-[0-9]+' "$spec" 2>/dev/null | sort -u || true)
     while IFS= read -r uj; do
       [[ -n "$uj" ]] || continue
-      local e104_msg=""
-      if ! grep -E "$uj.*(HTTP|DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1; then
+      local e104_msg="" _kv_e104=""
+      _kv_e104=$(grep -E "uj_evidence:.*${uj}([^0-9A-Za-z]|$)" "$res05" 2>/dev/null | head -n 1 || true)
+      if [[ -n "$_kv_e104" ]]; then
+        if grep -qE 'kind=(db|response_body|snapshot|click_chain|screenshot|geometry|DB|响应体|快照|点击链路|截图|几何断言)' <<< "$_kv_e104"; then
+          e104_msg=""
+        elif grep -qiE 'kind=http' <<< "$_kv_e104" && grep -qE 'latency=[0-9]+(\.[0-9]+)?(ms|s)|timeout=[0-9]+' <<< "$_kv_e104"; then
+          e104_msg=""
+        else
+          e104_msg="05 structured uj_evidence for $uj lacks kind=(response_body|screenshot|db|...) or latency=<N>ms (standards §0.6/§2.5 stage 7, v4.7.0)"
+        fi
+      elif ! grep -E "$uj.*(HTTP|DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1; then
         e104_msg="05 lacks runtime evidence row for $uj (HTTP/响应体/DB/快照/点击链路/截图/几何断言 + timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0/v3.99.1)"
       elif ! grep -E "$uj.*(DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
         && ! grep -E "$uj.*([^A-Za-z0-9_][0-9]+(\.[0-9]+)?(ms|s)([^A-Za-z0-9_]|$)|(耗时|max-time)(:|：|=|[[:space:]])*[0-9]+)" "$res05" >/dev/null 2>&1; then
@@ -1151,12 +1177,16 @@ EOF
     # v4.5.0 (CHG-149, REQ-1385): GATE-E161 outbound exit inventory (conditional
     # on section presence so legacy fixtures stay green; once present, every row
     # must bind to UJ-xxx / 豁免 / 降级 without placeholders).
-    local osec="" e161_msg=""
+    local osec="" e161_msg="" _kv_o=""
     osec=$(awk '/^##+ .*出站出口/{f=1;next} f && /^## /{exit} f{print}' "$spec" 2>/dev/null \
       | sed 's/<!--[^>]*-->//g' || true)
     if [[ -n "$osec" ]]; then
+      _kv_o=$(kv_field "$osec" "outbound_exits")
       if grep -qE '(FILL|待填|<[^>]+>)' <<< "$osec"; then
         e161_msg="01-spec 「出站出口」 section still contains placeholders (<...>/FILL/待填) — enumerate every clickable outbound target (standards §0.6/§2.5 stage 1, v4.5.0)"
+      elif [[ -n "$_kv_o" ]]; then
+        grep -qE '(^none$|UJ-[0-9]+|waived|degraded|豁免|降级|未命中)' <<< "$_kv_o" \
+          || e161_msg="01-spec structured outbound_exits lacks UJ-xxx / waived / degraded / none (standards §0.6/§2.5 stage 1, v4.7.0)"
       elif ! grep -qE '(UJ-[0-9]+|豁免|降级|未命中)' <<< "$osec"; then
         e161_msg="01-spec 「出站出口」 section lacks UJ-xxx / 豁免 / 降级 verdicts — outbound links/cards must enter UJ or be explicitly waived/degraded (standards §0.6/§2.5 stage 1, v4.5.0)"
       fi
@@ -1166,10 +1196,20 @@ EOF
     # forbid marking 已交付 while an exposed downstream page is hung/unreachable
     # or deferred via 挂接待其 owner without entry degradation or blocking status.
     local c09="$d/09-changelog.md"
-    if [[ -s "$c09" ]] && grep -q '已交付' "$c09" 2>/dev/null; then
-      if grep -qE '下游挂起|下游不可达|挂接待其 ?owner' "$res05" "$res07" "$c09" 2>/dev/null \
-        && ! grep -qE '已降级|已隐藏|已置灰|部分完成|阻塞' "$c09" 2>/dev/null; then
-        die "GATE-E162: 09 declares 已交付 while an exposed downstream target is hung/unreachable or deferred via 挂接待其 owner without entry degradation (已降级/已隐藏/已置灰) or status 阻塞/部分完成 (standards §0.6/§2.5 stage 9, v4.5.0)"
+    if [[ -s "$c09" ]]; then
+      local _c09_t="" _e162_all="" _deliv_kv="" _down_kv="" _deg_kv=""
+      _c09_t=$(cat "$c09" 2>/dev/null || true)
+      _deliv_kv=$(kv_field "$_c09_t" "delivery_status")
+      if [[ "$_deliv_kv" == "delivered" ]] || grep -q '已交付' "$c09" 2>/dev/null; then
+        _e162_all=$(cat "$res05" "$res07" "$c09" 2>/dev/null || true)
+        _down_kv=$(kv_field "$_e162_all" "downstream_status")
+        _deg_kv=$(kv_field "$_c09_t" "entry_degraded")
+        if { [[ "$_down_kv" =~ ^(hung|unreachable|deferred_to_owner)$ ]] || grep -qE '下游挂起|下游不可达|挂接待其 ?owner' "$res05" "$res07" "$c09" 2>/dev/null; } \
+          && [[ ! "$_deg_kv" =~ ^(true|yes|hidden|disabled)$ ]] \
+          && [[ "$_deliv_kv" != "blocked" && "$_deliv_kv" != "partial" ]] \
+          && ! grep -qE '已降级|已隐藏|已置灰|部分完成|阻塞' "$c09" 2>/dev/null; then
+          die "GATE-E162: 09 declares 已交付 while an exposed downstream target is hung/unreachable or deferred via 挂接待其 owner without entry degradation (已降级/已隐藏/已置灰) or status 阻塞/部分完成 (standards §0.6/§2.5 stage 9, v4.5.0)"
+        fi
       fi
     fi
     e107=""
@@ -1186,19 +1226,27 @@ EOF
       # v3.99.1: section-scoped read (whole-file grep would false-green on an
       # unrelated 07 section mentioning 截图). awk slices the 运行时走查 section;
       # herestring greps avoid the pipefail/SIGPIPE false-red (CHG-127 lesson).
+      local _kv_self="" _kv_miss="" _kv_vpack="" _kv_gap="" _kv_verd=""
       jsec=$(awk '/^## .*运行时走查/{f=1;next} f && /^## /{exit} f{print}' "$res07" 2>/dev/null)
-      grep -qE '截图|浏览器|视觉证据包' <<< "$jsec" \
+      _kv_self=$(kv_field "$jsec" "self_evidence")
+      _kv_miss=$(kv_field "$jsec" "tool_surface_missing")
+      _kv_vpack=$(kv_field "$jsec" "visual_pack")
+      [[ "$_kv_self" =~ ^(screenshot|browser|visual_pack)$ ]] \
+        || { [[ "$_kv_miss" == "true" && -n "$_kv_vpack" && "$_kv_vpack" != "none" ]]; } \
+        || grep -qE '截图|浏览器|视觉证据包' <<< "$jsec" \
         || { grep -q '工具面缺失' <<< "$jsec" && grep -q '视觉证据包' <<< "$jsec"; } \
         || e107="07 「运行时走查」节内 lacks a self-produced evidence marker (截图/浏览器), and no 工具面缺失声明+视觉证据包补偿 pair — 走查证据须评审会话自产 (session-produced), 结论所见即所评 (standards §2.5 stage 8, v3.99.1)"
       # v4.5.0 (CHG-149, REQ-1387): compensation coverage reconciliation — when
       # 工具面缺失 compensation reports a non-empty uncovered gap, 07 must not
       # conclude bare PASS/通过 (must be 有条件通过/CONDITIONAL/退回).
-      if [[ -z "$e107" ]] && grep -q '工具面缺失' <<< "$jsec" \
-        && grep -qE '未覆盖差集.*(非空|待补|未覆盖)|差集非空' <<< "$jsec"; then
+      _kv_gap=$(kv_field "$jsec" "compensation_uncovered_gap")
+      if [[ -z "$e107" ]] && { [[ "$_kv_miss" == "true" ]] || grep -q '工具面缺失' <<< "$jsec"; } \
+        && { [[ "$_kv_gap" =~ ^(non_empty|non-empty|open|pending)$ ]] || grep -qE '未覆盖差集.*(非空|待补|未覆盖)|差集非空' <<< "$jsec"; }; then
         local csec=""
         csec=$(awk '/^## .*评审结论/{f=1;next} f && /^## /{exit} f{print}' "$res07" 2>/dev/null || true)
-        if grep -qE '通过|PASS' <<< "$csec" \
-          && ! grep -qE '有条件通过|CONDITIONAL|退回' <<< "$csec"; then
+        _kv_verd=$(kv_field "$csec" "review_verdict")
+        if [[ "$_kv_verd" == "pass" || "$_kv_verd" == "approved" ]] \
+          || { [[ "$_kv_verd" != "conditional" && "$_kv_verd" != "rejected" ]] && grep -qE '通过|PASS' <<< "$csec" && ! grep -qE '有条件通过|CONDITIONAL|退回' <<< "$csec"; }; then
           e107="07 「运行时走查」工具面缺失补偿存在未覆盖差集非空，但评审结论仍给 通过/PASS — 差集非空最高仅可给 有条件通过（待补测）或 退回 (standards §0.6/§2.5 stage 8, v4.5.0)"
         fi
       fi
@@ -2918,6 +2966,140 @@ review_consent_check() { # <id> — E137: a deep/approval model needs user conse
   die "GATE-E137: $id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
 }
 
+# v4.7.0 (CHG-152, ITEM-17, REQ-1421): zero-dep discovery, schema contract, and
+# validation for `.agent-review-models.json`.
+review_models_cmd() { # [--discover | --print-contract | --verify [path]]
+  local mode="discover" cfg_arg="" cli clis_json="" raw rt fam cfg_def exists="false"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --discover) mode="discover" ;;
+      --print-contract) mode="contract" ;;
+      --verify)
+        mode="verify"
+        if [[ -n "${2:-}" && "${2:-}" != -* ]]; then cfg_arg="$2"; shift; fi
+        ;;
+      -*) echo "agent-gate: review-models: unknown option '$1' (expected --discover|--print-contract|--verify [path])" >&2; exit 2 ;;
+      *) cfg_arg="$1" ;;
+    esac
+    shift
+  done
+
+  cfg_def=$(review_models_file)
+  case "$mode" in
+    discover)
+      for cli in claude codex opencode gemini aider; do
+        if command -v "$cli" >/dev/null 2>&1; then
+          clis_json="${clis_json:+${clis_json},}\"${cli}\""
+        fi
+      done
+      raw=$(review_runtime_raw)
+      rt=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: *\([^ ]*\).*/\1/p' | head -1 || true)
+      fam=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: .*(family: *\([^)]*\)).*/\1/p' | head -1 || true)
+      [[ -f "$cfg_def" ]] && exists="true"
+      cat <<EOF
+{"runtime":"${rt:-unknown}","family":"${fam:-unknown}","detected_clis":[${clis_json}],"config_file":"${cfg_def}","config_exists":${exists},"tiers":["fast","standard","deep"],"deep_requires_user_approval":true}
+EOF
+      ;;
+    contract)
+      cat <<'EOF'
+{
+  "schema_version": "1",
+  "target_file": ".agent-review-models.json",
+  "rules": {
+    "models_non_empty": true,
+    "tier_enum": ["fast", "standard", "deep"],
+    "deep_requires_user_approval": true
+  },
+  "example_entry": {
+    "id": "claude-sonnet",
+    "provider": "anthropic",
+    "cli": "claude",
+    "tier": "standard",
+    "requires_user_approval": false,
+    "roles": ["code", "architecture"]
+  },
+  "verify_command": "scripts/agent-gate review-models --verify .agent-review-models.json"
+}
+EOF
+      ;;
+    verify)
+      local target_cfg="${cfg_arg:-$cfg_def}"
+      [[ -s "$target_cfg" ]] || { echo "agent-gate: review-models --verify failed — missing or empty: $target_cfg" >&2; exit 2; }
+      if command -v python3 >/dev/null 2>&1; then
+        python3 - "$target_cfg" <<'PY'
+import json, sys
+p = sys.argv[1]
+try:
+    with open(p, encoding='utf-8') as f:
+        data = json.load(f)
+except Exception as e:
+    print(f"agent-gate: review-models --verify failed — invalid JSON ({e})", file=sys.stderr)
+    sys.exit(2)
+if not isinstance(data, dict) or not isinstance(data.get("models"), list) or len(data["models"]) == 0:
+    print("agent-gate: review-models --verify failed — top-level 'models' must be a non-empty array", file=sys.stderr)
+    sys.exit(2)
+for i, m in enumerate(data["models"]):
+    if not isinstance(m, dict) or not str(m.get("id", "")).strip():
+        print(f"agent-gate: review-models --verify failed — models[{i}] missing non-empty 'id'", file=sys.stderr)
+        sys.exit(2)
+    tier = m.get("tier")
+    if tier not in ("fast", "standard", "deep"):
+        print(f"agent-gate: review-models --verify failed — models[{i}] invalid tier '{tier}' (must be fast|standard|deep)", file=sys.stderr)
+        sys.exit(2)
+    if tier == "deep" and m.get("requires_user_approval") is not True:
+        print(f"agent-gate: review-models --verify failed — deep model '{m.get('id')}' must set requires_user_approval: true", file=sys.stderr)
+        sys.exit(2)
+PY
+      else
+        # Zero-dep POSIX awk structural + semantic validator (when python3 is absent)
+        awk '
+          BEGIN { raw = "" }
+          { raw = raw $0 " " }
+          END {
+            n = length(raw)
+            in_str = 0; esc = 0; br = 0; bk = 0; first = ""; last = ""
+            for (i = 1; i <= n; i++) {
+              c = substr(raw, i, 1)
+              if (c !~ /[ \t\r\n]/ && first == "") first = c
+              if (c !~ /[ \t\r\n]/) last = c
+              if (in_str) {
+                if (esc) { esc = 0; continue }
+                if (c == "\\") { esc = 1; continue }
+                if (c == "\"") in_str = 0
+              } else {
+                if (c == "\"") in_str = 1
+                else if (c == "{") br++
+                else if (c == "}") { br--; if (br < 0) { print "unbalanced }" > "/dev/stderr"; exit 2 } }
+                else if (c == "[") bk++
+                else if (c == "]") { bk--; if (bk < 0) { print "unbalanced ]" > "/dev/stderr"; exit 2 } }
+              }
+            }
+            if (in_str != 0 || br != 0 || bk != 0 || first != "{" || last != "}") {
+              print "agent-gate: review-models --verify failed — malformed JSON" > "/dev/stderr"; exit 2
+            }
+            if (raw !~ /"models"[ \t]*:[ \t]*\[/ || raw !~ /"id"[ \t]*:[ \t]*"[^"]+"/) {
+              print "agent-gate: review-models --verify failed — missing non-empty models[].id" > "/dev/stderr"; exit 2
+            }
+            sub(/^.*"models"[ \t]*:[ \t]*\[/, "", raw)
+            if (raw ~ /^[ \t]*\]/) { print "agent-gate: review-models --verify failed — empty models array" > "/dev/stderr"; exit 2 }
+            cnt = split(raw, objs, /\}[ \t]*,[ \t]*\{/)
+            for (j = 1; j <= cnt; j++) {
+              o = objs[j]
+              if (o !~ /"tier"[ \t]*:[ \t]*"(fast|standard|deep)"/) {
+                print "agent-gate: review-models --verify failed — tier must be fast|standard|deep" > "/dev/stderr"; exit 2
+              }
+              if (o ~ /"tier"[ \t]*:[ \t]*"deep"/ && o !~ /"requires_user_approval"[ \t]*:[ \t]*true/) {
+                print "agent-gate: review-models --verify failed — deep tier requires requires_user_approval: true" > "/dev/stderr"; exit 2
+              }
+            }
+          }
+        ' "$target_cfg" || exit 2
+      fi
+      echo "agent-gate: review-models verified ($target_cfg)"
+      ;;
+  esac
+}
+
 # v3.94.0 (CHG-131, REQ-1315, DES-2215): dispatch-prompt assembler. A one-sentence
 # role prompt ("you are the review agent, read-only") is an unqualified handoff:
 # the subagent then re-derives project background on its own or, worse, judges
@@ -4516,8 +4698,15 @@ validate_mechanism_stop() { # <change-dir>
     echo "agent-gate: GATE-E157 legacy 00.5 shape (no 专业质询三件 section) — pass unblocked, new changes must fill it (v3.99.1)" >&2
   else
     scope05=$(awk '/^## .*专业质询三件/{f=1;next} f && /^## /{exit} f{print}' "$comm05" 2>/dev/null | sed -E 's/<!--[^>]*-->//g')
+    local _kv_inq _kv_ref _kv_inv _kv_gp _kv_card
+    _kv_inq=$(kv_field "$scope05" "inquiry_status")
+    _kv_ref=$(kv_field "$scope05" "reference_impl")
+    _kv_inv=$(kv_field "$scope05" "action_inventory")
+    _kv_gp=$(kv_field "$scope05" "gap_verdicts")
     if grep -qE '<[^>]*>' <<< "$scope05"; then
       reason157="00.5 「专业质询三件」节内仍含未填模板占位符（<...>）— 填实三件或写节内单行未命中豁免（占位符不充当锚点/豁免，E17 同型；v3.99.2）"
+    elif [[ "$_kv_inq" == "na" ]] || { [[ -n "$_kv_ref" && -n "$_kv_inv" && -n "$_kv_gp" ]]; }; then
+      :
     elif ! grep -qE '未命中|不适用' <<< "$scope05" \
         && ! { grep -q "参照物指认" <<< "$scope05" \
             && grep -q "动作全集初盘" <<< "$scope05" \
@@ -4529,8 +4718,10 @@ validate_mechanism_stop() { # <change-dir>
   # 防 T16 反篡改夹具被无关在途 yml 误触发；源层「被测核心」不外溢到 payload)。
   core_diff=$(git diff --name-only HEAD 2>/dev/null \
     | grep -E '(^|/)(resources/templates/agent-gate\.sh|scripts/agent-gate|scripts/agent-gate\.sh|tests/run-tests\.sh)$' || true)
+  _kv_card=$(kv_field "$(cat "$comm05" 2>/dev/null || true)" "suite_scope_decision")
   if [[ -n "$core_diff" ]] && ! grep -qE '判定卡.*未命中，不适用' "$comm05" 2>/dev/null; then
-    grep -q "判定卡" "$comm05" 2>/dev/null && grep -q "三选一" "$comm05" 2>/dev/null \
+    [[ "$_kv_card" =~ ^(FULL|AUTO|TARGETED|na|未命中)$ ]] \
+      || { grep -q "判定卡" "$comm05" 2>/dev/null && grep -q "三选一" "$comm05" 2>/dev/null; } \
       || reason157="${reason157:+$reason157; }diff touches 被测核心 (gate/test 治理件: $core_diff) but 00.5 records no 套件范围判定卡 (三选一裁定) — 套件范围裁定执法 (v3.98.0 修复批验证条款, v3.99.1)"
   fi
   [[ -z "$reason157" ]] \
@@ -4541,9 +4732,13 @@ validate_mechanism_stop() { # <change-dir>
     if ! grep -q "动作全集矩阵" "$spec" 2>/dev/null; then
       echo "agent-gate: GATE-E158 legacy 01-spec shape (no 动作全集矩阵 section) — pass unblocked, new changes must fill it (v3.99.1)" >&2
     else
+      local _kv_am=""
       msec=$(awk '/^## .*动作全集矩阵/{f=1;next} f && /^## /{exit} f{print}' "$spec" 2>/dev/null | sed -E 's/<!--[^>]*-->//g')
+      _kv_am=$(kv_field "$msec" "action_matrix")
       if grep -qE '<[^>]*>' <<< "$msec"; then
         reason158="01-spec 「动作全集矩阵」节内仍含未填模板占位符（<...>）— 填实对象×动作×入口维度或写未命中声明（v3.99.2）"
+      elif [[ -n "$_kv_am" && ! "$_kv_am" =~ ^(TBD|FILL)$ ]]; then
+        :
       elif ! grep -qE '入口维度|动作全集矩阵.*(未命中|不适用)|未命中.*动作全集矩阵' <<< "$msec"; then
         reason158="01-spec 「动作全集矩阵」 lacks 入口维度 columns or a 未命中 declaration — 沟通期锚点执法 (standards §2.5 stage 1, v3.99.1)"
       fi
@@ -4551,9 +4746,14 @@ validate_mechanism_stop() { # <change-dir>
     if [[ ! -s "$d/03.6-ui-spec.md" ]] || ! grep -q "参照界面对照表" "$d/03.6-ui-spec.md" 2>/dev/null; then
       echo "agent-gate: GATE-E159 legacy 03.6 shape (no 参照界面对照表 section) — pass unblocked, new changes must fill it (v3.99.1)" >&2
     else
+      local _kv_ru="" _kv_p12=""
       osec=$(awk '/^## .*参照界面对照表/{f=1;next} f && /^## /{exit} f{print}' "$d/03.6-ui-spec.md" 2>/dev/null | sed -E 's/<!--[^>]*-->//g')
+      _kv_ru=$(kv_field "$osec" "reference_ui_table")
+      _kv_p12=$(kv_field "$osec" "p12_ui_card")
       if grep -qE '<[^>]*>' <<< "$osec"; then
         reason159="03.6 「参照界面对照表」节内仍含未填模板占位符（<...>）— 填实逐控件对照或写无同类界面声明（v3.99.2）"
+      elif [[ -n "$_kv_ru" || -n "$_kv_p12" ]]; then
+        :
       elif ! grep -qE 'UI 范式卡|范式卡|无同类界面' <<< "$osec"; then
         reason159="03.6 参照界面对照表 references neither the P12 「UI 范式卡」 nor declares 无同类界面 — 参照机制执法 (standards §2.5 stage 3, v3.99.1)"
       fi
@@ -4845,10 +5045,28 @@ complete_valid_change_exists() {
 # ⑤例外无 owner+期限），唯一逃生口=同文件 hunk ±2 行含 owner/负责人 与 期限
 # （ISO 日期或期限/到期/deadline/expires）成对标注 → WARN 放行。全文件删除按 ①。
 validate_test_weakening() {
-  local f dfl del add num_d num_a hit cls esc st
+  local f dfl del add num_d num_a hit cls esc st _dw_cfg_pat _dw_custom_re=""
   local files
-  files=$(git diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true)
+  files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMRD 2>/dev/null || true)
   [[ -n "$files" ]] || return 0
+  _dw_cfg_pat=$(cfg_path test_weakening_patterns "" 2>/dev/null | sed 's/[[:space:]]//g' || true)
+  if [[ -n "$_dw_cfg_pat" ]]; then
+    # Review F2: drop empty items (an empty ERE branch matches everything) and
+    # skip items that are not valid ERE (grep rc 2 would otherwise fail open).
+    local _dw_item _dw_old_ifs="$IFS"
+    IFS=','
+    for _dw_item in $_dw_cfg_pat; do
+      [[ -n "$_dw_item" ]] || continue
+      local _dw_prc=0
+      printf '' | grep -qE -- "$_dw_item" 2>/dev/null || _dw_prc=$?
+      if [[ "$_dw_prc" -ge 2 ]]; then
+        echo "agent-gate: WARN — test_weakening_patterns item skipped (invalid ERE): $_dw_item" >&2
+        continue
+      fi
+      _dw_custom_re="${_dw_custom_re}${_dw_custom_re:+|}${_dw_item}"
+    done
+    IFS="$_dw_old_ifs"
+  fi
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     case "$f" in
@@ -4893,6 +5111,10 @@ validate_test_weakening() {
       if [[ "$st" == M* ]] && grep -qE '^\+.*(AGENT_GUARD_[A-Z_]+=(1|0)|ALLOW_[A-Z_]+=1)' <<< "$dfl"; then
         hit=1; cls="${cls:+$cls、}⑤例外无 owner+期限"
       fi
+      # ⑥项目自定义多语言弱化模式（ITEM-18，读 .agent-governance.yml test_weakening_patterns）
+      if [[ -n "$_dw_custom_re" ]] && grep -qE "^\+.*($_dw_custom_re)" <<< "$dfl" 2>/dev/null; then
+        hit=1; cls="${cls:+$cls、}⑥自定义弱化模式"
+      fi
     else
       hit=1; cls="①断言删除/弱化（全文件删除）"
     fi
@@ -4907,6 +5129,49 @@ validate_test_weakening() {
       die "GATE-E160: 测试弱化命中（$cls）$f — 修复弱化或附 owner+期限标注（枚举权威=review-intelligence §8 守护行）"
     fi
   done <<< "$files"
+}
+
+# v4.7.0 (CHG-152, ITEM-31, REQ-1424): GATE-E164 zero-dep staged Secret / PII scan.
+validate_secret_scan() {
+  local files f added sec_hits=""
+  files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+  [[ -n "$files" ]] || return 0
+  local _sec_re1='(^|[^A-Za-z0-9_])AK''IA[0-9A-Z]{16}'
+  local _sec_re2='(^|[^A-Za-z0-9_])gh''p_[A-Za-z0-9]{36}'
+  local _sec_re3='(^|[^A-Za-z0-9_-])sk''-((proj|live|test|ant)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{20,})'
+  local _sec_re4='-----BEGIN (RSA |EC |DSA |OPENSSH )?PRI''VATE KEY-----'
+  local _sec_re5='(^|[^A-Za-z0-9_])AI''za[0-9A-Za-z_-]{35}'
+  local _sec_re6='(^|[^A-Za-z0-9_])xox''[baprs]-[0-9A-Za-z-]{10,}'
+  local _sec_re="${_sec_re1}|${_sec_re2}|${_sec_re3}|${_sec_re4}|${_sec_re5}|${_sec_re6}"
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
+    added=$(git diff --cached -U0 -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' | grep -vF 'agent-guard: allow-secret' || true)
+    [[ -n "$added" ]] || continue
+    if grep -qE "$_sec_re" <<< "$added" 2>/dev/null; then
+      sec_hits="${sec_hits}${sec_hits:+, }$f"
+    fi
+  done <<< "$files"
+  [[ -z "$sec_hits" ]] || die "GATE-E164: staged diff contains unexempted secret/token/private-key pattern in: $sec_hits (standards §2.5 / v4.7.0)"
+}
+
+# v4.7.0 (CHG-152, ITEM-32, REQ-1425): non-blocking WARN for AI-laziness smells in staged source diffs.
+warn_ai_laziness() {
+  local files f added
+  files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+  [[ -n "$files" ]] || return 0
+  local _lz_catch='catch[[:space:]]*(\([^)]*\))?[[:space:]]*\{[[:space:]]*\}|except([[:space:]][^:]*)?:[[:space:]]*pass([[:space:]]|$)'
+  local _lz_todo='(^|[^A-Za-z0-9_])(TO''DO|FIX''ME|PLACE''HOLDER)([^A-Za-z0-9_]|$)'
+  local _lz_stub='return[[:space:]]+(true|null|None|undefined)[[:space:]]*;?[[:space:]]*(//|#)[[:space:]]*(stub|fake|dummy)'
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$f" ]] || continue
+    is_code_path "$f" || continue
+    added=$(git diff --cached -U0 -- "$f" 2>/dev/null | grep -E '^\+' | grep -vE '^\+\+\+' | grep -vF 'agent-guard: allow-lazy' || true)
+    [[ -n "$added" ]] || continue
+    if grep -qE "${_lz_catch}|${_lz_todo}|${_lz_stub}" <<< "$added" 2>/dev/null; then
+      echo "agent-gate: WARN [AI-LAZY] suspicious empty-catch / TO""DO / stub pattern in staged source '$f' — verify completeness before stop" >&2
+    fi
+  done <<< "$files"
+  return 0
 }
 
 validate_diff() {
@@ -5741,6 +6006,10 @@ case "$command" in
       echo "review-plan: USER CONSENT REQUIRED — choose a model from the candidates above, then run: AGENT_REVIEW_USER_APPROVED=1 scripts/agent-gate review-plan $rcid --approve <model> (AI must not choose for you)" >&2
     fi
     ;;
+  review-models)
+    shift
+    review_models_cmd "$@"
+    ;;
   dispatch)
     # v3.94.0 (CHG-131, REQ-1315): read-only prompt assembler (never on a gate
     # chain). Usage errors are usage errors — E155, not a silent empty prompt.
@@ -5846,7 +6115,7 @@ case "$command" in
         # argument keeps the historical meaning (explicit change id).
         if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
         else stage_close_check "${1:-$(active_change)}"; fi ;;
-      staged) validate_test_weakening staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; record_delivery staged ;;
+      staged) validate_secret_scan; validate_test_weakening staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; warn_ai_laziness; record_delivery staged ;;
       stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
       ci)
         base=""
@@ -5876,6 +6145,7 @@ Usage:
   scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)
   scripts/agent-gate tc-index <change-id> [--write]          # v3.90.5: three-source TC index cache (P1-2)
   scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>]  # v3.90.4: runtime-aware review plan; deep/high-cost needs USER consent
+  scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]

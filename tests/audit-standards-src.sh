@@ -1785,7 +1785,7 @@ report "A56 the generator delegates receipt trust to the single implementation (
 # v3.93.0 (CHG-130, REQ-1294): is_code_path's exclusion face is replicated in
 # three files with a pinned sync duty. A missing entry makes the SAME path code
 # in one gate and governance in another (fresh-clone-check.sh was absent twice).
-a59_required='agent-gate session-gate.sh install-hook-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh'
+a59_required='agent-gate session-gate.sh install-hook-adapter install-ci-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh'
 a59_missing=0; a59_seen=0; a59_mutants=0
 for a59_f in "$ROOT/resources/templates/agent-gate.sh" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh"; do
   [[ -f "$a59_f" ]] || continue
@@ -2239,7 +2239,7 @@ else
   echo "SKIP A67: scripts/agent-gate absent in a fresh source checkout (gitignored mirror; template pin enforces)"
   report "A67 E160 die site in source gate (CHG-145)" 1 1
 fi
-at_least_f "A67 E160 staged-chain mount (CHG-145)" 1 "$ROOT/resources/templates/agent-gate.sh" 'staged) validate_test_weakening staged;'
+at_least_f "A67 E160 staged-chain mount (CHG-145)" 1 "$ROOT/resources/templates/agent-gate.sh" 'validate_test_weakening staged;'
 a67_sev_hdr=$(grep_count_f "$A62_RI" '| 严重度 | 阻断交付 | 判定判据 | 处置动作 |')
 report "A67 §6 severity table carries the machine-decidable header (CHG-145)" 1 "$a67_sev_hdr"
 a67_sev_rows=$(awk '/^\| 严重度 \| 阻断交付/{f=1;next} f&&/^## /{exit} f&&/^\| (严重|中|低) /{n++} END{print n+0}' "$A62_RI")
@@ -2288,6 +2288,17 @@ at_least_f "A70 session-gate start supports --full and defaults to incremental (
 at_least_f "A70 audit-standards-src defaults to parallel block execution (CHG-151)" 1 "$ROOT/tests/audit-standards-src.sh" 'AGENT_GUARD_AUDIT_PARALLEL:-1'
 at_least_f "A70 bootstrap detect_default_branch supports linked git worktrees (CHG-151)" 1 "$ROOT/scripts/bootstrap.sh" 'rev-parse --git-dir'
 report "A70 github-artifact-pipeline drops hardcoded resources/methodologies prefix (CHG-151)" 0 "$(grep_count_f "$PIPE" 'resources/methodologies/')"
+
+# --- A71 (v4.7.0, CHG-152, REQ-1418~1425): P1 3A批 8项动态契约与安全门 ---
+report "A71 install-ci-adapter.sh exists and is executable (CHG-152)" 0 "$([[ -x "$ROOT/resources/templates/install-ci-adapter.sh" ]]; echo $?)"
+at_least_f "A71 install-ci-adapter emits CI and branch-protection contracts (CHG-152)" 1 "$ROOT/resources/templates/install-ci-adapter.sh" '--print-branch-protection-contract'
+at_least_f "A71 bootstrap exposes profile contract and verify flags (CHG-152)" 1 "$ROOT/scripts/bootstrap.sh" '--verify-profile'
+report "A71 four code-path checkers read dynamic code_extensions (CHG-152)" 4 "$(( $(grep -cF 'code_extensions' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'code_extensions' "$ROOT/resources/templates/session-gate.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'code_extensions' "$ROOT/resources/templates/audit-docs-consistency.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'code_extensions' "$ROOT/resources/templates/check-standards-compliance.sh" >/dev/null && echo 1 || echo 0) ))"
+at_least_f "A71 agent-gate exposes review-models command (CHG-152)" 1 "$GATE_TPL" 'review_models_cmd'
+at_least_f "A71 agent-gate supports extensible test_weakening_patterns (CHG-152)" 1 "$GATE_TPL" 'test_weakening_patterns'
+at_least_f "A71 agent-gate supports kv_field structured checks (CHG-152)" 1 "$GATE_TPL" 'kv_field()'
+at_least_f "A71 agent-gate enforces GATE-E164 secret scan (CHG-152)" 1 "$GATE_TPL" 'GATE-E164:'
+at_least_f "A71 agent-gate emits AI-LAZY soft warn (CHG-152)" 1 "$GATE_TPL" 'AI-LAZY'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else

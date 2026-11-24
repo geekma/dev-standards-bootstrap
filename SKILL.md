@@ -1,12 +1,12 @@
 ---
 name: dev-standards-bootstrap
-version: 4.6.0
-description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v4.6.0，低于此版本即需升级。
+version: 4.7.0
+description: 在任意代码仓库中一键初始化"全局软件开发与变更规范"体系（AGENTS.md 唯一入口 + 五道门禁 + 风险分级 + Agent 独立性矩阵 + PR/CI 兜底）。当用户说"给这个项目接入开发规范"、"初始化 dev standards"、"这个仓库还没有 AGENTS.md，帮我加上"、或新建项目/新仓库首次配置时使用。当前携带规范版本 v4.7.0，低于此版本即需升级。
 ---
 
 # dev-standards-bootstrap
 
-> **当前携带版本：v4.6.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
+> **当前携带版本：v4.7.0**（与 `resources/DEVELOPMENT_STANDARDS.md` 页脚、`resources/STANDARDS_CHANGELOG.md` 顶部条目同源）
 >
 > **自查是不是最新版**：在本 Skill 目录执行 `git fetch --quiet && git log -1 --date=short --format='%h %ad %s'` 看本地副本是否落后；或比对仓库 README 的 `Standards Version` 徽章。低于上方版本号就该升级——对已接入的目标仓库说"更新 dev-standards-bootstrap"（步骤 4.5）。也可直接 `bash scripts/bootstrap.sh --check <目标仓库>` 看三处版本比对。
 
@@ -76,7 +76,7 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 会话内执法
 
-执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start` 默认跑增量审计（`--incremental`，支持 `--full` / `AGENT_GUARD_SESSION_AUDIT_FULL=1` 全量）亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle` 跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。**能力驱动动态适配（CHG-149/150/151，不穷举、不写死）**：在安装、升级或首次运行本 Skill 时，`scripts/install-hook-adapter` 按「当前进程环境 > 仓内配置（含 `.agents/hooks.json`）> PATH 回退」识别运行时（防止全局 PATH CLI 抢占；支持 `--offline`/`AGENT_GUARD_OFFLINE=1` 离线与 `--reprobe` 重探，带仲裁探测缓存）；对任意当前运行的 Agent，先执行 `scripts/install-hook-adapter --print-contract` 获取标准三事件契约（`SessionStart` / `PreToolUse` / `Stop`），由当前 Agent 对照自身客户端官方 Hook 文档动态生成薄接线，再用 `scripts/install-hook-adapter --verify-wiring <path>` 完成语法（含零依赖 JSON 校验）与实际 `scripts/` 脚本在位自证；跨工作区场景另提供 `--print-global-contract` 输出用户级路由 Hook 契约（按目标仓 `.agent-governance.yml` `paths.scripts` 路由到对应 `agent-gate`）；确无仓库级 Hook 能力时才降级为 Git hooks + CI。**适配器契约（探测→文档→候选→真加载验证、失败码 ADAPTER-E11/E12/E13/E14）的唯一权威是 `resources/templates/install-hook-adapter` 头注释**。
+执法点不只锚 commit：产物长期停在工作区时 pre-commit/CI 永不点火（本 Skill 源仓实证：CHG-071/BUG-040~055）。`scripts/session-gate.sh` 由客户端**会话事件**调用——`start` 默认跑增量审计（`--incremental`，支持 `--full` / `AGENT_GUARD_SESSION_AUDIT_FULL=1` 全量）亮存量红灯（落 `.agent-state/session-gate-last.md`）；`idle` 跑 stop 等价检查（软执法，`AGENT_GUARD_SKIP_VERIFY=1` 跳全量回归；无活跃变更但有源码改动=红灯"修完不留痕"）。**能力驱动动态适配（CHG-149/150/151/152，不穷举、不写死）**：在安装、升级或首次运行本 Skill 时，`scripts/install-hook-adapter` 按「当前进程环境 > 仓内配置（含 `.agents/hooks.json`）> PATH 回退」识别运行时（防止全局 PATH CLI 抢占；支持 `--offline`/`AGENT_GUARD_OFFLINE=1` 离线与 `--reprobe` 重探，带仲裁探测缓存）；对任意当前运行的 Agent，先执行 `scripts/install-hook-adapter --print-contract` 获取标准三事件契约（`SessionStart` / `PreToolUse` / `Stop`），由当前 Agent 对照自身客户端官方 Hook 文档动态生成薄接线，再用 `scripts/install-hook-adapter --verify-wiring <path>` 完成语法（含零依赖 JSON 校验）与实际 `scripts/` 脚本在位自证；跨工作区场景另提供 `--print-global-contract` 输出用户级路由 Hook 契约（按目标仓 `.agent-governance.yml` `paths.scripts` 路由到对应 `agent-gate`）；确无仓库级 Hook 能力时才降级为 Git hooks + CI。非 GitHub CI（GitLab/Gitea/Woodpecker/Jenkins 等）通过 `scripts/install-ci-adapter --detect / --print-contract / --print-branch-protection-contract / --verify-wiring` 动态生成并自证；技术栈扩展名、Monorepo `scopes:` 与 `.agent-review-models.json` 分别通过 `bootstrap --print-profile-contract / --verify-profile` 与 `scripts/agent-gate review-models --discover / --verify` 动态配置与零依赖校验。**适配器契约（探测→文档→候选→真加载验证、失败码 ADAPTER-E11/E12/E13/E14）的唯一权威是 `resources/templates/install-hook-adapter` 头注释**。
 
 ## 变更批次（同日合并）
 
@@ -100,6 +100,6 @@ derived_from_version: <派生时本 Skill 携带版本>
 
 ## 版本同步
 
-- **当前携带版本 v4.6.0**（见规范页脚，页脚是唯一权威源）。
+- **当前携带版本 v4.7.0**（见规范页脚，页脚是唯一权威源）。
 - **版本号三载体**：frontmatter `version:`、`description` 尾注、正文顶部横幅——升级规范时**页脚 + 三处一起改**，漏改即审计红；平台事实论证（frontmatter 无 `version` 字段等）以 `MAINTAINER.md` §6 为权威（源仓维护者文件，不随 Skill 下发，目标仓无此文件），本文件不复述。
 - **改本 Skill 本身的人**（改脚本 / 改规范 / 改模板 / 动断言）请读 **`MAINTAINER.md`**（源仓维护者文件，不随 Skill 下发，目标仓无此文件）：文件角色表、改哪里必须同时改哪里的联动表、两道自测试的用法与顺序、断言数生成器、审计的 PART A/B 分区、逐版本升级推送清单。**装规范的人不需要读它。**
