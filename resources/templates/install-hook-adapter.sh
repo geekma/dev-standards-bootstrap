@@ -38,7 +38,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: install-hook-adapter.sh [--detect | --client <name>] [--force] [--all]
+Usage: install-hook-adapter.sh [--detect | --client <name>] [--force] [--all] [--offline] [--reprobe]
 
 Detects the AI coding clients present in this environment/repo and writes the
 session-enforcement wiring for each:
@@ -52,7 +52,7 @@ session-enforcement wiring for each:
                                             (1) detect runtimes (PATH CLI + Desktop
                                             bundled CLI, --version each) ->
                                             (2) fetch official plugin docs live
-                                            (source URL recorded) ->
+                                            (source URL recorded; --offline skips) ->
                                             (3) generate shape candidates ->
                                             (4) per-runtime sandbox real-load probes
                                             (client "failed to load plugin" line +
@@ -77,6 +77,8 @@ Flags:
   --verify-wiring <path>   verify a dynamically generated hook config and record runtime.json
   --client <name>          force-install for one client (claude|opencode|cursor|gemini|codex)
   --all                    install for every detected client (default when no --client)
+  --offline                skip network doc fetches during opencode probing (or AGENT_GUARD_OFFLINE=1)
+  --reprobe                ignore cached opencode arbitration result and force fresh probes (or AGENT_GUARD_REPROBE=1)
   --force                  overwrite existing static-schema configs that differ (diff is shown)
 EOF
 }
@@ -122,13 +124,15 @@ print_global_contract() {
       "target=\"${1:-${TOOL_FILE_PATH:-}}\"",
       "[ -n \"$target\" ] || exit 0",
       "repo=$(git -C \"$(dirname \"$target\")\" rev-parse --show-toplevel 2>/dev/null) || exit 0",
-      "if [ -x \"$repo/scripts/agent-gate\" ]; then",
-      "  ( cd \"$repo\" && bash \"$repo/scripts/agent-gate\" --stage pre-write --file \"$target\" )",
+      "sdir=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+scripts:[[:space:]]*([^#]*).*$/\\1/p' \"$repo/.agent-governance.yml\" 2>/dev/null | head -1 | tr -d \"[:space:]\\\"'\")",
+      "sdir=\"${sdir:-scripts}\"",
+      "if [ -x \"$repo/$sdir/agent-gate\" ]; then",
+      "  ( cd \"$repo\" && bash \"$repo/$sdir/agent-gate\" --stage pre-write --file \"$target\" )",
       "fi"
     ],
     "blocking": true
   },
-  "notes": "Install in user-level client hooks (e.g. ~/.claude/settings.json or global client hook config); skips repositories without scripts/agent-gate."
+  "notes": "Install in user-level client hooks (e.g. ~/.claude/settings.json or global client hook config); skips repositories without <scripts>/agent-gate (resolves paths.scripts from .agent-governance.yml, default scripts)."
 }
 EOF
 }
@@ -465,21 +469,21 @@ oc_probe() { # <kind: cli|desktop> <bin> <workdir> -> echoes PASS|FAIL|INCONCLUS
             XDG_STATE_HOME="$xdg/state" XDG_CACHE_HOME="$xdg/cache" \
             OPENCODE_DISABLE_AUTOUPDATE=1 OPENCODE_DISABLE_MODELS_FETCH=1 \
             "$bin" serve --port "$port" --hostname 127.0.0.1
-      # 步进 0.2s × 5 倍次数 = 总听窗仍为 OC_PROBE_WINDOW 秒（粒度更细，总耐心不变）
-      for ((i = 0; i < OC_PROBE_WINDOW * 5; i++)); do
+      local poll_step="0.2" poll_iters=15
+      case "${OC_PROBE_WINDOW:-3}" in 0.*) poll_step="0.02" ;; esac
+      poll_iters=$(awk -v w="${OC_PROBE_WINDOW:-3}" -v s="$poll_step" 'BEGIN{n=int((w/s)+0.999); if(n<1)n=1; print n}')
+      for ((i = 0; i < poll_iters; i++)); do
         grep -q "server listening" "$workdir/probe-serve.out" 2>/dev/null && { listened=true; break; }
-        sleep 0.2
+        sleep "$poll_step" 2>/dev/null || sleep 0.2
       done
       if [[ "$listened" == true ]]; then
         # 免凭据触发 session.created（实证：POST /session 不调用模型）
         curl -s -m 5 -X POST "http://127.0.0.1:$port/session" -H 'content-type: application/json' \
           -d '{}' -o "$workdir/probe-session.json" 2>/dev/null
-        [[ -s "$workdir/probe-session.json" ]] || sleep 0.2
+        [[ -s "$workdir/probe-session.json" ]] || sleep "$poll_step" 2>/dev/null || sleep 0.2
         [[ -s "$workdir/probe-session.json" ]] || { curl -s -m 5 -X POST "http://127.0.0.1:$port/session" \
           -H 'content-type: application/json' -d '{}' -o "$workdir/probe-session.json" 2>/dev/null || true; }
-        # POST 后定值窗 3s→0.2s：功能证据的真正耐心由 3 段尝试梯（窗 1x/2x/3x，
-        # 尝试间隔 ≈1-2s）+ 终验加窗重试（窗上限已放大 ×2→×3）承载，非本定值
-        sleep 0.2
+        sleep "$poll_step" 2>/dev/null || sleep 0.2
         oc_kill_bg "$workdir/probe.pid"
       else
         oc_kill_bg "$workdir/probe.pid"
@@ -506,7 +510,10 @@ oc_probe() { # <kind: cli|desktop> <bin> <workdir> -> echoes PASS|FAIL|INCONCLUS
     sleep "$OC_PROBE_WINDOW"
     oc_kill_bg "$workdir/probe.pid"
   fi
-  sleep 0.2
+  case "${OC_PROBE_WINDOW:-3}" in
+    0.*) sleep 0.02 2>/dev/null || sleep 0.2 ;;
+    *) sleep 0.2 ;;
+  esac
   local logs lf failed=""
   logs="$(find "$xdg" -name '*.log' 2>/dev/null || true)"
   if [[ -z "$logs" ]]; then
@@ -577,7 +584,7 @@ oc_arbitrate() { # <candidates> <runtimes> <label> ; sets OC_WINNER/OC_RESULTS�
       verdict=""; func_ok=false
       local detail=""
       for attempt in 1 2 3; do
-        win="$OC_PROBE_WINDOW"; [[ "$attempt" != 1 ]] && win=$((win * attempt))
+        win="$OC_PROBE_WINDOW"; [[ "$attempt" != 1 ]] && win=$(awk -v w="$OC_PROBE_WINDOW" -v a="$attempt" 'BEGIN{printf "%.2f", w*a}')
         verdict=""; detail=""
         pv="$(OC_PROBE_WINDOW="$win" oc_probe "$kind" "$bin" "$sb")"
         verdict="${pv%%|*}"; detail="${pv#*|}"
@@ -628,12 +635,17 @@ adapter_opencode() {
   # 如实声明并完全依赖 runtime 探测裁决——绝不凭记忆/静态映射表断言形状。
   local contract_source="official docs unreachable at install time; arbitrated-by-runtime-probe-only"
   local u
-  for u in $OC_DOCS_URLS; do
-    if curl -fsSL -m 8 "$u" -o "$OC_TMP/docs.html" 2>/dev/null && [[ -s "$OC_TMP/docs.html" ]]; then
-      contract_source="$u (fetched live at install time; shape cross-checked by runtime probes)"
-      break
-    fi
-  done
+  if [[ "${OC_OFFLINE:-0}" == "1" ]]; then
+    contract_source="offline mode (--offline / AGENT_GUARD_OFFLINE=1); arbitrated-by-runtime-probe-only"
+    note "opencode: offline mode active — skipping remote docs fetch ($contract_source)"
+  else
+    for u in $OC_DOCS_URLS; do
+      if curl -fsSL -m 8 "$u" -o "$OC_TMP/docs.html" 2>/dev/null && [[ -s "$OC_TMP/docs.html" ]]; then
+        contract_source="$u (fetched live at install time; shape cross-checked by runtime probes)"
+        break
+      fi
+    done
+  fi
   # 候选集：AI 安装会话可经 DEV_STANDARDS_OPENCODE_CONTRACT（JSON）注入候选序与来源；
   # 缺省用内置候选序。无论来源，最终形状一律由真加载探测裁决——候选不是真理，探针才是。
   local candidates="dual-active server-only setup-v2"
@@ -839,25 +851,51 @@ export const DevStandardsGateV2 = async (ctx) => {
 }
 JS
 
-  # ④ 逐 runtime 真加载仲裁（REQ-1039 / DES-1827）
-  oc_arbitrate "$candidates" "$runtimes" "all-runtimes"
-  if [[ -z "$OC_WINNER" ]] && [[ "$(wc -l <<< "$runtimes" | tr -d ' ')" -gt 1 ]]; then
-    # DES-1827 互斥回退：主用 runtime（探测序首个）择形，被牺牲 runtime 显式告警（E13）
-    local primary; primary="$(head -1 <<< "$runtimes")"
-    note "opencode: no shape passed EVERY runtime; retrying against PRIMARY runtime only (${primary%%|*}) — DES-1827"
-    oc_arbitrate "$candidates" "$primary" "primary-only"
-    if [[ -n "$OC_WINNER" ]]; then
-      OC_E13="1"
-      note "ADAPTER-E13 (warn): shape '$OC_WINNER' verified for the PRIMARY runtime only — other detected runtimes may reject or not execute this adapter; see arbitration matrix and consider upgrading the other runtime"
+  # ④ 逐 runtime 真加载仲裁（REQ-1039 / DES-1827；v4.6.0 CHG-151：按 runtime+候选模板哈希缓存）
+  local oc_cache_file=".agent-state/opencode-arbitration-cache.tsv" oc_cache_key="" oc_cache_hit=0
+  local _rt_sig _tpl_sig
+  _rt_sig=$(printf '%s' "$runtimes" | cksum | awk '{print $1}')
+  _tpl_sig=$(cat "$OC_TMP/header.txt" "$OC_TMP/frag-v1.js" "$OC_TMP/frag-v2.js" 2>/dev/null | cksum | awk '{print $1}')
+  oc_cache_key="${_rt_sig}-${_tpl_sig}-$(printf '%s' "$candidates" | tr ' ' '+')"
+  if [[ "${OC_REPROBE:-0}" != "1" && -s "$oc_cache_file" ]]; then
+    local _cached_row _cw _ce13
+    _cached_row=$(awk -F'\t' -v k="$oc_cache_key" '$1==k {r=$0} END{print r}' "$oc_cache_file" 2>/dev/null || true)
+    if [[ -n "$_cached_row" ]]; then
+      _cw=$(printf '%s' "$_cached_row" | awk -F'\t' '{print $2}')
+      _ce13=$(printf '%s' "$_cached_row" | awk -F'\t' '{print $3}')
+      case "$_cw" in
+        dual-active|server-only|setup-v2)
+          oc_build_candidate "$_cw" >/dev/null
+          OC_WINNER="$_cw"
+          OC_E13="${_ce13:-0}"
+          OC_ANY_EXEC=true; OC_ALL_INCONCL=false
+          OC_RESULTS=" cached-arbitration(key=${oc_cache_key} winner=${OC_WINNER})"
+          oc_cache_hit=1
+          note "opencode: arbitration cache hit ($OC_WINNER; pass --reprobe to refresh)"
+          ;;
+      esac
     fi
   fi
-  if [[ -z "$OC_WINNER" ]]; then
-    note "opencode: arbitration matrix:$OC_RESULTS"
-    oc_cleanup
-    if [[ "$OC_ALL_INCONCL" == true ]]; then
-      die "ADAPTER-E11: opencode runtime(s) detected but the real-load probe produced no verdict (no client log / probe aborted / no known candidate executed) — contract cannot be established, refusing to guess a shape (DES-1828 fail-closed)"
-    else
-      die "ADAPTER-E12: every candidate shape was rejected or functionally dead on at least one detected runtime — refusing to write a silently-dead adapter (CHG-084 fail-closed)"
+  if [[ "$oc_cache_hit" != "1" ]]; then
+    oc_arbitrate "$candidates" "$runtimes" "all-runtimes"
+    if [[ -z "$OC_WINNER" ]] && [[ "$(wc -l <<< "$runtimes" | tr -d ' ')" -gt 1 ]]; then
+      # DES-1827 互斥回退：主用 runtime（探测序首个）择形，被牺牲 runtime 显式告警（E13）
+      local primary; primary="$(head -1 <<< "$runtimes")"
+      note "opencode: no shape passed EVERY runtime; retrying against PRIMARY runtime only (${primary%%|*}) — DES-1827"
+      oc_arbitrate "$candidates" "$primary" "primary-only"
+      if [[ -n "$OC_WINNER" ]]; then
+        OC_E13="1"
+        note "ADAPTER-E13 (warn): shape '$OC_WINNER' verified for the PRIMARY runtime only — other detected runtimes may reject or not execute this adapter; see arbitration matrix and consider upgrading the other runtime"
+      fi
+    fi
+    if [[ -z "$OC_WINNER" ]]; then
+      note "opencode: arbitration matrix:$OC_RESULTS"
+      oc_cleanup
+      if [[ "$OC_ALL_INCONCL" == true ]]; then
+        die "ADAPTER-E11: opencode runtime(s) detected but the real-load probe produced no verdict (no client log / probe aborted / no known candidate executed) — contract cannot be established, refusing to guess a shape (DES-1828 fail-closed)"
+      else
+        die "ADAPTER-E12: every candidate shape was rejected or functionally dead on at least one detected runtime — refusing to write a silently-dead adapter (CHG-084 fail-closed)"
+      fi
     fi
   fi
   note "opencode: arbitration winner '$OC_WINNER' —$OC_RESULTS"
@@ -920,12 +958,15 @@ MD
   local oc_session_tag="dsb-final-$$-$(date -u +%H%M%S 2>/dev/null || echo 0)"
   export AGENT_GUARD_SESSION_TAG="$oc_session_tag"
   local final_results="" fkind fver fbin fv fdetail pv advanced final_fail=""
+  local oc_final_wait="0.5" oc_retry_wait="1" oc_retry_win
+  case "${OC_PROBE_WINDOW:-3}" in 0.*) oc_final_wait="0.05"; oc_retry_wait="0.1" ;; esac
+  oc_retry_win=$(awk -v w="${OC_PROBE_WINDOW:-3}" 'BEGIN{printf "%.2f", w*3}')
   while IFS='|' read -r fkind fver fbin; do
     [[ -z "$fkind" ]] && continue
     fv=""; fdetail=""
     pv="$(oc_probe "$fkind" "$fbin" "$PWD")"
     fv="${pv%%|*}"; fdetail="${pv#*|}"
-    sleep 0.5
+    sleep "$oc_final_wait" 2>/dev/null || sleep 0.5
     if [[ "$tag_supported" == true ]]; then
       advanced="$(grep -F "probe-tag: $oc_session_tag" .agent-state/session-gate-last.md 2>/dev/null | head -1 || true)"
     else
@@ -936,9 +977,9 @@ MD
     else
       # 一次加窗重试（真实 start 可能慢于探测窗：audit --only-fail 耗时随仓大小浮动）；
       # 重试窗上限 ×2→×3（上限放宽，补偿步进收紧）
-      pv="$(OC_PROBE_WINDOW=$((OC_PROBE_WINDOW * 3)) oc_probe "$fkind" "$fbin" "$PWD")"
+      pv="$(OC_PROBE_WINDOW="$oc_retry_win" oc_probe "$fkind" "$fbin" "$PWD")"
       fv="${pv%%|*}"; fdetail="${pv#*|}"
-      sleep 1
+      sleep "$oc_retry_wait" 2>/dev/null || sleep 1
       if [[ "$tag_supported" == true ]]; then
         advanced="$(grep -F "probe-tag: $oc_session_tag" .agent-state/session-gate-last.md 2>/dev/null | head -1 || true)"
       else
@@ -966,6 +1007,12 @@ MD
   sed -i.bak "s|final-file probes: PENDING|final-file probes:$final_results|" "$OPENCODE_PLUGIN" 2>/dev/null \
     && rm -f "$OPENCODE_PLUGIN.bak" \
     || { oc_clean_repo_litter; oc_cleanup; die "ADAPTER-E14: contract header stamping failed (sed); adapter NOT installed (CHG-084 fail-closed)"; }
+  # v4.6.0 (CHG-151, REQ-1414): persist arbitration winner ONLY after final-file verification passes
+  if [[ "$oc_cache_hit" != "1" && -n "$oc_cache_key" && -n "$OC_WINNER" ]]; then
+    mkdir -p "$(dirname "$oc_cache_file")" 2>/dev/null || true
+    { [[ -f "$oc_cache_file" ]] && grep -vF "${oc_cache_key}"$'\t' "$oc_cache_file" | tail -n 15; printf '%s\t%s\t%s\t%s\n' "$oc_cache_key" "$OC_WINNER" "${OC_E13:-0}" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)"; } > "$oc_cache_file.tmp" 2>/dev/null \
+      && mv "$oc_cache_file.tmp" "$oc_cache_file" 2>/dev/null || rm -f "$oc_cache_file.tmp"
+  fi
   # 清扫终验探针在真实仓根留下的临时痕（.oc-xdg/probe-*）——成功与失败路径共用
   oc_clean_repo_litter
   OC_WROTE=true
@@ -1050,6 +1097,8 @@ adapter_codex() {
 mode_install=true
 client=""
 all=false
+OC_OFFLINE="${AGENT_GUARD_OFFLINE:-0}"
+OC_REPROBE="${AGENT_GUARD_REPROBE:-0}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --detect) mode_install=false ;;
@@ -1068,6 +1117,8 @@ while [[ $# -gt 0 ]]; do
       exit 0
       ;;
     --client) client="${2:-}"; [[ -n "$client" ]] || die "ADAPTER-E07: --client requires a name"; shift ;;
+    --offline) OC_OFFLINE=1 ;;
+    --reprobe) OC_REPROBE=1 ;;
     --force) export FORCE=true ;;
     --all) all=true ;;
     -h|--help) usage; exit 0 ;;

@@ -2280,9 +2280,17 @@ for a69_f in "$GATE_TPL" "$ROOT/resources/templates/session-gate.sh" "$ROOT/reso
   grep -qF '\.agents/' "$a69_f" 2>/dev/null && a69_ag_cnt=$(( a69_ag_cnt + 1 ))
 done
 report "A69 all three is_code_path replicas exempt .agents/ (CHG-150)" 3 "$a69_ag_cnt"
+
+# --- A70 (v4.6.0, CHG-151, REQ-1408~1417): P2 提速包与 FU-15001 收口 ---
+at_least_f "A70 install-hook-adapter supports --offline and --reprobe cache (CHG-151)" 1 "$ROOT/resources/templates/install-hook-adapter.sh" 'opencode-arbitration-cache.tsv'
+at_least_f "A70 audit-docs-consistency supports --incremental mode (CHG-151)" 1 "$ROOT/resources/templates/audit-docs-consistency.sh" '--incremental'
+at_least_f "A70 session-gate start supports --full and defaults to incremental (CHG-151)" 1 "$ROOT/resources/templates/session-gate.sh" 'sg_audit_full'
+at_least_f "A70 audit-standards-src defaults to parallel block execution (CHG-151)" 1 "$ROOT/tests/audit-standards-src.sh" 'AGENT_GUARD_AUDIT_PARALLEL:-1'
+at_least_f "A70 bootstrap detect_default_branch supports linked git worktrees (CHG-151)" 1 "$ROOT/scripts/bootstrap.sh" 'rev-parse --git-dir'
+report "A70 github-artifact-pipeline drops hardcoded resources/methodologies prefix (CHG-151)" 0 "$(grep_count_f "$PIPE" 'resources/methodologies/')"
 }
 
-if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else
+if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else
   for _s in "${AUDIT_BLOCKS[@]}"; do "audit_block_$_s"; done
 fi
 

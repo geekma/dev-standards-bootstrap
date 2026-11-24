@@ -457,7 +457,7 @@ detect_default_branch() { # <target> -> branch name (defaults to main)
     printf '%s' "$AGENT_GUARD_DEFAULT_BRANCH"
     return 0
   fi
-  if [[ -d "$t/.git" ]] && command -v git >/dev/null 2>&1; then
+  if command -v git >/dev/null 2>&1 && git -C "$t" rev-parse --git-dir >/dev/null 2>&1; then
     b=$(git -C "$t" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
     b="${b#origin/}"
     if [[ -z "$b" ]]; then

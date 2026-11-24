@@ -86,8 +86,12 @@ set -uo pipefail
 mode="${1:-}"
   case "$mode" in
   start|idle|status|check|count) ;;
-  *) echo "usage: scripts/session-gate.sh start|idle|status|check|count turn|count tool <name|-> [cmd-head]" >&2; exit 2 ;;
+  *) echo "usage: scripts/session-gate.sh start [--full]|idle|status|check|count turn|count tool <name|-> [cmd-head]" >&2; exit 2 ;;
 esac
+sg_audit_full="${AGENT_GUARD_SESSION_AUDIT_FULL:-0}"
+if [[ "$mode" == "start" && "${2:-}" == "--full" ]]; then
+  sg_audit_full=1
+fi
 
 ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)
 cd "$ROOT" 2>/dev/null || true
@@ -815,7 +819,12 @@ if [[ "$mode" == "start" ]]; then
     exit 0
   fi
   # 存量红灯亮给本会话：--only-fail 只打 FAIL/skip 行（v3.23.0），输出天然紧凑
-  out=$(bash "$AUDIT" --only-fail 2>&1 | tail -40)
+  # v4.6.0 (CHG-151, REQ-1411): default incremental audit (active + recent 3) on session start; pass --full for full history
+  if [[ "${sg_audit_full:-0}" == "1" ]]; then
+    out=$(bash "$AUDIT" --only-fail 2>&1 | tail -40)
+  else
+    out=$(bash "$AUDIT" --only-fail --incremental 2>&1 | tail -40)
+  fi
   summary=$(printf '%s' "$out" | grep -E 'passed, [0-9]+ failed' | tail -1)
   reds=$(printf '%s' "$out" | grep -c '^FAIL' || true)
   if [[ "${reds:-0}" -gt 0 ]]; then

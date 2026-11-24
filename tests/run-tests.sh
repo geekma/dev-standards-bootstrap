@@ -382,57 +382,40 @@ new_repo() {
   local _nr_t0
   _nr_t0=$(date +%s)
   NEW_REPO_SETUP_S=0
+  if [[ -z "${_NR_TMPL:-}" || ! -d "$_NR_TMPL" ]]; then
+    _NR_TMPL=$(mktemp -d "${TMPDIR:-/tmp}/agent-gate-tmpl.XXXXXX") \
+      || { echo "FATAL: new_repo could not create template dir — aborting the suite (never touch the source repo)" >&2; exit 1; }
+    (
+      cd "$_NR_TMPL" || exit 1
+      unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_SCRIPTS_DIR AGENT_GUARD_TESTS_DIR AGENT_GUARD_GITHOOKS_DIR \
+            AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_BUGS_ROOT AGENT_GUARD_TEMPLATES_DIR AGENT_GUARD_STD_FILE
+      git init -q
+      git config user.email test@example.invalid
+      git config user.name test
+      mkdir -p scripts docs/changes src .agent-state
+      seed_project_masters
+      cp "$GATE_SRC" scripts/agent-gate
+      chmod +x scripts/agent-gate
+      cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/
+      echo init > README.md
+      git add README.md scripts
+      git commit -qm init
+    ) || { rm -rf "$_NR_TMPL" 2>/dev/null || true; _NR_TMPL=""; echo "FATAL: new_repo template init failed" >&2; exit 1; }
+  fi
   REPO=$(mktemp -d "${TMPDIR:-/tmp}/agent-gate-test.XXXXXX") \
     || { echo "FATAL: new_repo could not create a temp dir — aborting the suite (never touch the source repo)" >&2; exit 1; }
   [[ -d "$REPO" ]] \
     || { echo "FATAL: new_repo temp dir '$REPO' is not a directory — aborting" >&2; exit 1; }
+  cp -a "$_NR_TMPL/." "$REPO/" \
+    || { echo "FATAL: new_repo snapshot clone failed — aborting" >&2; exit 1; }
   cd "$REPO" \
     || { echo "FATAL: new_repo could not cd into '$REPO' (refusing to write in $PWD) — aborting" >&2; exit 1; }
-  # v3.92.3 fix: fixtures are hermetic. Inheriting the host's root overrides made
-  # the sandbox gate look in doc/changes while the fixture creates docs/changes
-  # (E150-E153 then silently skipped as "no change dir"). Clear every root env;
-  # sections that need an override set it explicitly after new_repo.
   unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_SCRIPTS_DIR AGENT_GUARD_TESTS_DIR AGENT_GUARD_GITHOOKS_DIR \
         AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_BUGS_ROOT AGENT_GUARD_TEMPLATES_DIR AGENT_GUARD_STD_FILE
-  git init -q
-  git config user.email test@example.invalid
-  git config user.name test
-  # v3.62.2 (CHG-082, DES-1818): E86/E58 now enforce the first-of-day batch
-  # rule in BOTH directions; legacy fixtures below predate the batch default
-  # and use independent L0/L1 dirs on purpose (placement is not their subject).
-  # The escape is exported HERE once — recorded justification = this comment +
-  # BATCH-20260928 CHG-082 — and placement-themed sections (T47, T18d E58
-  # trio) explicitly unset it to keep the enforcement visible.
   export AGENT_GUARD_ALLOW_INDEPENDENT=1
-  # v3.63.0 (CHG-083, REQ-1033): same one-shot escape pattern for GATE-E89 —
-  # legacy sections begin after fixture deliveries (directory-resolution
-  # subjects, not shift subjects); the shift-themed T49 overrides with =0.
   export AGENT_GUARD_ALLOW_NO_SHIFT=1
-  # v3.90.4: legacy fixtures predate the R3 self-bootstrap hard gate (E131).
-  # Default the adaptation face OFF here; T82/T83 (the sections that actually
-  # test plan/E131) explicitly turn it back ON.
   export AGENT_GUARD_ADAPT=0
-  mkdir -p scripts docs/changes src
-  seed_project_masters
-  cp "$GATE_SRC" scripts/agent-gate
-  chmod +x scripts/agent-gate
-  # CHG-110 (REQ-1161): the fingerprint lib ships alongside the gate in real
-  # installs (bootstrap --guard) — the sandbox mirrors that layout so T66's
-  # receipt cache engages (target-repo-realistic, not a test-only favor).
-  cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/
-  # v3.63.0 (CHG-083, REQ-1033): GATE-E89 needs session-started.json to judge
-  # "delivery happened during THIS session's lifetime". Each new_repo models a
-  # FRESH session: started_at is written 1H IN THE PAST so any fixture delivery
-  # (written "now" by staged/stop cases) is newer and WOULD arm E89 — the gate
-  # stays visible here. Directory/placement-themed sections never do
-  # begin-after-delivery in this fixture, so they stay unaffected; if a future
-  # lifecycle test needs E89 off, rewrite session-started.json with a future
-  # timestamp or export AGENT_GUARD_ALLOW_NO_SHIFT=1 (T49 covers both sides).
-  mkdir -p .agent-state
   printf '{"started_at":"%s"}\n' "$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" > .agent-state/session-started.json
-  echo init > README.md
-  git add README.md scripts
-  git commit -qm init
   NEW_REPO_SETUP_S=$(( $(date +%s) - _nr_t0 ))
 }
 
@@ -1991,6 +1974,15 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T14 TC-10031 master-branch rewrites workflows without main residue" 0 $?
   out=$(bash "$BOOT_SRC" --guard --pipeline "$BT6" 2>&1 || true)
   check_output "T14 TC-10031 master-branch rerun reports up to date" "up to date" "$out"
+  # TC-10040 (v4.6.0 CHG-151, REQ-1415): linked git worktree (.git is a file)
+  BT7=$(mktemp -d)
+  git -C "$BT6" commit --allow-empty -qm "seed master"
+  git -C "$BT6" worktree add -q -b wt-branch "$BT7" HEAD
+  bash "$BOOT_SRC" --guard --pipeline "$BT7" >/dev/null 2>&1
+  grep -q 'branches: \[master\]' "$BT7/.github/workflows/agent-governance.yml" \
+    && ! grep -q 'branches: \[main\]' "$BT7/.github/workflows/agent-governance.yml"
+  report "T14 TC-10040 linked worktree detects master branch (.git file)" 0 $?
+  git -C "$BT6" worktree remove --force "$BT7" 2>/dev/null || rm -rf "$BT7"
   rm -rf "$BT6"
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
@@ -3166,6 +3158,44 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     check_output "T26 TC-10017 --verify-wiring accepts valid .agents/hooks.json" "dynamic wiring verified" "$out"
     out=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --print-global-contract 2>&1)
     check_output "T26 TC-10032 --print-global-contract emits user-global-cross-workspace" '"user-global-cross-workspace"' "$out"
+    check_output "T26 TC-10042 --print-global-contract resolves paths.scripts" 'paths:' "$out"
+    _t26_gc_repo=$(mktemp -d)
+    (
+      cd "$_t26_gc_repo" && git init -q && mkdir -p tools src
+      printf 'paths:\n  scripts: tools\n' > .agent-governance.yml
+      printf '#!/usr/bin/env bash\necho "ROUTED_TOOLS:$*"\n' > tools/agent-gate
+      chmod +x tools/agent-gate
+      touch src/app.sh
+    )
+    _t26_gc_sh=$(mktemp)
+    printf '%s\n' "$out" | awk '
+      /"router_script": \[/ { in_rs=1; next }
+      in_rs && /^[[:space:]]*\]/ { exit }
+      in_rs {
+        s=$0
+        sub(/^[[:space:]]*"/, "", s)
+        sub(/",?[[:space:]]*$/, "", s)
+        gsub(/\\\\/, "\001", s)
+        gsub(/\\"/, "\"", s)
+        gsub(/\001/, "\\", s)
+        print s
+      }
+    ' > "$_t26_gc_sh"
+    _t26_gc_out=$(bash "$_t26_gc_sh" "$_t26_gc_repo/src/app.sh" 2>&1)
+    check_output "T26 TC-10042 global router script executes custom tools/agent-gate" "ROUTED_TOOLS:--stage pre-write --file $_t26_gc_repo/src/app.sh" "$_t26_gc_out"
+    rm -rf "$_t26_gc_repo" "$_t26_gc_sh"
+    # TC-10036 (v4.6.0 CHG-151, REQ-1411): session-gate start defaults to --incremental audit, --full restores full
+    t26_inc=$(mktemp -d)
+    mkdir -p "$t26_inc/scripts" "$t26_inc/tests" "$t26_inc/docs/changes/CHG-1" "$t26_inc/docs/changes/CHG-2" "$t26_inc/docs/changes/CHG-3" "$t26_inc/docs/changes/CHG-4"
+    cp "$ROOT/resources/templates/session-gate.sh" "$t26_inc/scripts/session-gate.sh"
+    cp "$ROOT/resources/templates/audit-docs-consistency.sh" "$t26_inc/tests/audit-docs-consistency.sh"
+    cp "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$t26_inc/docs/DEVELOPMENT_STANDARDS.md"
+    cp "$ROOT/resources/AGENTS.md" "$t26_inc/AGENTS.md"
+    _t26_inc_out=$(cd "$t26_inc" && bash scripts/session-gate.sh start 2>&1)
+    check_output "T26 TC-10036 session-gate start defaults to --incremental audit" "incremental: audited" "$(cat "$t26_inc/.agent-state/session-gate-last.md" 2>/dev/null || true)"
+    _t26_full_out=$(cd "$t26_inc" && bash scripts/session-gate.sh start --full 2>&1)
+    report "T26 TC-10036 session-gate start --full runs without incremental narrowing" 0 "$(grep -c 'incremental: audited' "$t26_inc/.agent-state/session-gate-last.md" 2>/dev/null || true)"
+    rm -rf "$t26_inc"
     t26_bin=$(mktemp -d); t26_repo=$(mktemp -d)
     for _cmd in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env; do
       _cmd_path=$(command -v "$_cmd" 2>/dev/null || true)
@@ -3190,6 +3220,10 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     report "T26 TC-10016 --print-contract (skip: template absent)" 0 0
     report "T26 TC-10017 --verify-wiring (skip: template absent)" 0 0
     report "T26 TC-10032 --print-global-contract (skip: template absent)" 0 0
+    report "T26 TC-10042 --print-global-contract paths.scripts (skip: template absent)" 0 0
+    report "T26 TC-10042 global router script custom tools/agent-gate (skip: template absent)" 0 0
+    report "T26 TC-10036 session-gate start --incremental (skip: template absent)" 0 0
+    report "T26 TC-10036 session-gate start --full (skip: template absent)" 0 0
     report "T26 TC-10026 zero-dep verify-wiring ok (skip: template absent)" 0 0
     report "T26 TC-10026 malformed JSON (skip: template absent)" 0 0
     report "T26 TC-10026 missing script (skip: template absent)" 0 0
@@ -4717,7 +4751,7 @@ if [[ "${SG_STUB_DESKTOP_REJECT:-0}" == "1" && "$1" != "serve" && "$1" != "--ver
 fi
 # 存活窗只需盖过探测窗（ arb 窗上限 3s + 终验重试 2s）：日志/功能标记均为
 # spawn 同步落盘，先于本 sleep；探针按进程组回收，早退只让 kill 变 no-op。
-sleep 2
+sleep "${SG_STUB_SLEEP:-0.2}"
 STUB
 chmod +x stub-runtime.sh
 STUB_SH="$PWD/stub-runtime.sh"
@@ -4725,7 +4759,10 @@ cp "$ROOT/resources/templates/install-hook-adapter.sh" scripts/install-hook-adap
 cp "$ROOT/resources/templates/agent-gate.sh" scripts/agent-gate
 cp "$ROOT/resources/templates/session-gate.sh" scripts/session-gate.sh
 chmod +x scripts/install-hook-adapter scripts/agent-gate
-export AGENT_GUARD_PROBE_WINDOW=1
+export AGENT_GUARD_PROBE_WINDOW=0.05
+# owner=geek007 deadline=2099-12-31 (T49 offline/reprobe test fixture, CHG-151)
+export AGENT_GUARD_OFFLINE=1
+export SG_STUB_SLEEP=0.2
 export DEV_STANDARDS_OPENCODE_BIN="$STUB_SH"
 export DEV_STANDARDS_OPENCODE_DESKTOP_BIN="$STUB_SH"
 export SG_STUB_VERSION="1.19.0-stub"
@@ -4737,9 +4774,17 @@ report "T49-01 no-runtime exits 2 (explicit no-op)" 2 "$rc"
 report "T49-01 skip names the reason (not silent)" 1 "$(printf '%s' "$out" | grep -c 'no opencode runtime detected')"
 report "T49-01 nothing written" 0 "$(test -f .opencode/plugins/dev-standards-gate.js && echo 1 || echo 0)"
 
-# T49-02/03 (TC-1104/1105): 桩双 runtime 全过 → dual-active 胜出 + 契约头 + 功能证据落盘
-SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode >/dev/null 2>&1; rc=$?
+# T49-02/03 (TC-1104/1105 + TC-10033/10039): 桩双 runtime 全过 → dual-active 胜出 + 离线契约 + 仲裁缓存
+out=$(SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
 report "T49-02 stub-all-pass installs (rc0)" 0 "$rc"
+report "T49 TC-10033 offline mode skips remote docs fetch" 1 "$(printf '%s' "$out" | grep -c 'offline mode active')"
+report "T49 TC-10039 arbitration cache populated on green install" 0 "$(test -s .agent-state/opencode-arbitration-cache.tsv; echo $?)"
+out=$(SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
+report "T49 TC-10039 second run hits arbitration cache (rc0)" "0:1" "${rc}:$(printf '%s' "$out" | grep -c 'arbitration cache hit')"
+out=$(SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode --reprobe 2>&1); rc=$?
+report "T49 TC-10039 --reprobe bypasses arbitration cache (rc0)" "0:0" "${rc}:$(printf '%s' "$out" | grep -c 'arbitration cache hit')"
+# owner=geek007 deadline=2099-12-31 (T49 offline/reprobe test fixture, CHG-151)
+export AGENT_GUARD_REPROBE=1
 report "T49-02 contract-runtime lists both runtimes" 1 "$(grep -c 'contract-runtime: cli=1.19.0-stub desktop=1.19.0-stub' .opencode/plugins/dev-standards-gate.js)"
 report "T49-02 contract-shape=dual-active" 1 "$(grep -c 'contract-shape: dual-active' .opencode/plugins/dev-standards-gate.js)"
 report "T49-02 contract-source field present" 1 "$(grep -c 'contract-source:' .opencode/plugins/dev-standards-gate.js)"
@@ -4784,7 +4829,7 @@ report "T49-05b die names ADAPTER-E11" 1 "$(printf '%s' "$out" | grep -c 'ADAPTE
 report "T49-05b nothing written" 0 "$(test -f .opencode/plugins/dev-standards-gate.js && echo 1 || echo 0)"
 
 # T49-06 (TC-1107): 真实 runtime 探测——默认 SKIP 并显式报告；AGENT_GUARD_T49_REAL_PROBE=1 才跑
-unset AGENT_GUARD_PROBE_WINDOW DEV_STANDARDS_OPENCODE_BIN DEV_STANDARDS_OPENCODE_DESKTOP_BIN SG_STUB_VERSION
+unset AGENT_GUARD_PROBE_WINDOW AGENT_GUARD_OFFLINE AGENT_GUARD_REPROBE SG_STUB_SLEEP DEV_STANDARDS_OPENCODE_BIN DEV_STANDARDS_OPENCODE_DESKTOP_BIN SG_STUB_VERSION
 if [[ "${AGENT_GUARD_T49_REAL_PROBE:-0}" == "1" ]]; then
   out=$(bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
   report "T49-06 real-runtime install rc0" 0 "$rc"
@@ -6105,9 +6150,9 @@ section_T57() {
   report "T57 TC-1276 red archive carries the forced FAIL line" 1 "$(grep -cF 'FAIL T0 forced-red seam (AGENT_GUARD_SUITE_FORCE_RED)' "$t57_red")"
   report "T57 TC-1276 FORCE_RED filtered run leaves receipt untouched" 0 "$(cmp -s "$t57_dir/seeded" "$t57_iso" && echo 0 || echo 1)"
   # TC-1274: 并行 T56 计数互证 + -j 1 逐字节等价串行（wall-time 行除外）
-  t57_a=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>&1)
+  t57_a=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>"$t57_dir/t56.err")
   t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 2 2>&1)
-  t57_c=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 1 2>&1)
+  t57_c=$(bash "$ROOT/tests/run-tests.sh" -T T56 -j 1 2>/dev/null)
   report "T57 TC-1274 -j2 T56 pass count matches serial" "$(printf '%s\n' "$t57_a" | grep -c '^ok ')" "$(printf '%s\n' "$t57_b" | grep -c '^ok ')"
   # v3.91.2 (CHG-127 self-audit): `[done] T56 Ns` is a TIMING line (it varies by
   # ±2 s); comparing it byte-wise made this assertion flaky. Compare the verdict
@@ -6117,8 +6162,7 @@ section_T57() {
   # TC-1275 钉用 -F + 引号拼接断开字面（T51 自匹配三连教训），只命中 T48 label 行
   report "T57 TC-1275 T48 label carries the superseded-row semantics" 1 "$(grep -cF 'v3.70.0 row exists (superseded by current '"top)" "$ROOT/tests/run-tests.sh")"
   report "T57 TC-1275 T56 friction reads carry the -f guard" 2 "$(grep -cE '\[\[ -f \.agent-state/gate-friction\.tsv \]\] && wc -l < \.agent-state/gate-friction\.tsv' "$ROOT/tests/run-tests.sh")"
-  t57_b=$(bash "$ROOT/tests/run-tests.sh" -T T56 2>&1 1>/dev/null)
-  report "T57 TC-1275 T56 stderr carries no missing-file noise" 0 "$(printf '%s\n' "$t57_b" | grep -c 'No such file')"
+  report "T57 TC-1275 T56 stderr carries no missing-file noise" 0 "$(grep -c 'No such file' "$t57_dir/t56.err" 2>/dev/null || true)"
   # 收据/红归档夹具清理（v3.86.0：全部落隔离目录，真实台账从未参与）
   rm -rf "$t57_dir"
   rm -f "$t57_tmp/t57-receipt.real" "$t57_tmp/t57-receipt.seeded" "$t57_tmp/t57-red.real"

@@ -10,7 +10,7 @@
 #   4. 确定性触发：基于 git diff 路径规则与配置的 change_root，不含自然语言判断。
 #   5. v4.5.1（CHG-150）：淘汰四份过期内联骨架，改为单源复制 <docs>/templates/entry/；
 #      PUSH_BEFORE_SHA 经 env 隔离注入；支持可配置 paths.docs 与 change_root
-#      （方法论路由详见 resources/methodologies/state-trigger-audit.md）。
+#      （方法论路由详见 <docs>/methodologies/state-trigger-audit.md）。
 
 name: Artifact pipeline
 

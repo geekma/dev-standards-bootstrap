@@ -67,7 +67,7 @@
 #
 # 零依赖：bash 3.2+、grep、awk、sort、comm。macOS/Linux 均可。
 #
-# Usage: tests/audit-docs-consistency.sh [--only-fail] [repo_root]   # 默认当前仓库根
+# Usage: tests/audit-docs-consistency.sh [--only-fail] [--incremental] [--recent N] [--since <ref>] [repo_root]   # 默认当前仓库根
 #   --only-fail（v3.23.0）：只打印 FAIL 行、skip/空转声明行与最终汇总，ok 行抑制——
 #   存量历史缺口永久 FAIL 的仓库反复复跑时，不必每次全量重放所有 ok 行。
 #   **skip / VACUOUS SKIP 行豁免抑制**（v3.21.0"空转必须显式声明"硬约束不被本 flag 绕过）。
@@ -79,9 +79,16 @@ set -uo pipefail
 ROOT=""
 only_fail=0
 since_ref=""
+incremental=0
+recent_n=3
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --only-fail) only_fail=1 ;;
+    --incremental) incremental=1 ;;
+    --recent)
+      [[ -n "${2:-}" && "${2:-}" =~ ^[0-9]+$ && "${2:-}" -ge 1 ]] \
+        || { echo "audit: --recent requires a positive integer (usage: --recent N)" >&2; exit 2; }
+      recent_n="$2"; incremental=1; shift ;;
     # v3.90.1 (CHG-123, P0-4): incremental audit. It NEVER silently narrows a
     # real audit: when the changed set misses this audit's subject files the run
     # is a declared no-op; when it touches them the FULL audit still runs.
@@ -153,6 +160,47 @@ BFLOG="$DOCS/bugfix-log.md"
 CHANGE_DIR="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
 CHANGES="$ROOT/$CHANGE_DIR"
 BUGS_DIR="${AGENT_GUARD_BUGS_ROOT:-$(cfg_path bugs_root "$DOCS_DIR/bugs")}"
+
+# v4.6.0 (CHG-151, REQ-1411): --incremental narrows change-dir historical sweeps
+# to (active change + recent N change dirs) and ALWAYS announces the scope
+# explicitly (never silent narrowing); living docs (G4/G8/G9/G10/G16/A21) stay full.
+INC_ALLOWED_NL=""
+if [[ "$incremental" -eq 1 && -d "$CHANGES" ]]; then
+  inc_active=""
+  inc_af=$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
+  case "$inc_af" in
+    "") inc_af="" ;;
+    /*) ;;
+    *) inc_af="$ROOT/$inc_af" ;;
+  esac
+  [[ -n "$inc_af" && -s "$inc_af" ]] && inc_active=$(tr -d '[:space:]' < "$inc_af" 2>/dev/null || true)
+  inc_total=$(find "$CHANGES" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l | tr -d ' ')
+  inc_list=""
+  [[ -n "$inc_active" && -d "$CHANGES/$inc_active" ]] && inc_list="${inc_active}"$'\n'
+  while IFS= read -r _rd; do
+    [[ -n "$_rd" ]] || continue
+    _rd_b=$(basename "${_rd%/}")
+    case $'\n'"$inc_list" in
+      *$'\n'"$_rd_b"$'\n'*) ;;
+      *) inc_list="${inc_list}${_rd_b}"$'\n' ;;
+    esac
+  done < <(ls -1dt "$CHANGES"/*/ 2>/dev/null | head -n "$recent_n")
+  INC_ALLOWED_NL="$inc_list"
+  inc_cnt=$(printf '%s' "$INC_ALLOWED_NL" | grep -c . || true)
+  echo "incremental: audited ${inc_cnt}/${inc_total} change dir(s) (active + recent ${recent_n}); run without --incremental for full sweep"
+fi
+inc_dir_allowed() { # <dir>
+  [[ "$incremental" -eq 1 ]] || return 0
+  case "$1" in
+    "$CHANGES"/*)
+      local _b; _b=$(basename "$1")
+      case $'\n'"$INC_ALLOWED_NL" in
+        *$'\n'"$_b"$'\n'*) return 0 ;;
+        *) return 1 ;;
+      esac ;;
+    *) return 0 ;;
+  esac
+}
 
 pass=0
 fail=0
@@ -327,6 +375,7 @@ g36_dirs=""     # G3/G5/G6：仅活文档（不在 <change_root>/ 下的产物�
 for base in "$DOCS" "$CHANGES"; do
   while IFS= read -r d; do
     [[ -n "$d" ]] || continue
+    inc_dir_allowed "$d" || continue
     looks_like_audit_dir "$d" || continue
     audit_dirs="$audit_dirs$d"$'\n'
     # 变更根下的目录 = 冻结历史 → 不进 G3/G5/G6。
@@ -344,19 +393,102 @@ if [[ -z "$audit_dirs" ]]; then
   # 跳号的仓库**通过**了审计。此行故意写得啰嗦：它不是"通过"，是"未覆盖"。
   report "G2 VACUOUS SKIP — no artifact dir under $DOCS_DIR/ or $CHANGE_DIR/, so G2 did NOT run (do NOT read this as a pass)" ok ok
 else
-  # while-read 逐行迭代：兼容含空格的目录名（for in $var 会按空格拆词）
+  # v4.6.0 (CHG-151, REQ-1410): batch single-awk scan across all existing files
+  # in $audit_dirs to avoid ~900 per-file awk process spawns while preserving exact labels/order.
+  g2_tsv=$(mktemp)
+  g2_req=$(mktemp)
+  g2_files=()
   while IFS= read -r d; do
     [[ -n "$d" ]] || continue
     fname=$(basename "$d")
-    [[ -f "$d/01-spec.md" ]] && check_seq "$d" "REQ" "$d/01-spec.md" "G2 REQ numbering in $fname"
-    [[ -f "$d/03-modification-plan.md" ]] && check_seq "$d" "DES" "$d/03-modification-plan.md" "G2 DES numbering in $fname"
-    [[ -f "$d/04-test-scripts.md" ]] && check_seq "$d" "TC" "$d/04-test-scripts.md" "G2 TC numbering in $fname"
-    [[ -f "$d/04-test-scripts.md" ]] && check_seq "$d" "SC" "$d/04-test-scripts.md" "G2 SC numbering in $fname"
-    [[ -f "$d/09-changelog.md" ]] && check_seq "$d" "CHG" "$d/09-changelog.md" "G2 CHG numbering in $fname"
-    [[ -f "$d/06.5-deployment-config.md" ]] && check_seq "$d" "CFG" "$d/06.5-deployment-config.md" "G2 CFG numbering in $fname"
-    [[ -f "$d/06.5-deployment-config.md" ]] && check_seq "$d" "DB" "$d/06.5-deployment-config.md" "G2 DB numbering in $fname"
-    [[ -f "$d/06-delivery-summary.md" ]] && check_seq "$d" "FU" "$d/06-delivery-summary.md" "G2 FU numbering in $fname"
+    for _pair in \
+      "01-spec.md:REQ" \
+      "03-modification-plan.md:DES" \
+      "04-test-scripts.md:TC" \
+      "04-test-scripts.md:SC" \
+      "09-changelog.md:CHG" \
+      "06.5-deployment-config.md:CFG" \
+      "06.5-deployment-config.md:DB" \
+      "06-delivery-summary.md:FU"; do
+      _gf="${_pair%%:*}"; _gp="${_pair#*:}"
+      if [[ -f "$d/$_gf" ]]; then
+        printf '%s\t%s\t%s\t%s\n' "$d/$_gf" "$_gp" "$fname" "G2 $_gp numbering in $fname" >> "$g2_req"
+        g2_files+=("$d/$_gf")
+      fi
+    done
   done <<< "$audit_dirs"
+  if [[ ${#g2_files[@]} -gt 0 ]]; then
+    _wl_args=()
+    for _wlp in "$CHANGES/.gate-allowlist" "$DOCS/.gate-allowlist"; do
+      [[ -f "$_wlp" ]] && _wl_args+=("$_wlp")
+    done
+    awk -v reqf="$g2_req" '
+      function check_pfx(f, p,   s, n, key) {
+        if ($0 ~ ("^#{1,6}[ \t]*" p "-[0-9]+") || $0 ~ ("^\\|[ \t]*`?" p "-[0-9]+`?[ \t]*\\|") || $0 ~ ("^-[ \t]*`?" p "-[0-9]+")) {
+          if (match($0, p "-[0-9]+")) {
+            s = substr($0, RSTART + length(p) + 1, RLENGTH - length(p) - 1)
+            n = s + 0
+            key = f SUBSEP p
+            if (!(key SUBSEP n in seen)) {
+              seen[key SUBSEP n] = 1
+              cnt[key]++
+              if (!(key in mn) || n < mn[key]) mn[key] = n
+              if (!(key in mx) || n > mx[key]) mx[key] = n
+            }
+          }
+        }
+      }
+      FILENAME == reqf {
+        rcnt++
+        split($0, _rf, "\t")
+        r_file[rcnt] = _rf[1]; r_pfx[rcnt] = _rf[2]; r_dir[rcnt] = _rf[3]; r_lbl[rcnt] = _rf[4]
+        want[_rf[1]] = 1
+        next
+      }
+      !(FILENAME in want) {
+        if ($1 == "G2" && $2 != "" && $3 != "") wl[$2 SUBSEP $3] = 1
+        next
+      }
+      {
+        fn = FILENAME
+        b = fn; sub(/^.*\//, "", b)
+        if (b == "01-spec.md") check_pfx(fn, "REQ")
+        else if (b == "03-modification-plan.md") check_pfx(fn, "DES")
+        else if (b == "04-test-scripts.md") { check_pfx(fn, "TC"); check_pfx(fn, "SC") }
+        else if (b == "09-changelog.md") check_pfx(fn, "CHG")
+        else if (b == "06.5-deployment-config.md") { check_pfx(fn, "CFG"); check_pfx(fn, "DB") }
+        else if (b == "06-delivery-summary.md") check_pfx(fn, "FU")
+      }
+      END {
+        for (i = 1; i <= rcnt; i++) {
+          f = r_file[i]; p = r_pfx[i]; dn = r_dir[i]; lbl = r_lbl[i]
+          k = f SUBSEP p
+          if ((cnt[k] + 0) == 0) {
+            printf "EMPTY\t%s\t%s\t%s\t0\t0\t0\n", dn, p, lbl
+          } else {
+            miss = mx[k] - mn[k] + 1 - cnt[k]
+            alw = ((miss > 0 && mx[k] <= 9999 && ((dn SUBSEP p) in wl)) ? 1 : 0)
+            printf "VAL\t%s\t%s\t%s\t%d\t%d\t%d\t%d\n", dn, p, lbl, mn[k], mx[k], miss, alw
+          }
+        }
+      }
+    ' "$g2_req" ${_wl_args[@]+"${_wl_args[@]}"} "${g2_files[@]}" > "$g2_tsv" 2>/dev/null || true
+    while IFS=$'\t' read -r kind dn pfx lbl min max missing alw; do
+      if [[ "$kind" == "EMPTY" ]]; then
+        report "$lbl (no numbers, skip)" ok ok
+      elif [[ "$max" -le 9999 ]]; then
+        if [[ "$alw" == "1" ]]; then
+          echo "     G2 allowlisted legacy: $dn $pfx — ${min}..${max} has $missing gap(s)"
+          report "$lbl allowlisted legacy (counted, not hidden)" ok ok
+        else
+          report "$lbl continuous ${min}..${max} (no gaps)" 0 "$missing"
+        fi
+      else
+        report "$lbl continuity (max=${max} skip)" ok ok
+      fi
+    done < "$g2_tsv"
+  fi
+  rm -f "$g2_tsv" "$g2_req"
 fi
 
 # G2b 变更身份全局唯一（v3.86.0，CHG-113）：短号 CHG-NNN 允许在历史批次/独立目录
@@ -576,26 +708,56 @@ if [[ -f "$BFLOG" ]]; then
   #   · "每条 CHG 的 BUG 行都已登记 log" → **空转假绿**（一个 changelog 都没读到，unlogged 恒为 0）。
   # v3.21.0 修正。
   all_changelogs=$(find "$DOCS" -name '09-changelog.md' -type f 2>/dev/null || true)
-  orphans=0
-  for b in $(grep -oE '^### BUG-[0-9]+' "$BFLOG" | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq); do
-    hit=0
+  # v4.6.0 (CHG-151, REQ-1410): single-pass awk replaces O(bugs * changelogs) grep loop (~5,700 forks -> 1).
+  g4_res="0 0"
+  if [[ -n "$all_changelogs" ]]; then
+    g4_cl_list=()
     while IFS= read -r chg; do
-      [[ -n "$chg" ]] || continue
-      grep -qE "BUG-0*${b}([^0-9]|$)" "$chg" && hit=1
+      [[ -n "$chg" ]] && g4_cl_list+=("$chg")
     done <<< "$all_changelogs"
-    [[ "$hit" -eq 0 ]] && orphans=$(( orphans + 1 ))
-  done
+    if [[ ${#g4_cl_list[@]} -gt 0 ]]; then
+      g4_res=$(awk -v bf="$BFLOG" '
+        FILENAME == bf {
+          if ($0 ~ /^### BUG-[0-9]+/) {
+            s = $0; sub(/^### BUG-0*/, "", s); match(s, /^[0-9]+/)
+            if (RSTART > 0) { n = substr(s, 1, RLENGTH) + 0; logged[n] = 1 }
+          }
+          next
+        }
+        FILENAME != prev_f { prev_f = FILENAME; saw_bug_line = 0; delete file_unlogged }
+        {
+          s = $0
+          while (match(s, /BUG-[0-9]+/)) {
+            tok = substr(s, RSTART + 4, RLENGTH - 4) + 0
+            referenced[tok] = 1
+            s = substr(s, RSTART + RLENGTH)
+          }
+          if (!saw_bug_line && index($0, "对应缺陷") > 0) {
+            saw_bug_line = 1
+            s2 = $0
+            while (match(s2, /BUG-[0-9]+/)) {
+              tok2 = substr(s2, RSTART + 4, RLENGTH - 4) + 0
+              if (!(tok2 in logged) && !(tok2 in file_unlogged)) {
+                file_unlogged[tok2] = 1
+                unlogged++
+              }
+              s2 = substr(s2, RSTART + RLENGTH)
+            }
+          }
+        }
+        END {
+          orphans = 0
+          for (b in logged) if (!(b in referenced)) orphans++
+          printf "%d %d\n", orphans, unlogged + 0
+        }
+      ' "$BFLOG" "${g4_cl_list[@]}" 2>/dev/null || echo "0 0")
+    fi
+  else
+    orphans=$(grep -oE '^### BUG-[0-9]+' "$BFLOG" 2>/dev/null | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq | wc -l | tr -d ' ')
+    g4_res="$orphans 0"
+  fi
+  read -r orphans unlogged <<< "$g4_res"
   report "G4 every logged BUG referenced by some CHG" 0 "$orphans"
-  unlogged=0
-  while IFS= read -r chg; do
-    [[ -n "$chg" ]] || continue
-    # 取「对应缺陷」行整行，行内可能引用多个 BUG（同批修复）
-    bug_line=$(grep '对应缺陷' "$chg" | head -1)
-    [[ -z "$bug_line" ]] && continue
-    for b in $(printf '%s' "$bug_line" | grep -oE 'BUG-[0-9]+' | grep -oE '[0-9]+' | awk '{printf "%d\n", $1}' | sort -n | uniq); do
-      grep -qE "^### BUG-0*${b}([^0-9]|$)" "$BFLOG" || unlogged=$(( unlogged + 1 ))
-    done
-  done <<< "$all_changelogs"
   report "G4 every CHG BUG line registered in log" 0 "$unlogged"
 else
   report "G4 no $DOCS_DIR/bugfix-log.md (skip; Bug 修复须先按 §2.5 阶段 6 建立)" ok ok
@@ -656,36 +818,101 @@ vge() { awk -v a="$1" -v b="$2" 'BEGIN{split(a,x,".");split(b,y,".");for(i=1;i<=
 if [[ -d "$CHANGES" ]]; then
   partial=0; era=0; allow20=0
   wl20="$CHANGES/.gate-allowlist"
+  # v4.6.0 (CHG-151, REQ-1410): single-pass awk across all change dirs (~1,800 forks -> 1)
+  a20_dirs=()
   for cd_ in "$CHANGES"/*/; do
     [[ -d "$cd_" ]] || continue
-    total=0; have=0
-    for pf_ in "$cd_"*.md; do
-      [[ -f "$pf_" ]] || continue
-      total=$((total+1))
-      grep -q '^<!-- provenance$' "$pf_" 2>/dev/null && have=$((have+1))
-    done
-    [[ "$total" -eq 0 ]] && continue
-    std_v=$(tr -d '\n' < "$cd_/00-governance.json" 2>/dev/null | sed -nE 's/.*"standard_version"[[:space:]]*:[[:space:]]*"v?([0-9.]+)".*/\1/p' | head -1)
-    part_here=0; era_here=0
-    [[ "$have" -gt 0 && "$have" -lt "$total" ]] && part_here=1
-    [[ -n "$std_v" ]] && vge "$std_v" "3.26.0" && [[ "$have" -lt "$total" ]] && era_here=1
-    [[ "$part_here" -eq 1 || "$era_here" -eq 1 ]] || continue
-    # 历史豁免（v3.86.0）：冻结目录的盖章半途无法回填（§2.15 硬性规则 4）。登记形状：
-    #   A20 <目录名> <理由>
-    # 登记项仍点名打印并计数，不静默吞掉。
-    listed20=""
-    [[ -f "$wl20" ]] && listed20=$(awk -v id="$(basename "$cd_")" '$1=="A20" && $2==id' "$wl20" 2>/dev/null || true)
-    if [[ -n "$listed20" ]]; then
-      allow20=$((allow20+1)); echo "     A20 allowlisted legacy: $(basename "$cd_") — $have/$total stamped (理由已登记)"
-      continue
-    fi
-    if [[ "$part_here" -eq 1 ]]; then
-      partial=$((partial+1)); echo "     A20 partial stamping: $(basename "$cd_") — $have/$total stamped"
-    fi
-    if [[ "$era_here" -eq 1 ]]; then
-      era=$((era+1)); echo "     A20 v3.26+ change not fully stamped: $(basename "$cd_") (std $std_v) — $have/$total"
-    fi
+    inc_dir_allowed "${cd_%/}" || continue
+    a20_dirs+=("${cd_%/}")
   done
+  if [[ ${#a20_dirs[@]} -gt 0 ]]; then
+    a20_flist=$(mktemp)
+    a20_files=()
+    for cd_ in "${a20_dirs[@]}"; do
+      for pf_ in "$cd_"/*.md; do
+        [[ -f "$pf_" ]] || continue
+        printf '%s\tMD\n' "$pf_" >> "$a20_flist"
+        a20_files+=("$pf_")
+      done
+      [[ -f "$cd_/00-governance.json" ]] && a20_files+=("$cd_/00-governance.json")
+    done
+    [[ -f "$wl20" ]] && a20_files+=("$wl20")
+    if [[ ${#a20_files[@]} -gt 0 ]]; then
+      a20_out=$(awk -v fl="$a20_flist" -v wl="$wl20" '
+        function dir_of(p,   a, n) { n = split(p, a, "/"); return (n >= 2 ? a[n-1] : p) }
+        function vge326(v,   x) {
+          split(v, x, ".")
+          x[1]+=0; x[2]+=0; x[3]+=0
+          if (x[1] > 3) return 1
+          if (x[1] < 3) return 0
+          if (x[2] > 26) return 1
+          if (x[2] < 26) return 0
+          return (x[3] >= 0)
+        }
+        FILENAME == fl {
+          d = dir_of($1)
+          tot[d]++
+          dirs[d] = 1
+          next
+        }
+        FILENAME == wl {
+          if ($1 == "A20" && $2 != "") allow[$2] = 1
+          next
+        }
+        {
+          fn = FILENAME
+          b = fn; sub(/^.*\//, "", b)
+          d = dir_of(fn)
+          if (b == "00-governance.json") {
+            gov_raw[d] = gov_raw[d] $0
+            next
+          }
+          if ($0 ~ /^<!-- provenance$/ && !(fn in prov_done)) {
+            prov_done[fn] = 1
+            have[d]++
+          }
+        }
+        END {
+          p=0; e=0; a=0
+          n=0
+          for (d in dirs) list[++n] = d
+          for (i=1; i<=n; i++) for (j=i+1; j<=n; j++) if (list[i] > list[j]) { t=list[i]; list[i]=list[j]; list[j]=t }
+          for (i=1; i<=n; i++) {
+            d = list[i]
+            t = tot[d] + 0; h = have[d] + 0
+            if (t == 0) continue
+            sv = ""
+            if (d in gov_raw) {
+              if (match(gov_raw[d], /"standard_version"[ \t]*:[ \t]*"v?[0-9.]+"/)) {
+                s = substr(gov_raw[d], RSTART, RLENGTH)
+                sub(/^"standard_version"[ \t]*:[ \t]*"v?/, "", s)
+                sub(/"$/, "", s)
+                sv = s
+              }
+            }
+            ph = (h > 0 && h < t) ? 1 : 0
+            eh = (sv != "" && vge326(sv) && h < t) ? 1 : 0
+            if (!ph && !eh) continue
+            if (d in allow) {
+              a++
+              printf "MSG\t     A20 allowlisted legacy: %s — %d/%d stamped (理由已登记)\n", d, h, t
+              continue
+            }
+            if (ph) { p++; printf "MSG\t     A20 partial stamping: %s — %d/%d stamped\n", d, h, t }
+            if (eh) { e++; printf "MSG\t     A20 v3.26+ change not fully stamped: %s (std %s) — %d/%d\n", d, sv, h, t }
+          }
+          printf "COUNTS\t%d\t%d\t%d\n", p, e, a
+        }
+      ' "$a20_flist" "${a20_files[@]}" 2>/dev/null || printf 'COUNTS\t0\t0\t0\n')
+      while IFS= read -r _line; do
+        case "$_line" in
+          MSG$'\t'*) printf '%s\n' "${_line#MSG$'\t'}" ;;
+          COUNTS$'\t'*) IFS=$'\t' read -r _ partial era allow20 <<< "$_line" ;;
+        esac
+      done <<< "$a20_out"
+    fi
+    rm -f "$a20_flist"
+  fi
   report "A20 change-dir stamping complete once started (no half-stamped dirs)" 0 "$partial"
   report "A20 v3.26.0+ change dirs fully stamped" 0 "$era"
   report "A20 allowlisted legacy dirs (counted, not hidden)" "$allow20" "$allow20"
@@ -811,10 +1038,9 @@ fi
 # 需求/设计未承载；G12 07 缺「用户可用性验收」或「建议人类走查」= 五方证据不全。
 g11_bad=0; g12_bad=0; g_ui=0
 if [[ -d "$CHANGES" ]]; then
-  for cd_ in "$CHANGES"/*/; do
-    [[ -d "$cd_" ]] || continue
-    spec_="$cd_/01-spec.md"
+  while IFS= read -r spec_; do
     [[ -s "$spec_" ]] || continue
+    cd_="${spec_%/*}"
     sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -qE '^[[:space:]]*[-*][[:space:]]*\*\*ui_change\*\*(：|:)[[:space:]]*`?true`?([[:space:]]|$|）|\))' || continue
     g_ui=$((g_ui+1))
     if ! grep -qE 'UJ-[0-9A-Za-z]+' "$spec_" 2>/dev/null || [[ ! -s "$cd_/03.6-ui-spec.md" ]]; then
@@ -825,7 +1051,7 @@ if [[ -d "$CHANGES" ]]; then
         g12_bad=$((g12_bad+1)); echo "     G12 $(basename "$cd_") ui_change:true 但 07 缺用户可用性验收/人类走查行"
       fi
     fi
-  done
+  done < <(grep -rlE 'ui_change.*true' "$CHANGES"/*/01-spec.md 2>/dev/null || true)
 fi
 if [[ "$g_ui" -gt 0 ]]; then
   report "G11 UI-change requirements carry UJ + 03.6-ui-spec (v3.67.0)" 0 "$g11_bad"
@@ -841,10 +1067,9 @@ fi
 # 行级正确性归 B 层评审；本 sweep 只查闭合性（缺节/零数据行/空列）。
 g15_bad=0; g_src=0
 if [[ -d "$CHANGES" ]]; then
-  for cd_ in "$CHANGES"/*/; do
-    [[ -d "$cd_" ]] || continue
-    spec_="$cd_/01-spec.md"
+  while IFS= read -r spec_; do
     [[ -s "$spec_" ]] || continue
+    cd_="${spec_%/*}"
     src_=$(sed 's/<!--[^>]*-->//g' "$spec_" 2>/dev/null | grep -E '^[[:space:]]*[-*][[:space:]]*\*\*外部来源物\*\*(：|:)' | head -1)
     [[ -n "$src_" ]] || continue
     case "$src_" in *未命中*) continue ;; esac
@@ -865,7 +1090,7 @@ if [[ -d "$CHANGES" ]]; then
       cols_=$(printf '%s' "$row_" | awk -F'|' '{n=0; for(i=2;i<=NF-1;i++){gsub(/[[:space:]]/,"",$i); if($i!="")n++}; print n}')
       [[ "$cols_" -ge 3 ]] || { g15_bad=$((g15_bad+1)); echo "     G15 $(basename "$cd_") 映射行缺实现位或证据位: $row_"; }
     done <<< "$map_rows"
-  done
+  done < <(grep -rlE 'ui_change.*true' "$CHANGES"/*/01-spec.md 2>/dev/null || true)
 fi
 if [[ "$g_src" -gt 0 ]]; then
   report "G15 external-source mapping rows carry impl+evidence columns (v3.84.0)" 0 "$g15_bad"
