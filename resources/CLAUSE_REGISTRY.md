@@ -47,9 +47,9 @@
 | R23 | 执行主线（§2.16.2） | DEVELOPMENT_STANDARDS.md::### 2.16.2 执行主线 | L1-standards | 硬 | 结构 | 元 |
 | R24 | 配置/DB 变更规范（§2.6） | DEVELOPMENT_STANDARDS.md::## 2.6 部署、配置与数据库变更规范 | L2-architecture | 硬 | 结构 | 元 | backend |
 | R25 | 热修复快速通道（§2.11） | DEVELOPMENT_STANDARDS.md::## 2.11 热修复快速通道 | L3-critical | 硬 | 结构 | 元 |
-| R26 | AGENTS 路由入口（锚点表速览） | resources/AGENTS.md::交付前文档互证 | universal | 硬 | 结构 | 元 |
-| R27 | 缺陷入口速查（AGENTS 门禁 4） | resources/AGENTS.md::bug-autointent | L0-bugfix | 硬 | 结构 | 元 |
-| R28 | bugfix 场景路由（"只是改 bug"行） | resources/AGENTS.md::只是改 bug | L0-bugfix | 硬 | 结构 | 元 |
+| R26 | AGENTS 路由入口（锚点表速览） | resources/AGENTS.md::交付前跨文档审计 | universal | 硬 | 结构 | 元 |
+| R27 | 缺陷入口速查（AGENTS 门禁 4） | resources/AGENTS.md::缺陷修复（六件套 | L0-bugfix | 硬 | 结构 | 元 |
+| R28 | bugfix 场景路由（"只是改 bug"行） | resources/AGENTS.md::无账改动与度量 | L0-bugfix | 硬 | 结构 | 元 |
 | R29 | 统一编号规范（§1.1） | DEVELOPMENT_STANDARDS.md::### 1.1 统一编号规范 | L1-standards | 硬 | 结构 | 元 |
 | R30 | RTVM 矩阵文件与编号顺序（§1.2） | DEVELOPMENT_STANDARDS.md::### 1.2 独立 RTVM 矩阵文件与编号顺序规范 | L1-standards | 硬 | 结构 | 元 |
 | R31 | 分阶段产物与规格（§2.5） | DEVELOPMENT_STANDARDS.md::## 2.5 分阶段产物与规格 | L1-standards | 硬 | 结构 | 元 |
@@ -82,7 +82,7 @@
 | R58 | 评审质效度量的七项字段（§2.17.5；缺「来源」列时后两项输出 `null`，不臆造 0） | templates/agent-gate.sh::metrics prints one JSON object per change | universal | 软 | 计数 | 元 |
 | R59 | 事故/回归复盘「应捕获层」与补强（§2.17.2） | DEVELOPMENT_STANDARDS.md::**复盘义务（v3.75.0，CHG-099，REQ-1112）** | universal | 硬 | 行为 | 盘点 |
 | R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 | 元 |
-| R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::本仓评审要点（v3.75.0，CHG-099，REQ-1113，按仓定制承载面） | universal | 软 | 措辞 | 参照 |
+| R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::## 本仓评审要点（按仓定制承载面） | universal | 软 | 措辞 | 参照 |
 | R62 | 验证通道方言与四态（含在途 yml 合法维护路径） | resources/templates/agent-governance.yml::方言与四态（v3.76.0，CHG-100，REQ-1115~1120） | universal | 硬（unparsable 即 GATE-E118） | 行为 | 断言 |
 | R63 | 工具调用批处理与尾部增量读（§2.9.6；细则唯一权威=resources/AGENTS.md 纪律 12/13） | DEVELOPMENT_STANDARDS.md::**调用批处理、增量读与分阶段最小读集（v3.77.0/v3.80.0，CHG-101/107，REQ-1124/1125/1153）** | universal | 软（session-gate edits 黄灯，`AGENT_GUARD_EDIT_LIMIT`） | 行为 | 元 |
 | R64 | 冻结树并行派发评审/验证子代理（§2.2；前提三条=树冻结、输入契约互斥、不共写 `.agent-state`） | DEVELOPMENT_STANDARDS.md::**冻结树并行派发（REQ-1140）** | universal | 软 | 行为 | 元 |

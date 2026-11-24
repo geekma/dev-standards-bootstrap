@@ -2259,6 +2259,27 @@ at_least_f "A68 install-hook-adapter supports --verify-wiring (CHG-149)" 1 "$ROO
 at_least_f "A68 session-gate guards empty updated_at overflow (CHG-149)" 1 "$ROOT/resources/templates/session-gate.sh" 'telemetry uninitialized (no updated_at'
 at_least_f "A68 fresh-clone-check records code_face_sha for E153 reuse (CHG-149)" 1 "$ROOT/tests/fresh-clone-check.sh" 'code_face_sha'
 at_least_f "A68 bootstrap profile detects classic asp and server-web UI (CHG-149)" 1 "$ROOT/scripts/bootstrap.sh" 'server-web'
+
+# --- A69 (v4.5.1, CHG-150, REQ-1395~1407): P0 回归止血 + CI/Hook 加固 + 文档对齐 ---
+a69_rp_fail=0
+for a69_t in L0-bugfix L1-standards L2-architecture L3-critical universal; do
+  ( cd "$ROOT" && bash resources/templates/generate-reading-pack.sh "$a69_t" --verify >/dev/null 2>&1 ) || a69_rp_fail=$(( a69_rp_fail + 1 ))
+done
+report "A69 CLAUSE_REGISTRY --verify passes all 5 types (CHG-150)" 0 "$a69_rp_fail"
+a69_lss=$(( $(grep_count_f "$ROOT/tests/fresh-clone-check.sh" 'ls-files -s') + $(grep_count_f "$GATE_TPL" 'ls-files -s') ))
+report "A69 fresh-clone-check and agent-gate drop git ls-files -s for code_face_sha (CHG-150)" 0 "$a69_lss"
+report "A69 install-hook-adapter supports --print-global-contract and zero-dep JSON fallback (CHG-150)" 2 \
+  "$(( $(grep_count_f "$ROOT/resources/templates/install-hook-adapter.sh" '--print-global-contract)') + $(grep_count_f "$ROOT/resources/templates/install-hook-adapter.sh" 'json_sanity_check()') ))"
+report "A69 github-artifact-pipeline copies entry templates with no inline skeleton and env-isolated before SHA (CHG-150)" 3 \
+  "$(( ($(grep_count_f "$PIPE" '## 业务影响') == 0 ? 1 : 0) + $(a17_at_least_1 "$(grep_count_f "$PIPE" 'templates/entry')") + $(a17_at_least_1 "$(grep_count_f "$PIPE" 'PUSH_BEFORE_SHA: ${{ github.event.before }}')") ))"
+a69_bhelp=$(bash "$ROOT/scripts/bootstrap.sh" --help 2>/dev/null || true)
+report "A69 bootstrap --help lists 6 methodologies, STAGE_PLAYBOOK, and evidence-round (CHG-150)" 3 \
+  "$(( $(printf '%s\n' "$a69_bhelp" | grep -cF 'methodologies/ (6') + $(printf '%s\n' "$a69_bhelp" | grep -cF 'STAGE_PLAYBOOK.md') + $(printf '%s\n' "$a69_bhelp" | grep -cF 'evidence-round.sh') ))"
+a69_ag_cnt=0
+for a69_f in "$GATE_TPL" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh"; do
+  grep -qF '\.agents/' "$a69_f" 2>/dev/null && a69_ag_cnt=$(( a69_ag_cnt + 1 ))
+done
+report "A69 all three is_code_path replicas exempt .agents/ (CHG-150)" 3 "$a69_ag_cnt"
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-0}" == "1" ]] && audit_parallel; then :; else

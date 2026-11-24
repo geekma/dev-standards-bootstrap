@@ -71,12 +71,13 @@ session-enforcement wiring for each:
                                            enforcement line
 
 Flags:
-  --detect               print the detection matrix and exit
-  --print-contract       print the client-agnostic 3-event hook contract (for dynamic Agent wiring)
-  --verify-wiring <path> verify a dynamically generated hook config and record runtime.json
-  --client <name>        force-install for one client (claude|opencode|cursor|gemini|codex)
-  --all                  install for every detected client (default when no --client)
-  --force                overwrite existing static-schema configs that differ (diff is shown)
+  --detect                 print the detection matrix and exit
+  --print-contract         print the client-agnostic 3-event hook contract (for dynamic Agent wiring)
+  --print-global-contract  print the user-level cross-workspace router hook contract
+  --verify-wiring <path>   verify a dynamically generated hook config and record runtime.json
+  --client <name>          force-install for one client (claude|opencode|cursor|gemini|codex)
+  --all                    install for every detected client (default when no --client)
+  --force                  overwrite existing static-schema configs that differ (diff is shown)
 EOF
 }
 
@@ -109,21 +110,99 @@ print_contract() {
 EOF
 }
 
+print_global_contract() {
+  cat <<'EOF'
+{
+  "contract_version": "1",
+  "scope": "user-global-cross-workspace",
+  "principle": "Cross-workspace router hook (v4.5.1, CHG-150): resolves the target file's own git repository root so editing Repo B from a session opened in Repo A still triggers Repo B's agent-gate --stage pre-write.",
+  "PreToolUse": {
+    "matcher_intent": "file write / edit tools across any workspace",
+    "router_script": [
+      "target=\"${1:-${TOOL_FILE_PATH:-}}\"",
+      "[ -n \"$target\" ] || exit 0",
+      "repo=$(git -C \"$(dirname \"$target\")\" rev-parse --show-toplevel 2>/dev/null) || exit 0",
+      "if [ -x \"$repo/scripts/agent-gate\" ]; then",
+      "  ( cd \"$repo\" && bash \"$repo/scripts/agent-gate\" --stage pre-write --file \"$target\" )",
+      "fi"
+    ],
+    "blocking": true
+  },
+  "notes": "Install in user-level client hooks (e.g. ~/.claude/settings.json or global client hook config); skips repositories without scripts/agent-gate."
+}
+EOF
+}
+
+adapter_scripts_dir() {
+  local s=""
+  if [[ -n "${AGENT_GUARD_SCRIPTS_DIR:-}" ]]; then
+    s="$AGENT_GUARD_SCRIPTS_DIR"
+  elif [[ -f .agent-governance.yml ]]; then
+    s=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+scripts:[[:space:]]*([^#]*).*$/\1/p' .agent-governance.yml 2>/dev/null \
+        | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$s" ]] || s="scripts"
+  printf '%s' "$s"
+}
+
+json_sanity_check() { # <file> — zero-dep fallback when python3/jq/node absent
+  awk '
+    BEGIN { b=0; k=0; q=0; esc=0; non_ws=0; first="" }
+    {
+      n = length($0)
+      for (i = 1; i <= n; i++) {
+        c = substr($0, i, 1)
+        if (first == "" && c !~ /[ \t\r\n]/) first = c
+        if (c !~ /[ \t\r\n]/) non_ws = 1
+        if (esc) { esc = 0; continue }
+        if (q) {
+          if (c == "\\") esc = 1
+          else if (c == "\"") q = 0
+          continue
+        }
+        if (c == "\"") { q = 1; continue }
+        if (c == "{") b++
+        else if (c == "}") { b--; if (b < 0) exit 1 }
+        else if (c == "[") k++
+        else if (c == "]") { k--; if (k < 0) exit 1 }
+      }
+    }
+    END {
+      if (!non_ws || (first != "{" && first != "[") || q != 0 || b != 0 || k != 0) exit 1
+    }
+  ' "$1"
+}
+
 verify_wiring() { # <config-path>
-  local cfg="$1"
+  local cfg="$1" sdir=""
   [[ -n "$cfg" && -f "$cfg" ]] || die "ADAPTER-E14: --verify-wiring target not found: ${cfg:-<empty>}"
   case "$cfg" in
     *.json)
-      python3 -m json.tool "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg" ;;
+      if command -v python3 >/dev/null 2>&1; then
+        python3 -m json.tool "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg"
+      elif command -v jq >/dev/null 2>&1; then
+        jq empty "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg"
+      elif command -v node >/dev/null 2>&1; then
+        node -e 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))' "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg"
+      else
+        json_sanity_check "$cfg" || die "ADAPTER-E14: invalid JSON in $cfg"
+      fi ;;
   esac
   if ! grep -qE 'session-gate|agent-gate' "$cfg" 2>/dev/null; then
     die "ADAPTER-E14: $cfg lacks session-gate or agent-gate hook wiring"
+  fi
+  sdir=$(adapter_scripts_dir)
+  if grep -q 'session-gate' "$cfg" 2>/dev/null && [[ ! -f "$sdir/session-gate.sh" ]]; then
+    die "ADAPTER-E14: $cfg references session-gate but $sdir/session-gate.sh is missing"
+  fi
+  if grep -q 'agent-gate' "$cfg" 2>/dev/null && [[ ! -f "$sdir/agent-gate" ]]; then
+    die "ADAPTER-E14: $cfg references agent-gate but $sdir/agent-gate is missing"
   fi
   local rid="${AGENT_RUNTIME:-agents-hooks}"
   local rfam="json-hooks"
   [[ "$cfg" == *.js || "$cfg" == *.ts ]] && rfam="plugin-api"
   runtime_record "$rid" "$rfam" "$rid"
-  ok "self-proof: dynamic wiring verified ($cfg carries session-gate/agent-gate hooks; runtime=$rid family=$rfam)"
+  ok "self-proof: dynamic wiring verified ($cfg carries session-gate/agent-gate hooks; runtime=$rid family=$rfam scripts=$sdir)"
 }
 
 detect_clients() { # -> whitespace-separated names, one per line
@@ -975,6 +1054,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --detect) mode_install=false ;;
     --print-contract) print_contract; exit 0 ;;
+    --print-global-contract) print_global_contract; exit 0 ;;
     --verify-wiring)
       [[ -n "${2:-}" ]] || die "ADAPTER-E14: --verify-wiring requires a file path"
       verify_wiring "$2"; exit 0 ;;

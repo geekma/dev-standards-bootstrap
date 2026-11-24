@@ -51,6 +51,43 @@ RECEIPT="${AGENT_GUARD_FRESH_CLONE_RECEIPT:-$ROOT/.agent-state/fresh-clone-recei
 HISTORY="${AGENT_GUARD_FRESH_CLONE_HISTORY:-$ROOT/.agent-state/fresh-clone-history.tsv}"
 # v3.92.3: --git-path is relative to the worktree; reading it from the caller's
 # cwd made every invocation outside the repo root print a redirection error.
+fc_cfg_path() { # key default
+  local k="$1" d="$2" v=""
+  if [[ -f "$ROOT/.agent-governance.yml" ]]; then
+    case "$k" in
+      docs|scripts|tests|githooks)
+        v=$(sed -nE "/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+${k}:[[:space:]]*([^#]*).*$/\1/p" "$ROOT/.agent-governance.yml" 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+      *)
+        v=$(sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" "$ROOT/.agent-governance.yml" 2>/dev/null \
+            | head -n 1 | tr -d "[:space:]\"'" || true) ;;
+    esac
+  fi
+  [[ -n "$v" ]] || v="$d"
+  printf '%s' "$v"
+}
+DOCS_DIR="${AGENT_GUARD_DOCS_DIR:-$(fc_cfg_path docs docs)}"
+SCRIPTS_DIR="${AGENT_GUARD_SCRIPTS_DIR:-$(fc_cfg_path scripts scripts)}"
+CHANGE_DIR="${AGENT_GUARD_CHANGE_ROOT:-$(fc_cfg_path change_root "$DOCS_DIR/changes")}"
+BUGS_DIR="${AGENT_GUARD_BUGS_ROOT:-$(fc_cfg_path bugs_root "$DOCS_DIR/bugs")}"
+PROJECT_DIR="$DOCS_DIR/project"
+
+fc_code_face_sha() {
+  local lib="" cf=""
+  for lib in "$ROOT/$SCRIPTS_DIR/lib-suite-tree-fingerprint.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh"; do
+    if [[ -f "$lib" ]]; then
+      cf=$( . "$lib"; suite_tree_fingerprint "$ROOT" "$CHANGE_DIR" "$BUGS_DIR" "$PROJECT_DIR" )
+      if [[ -n "$cf" ]]; then
+        printf '%s\n' "$cf"
+        return 0
+      fi
+      break
+    fi
+  done
+  ( cd "$ROOT" && git ls-files -z -- . ":!$CHANGE_DIR" ":!$BUGS_DIR" ":!$PROJECT_DIR" 2>/dev/null \
+      | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' || true )
+}
+
 ACTIVE_FILE=$(git -C "$ROOT" rev-parse --git-path agent-governance/active-change 2>/dev/null || true)
 case "$ACTIVE_FILE" in
   "") CHANGE="" ;;
@@ -60,7 +97,7 @@ case "$ACTIVE_FILE" in
         || CHANGE="" ;;
 esac
 CHANGE_LOG=""
-[[ -n "$CHANGE" ]] && CHANGE_LOG=$(ls -d "$ROOT/docs/changes/$CHANGE" 2>/dev/null | head -1)
+[[ -n "$CHANGE" ]] && CHANGE_LOG=$(ls -d "$ROOT/$CHANGE_DIR/$CHANGE" 2>/dev/null | head -1)
 
 ledger_dupes() { # -> count of prior receipts for the same change
   [[ -n "$CHANGE" && -f "$HISTORY" ]] || { echo 0; return 0; }
@@ -158,7 +195,7 @@ prior=$(ledger_dupes)
   || { echo "fresh-clone-check: snapshot commit failed" >&2; exit 2; }
 archive_sha=$( cd "$ROOT" && git ls-files | while IFS= read -r f; do [[ -f "$f" ]] && cksum "$f"; done | cksum | awk '{print $1}' )
 tree_sha=$( cd "$ROOT" && git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' )
-code_face_sha=$( git -C "$ROOT" ls-files -s -- . ':!docs/changes' ':!docs/bugs' ':!docs/project' 2>/dev/null | cksum | awk '{print $1}' )
+code_face_sha=$(fc_code_face_sha)
 
 audit_log="$tmp/.fresh-audit.log"
 suite_log="$tmp/.fresh-suite.log"

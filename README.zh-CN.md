@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/规范版本-v4.5.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/规范版本-v4.5.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -88,7 +88,7 @@
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
 | **发布完整性 + 证据复用** | 单一版本权威（`scripts/release.sh check\|bump`）校验全部载体、只重写声明位点；CI 只跑一次全量套件并上传树指纹收据，硬审计复用同一收据；工作区套件锁同一时刻只允许一次全量运行并回收死锁主 |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1936 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（1962 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics` 从 git 历史输出只读 JSON Lines 管线度量——仅作观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -218,7 +218,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 
 **文件溯源**：编码记录必须携带由 `scripts/stamp-provenance.sh <变更号>` 生成的 `<!-- provenance -->` 块——作者、提交者、提交哈希、主机、平台、UTC 时间全部从运行环境读出，手写编不出来。`--all` 可给变更目录全部 `*.md` 产物盖章（治理 JSON 刻意排除）；v3.41.0 起 pre-commit Hook 自动执行，v3.42.0 增 `--trace`——changelog §4 的追踪矩阵编号从 `01.5-rtvm-matrix.md` 确定性派生，不再手抄。门禁校验块形状与生产者；`author` 值本身是否属实**不可机器验证**——设计如实说明而非假装已解决。不追溯既往：历史永不回填，因为回填会把 `generated_at` 伪造成"今天"——那正是溯源块要防的事。v3.97.2 起盖章为**变换输出不动点检查**：变换输出与现文件仅 `generated_at` 行不同即跳过落盘（输出 `unchanged`），提交链不再携带秒级盖章漂移。
 
-**验证命令自动探测**：安装时从项目布局（package.json / Makefile / pom.xml / go.mod / pyproject / Cargo）探测真实构建/测试命令并预填 `.agent-governance.yml`——可在该文件修改，或用 `AGENT_GUARD_VERIFY_COMMAND` 环境变量覆盖（最高优先级）。yml 里的验证命令**在该文件本身处于待定变更中时不会执行**（防篡改——PR 无法把命令注入审查者的 Hook）；先提交它，或改用环境变量。
+**验证命令自动探测**：安装时从项目布局（package.json / Makefile / pom.xml / go.mod / pyproject / Cargo / composer / Gemfile / ASP.NET）探测真实构建/测试命令并预填 `.agent-governance.yml`——可在该文件修改，或用 `AGENT_GUARD_VERIFY_COMMAND` 环境变量覆盖（最高优先级）。yml 里的验证命令**在该文件本身处于待定变更中时不会执行**（防篡改——PR 无法把命令注入审查者的 Hook）；先提交它，或改用环境变量。GitHub Actions 下未设置 `vars.AGENT_GUARD_VERIFY_COMMAND` 时，`verify` job 会安全回退读取**基线分支**的 `.agent-governance.yml`；且 `bootstrap.sh` 会按目标仓默认分支（`main`/`master` 等）动态适配 workflow 触发分支。
 
 **唯一的手动步骤（平台侧，文件做不到）**：把 `agent-governance` workflow 标记为**必需的分支保护检查**（Settings → Branches，或 `gh api`）。状态文件与勾选框只是声明不是证明：CI 重跑真实命令且强制执行。
 
@@ -390,7 +390,7 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # AI Agent 入口（复制到目标仓根）
     ├── CLAUSE_REGISTRY.md                  # 条款注册表：规范条款机器索引（Rxx 行号 ID + 文件名::锚点 + 类型封闭词表）；DS 仍是正文唯一权威；供阅读包生成器消费（v3.46.0）
-    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v4.5.0（复制到 docs/）
+    ├── DEVELOPMENT_STANDARDS.md             # 完整规范文档 v4.5.1（复制到 docs/）
     ├── STANDARDS_CHANGELOG.md              # 规范升级历史（§2.14 升级日志唯一落点，v3.8.0 起；复制到 docs/）
     ├── METHODOLOGY.md                       # 方法论选型指南：M0-M3 分级 + 阶段×方法论×适用/不适用表（复制到 docs/）
     ├── STAGE_PLAYBOOK.md                    # 阶段执行手册：DS §2.5/§2.16.6 叙事细则载体（条款权威仍在 DS，复制到 docs/）
@@ -424,15 +424,15 @@ dev-standards-bootstrap/
         ├── governance-state.json           # 每次变更 00-governance.json 的模板（不下发——由 Agent 按变更生成）
         ├── agent-governance.yml            # 团队可复核的治理配置记录（复制到 .agent-governance.yml）
         ├── pre-commit、pre-push、commit-msg  # Git Hook 模板（commit-msg：归因闸门）
-        ├── install-hook-adapter.sh         # 探测本地 AI 客户端并自适应接线会话内执法（v3.34.0）
+        ├── install-hook-adapter.sh         # 探测本地 AI 客户端（进程环境 > 仓配置 > PATH），输出动态/全局路由契约（--print-contract / --print-global-contract）并自证接线（--verify-wiring）
         ├── session-gate.sh                  # 会话内执法：start=审计亮红灯+缺陷信号交互三选项，idle=stop 等价检查
         ├── bug-autointent.sh               # 缺陷发现入口：信号 -> 完整六件套骨架 + 指纹频控（v3.43.0）
         ├── generate-reading-pack.sh        # 阅读包生成器：条款注册表 -> 按类型切片，锚点 fail-closed 防漂移（v3.46.0）
         ├── eval-cases.sh                   # 评测资产派生视图：缺陷组 -> 可复跑评测用例（实验性，运行时生成物，v3.75.0）
         ├── eval-rescore.sh                 # 评测重打分：覆盖比 + 收据绑定治理面哈希，漂移即重跑基线（实验性，v3.75.0）
         ├── github-reviewer-rescore.yml     # 评测重打分回路：每日 + 治理面变更触发，漂移告警（v3.75.0）
-        ├── github-agent-governance.yml     # 必需检查 workflow 模板
-        ├── github-artifact-pipeline.yml    # 产物管线：spec 合入 -> 02/03/03.5/04 骨架 PR；changelog 合入 -> 发布检查单 issue
+        ├── github-agent-governance.yml     # 必需检查 workflow 模板（动态默认分支 + 基线分支 verify 回退）
+        ├── github-artifact-pipeline.yml    # 产物管线：spec 合入 -> 单源复制 templates/entry/ 开骨架 PR；changelog 合入 -> 发布检查单 issue
         ├── github-incident-to-intent.yml   # 事故回路：告警派发 -> BUG-<ts> 意图骨架 PR
         └── github-regression-to-bug.yml    # 回归回路：主干测试红 -> 六件套缺陷骨架 PR（频控，v3.43.0）
 ```
@@ -473,8 +473,8 @@ dev-standards-bootstrap/
 
 | Job | 职责 |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：770） |
-| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1936 条 golden-case 断言）；仅依赖 bash + git |
+| **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：776） |
+| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（1962 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
 **CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍（600s 墙钟预算 `AGENT_GUARD_CI_WALL_BUDGET_S`，超过即显式失败，不会拖到 job 上限才超时），并上传 `.agent-state/last-suite-receipt.json` 供人工取证；source-audit **不再消费该 artifact**——A3/A3c/A10 直接读**已提交的基线**做硬校验（不再设 `AGENT_GUARD_AUDIT_SOFT`），因此它对套件 job 没有任何依赖，可与之并行。**两个真实 job 受 `timeout-minutes: 15` 约束，聚合门 `agent-governance` 为 5 分钟。** 工作区套件锁（`lib-suite-lock.sh`，随 `--guard` 下发）同一时刻只允许一次全量运行并回收死锁主；收据/红档路径可用 `AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH` 覆盖，自测不会污染真实台账。workflow 级 `concurrency` 组会取消同 ref 被取代的 run。
@@ -513,7 +513,7 @@ bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # 真正�
 
 <div align="center">
 
-**规范版本：** v4.5.0 | **最后更新：** 2026-11-14 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
+**规范版本：** v4.5.1 | **最后更新：** 2026-11-14 | **维护者：** [geekma](https://x.com/geekma) | **邮箱：** geekma@gmail.com
 
 [报告缺陷](../../issues) | [功能建议](../../issues) | [阅读规范](resources/DEVELOPMENT_STANDARDS.md) | [更新日志](resources/STANDARDS_CHANGELOG.md)
 

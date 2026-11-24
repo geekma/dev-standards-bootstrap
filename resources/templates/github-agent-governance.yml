@@ -1,4 +1,4 @@
-# Agent governance workflow (v3.78.0, CHG-102 / REQ-1137).
+# Agent governance workflow (v3.78.0, CHG-102 / REQ-1137; v4.5.1 CHG-150 verify fallback).
 #
 # Structure: two parallel jobs (`governance`, `verify`) plus an aggregator job
 # whose name is the required-check contract.
@@ -59,12 +59,39 @@ jobs:
       - name: Run deterministic project verification
         env:
           AGENT_GUARD_VERIFY_COMMAND: ${{ vars.AGENT_GUARD_VERIFY_COMMAND }}
+          PR_BASE_REF: ${{ github.base_ref }}
         run: |
-          test -n "$AGENT_GUARD_VERIFY_COMMAND" || {
+          cmd="$AGENT_GUARD_VERIFY_COMMAND"
+          if [[ -z "$cmd" ]]; then
+            # Anti-tamper fallback (v4.5.1, CHG-150): on PRs read .agent-governance.yml
+            # from the base branch so a PR cannot rewrite ci.verification_command.
+            yml=""
+            if [[ -n "$PR_BASE_REF" ]]; then
+              git fetch --no-tags --depth=1 origin "$PR_BASE_REF" >/dev/null 2>&1 || true
+              yml=$(git show "origin/${PR_BASE_REF}:.agent-governance.yml" 2>/dev/null || true)
+            elif [[ -f .agent-governance.yml ]]; then
+              yml=$(cat .agent-governance.yml 2>/dev/null || true)
+            fi
+            if [[ -n "$yml" ]]; then
+              cmd=$(printf '%s\n' "$yml" | awk '
+                /^ci:[[:space:]]*$/ { in_ci=1; next }
+                in_ci && /^[^[:space:]#]/ { exit }
+                in_ci && /^[[:space:]]+verification_command:[[:space:]]*/ {
+                  sub(/^[[:space:]]+verification_command:[[:space:]]*/, "")
+                  sub(/[[:space:]]+#.*$/, "")
+                  gsub(/^["'"'"']|["'"'"']$/, "")
+                  gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                  print; exit
+                }
+              ')
+              [[ "$cmd" == *"<replace-with-project-test-command>"* ]] && cmd=""
+            fi
+          fi
+          test -n "$cmd" || {
             echo "Set repository variable AGENT_GUARD_VERIFY_COMMAND to the build/lint/test/security command." >&2
             exit 1
           }
-          bash -lc "$AGENT_GUARD_VERIFY_COMMAND"
+          bash -lc "$cmd"
 
   # Required-check aggregator: no checkout, no work — only the verdict.
   agent-governance:

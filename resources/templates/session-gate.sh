@@ -484,7 +484,7 @@ sg_is_code_path() { # <path>
   # 改任一侧的排除面/扩展名表，必须同步另一侧与 tests/audit-docs-consistency.sh 的 G16 副本。
   local p="$1"
   [[ "$p" =~ ^(${DOCS_RE}/|\.github/|\.agent-governance/|README|AGENTS\.md|CLAUDE\.md|GEMINI\.md) ]] && return 1
-  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${SCRIPTS_RE}/shard-sum\.sh$|${SCRIPTS_RE}/evidence-round\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$|${TESTS_RE}/fresh-clone-check\.sh$) ]] && return 1
+  [[ "$p" =~ ^(${GITHOOKS_RE}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${SCRIPTS_RE}/shard-sum\.sh$|${SCRIPTS_RE}/evidence-round\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$|${TESTS_RE}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$p" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 

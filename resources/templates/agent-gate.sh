@@ -689,7 +689,7 @@ is_code_path() {
   # v3.92.3：fresh-clone-check.sh 同属治理工具（G-ENV 执行件），漏加会让新装仓第一次
   # commit 与后续 --upgrade 同时死锁（T15/T82 tracked-only 实测暴露）。
   # v3.95.0：shard-sum.sh 同理（CHG-132 随包执行件，漏加 = 首个提交 E125 死锁）。
-  [[ "$path" =~ ^(${githooks_re}/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${scripts_re}/evidence-round\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
+  [[ "$path" =~ ^(${githooks_re}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${scripts_re}/evidence-round\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]]
 }
 
@@ -1134,30 +1134,33 @@ validate_dimensional_stop() { # <change-dir>
     ujs=$(grep -oE 'UJ-[0-9]+' "$spec" 2>/dev/null | sort -u || true)
     while IFS= read -r uj; do
       [[ -n "$uj" ]] || continue
-      grep -E "$uj.*(HTTP|DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
-        || die "GATE-E104: 05 lacks runtime evidence row for $uj (HTTP/响应体/DB/快照/点击链路/截图/几何断言 + timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0/v3.99.1)"
-      # v4.5.0 (CHG-149, REQ-1388): bare HTTP 200 masks 90s+ hung/empty pages —
-      # a UJ row matching HTTP must also carry body/DOM/interaction evidence
-      # (DB/响应体/快照/点击链路/截图/几何断言) or an explicit latency/timeout measure.
-      grep -E "$uj.*(DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
-        || grep -E "$uj.*([0-9]+(\.[0-9]+)?(ms|s)|耗时|max-time)" "$res05" >/dev/null 2>&1 \
-        || die "GATE-E104: 05 runtime evidence for $uj relies on bare HTTP without body/DOM/click-chain/screenshot or latency measure — HTTP 200 alone cannot prove availability (standards §0.6/§2.5 stage 7, v4.5.0)"
+      local e104_msg=""
+      if ! grep -E "$uj.*(HTTP|DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1; then
+        e104_msg="05 lacks runtime evidence row for $uj (HTTP/响应体/DB/快照/点击链路/截图/几何断言 + timestamp, grep-verifiable) — incident-hardened delivery gate (standards §2.5 stage 7, v3.68.0/v3.99.1)"
+      elif ! grep -E "$uj.*(DB|响应体|快照|点击链路|截图|几何断言)" "$res05" >/dev/null 2>&1 \
+        && ! grep -E "$uj.*([^A-Za-z0-9_][0-9]+(\.[0-9]+)?(ms|s)([^A-Za-z0-9_]|$)|(耗时|max-time)(:|：|=|[[:space:]])*[0-9]+)" "$res05" >/dev/null 2>&1; then
+        # v4.5.0/v4.5.1 (CHG-149/150, REQ-1388/1402): bare HTTP 200 masks 90s+ hung/empty pages —
+        # a UJ row matching HTTP must also carry body/DOM/interaction evidence
+        # (DB/响应体/快照/点击链路/截图/几何断言) or an explicit numeric latency/timeout measure.
+        e104_msg="05 runtime evidence for $uj relies on bare HTTP without body/DOM/click-chain/screenshot or latency measure — HTTP 200 alone cannot prove availability (standards §0.6/§2.5 stage 7, v4.5.0)"
+      fi
+      [[ -z "$e104_msg" ]] || die "GATE-E104: $e104_msg"
     done <<EOF
 $ujs
 EOF
     # v4.5.0 (CHG-149, REQ-1385): GATE-E161 outbound exit inventory (conditional
     # on section presence so legacy fixtures stay green; once present, every row
     # must bind to UJ-xxx / 豁免 / 降级 without placeholders).
-    local osec=""
+    local osec="" e161_msg=""
     osec=$(awk '/^##+ .*出站出口/{f=1;next} f && /^## /{exit} f{print}' "$spec" 2>/dev/null \
       | sed 's/<!--[^>]*-->//g' || true)
     if [[ -n "$osec" ]]; then
       if grep -qE '(FILL|待填|<[^>]+>)' <<< "$osec"; then
-        die "GATE-E161: 01-spec 「出站出口」 section still contains placeholders (<...>/FILL/待填) — enumerate every clickable outbound target (standards §0.6/§2.5 stage 1, v4.5.0)"
+        e161_msg="01-spec 「出站出口」 section still contains placeholders (<...>/FILL/待填) — enumerate every clickable outbound target (standards §0.6/§2.5 stage 1, v4.5.0)"
+      elif ! grep -qE '(UJ-[0-9]+|豁免|降级|未命中)' <<< "$osec"; then
+        e161_msg="01-spec 「出站出口」 section lacks UJ-xxx / 豁免 / 降级 verdicts — outbound links/cards must enter UJ or be explicitly waived/degraded (standards §0.6/§2.5 stage 1, v4.5.0)"
       fi
-      if ! grep -qE '(UJ-[0-9]+|豁免|降级|未命中)' <<< "$osec"; then
-        die "GATE-E161: 01-spec 「出站出口」 section lacks UJ-xxx / 豁免 / 降级 verdicts — outbound links/cards must enter UJ or be explicitly waived/degraded (standards §0.6/§2.5 stage 1, v4.5.0)"
-      fi
+      [[ -z "$e161_msg" ]] || die "GATE-E161: $e161_msg"
     fi
     # v4.5.0 (CHG-149, REQ-1386): GATE-E162 entry-owns-exit delivery completeness —
     # forbid marking 已交付 while an exposed downstream page is hung/unreachable
@@ -4205,10 +4208,19 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
       if [[ "$rc_tree" == "$want_tree" && "$rc_audit" == "0" && "$rc_suite" == "0" ]]; then
         e153=""
       elif [[ -n "$rc_cface" && "$rc_audit" == "0" && "$rc_suite" == "0" ]]; then
-        # v4.5.0 (CHG-149, REQ-1393): pure change-doc edits must not invalidate a
-        # green code-face receipt; recompute code_face_sha excluding docs/changes,
-        # docs/bugs, docs/project.
-        want_cface=$(git -C "$repo_root" ls-files -s -- . ':!docs/changes' ':!docs/bugs' ':!docs/project' 2>/dev/null | cksum | awk '{print $1}' || true)
+        # v4.5.1 (CHG-150, REQ-1397/1398): compute working-tree code-face fingerprint
+        # via lib-suite-tree-fingerprint.sh (excluding configured change_root, bugs_root,
+        # <docs>/project) instead of index-only ls-files, so unstaged source edits are caught.
+        local _cf_lib=""
+        for _cf_lib in "$repo_root/$scripts_dir/lib-suite-tree-fingerprint.sh" "$repo_root/scripts/lib-suite-tree-fingerprint.sh"; do
+          if [[ -f "$_cf_lib" ]]; then
+            want_cface=$( . "$_cf_lib"; suite_tree_fingerprint "$repo_root" "$change_root" "$bugs_root" "$docs_dir/project" )
+            break
+          fi
+        done
+        if [[ -z "$want_cface" ]]; then
+          want_cface=$( cd "$repo_root" && git ls-files -z -- . ":!$change_root" ":!$bugs_root" ":!$docs_dir/project" 2>/dev/null | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' || true )
+        fi
         if [[ -n "$want_cface" && "$rc_cface" == "$want_cface" ]]; then
           echo "agent-gate: NOTE — E153 reused green code-face receipt (code_face_sha=$rc_cface; doc-only tree drift)" >&2
           e153=""

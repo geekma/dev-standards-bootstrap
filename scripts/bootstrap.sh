@@ -35,7 +35,9 @@ Usage: scripts/bootstrap.sh [flags] [target_root]
 
 Flags (layers; default --core when none given):
   --core       核心文档层: AGENTS.md, DEVELOPMENT_STANDARDS.md, CLAUSE_REGISTRY.md, STANDARDS_CHANGELOG.md, METHODOLOGY.md,
-               methodologies/ (5, 含 project-masters.md v3.35.0), bugfix-log.md, <docs>/bugs/_templates/ (6),
+               <docs>/STAGE_PLAYBOOK.md (阶段执行手册, v3.61.0),
+               methodologies/ (6: development / data-structures / state-trigger-audit / expert-capabilities / project-masters / review-intelligence),
+               bugfix-log.md, <docs>/bugs/_templates/ (6),
                <docs>/templates/project/ (总册 13 册 + 评审模板, v3.67.0),
                <docs>/templates/entry/ (变更入口骨架 8 件 + 条件件 03.6-ui-spec.md, v3.67.0; v3.52.0 起 8 件含 00.5; v3.70.0 CHG-045 增形状件 4: 01.5/05/07/09),
                <docs>/README.md (一页文档地图, v3.37.0),
@@ -54,13 +56,15 @@ Flags (layers; default --core when none given):
                <scripts>/generate-reading-pack.sh (阅读包生成, v3.46.0),
                <githooks>/ (pre-commit/pre-push/commit-msg),
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
-               <github>/workflows/agent-governance.yml,
+               <github>/workflows/agent-governance.yml (按目标仓默认分支动态适配),
                .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4),
                <tests>/fresh-clone-check.sh (G-ENV 环境等价检查, 随强制包, v3.92.3),
                <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0),
-               <scripts>/lib-suite-lock.sh (全量套件工作区锁 lib, 随 run-tests.sh 同包, v3.86.0)
-  --pipeline   管线自动化: artifact-pipeline.yml, incident-to-intent.yml,
-               regression-to-bug.yml
+               <scripts>/lib-suite-lock.sh (全量套件工作区锁 lib, 随 run-tests.sh 同包, v3.86.0),
+               <scripts>/shard-sum.sh (分片求和汇总, v3.95.0),
+               <scripts>/evidence-round.sh (分片证据轮编排, v3.96.0)
+  --pipeline   管线自动化: artifact-pipeline.yml (按默认分支动态适配 + 单源复制 entry 骨架),
+               incident-to-intent.yml, regression-to-bug.yml
   --all        以上全部
   --upgrade    升级已接入仓库：治理自有文件（规范/方法论/模板/脚本/hooks/workflows/tests）
                更新到本 Skill 携带版本；跳过 live/用户文件（bugfix-log、06-delivery-summary、
@@ -445,14 +449,49 @@ PATHS_CUSTOM=0
 if [[ "$DOCS_DIR" != "docs" || "$SCRIPTS_DIR" != "scripts" || "$TESTS_DIR" != "tests" || "$GITHOOKS_DIR" != ".githooks" ]]; then
   PATHS_CUSTOM=1
 fi
+# v4.5.1 (CHG-150, REQ-1406): detect target repo's default branch so GitHub
+# workflows trigger on `master` / `develop` / etc. instead of hardcoding `main`.
+detect_default_branch() { # <target> -> branch name (defaults to main)
+  local t="$1" b=""
+  if [[ -n "${AGENT_GUARD_DEFAULT_BRANCH:-}" ]]; then
+    printf '%s' "$AGENT_GUARD_DEFAULT_BRANCH"
+    return 0
+  fi
+  if [[ -d "$t/.git" ]] && command -v git >/dev/null 2>&1; then
+    b=$(git -C "$t" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+    b="${b#origin/}"
+    if [[ -z "$b" ]]; then
+      if git -C "$t" show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+        b="main"
+      elif git -C "$t" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+        b="master"
+      else
+        b=$(git -C "$t" symbolic-ref --short HEAD 2>/dev/null || true)
+      fi
+    fi
+  fi
+  case "$b" in ''|*[!A-Za-z0-9._/-]*) b="main" ;; esac
+  printf '%s' "$b"
+}
+TARGET_DEFAULT_BRANCH=$(detect_default_branch "$target")
 # v3.93.0 (CHG-130, REQ-1300): sed replacement strings are not literals — a root
 # containing & (whole match), \ or the | delimiter used to produce silently wrong
 # paths. Escape the replacement, never the pattern.
 sed_repl_escape() { printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'; }
+needs_transform() { # <src>
+  [[ "$PATHS_CUSTOM" == 1 ]] && return 0
+  if [[ "$TARGET_DEFAULT_BRANCH" != "main" ]]; then
+    case "${1##*/}" in
+      github-agent-governance.yml|github-artifact-pipeline.yml) return 0 ;;
+    esac
+  fi
+  return 1
+}
 transform_src() { # src -> stdout
-  local e_docs e_scripts e_tests e_gh e_docs_q e_scripts_q e_tests_q e_gh_q
+  local e_docs e_scripts e_tests e_gh e_docs_q e_scripts_q e_tests_q e_gh_q e_branch
   e_docs=$(sed_repl_escape "$DOCS_DIR"); e_scripts=$(sed_repl_escape "$SCRIPTS_DIR")
   e_tests=$(sed_repl_escape "$TESTS_DIR"); e_gh=$(sed_repl_escape "$GITHOOKS_DIR")
+  e_branch=$(sed_repl_escape "$TARGET_DEFAULT_BRANCH")
   # v3.93.0 (CHG-130, REQ-1300): `$(cfg_path <key> <default>)` takes its default
   # UNQUOTED in the templates, so a root containing `&`, spaces or glob chars
   # became shell syntax in the installed script (`docs&x` ran a background `x`).
@@ -478,6 +517,30 @@ transform_src() { # src -> stdout
       -e "s|^([[:space:]]*bugs_root:[[:space:]]*)[^#]*|\1${e_docs}/bugs |" \
       "$1"
     return 0
+  fi
+  if [[ "$TARGET_DEFAULT_BRANCH" != "main" ]]; then
+    case "${1##*/}" in
+      github-agent-governance.yml|github-artifact-pipeline.yml)
+        sed -e "s|branches: \[main\]|branches: [${e_branch}]|g" "$1" \
+          | sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
+                -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
+                -e "s|scripts/check-standards-compliance\.sh|$e_scripts/check-standards-compliance.sh|g" \
+                -e "s|scripts/stamp-provenance\.sh|$e_scripts/stamp-provenance.sh|g" \
+                -e "s|scripts/agent-gate|$e_scripts/agent-gate|g" \
+                -e "s|tests/run-tests\.sh|$e_tests/run-tests.sh|g" \
+                -e "s|tests/audit-docs-consistency\.sh|$e_tests/audit-docs-consistency.sh|g" \
+                -e "s|\.githooks/|$e_gh/|g" \
+                -e "s|\$(cfg_path docs docs)|\$(cfg_path docs $e_docs_q)|g" \
+                -e "s|\$(cfg_path scripts scripts)|\$(cfg_path scripts $e_scripts_q)|g" \
+                -e "s|\$(cfg_path tests tests)|\$(cfg_path tests $e_tests_q)|g" \
+                -e "s|\$(cfg_path githooks \.githooks)|\$(cfg_path githooks $e_gh_q)|g" \
+                -e "s|\$(sg_cfg_path docs docs)|\$(sg_cfg_path docs $e_docs_q)|g" \
+                -e "s|\$(sg_cfg_path scripts scripts)|\$(sg_cfg_path scripts $e_scripts_q)|g" \
+                -e "s|\$(sg_cfg_path tests tests)|\$(sg_cfg_path tests $e_tests_q)|g" \
+                -e "s|\$(sg_cfg_path githooks \.githooks)|\$(sg_cfg_path githooks $e_gh_q)|g" \
+                -e "s|docs/|$e_docs/|g"
+        return 0 ;;
+    esac
   fi
   sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
       -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
@@ -510,14 +573,14 @@ same_as_src() { # src dest
   if [[ "$(basename "$1")" == "agent-governance.yml" && -f "$2" ]]; then
     cmp -s <(if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1"; else cat "$1"; fi) \
            <(profile_stripped "$2")
-  elif [[ "$PATHS_CUSTOM" == 1 ]]; then
+  elif needs_transform "$1"; then
     cmp -s <(transform_src "$1") "$2"
   else
     cmp -s "$1" "$2"
   fi
 }
 copy_src() { # src dest
-  if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$1" > "$2"; else cp "$1" "$2"; fi
+  if needs_transform "$1"; then transform_src "$1" > "$2"; else cp "$1" "$2"; fi
 }
 
 # v3.93.0 (CHG-130, REQ-1291): one fail-closed writer. install_file used to print

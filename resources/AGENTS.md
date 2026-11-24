@@ -46,7 +46,7 @@
 7. **定向验证与证据轮**：单测/定向先行，改文档/模板/单脚本用 `tests/run-tests.sh -T auto` 或 `-T <节>`，禁随手裸跑全量；改被测核心（`agent-gate`/`run-tests.sh`/`.agent-governance.yml`）由 AI 给判定卡请用户三选一确认；**版本链先行（v3.95.0，CHG-132）**（`update-assertion-count.sh` 同步基线）、**证据轮 SOP（v3.96.0，CHG-133）**走 `scripts/evidence-round.sh`（默认 5 快照 + 1 非快照；起轮前 `scripts/pre-round-check.sh`，纯文档可 `--carry-check`）、**返工分治（v3.97.0，CHG-134）**（纯补钉记 05「延后补钉登记」）、**冻结规则（v3.97.1，CHG-135）**（轮内改树 `GATE-E156`）与 **fresh clone / 无 CI 仓必须全绿**（`fresh-clone-check.sh` 收口前跑一次，`E153` 支持代码面指纹复用；未验证 REQ 入 09 清单 `E154`）。
 8. **有状态 mock 隔离**：跨调用有状态依赖每用例重建。
 9. **禁并行集成测试**：共享远程 DB 期间禁并行跑集成测试。
-10. **长任务等待纪律**：禁独立 LLM 轮 `sleep` 轮询（用前台 timeout / 单 shell `while` / 后台通知三式，或读 `.agent-state/suite-progress.json`）。
+10. **长任务等待纪律**：禁独立 LLM 轮 `sleep` 轮询与 `TaskOutput block:true timeout>60s` 阻塞等（用前台 timeout / 单 shell `while` / 后台通知三式，或读 `.agent-state/suite-progress.json`）。
 11. **环境归因续跑**：环境类故障恢复后按已落盘产物续跑，任务类（方案错/理解错）才推倒重来，归因登记 09。
 12. **调用批处理（v3.77.0）**：独立命令合并执行，同文件多处改动合并 edit（`session-gate` 对 edit ≥40 亮黄灯）。
 13. **尾部增量读（v3.77.0）**：追加类更新用定点 edit/`cat >>`，换挡只读 `handoff.md` 与增量区段。
@@ -55,7 +55,7 @@
 
 ## 可执行门禁（仓库启用 `scripts/agent-gate` 时不可跳过）
 
-1. **建单与确认**：运行 `scripts/new-change <变更号> --risk Lx` 两段式生成骨架（当天 L0/L1 默认入 `docs/changes/BATCH-YYYYMMDD/`，L2/L3 独立目录；00-intent 须写目录落位声明 `E86`）。在 `00.5-communication.md` 记录用户整体确认（`E83`）后再展开 01–04 产物。`ui_change: true` 触发 `03.6-ui-spec.md`、UJ/出站出口（`E104`/`E161`）、入口即承责（`E162`）、三查锚点（`E157–E159`）与 UAT/业务终审（`E96`/`E98`/`E107`/`E124`）。
+1. **建单与确认**：运行 `scripts/new-change <变更号> --risk Lx` 两段式生成骨架（当天 L0/L1 变更/缺陷首个即建 `docs/changes/BATCH-YYYYMMDD/`，L2/L3 独立目录；00-intent 须写目录落位声明 `E86`）。在 `00.5-communication.md` 记录用户整体确认（`E83`）后再展开 01–04 产物。`ui_change: true` 触发 `03.6-ui-spec.md`、UJ/出站出口（`E104`/`E161`）、入口即承责（`E162`）、三查锚点（`E157–E159`）与 UAT/业务终审（`E96`/`E98`/`E107`/`E124`）。
 2. **门禁推进**：改源码前执行 `scripts/agent-gate begin <变更号>`（可先 `preflight <变更号>` 一次列全缺口，v3.82.0 起并收 stop 侧交付形状面），按阶段过 `--stage spec|design|testplan`（`E126`）；项目总册 13 册须在位（§1.3）。
 3. **提交与交付**：提交前 `scripts/agent-gate --stage staged`；pre-commit 自动执行 `scripts/stamp-provenance.sh --all <变更号>`（及 `--bug <BUG-id>`）；交付前补全 05、07、09（含 ReAct 记录与 P00–P12 总册回填清单）与 01.5 RTVM 回填。
 4. **无账改动与度量**：无活跃变更直接改源码在编辑/提交时拦截（`GATE-E125`）；`scripts/agent-gate metrics` 只读输出度量。严禁删除/绕过 Hook、CI 或 `agent-gate`。
@@ -91,5 +91,5 @@
 
 ---
 
-_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v4.5.0_
+_本文件随 `docs/DEVELOPMENT_STANDARDS.md` 版本同步维护，当前对应规范版本：v4.5.1_
 <!-- dev-standards:managed end — 上方为规范托管区；下方用户内容升级/重装时保留 -->

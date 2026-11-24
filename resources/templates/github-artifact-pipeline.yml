@@ -5,25 +5,12 @@
 #      02-code-impact-analysis.md、03-modification-plan.md、03.5-tasks.md 与
 #      04-test-scripts.md **骨架** 并开 PR 派发影响分析/方案/测试角色（阶段顺序
 #      01→02→03→03.5→04）；09-changelog.md 合入后自动创建发布检查单 issue（§2.7.1 六项）。
-#   2. 只创建"骨架"（标题 + 指向规范必含清单的待填项），绝不臆造项目特定内容；
+#   2. 只创建"骨架"（单源复制自 <docs>/templates/entry/），绝不臆造项目特定内容；
 #   3. 一切经 PR/issue 走人工或 Agent 审查，不绕过任何治理门禁（CI 仍是信任边界）；
-#   4. 确定性触发：基于 git diff 路径规则，不含任何自然语言判断。
-#
-# GitLab 等其他托管平台：等价实现思路是 pipeline on push to default branch +
-# 路径过滤规则 + API 创建 MR/issue，规则与本文件一一对应（本模板只为 GitHub 生成配置）。
-#
-# ── 变更批次（v3.18.0，规范 §1.1）下的已知粒度限制，显式记录 ──────────────────
-# 变更批次把同一天的多个 L0/L1 变更放进 <change_root>/BATCH-YYYYMMDD/ 一个目录，此时
-# 本 workflow 的 `basename` 取到的是**批次目录名**（BATCH-20260915），不是变更号。
-# 实际影响**仅限于标签**：批次目录里 02/03/03.5/04 四件产物本来就已存在（它们是
-# `agent-gate begin` 的前置件），所以骨架写入被 `[ ! -s ... ]` 全部跳过，最终只可能
-# 开出一个**空 PR** / 一个以批次名命名的发布检查单 issue——噪声，不是正确性破坏。
-# 之所以**不在本版顺手改**：把 id 改为"按 `## <变更号>` 锚点展开为多个成员"会让
-# 脚手架落点从批次目录分裂成独立目录（与批次布局相反），改动面涉及 branch 命名、
-# mkdir 落点与 PR 标题三处，而本文件无法在本地跑通验证（GitHub Actions 只能在平台侧
-# 执行）——按本仓库"A 层必须可机器验证"的规矩，不可验证的改动不入库。
-# 需要批次精确派发时，正确做法是先在此处提取锚点，再**保持落点仍为批次目录**。
-# 与 check-standards-compliance.sh 的同名限制记录互为对照（两处都是"文件级 vs 变更级"）。
+#   4. 确定性触发：基于 git diff 路径规则与配置的 change_root，不含自然语言判断。
+#   5. v4.5.1（CHG-150）：淘汰四份过期内联骨架，改为单源复制 <docs>/templates/entry/；
+#      PUSH_BEFORE_SHA 经 env 隔离注入；支持可配置 paths.docs 与 change_root
+#      （方法论路由详见 resources/methodologies/state-trigger-audit.md）。
 
 name: Artifact pipeline
 
@@ -52,15 +39,24 @@ jobs:
 
       - name: Detect newly merged change artifacts
         id: detect
+        env:
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
           set -eu
-          base="${{ github.event.before }}"
-          if ! git rev-parse --verify -q "${base}^{commit}" >/dev/null 2>&1; then
-            base=$(git rev-parse HEAD~1)
+          docs_dir=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+docs:[[:space:]]*([^#]*).*$/\1/p' .agent-governance.yml 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
+          docs_dir="${docs_dir:-docs}"
+          change_root=$(sed -nE "s/^[[:space:]]*change_root:[[:space:]]*([^#]*).*$/\1/p" .agent-governance.yml 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
+          change_root="${change_root:-$docs_dir/changes}"
+          echo "docs_dir=$docs_dir" >> "$GITHUB_OUTPUT"
+          echo "change_root=$change_root" >> "$GITHUB_OUTPUT"
+          base="$PUSH_BEFORE_SHA"
+          if [[ -z "$base" || "$base" == "0000000000000000000000000000000000000000" ]] \
+             || ! git rev-parse --verify -q "${base}^{commit}" >/dev/null 2>&1; then
+            base=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
           fi
-          git diff --name-only --diff-filter=A "${base}..HEAD" -- 'docs/changes/*/01-spec.md' \
+          git diff --name-only --diff-filter=A "${base}..HEAD" -- "${change_root}/*/01-spec.md" \
             | sed 's|/01-spec\.md$||' | xargs -r -n1 basename > /tmp/new-specs.txt
-          git diff --name-only --diff-filter=A "${base}..HEAD" -- 'docs/changes/*/09-changelog.md' \
+          git diff --name-only --diff-filter=A "${base}..HEAD" -- "${change_root}/*/09-changelog.md" \
             | sed 's|/09-changelog\.md$||' | xargs -r -n1 basename > /tmp/new-changelogs.txt
           echo "specs=$(wc -l < /tmp/new-specs.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
           echo "changelogs=$(wc -l < /tmp/new-changelogs.txt | tr -d ' ')" >> "$GITHUB_OUTPUT"
@@ -70,8 +66,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DOCS_DIR: ${{ steps.detect.outputs.docs_dir }}
+          CHANGE_ROOT: ${{ steps.detect.outputs.change_root }}
         run: |
           set -eu
+          tpl_dir="${DOCS_DIR}/templates/entry"
           while read -r id; do
             [ -n "$id" ] || continue
             branch="automation/${id}-scaffold"
@@ -80,94 +79,32 @@ jobs:
               continue
             fi
             git checkout -b "$branch"
-            mkdir -p "docs/changes/$id"
-            if [ ! -s "docs/changes/$id/02-code-impact-analysis.md" ]; then
-          cat > "docs/changes/$id/02-code-impact-analysis.md" <<'EOF'
-          # 02-code-impact-analysis.md（骨架，由传动机制自动创建）
-
-          > 由 01-spec.md 合入自动派发。按 `docs/DEVELOPMENT_STANDARDS.md` §2.5 阶段 2 必含清单填写；本骨架只列待填项，不含任何预生成内容。先分析后方案：本文件完成前不得进入阶段 3。
-
-          ## 业务影响
-          <!-- 受影响业务流程/用户场景、上下游系统与数据流、行业与合规约束、SLA -->
-
-          ## 技术影响
-          <!-- 调用拓扑（入口→链路→出口）、受影响类/文件清单、爆炸半径；命中状态/触发链路时补「隐式链路」三向遍历节（正向调用点/反向隐式边/事件源×归宿矩阵，方法见 resources/methodologies/state-trigger-audit.md），未命中须显式标注。注意：本注释刻意不使用 A 层校验关键词原文，空骨架不得绕过阶段 2 验收 -->
-
-          ## 风险
-          <!-- 风险矩阵（概率 × 影响）与缓解措施 -->
-
-          ## 回滚策略
-          <!-- 回滚触发条件、步骤与验证 -->
-          EOF
-            fi
-            if [ ! -s "docs/changes/$id/03-modification-plan.md" ]; then
-          cat > "docs/changes/$id/03-modification-plan.md" <<'EOF'
-          # 03-modification-plan.md（骨架，由传动机制自动创建）
-
-          > 由 01-spec.md 合入自动派发。按 `docs/DEVELOPMENT_STANDARDS.md` §2.5 阶段 3 必含清单填写；本骨架只列待填项，不含任何预生成内容。
-
-          ## 架构设计
-          <!-- 分层/模块归属、依赖方向、新增组件 -->
-
-          ## 接口/API 设计
-          <!-- 字段表、状态码、错误码、示例报文 -->
-
-          ## 流程设计
-          <!-- 时序/流程图：正常流、分支流、异常流、降级流 -->
-
-          ## 数据设计
-          <!-- 表结构、索引、缓存策略、事务边界 -->
-
-          ## 技术选型与决策记录（ADR）
-          <!-- ≥2 候选方案对比矩阵 + 为何最适配当前业务场景 -->
-
-          ## 兼容性与影响
-          <!-- 对既有调用方的兼容措施 -->
-
-          ## 任务拆解
-          <!-- 03.5-tasks.md 的 T 任务行（或 CHG 直接实施豁免标注） -->
-          EOF
-            fi
-            if [ ! -s "docs/changes/$id/04-test-scripts.md" ]; then
-          cat > "docs/changes/$id/04-test-scripts.md" <<'EOF'
-          # 04-test-scripts.md（骨架，由传动机制自动创建）
-
-          > 由 01-spec.md 合入自动派发。按 `docs/DEVELOPMENT_STANDARDS.md` §2.5 阶段 4 必含清单填写；测试 Agent 独立性声明（§0.5.2）必须包含。
-
-          ## 测试命令
-          <!-- 全量套件命令（JDK/Maven 等） -->
-
-          ## 用例矩阵
-          <!-- TC 编号 / 场景 / 输入 / 期望断言 / 覆盖维度 / 覆盖的 REQ-DES；十一类覆盖维度逐维设计或显式标注不适用（含性能与容量、并发与竞态）；业务场景清单 SC-xxx 五维枚举（覆盖率 ≥80%，L0 纯文档可单条标注无业务场景影响） -->
-
-          ## TDD 红->绿运行方式
-          <!-- 先红后绿的执行步骤 -->
-
-          ## 测试 Agent 独立性声明
-          <!-- 执行主体标识（§2.1.7 格式）、与开发主体不同的证明 -->
-          EOF
-            fi
-            if [ ! -s "docs/changes/$id/03.5-tasks.md" ]; then
-          cat > "docs/changes/$id/03.5-tasks.md" <<'EOF'
-          # 03.5-tasks.md（骨架，由传动机制自动创建）
-
-          > 由 01-spec.md 合入自动派发。按 `docs/DEVELOPMENT_STANDARDS.md` §2.5 阶段 3 必含清单填写；任务编号用 §1.1 的 `TASK-001` 形态（或 `T1/T2/…`），每条任务可独立提交/回滚。**门禁 A 层会校验两个任务标注关键词**——§2.5 阶段 3「验收标准」原文已列出（任务间的先后制约标注 + 阶段节点标记），填表时按该节补列，不要只填下面这两列。注：本注释刻意避开门禁 A 层关键词原文，空骨架不得绕过 begin 校验。
-
-          | 任务 | 内容 | 先后顺序 | 阶段性交付点 |
-          |---|---|---|---|
-          | <!-- TASK-001 --> | | | |
-          EOF
-            fi
-            if git diff --quiet; then
+            mkdir -p "${CHANGE_ROOT}/$id"
+            # Canonical target artifacts (default docs/changes/$id/02-code-impact-analysis.md,
+            # docs/changes/$id/03-modification-plan.md, docs/changes/$id/03.5-tasks.md,
+            # docs/changes/$id/04-test-scripts.md when change_root is docs/changes).
+            for f in 02-code-impact-analysis.md 03-modification-plan.md 03.5-tasks.md 04-test-scripts.md; do
+              dst="${CHANGE_ROOT}/$id/$f"
+              src="${tpl_dir}/$f"
+              if [ ! -s "$dst" ]; then
+                if [ -s "$src" ]; then
+                  sed -e "s|__CHANGE_ID__|${id}|g" -e "s|__RISK__|L2|g" "$src" > "$dst"
+                else
+                  echo "artifact-pipeline: missing single-source entry template: $src" >&2
+                  exit 2
+                fi
+              fi
+            done
+            if git diff --quiet && [ -z "$(git status --porcelain -- "${CHANGE_ROOT}/$id")" ]; then
               echo "skip $id: scaffolds already present"
               git checkout "$DEFAULT_BRANCH"
               continue
             fi
-            git add "docs/changes/$id"
+            git add "${CHANGE_ROOT}/$id"
             git commit -m "chore(pipeline): scaffold impact/plan/test artifacts for $id"
             git push origin "$branch"
             gh pr create --title "pipeline: scaffold artifacts for $id" --body \
-              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03、03.5 与 04（gate begin 必检八件），经门禁 1（需求/设计先行）审查后合入。骨架不含预生成内容。"
+              "由 01-spec.md 合入自动派发（传动机制，规范 §2.17.1）。请由影响分析/方案/测试角色填写 02、03、03.5 与 04（gate begin 必检八件），经门禁 1（需求/设计先行）审查后合入。骨架复制自单源入口模板。"
             git checkout "$DEFAULT_BRANCH"
           done < /tmp/new-specs.txt
 

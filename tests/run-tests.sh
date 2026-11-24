@@ -1666,7 +1666,7 @@ report "bootstrap fresh install carries managed markers" 0 $?
 printf '\n<!-- user: project anchor row -->\n' >> "$BT/AGENTS.md"
 out=$(bash "$BOOT_SRC" --core "$BT" 2>&1 || true)
 check_output "bootstrap merges AGENTS.md managed block" "merged.*AGENTS.md" "$out"
-grep -q "user: project anchor row" "$BT/AGENTS.md" && grep -q "本文件是所有 AI Agent" "$BT/AGENTS.md"
+grep -q "user: project anchor row" "$BT/AGENTS.md" && grep -q "所有 AI Agent" "$BT/AGENTS.md"
 report "bootstrap merge preserves user sections and managed block" 0 $?
 sed -i '' '/dev-standards:managed/d' "$BT/AGENTS.md" 2>/dev/null || sed -i '/dev-standards:managed/d' "$BT/AGENTS.md"
 bash "$BOOT_SRC" --core "$BT" >/dev/null 2>&1
@@ -1722,6 +1722,12 @@ bash "$BOOT_SRC" --pipeline "$BT3" >/dev/null 2>&1
 report "bootstrap pipeline installs workflows" 0 $?
 [[ -s "$BT3/.github/workflows/artifact-pipeline.yml" && -s "$BT3/.github/workflows/incident-to-intent.yml" ]]
 report "bootstrap pipeline lands both workflows" 0 $?
+grep -q 'templates/entry' "$BT3/.github/workflows/artifact-pipeline.yml" && ! grep -q '## 业务影响' "$BT3/.github/workflows/artifact-pipeline.yml"
+report "T11 TC-10028 artifact-pipeline copies templates/entry (no stale 业务影响)" 0 $?
+grep -q 'PUSH_BEFORE_SHA' "$BT3/.github/workflows/artifact-pipeline.yml"
+report "T11 TC-10029 artifact-pipeline isolates event.before via env" 0 $?
+grep -q 'origin/${PR_BASE_REF}:.agent-governance.yml' "$BT2/.github/workflows/agent-governance.yml"
+report "T11 TC-10030 agent-governance falls back to base branch .agent-governance.yml" 0 $?
 
 bash "$BOOT_SRC" --bogus "$BT" >/dev/null 2>&1
 report "bootstrap rejects unknown flag" 2 $?
@@ -1974,6 +1980,18 @@ if [[ -f "$BOOT_SRC" ]]; then
   out=$(bash "$BOOT_SRC" --all --docs-dir doc --scripts-dir tools --tests-dir spec "$BT5" 2>&1 || true)
   check_output "T14 custom-root rerun reports up to date (no false drift)" "up to date" "$out"
   rm -rf "$BT5"
+  BT6=$(mktemp -d)
+  git -C "$BT6" init -q -b master
+  bash "$BOOT_SRC" --guard --pipeline "$BT6" >/dev/null 2>&1
+  report "T14 TC-10031 master-branch guard+pipeline install rc0" 0 $?
+  grep -q 'branches: \[master\]' "$BT6/.github/workflows/agent-governance.yml" \
+    && ! grep -q 'branches: \[main\]' "$BT6/.github/workflows/agent-governance.yml" \
+    && grep -q 'branches: \[master\]' "$BT6/.github/workflows/artifact-pipeline.yml" \
+    && ! grep -q 'branches: \[main\]' "$BT6/.github/workflows/artifact-pipeline.yml"
+  report "T14 TC-10031 master-branch rewrites workflows without main residue" 0 $?
+  out=$(bash "$BOOT_SRC" --guard --pipeline "$BT6" 2>&1 || true)
+  check_output "T14 TC-10031 master-branch rerun reports up to date" "up to date" "$out"
+  rm -rf "$BT6"
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
@@ -3146,10 +3164,35 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     printf '{"dev-standards":{"PreToolUse":[{"matcher":"write_file","hooks":[{"type":"command","command":"bash scripts/agent-gate --stage pre-write"}]}]}}\n' > .agents/hooks.json
     out=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --verify-wiring .agents/hooks.json 2>&1)
     check_output "T26 TC-10017 --verify-wiring accepts valid .agents/hooks.json" "dynamic wiring verified" "$out"
-    rm -rf .agents
+    out=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --print-global-contract 2>&1)
+    check_output "T26 TC-10032 --print-global-contract emits user-global-cross-workspace" '"user-global-cross-workspace"' "$out"
+    t26_bin=$(mktemp -d); t26_repo=$(mktemp -d)
+    for _cmd in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env; do
+      _cmd_path=$(command -v "$_cmd" 2>/dev/null || true)
+      [[ -n "$_cmd_path" ]] && ln -sf "$_cmd_path" "$t26_bin/$_cmd"
+    done
+    mkdir -p "$t26_repo/scripts" "$t26_repo/.agents"
+    cp "$ROOT/resources/templates/install-hook-adapter.sh" "$t26_repo/scripts/install-hook-adapter"
+    touch "$t26_repo/scripts/agent-gate"
+    cp .agents/hooks.json "$t26_repo/.agents/hooks.json"
+    out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json 2>&1)
+    check_output "T26 TC-10026 zero-dep PATH --verify-wiring passes" "dynamic wiring verified" "$out"
+    printf '{"broken":
+' > "$t26_repo/.agents/hooks.json"
+    (cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json >/dev/null 2>&1)
+    report "T26 TC-10026 zero-dep PATH rejects malformed JSON" 2 $?
+    printf '{"dev-standards":{"PreToolUse":[{"matcher":"write_file","hooks":[{"type":"command","command":"bash scripts/missing-gate.sh"}]}]}}
+' > "$t26_repo/.agents/hooks.json"
+    (cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json >/dev/null 2>&1)
+    report "T26 TC-10026 rejects missing wired script" 2 $?
+    rm -rf "$t26_bin" "$t26_repo" .agents
   else
     report "T26 TC-10016 --print-contract (skip: template absent)" 0 0
     report "T26 TC-10017 --verify-wiring (skip: template absent)" 0 0
+    report "T26 TC-10032 --print-global-contract (skip: template absent)" 0 0
+    report "T26 TC-10026 zero-dep verify-wiring ok (skip: template absent)" 0 0
+    report "T26 TC-10026 malformed JSON (skip: template absent)" 0 0
+    report "T26 TC-10026 missing script (skip: template absent)" 0 0
   fi
   rm -f .agent-governance.yml
 else
@@ -4242,6 +4285,11 @@ REG47
   # 真实注册表 profile 校验（源仓根；临时仓内 ROOT 解析会指向夹具仓）
   ( cd "$ROOT" && bash resources/templates/generate-reading-pack.sh L2-architecture --profile frontend --verify >/dev/null 2>&1 )
   report "T40 real registry profile verify rc0" 0 $?
+  _t40_fail=0
+  for _t40_type in L0-bugfix L1-standards L2-architecture L3-critical universal; do
+    ( cd "$ROOT" && bash resources/templates/generate-reading-pack.sh "$_t40_type" --verify >/dev/null 2>&1 ) || _t40_fail=$((_t40_fail + 1))
+  done
+  report "T40 TC-10020 all 5 pack types pass real registry verify" 0 "$_t40_fail"
   # 接线静态 pin（源仓）
   # CHG-102：generator 计数 1→2（usage 护栏入口清单 + install 落点）。
   report "T40 bootstrap ships generator" 2 "$(grep -c 'generate-reading-pack' "$ROOT/scripts/bootstrap.sh")"
@@ -5523,9 +5571,19 @@ report "T53 TC-2383 E157 stop green with 判定卡 recorded" 0 $?
 # ---- v4.5.0 (CHG-149, REQ-1385~1388): E104 bare HTTP, E161 outbound exit, E162 entry-owns-exit, E107 compensation gap ----
 # TC-10015 (E104 bare HTTP): replace evidence with bare HTTP 200 (no body/DOM/latency) -> red
 cp docs/changes/CHG-1060/05-test-results.md docs/changes/CHG-1060/05.bak
-printf '# 05\n- UJ-001 运行时证据：HTTP 200 @2026-11-24T00:00:00Z\n- **还原度断言**：未命中，不适用（T53 夹具）\n' > docs/changes/CHG-1060/05-test-results.md
+awk '1; /^-->/{exit}' docs/changes/CHG-1060/05.bak > docs/changes/CHG-1060/05.hdr
+{ cat docs/changes/CHG-1060/05.hdr; printf '# 05\n- UJ-001 运行时证据：HTTP 200 @2026-11-24T00:00:00Z\n- **还原度断言**：未命中，不适用（T53 夹具）\n'; } > docs/changes/CHG-1060/05-test-results.md
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-10015 E104 stop red: bare HTTP 200 without body/latency rejected" 2 "$rc"
+check_output "T53 TC-10015 refusal names GATE-E104" "GATE-E104" "$out"
+{ cat docs/changes/CHG-1060/05.hdr; printf '# 05\n- UJ-001 运行时证据：HTTP 200 @2026-11-24T00:00:00Z 耗时正常 body={ok:true}\n- **还原度断言**：未命中，不适用（T53 夹具）\n'; } > docs/changes/CHG-1060/05-test-results.md
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-10027 E104 stop red: non-numeric 耗时正常 rejected" 2 "$rc"
+check_output "T53 TC-10027 refusal names GATE-E104" "GATE-E104" "$out"
+{ cat docs/changes/CHG-1060/05.hdr; printf '# 05\n- UJ-001 运行时证据：HTTP 200 @2026-11-24T00:00:00Z 耗时: 120ms body={ok:true}\n- **还原度断言**：未命中，不适用（T53 夹具）\n'; } > docs/changes/CHG-1060/05-test-results.md
 scripts/agent-gate --stage stop >/dev/null 2>&1
-report "T53 TC-10015 E104 stop red: bare HTTP 200 without body/latency rejected" 2 $?
+report "T53 TC-10027 E104 stop green: numeric 耗时: 120ms accepted" 0 $?
+rm -f docs/changes/CHG-1060/05.hdr
 mv docs/changes/CHG-1060/05.bak docs/changes/CHG-1060/05-test-results.md
 # TC-10012 (E161 outbound exit): add 出站出口节 with placeholder -> red; bind UJ-001 -> green
 cp docs/changes/CHG-1060/01-spec.md docs/changes/CHG-1060/01.bak
@@ -8712,6 +8770,41 @@ check_output "T84 E154 missing-01.5 refusal names the code" 'GATE-E154.*01.5' "$
 mv docs/changes/CHG-1200/01.5.hold docs/changes/CHG-1200/01.5-rtvm-matrix.md
 # v3.92.3 fix: do not leak the fixture's pinned roots into a later section
 # (canonical order puts T84 last, but -T subsets / shards must stay hermetic).
+t84_cf=$(mktemp -d)
+(
+  cd "$t84_cf"
+  git init -q -b main
+  git config user.email t@t
+  git config user.name t
+  mkdir -p scripts doc/changes/CHG-1201 .agent-state .git/agent-governance
+  t84_gate="$ROOT/resources/templates/agent-gate.sh"
+  [[ -s "$t84_gate" ]] || t84_gate="$ROOT/scripts/agent-gate"
+  cp "$t84_gate" scripts/agent-gate
+  cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/lib-suite-tree-fingerprint.sh
+  chmod +x scripts/agent-gate
+  printf 'docs_dir: doc\nchange_root: doc/changes\ncore_paths: core_v1.sh\n' > .agent-governance.yml
+  printf '#!/usr/bin/env bash\necho v1\n' > core_v1.sh
+  printf '# Intent\n' > doc/changes/CHG-1201/00-intent.md
+  printf '{"change_id":"CHG-1201","risk_level":"L2","verification_owner":"qa"}\n' > doc/changes/CHG-1201/00-governance.json
+  printf 'red_repro: err\ngreen_after: ok\n## 还原度断言\n不适用\n' > doc/changes/CHG-1201/05-test-results.md
+  printf '独立复核: subagent task-1201\n' > doc/changes/CHG-1201/07-review-report.md
+  git add -A && git commit -q -m "init"
+  printf 'CHG-1201\n' > .git/agent-governance/active-change
+  . scripts/lib-suite-tree-fingerprint.sh
+  cface=$(suite_tree_fingerprint "$t84_cf" "doc/changes" "doc/bugs" "doc/project" 2>/dev/null)
+  head_sha=$(git rev-parse HEAD)
+  printf '{"head":"%s","tree_sha":"doc-only-drift","code_face_sha":"%s","audit_rc":0,"suite_rc":0}\n' "$head_sha" "$cface" > .agent-state/fresh-clone-receipt.json
+  printf '\n<!-- doc-only update -->\n' >> doc/changes/CHG-1201/00-intent.md
+  env -u AGENT_GUARD_FRESH_CLONE AGENT_GUARD_DOCS_DIR=doc AGENT_GUARD_CHANGE_ROOT=doc/changes AGENT_GUARD_CORE_PATHS=core_v1.sh bash scripts/agent-gate --stage core >/dev/null 2>&1
+)
+report "T84 TC-10023 custom --docs-dir doc reuses green code_face_sha on doc drift" 0 $?
+out=$(
+  cd "$t84_cf"
+  printf 'echo v2_unstaged\n' >> core_v1.sh
+  env -u AGENT_GUARD_FRESH_CLONE AGENT_GUARD_DOCS_DIR=doc AGENT_GUARD_CHANGE_ROOT=doc/changes AGENT_GUARD_CORE_PATHS=core_v1.sh bash scripts/agent-gate --stage core 2>&1 || true
+)
+check_output "T84 TC-10022 E153 rejects unstaged code edit despite matching index" "GATE-E153" "$out"
+rm -rf "$t84_cf"
 unset AGENT_GUARD_DOCS_DIR AGENT_GUARD_CHANGE_ROOT AGENT_GUARD_CORE_PATHS
 }
 section_T85() {
