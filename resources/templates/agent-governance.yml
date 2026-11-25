@@ -121,3 +121,10 @@ stop_hook:
 provenance:
   # 隐私开关：false 时 email 写为 <redacted>，作者与主机信息保留。
   include_email: true
+
+# ── 渐进式执法模式（v4.10.0，CHG-155，ITEM-46）──────────────────────────────────
+# mode: strict（默认硬阻断）| ratchet（ratchet_since 之前的存量变更走 advisory，新建走 strict）| advisory（非安全门仅告警）
+# GATE-E164（Secret 扫描）与 CLI 参数错误码在所有模式下均保持硬阻断。env AGENT_GUARD_ENFORCEMENT_MODE 优先级更高。
+# enforcement:
+#   mode: strict
+#   ratchet_since: ""

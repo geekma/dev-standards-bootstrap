@@ -649,6 +649,69 @@ baseline_write() {
 }
 
 emit_metrics() {
+  local sum=0 jmode=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --summary) sum=1 ;;
+      --json) jmode=1 ;;
+      *) echo "agent-gate: metrics unknown option '$1' (expected --summary [--json])" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  if [[ "$jmode" -eq 1 && "$sum" -eq 0 ]]; then
+    echo "agent-gate: metrics --json requires --summary" >&2; exit 2
+  fi
+  if [[ "$sum" -eq 1 ]]; then
+    local _raw
+    _raw=$(_emit_metrics_jsonl)
+    awk -v jmode="$jmode" '
+      function jesc(s) {
+        gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/[\t\r\n]/, " ", s)
+        return s
+      }
+      BEGIN {
+        c=0; l0=0; l1=0; l2=0; l3=0; ready=0; rr=0; ftot=0; fint=0; fpre=0; fr_tot=0
+      }
+      /"change_id":/ {
+        c++
+        if ($0 ~ /"risk_level":"L0"/) l0++
+        else if ($0 ~ /"risk_level":"L1"/) l1++
+        else if ($0 ~ /"risk_level":"L2"/) l2++
+        else if ($0 ~ /"risk_level":"L3"/) l3++
+        if ($0 ~ /"delivery_ready":true/) ready++
+        if (match($0, /"review_rounds":[0-9]+/)) { rr += substr($0, RSTART+16, RLENGTH-16)+0 }
+        if (match($0, /"findings_total":[0-9]+/)) { ftot += substr($0, RSTART+17, RLENGTH-17)+0 }
+        if (match($0, /"findings_introduced":[0-9]+/)) { fint += substr($0, RSTART+22, RLENGTH-22)+0 }
+        if (match($0, /"findings_pre_existing":[0-9]+/)) { fpre += substr($0, RSTART+24, RLENGTH-24)+0 }
+      }
+      /"friction_code":/ {
+        if (match($0, /"friction_code":"[^"]+"/)) {
+          fc = substr($0, RSTART+17, RLENGTH-18)
+          if (match($0, /"count":[0-9]+/)) {
+            fn = substr($0, RSTART+8, RLENGTH-8)+0
+            fr_tot += fn; frc[fc] += fn
+          }
+        }
+      }
+      END {
+        top_code = "none"; top_n = 0
+        for (k in frc) { if (frc[k] > top_n || (frc[k] == top_n && k < top_code)) { top_n = frc[k]; top_code = k } }
+        if (jmode == 1) {
+          printf "{\"changes\":%d,\"by_risk\":{\"L0\":%d,\"L1\":%d,\"L2\":%d,\"L3\":%d},\"delivery_ready\":%d,\"review_rounds\":%d,\"findings_total\":%d,\"findings_introduced\":%d,\"findings_pre_existing\":%d,\"friction_events\":%d,\"top_friction\":\"%s\"}\n",
+            c, l0, l1, l2, l3, ready, rr, ftot, fint, fpre, fr_tot, jesc(top_code)
+        } else {
+          printf "metrics summary: changes=%d (L0=%d L1=%d L2=%d L3=%d) delivery_ready=%d\n", c, l0, l1, l2, l3, ready
+          printf "metrics reviews: rounds=%d findings_total=%d introduced=%d pre_existing=%d\n", rr, ftot, fint, fpre
+          printf "metrics friction: events=%d top=%s (%d)\n", fr_tot, top_code, top_n
+        }
+      }
+    ' <<< "$_raw"
+    return 0
+  fi
+  _emit_metrics_jsonl
+}
+
+_emit_metrics_jsonl() {
   local dir id risk t_intent t_gov t_spec t_plan t_test t_chg t_code
   local ad_total ad_yes ad_no ad_over ad_rate
   local sigs esess r_rounds r_limit r_over f_tot f_dis f_rate
@@ -774,12 +837,117 @@ emit_metrics() {
   fi
 }
 
+doctor_cmd() { # [--json] — ITEM-47 read-only diagnostics
+  local jmode=0 pass=0 warn=0 fail=0 checks_json="" first=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) jmode=1 ;;
+      -h|--help) echo "Usage: scripts/agent-gate doctor [--json]"; return 0 ;;
+      *) echo "agent-gate: doctor unknown option '$1' (expected --json)" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  _doc_add() { # <name> <ok|warn|fail> <detail> <fix>
+    local n="$1" st="$2" det="$3" fix="$4"
+    case "$st" in
+      ok)   pass=$((pass + 1)) ;;
+      warn) warn=$((warn + 1)) ;;
+      fail) fail=$((fail + 1)) ;;
+    esac
+    if [[ "$jmode" -eq 1 ]]; then
+      local entry
+      entry=$(printf '{"name":"%s","status":"%s","detail":"%s","fix":"%s"}' \
+        "$(json_escape "$n")" "$(json_escape "$st")" "$(json_escape "$det")" "$(json_escape "$fix")")
+      if [[ "$first" -eq 1 ]]; then checks_json="$entry"; first=0; else checks_json="$checks_json,$entry"; fi
+    else
+      printf '%-4s %-18s %s' "${st}" "$n" "$det"
+      [[ -n "$fix" && "$st" != "ok" ]] && printf ' | fix: %s' "$fix"
+      printf '\n'
+    fi
+  }
+  local hp
+  hp=$(git -C "$repo_root" config --get core.hooksPath 2>/dev/null || true)
+  if [[ "$hp" == "$githooks_dir" || "$hp" == "$repo_root/$githooks_dir" ]]; then
+    _doc_add "git_hooks" "ok" "core.hooksPath=$hp" ""
+  else
+    _doc_add "git_hooks" "warn" "core.hooksPath='${hp:-unset}' (expected $githooks_dir)" "git config core.hooksPath $githooks_dir"
+  fi
+  local _cs_ok=1 _cs_bad="" _cs_f _cs_dir="$repo_root/$scripts_dir"
+  [[ -f "$_cs_dir/lib-gate-cold.sh" ]] || _cs_dir="$repo_root/resources/templates"
+  for _cs_f in lib-json.sh lib-gate-cold.sh; do
+    if [[ ! -f "$_cs_dir/$_cs_f" ]] || ! /bin/bash -n "$_cs_dir/$_cs_f" >/dev/null 2>&1; then
+      _cs_ok=0; _cs_bad="${_cs_bad:+$_cs_bad }$_cs_f"
+    fi
+  done
+  local _ag_f="$repo_root/$scripts_dir/agent-gate"
+  [[ -f "$_ag_f" ]] || _ag_f="$repo_root/resources/templates/agent-gate.sh"
+  if [[ ! -f "$_ag_f" ]] || ! /bin/bash -n "$_ag_f" >/dev/null 2>&1; then
+    _cs_ok=0; _cs_bad="${_cs_bad:+$_cs_bad }agent-gate"
+  fi
+  if [[ "$_cs_ok" -eq 1 ]]; then
+    _doc_add "core_scripts" "ok" "agent-gate + lib-json + lib-gate-cold present & valid" ""
+  else
+    _doc_add "core_scripts" "fail" "missing or invalid bash syntax: $_cs_bad" "bash scripts/bootstrap.sh --guard ."
+  fi
+  if [[ -f "$repo_root/.agent-governance.yml" ]]; then
+    if grep -q '<replace-with-project-test-command>' "$repo_root/.agent-governance.yml" 2>/dev/null && [[ -z "${AGENT_GUARD_VERIFY_COMMAND:-}" ]]; then
+      _doc_add "verify_channel" "warn" "ci.verification_command is still placeholder" "set ci.verification_command in .agent-governance.yml or AGENT_GUARD_VERIFY_COMMAND"
+    else
+      _doc_add "verify_channel" "ok" ".agent-governance.yml configured" ""
+    fi
+  else
+    _doc_add "verify_channel" "warn" ".agent-governance.yml not found" "bash scripts/bootstrap.sh --guard ."
+  fi
+  local _ad_found=""
+  for _ad_p in "$repo_root/.agents/hooks.json" "$repo_root/.claude/settings.json" "$repo_root/.cursor/hooks.json" "$repo_root/.gemini/settings.json" "$repo_root/.opencode/plugins"; do
+    if [[ -e "$_ad_p" ]]; then _ad_found="$_ad_p"; break; fi
+  done
+  if [[ -n "$_ad_found" ]]; then
+    _doc_add "client_adapter" "ok" "found ${_ad_found#"$repo_root/"}" ""
+  else
+    _doc_add "client_adapter" "warn" "no client hook adapter detected" "scripts/install-hook-adapter"
+  fi
+  local _ac_id _ac_ok=0
+  _ac_id=$(active_change_quiet)
+  if [[ -z "$_ac_id" ]]; then
+    _doc_add "active_change" "ok" "none active" ""
+  else
+    local _ac_dir
+    _ac_dir=$(change_dir "$_ac_id" 2>/dev/null || true)
+    if [[ -n "$_ac_dir" && -d "$_ac_dir" ]] || is_change_card "$_ac_id"; then _ac_ok=1; fi
+    if [[ "$_ac_ok" -eq 1 ]]; then
+      _doc_add "active_change" "ok" "active=$_ac_id" ""
+    else
+      _doc_add "active_change" "fail" "active-change '$_ac_id' points to missing dir/card" "scripts/agent-gate start $_ac_id"
+    fi
+  fi
+  local _em _em_raw="${AGENT_GUARD_ENFORCEMENT_MODE:-}"
+  if [[ -z "$_em_raw" && -f "$repo_root/.agent-governance.yml" ]]; then
+    _em_raw=$(sed -nE '/^enforcement:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+mode:[[:space:]]*([^#]*).*$/\1/p' "$repo_root/.agent-governance.yml" 2>/dev/null \
+      | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  _em=$(enforcement_mode 2>/dev/null || echo strict)
+  if [[ -n "$_em_raw" && "$_em_raw" != "strict" && "$_em_raw" != "ratchet" && "$_em_raw" != "advisory" ]]; then
+    _doc_add "enforcement_mode" "warn" "invalid mode '$_em_raw' (falling back to strict)" "set strict|ratchet|advisory in .agent-governance.yml"
+  else
+    _doc_add "enforcement_mode" "ok" "mode=$_em" ""
+  fi
+  if [[ "$jmode" -eq 1 ]]; then
+    printf '{"passed":%d,"warned":%d,"failed":%d,"enforcement_mode":"%s","checks":[%s]}\n' \
+      "$pass" "$warn" "$fail" "$(json_escape "$_em")" "$checks_json"
+  else
+    printf 'doctor: %d ok, %d warn, %d fail (mode=%s)\n' "$pass" "$warn" "$fail" "$_em"
+  fi
+  [[ "$fail" -eq 0 ]]
+}
+
 print_help_cmd() {
   cat <<'EOF'
 Usage:
   scripts/agent-gate begin <change-id>
   scripts/agent-gate end
-  scripts/agent-gate metrics
+  scripts/agent-gate metrics [--summary [--json]]
+  scripts/agent-gate doctor [--json]               # read-only governance health diagnostics (v4.10.0)
   scripts/agent-gate session-start          # v3.90.2: write the session handshake (runtime/model/window, P0-1)
   scripts/agent-gate plan <change-id> [--dry-run|--explain]  # v3.90.2: read-only test-scope decision (P1-1/P1-2)
   scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)

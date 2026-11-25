@@ -89,6 +89,7 @@ Flags (layers; default --core when none given):
                用于判断派生资产是否需要跟上。不写任何文件。
   --print-profile-contract [TARGET]  只读探测目标仓后缀/Monorepo/测试目录并输出画像 JSON 契约（ITEM-15）。
   --verify-profile [TARGET]          只读校验 .agent-governance.yml 中 code_extensions 与 scopes 合法性（ITEM-15）。
+  --dry-run                          预览安装/升级变更（打印 [dry-run] 计划与统计，不改动目标仓磁盘）。
   --force      覆盖目标仓库中内容不同的既有文件（默认冲突时展示 diff 并拒绝）。
                **不越过派生保护**——--force 的语义是"覆盖内容不同的既有文件"，
                不是"覆盖别人派生出来的资产"。
@@ -125,6 +126,7 @@ EOF
 
 force=false
 upgrade=false
+dry_run=false
 check_mode=false
 self_update=false
 derived_report=false
@@ -162,6 +164,7 @@ for arg in "$@"; do
     # became a full 5-layer install. The full set is now applied after parsing,
     # and only when the user named no layer at all.
     --upgrade)  upgrade=true ;;
+    --dry-run)  dry_run=true ;;
     --check)          check_mode=true ;;
     --self-update)    self_update=true ;;
     --derived-report) derived_report=true ;;
@@ -315,7 +318,7 @@ fi
 # a git clone with a clean tree), so "全面升级" = source latest + target sync.
 # If the pull actually changed files, re-exec so the NEW installer code runs
 # (bash must never execute a script file that changed underneath it).
-if [[ "$upgrade" == true ]]; then
+if [[ "$upgrade" == true && "$dry_run" != true ]]; then
   if [[ -d "$SKILL_ROOT/.git" ]] && command -v git >/dev/null 2>&1; then
     if [[ -n "$(git -C "$SKILL_ROOT" status --porcelain 2>/dev/null)" ]]; then
       echo "NOTE       skill repo has uncommitted changes — skipping self-update; run with a clean skill repo for a full upgrade" >&2
@@ -766,6 +769,16 @@ install_file() {
   # CHG-062 (v3.50.0): agents-md = merge-or-keep，永不覆盖用户内容。
   # 有标记 → 只换托管区（区外保留）；无标记差异 → kept（--force 不越）。
   if [[ "$key" == "agents-md" && -f "$dest" ]] && ! same_as_src "$src" "$dest"; then
+    if [[ "$dry_run" == true ]]; then
+      if grep -qF "$M_BEGIN" "$dest" && grep -qF "$M_END" "$dest"; then
+        echo "[dry-run] would merge $dest_rel (managed block updated; user sections preserved)"
+        upgraded=$(( upgraded + 1 ))
+      else
+        echo "[dry-run] would keep  $dest_rel (user-modified AGENTS.md without managed markers)"
+        skipped=$(( skipped + 1 ))
+      fi
+      return 0
+    fi
     local msrc="$dest.merged.tmp"
     if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$src" > "$msrc"; else cp "$src" "$msrc"; fi
     if merge_managed "$msrc" "$dest" > "$msrc.out" && [[ -s "$msrc.out" ]]; then
@@ -813,19 +826,31 @@ install_file() {
     if same_as_src "$src" "$dest"; then
       echo "up to date   $dest_rel"
       skipped=$(( skipped + 1 ))
-      manifest_record "$dest_rel" "$dest" || { echo "bootstrap: aborting — manifest record failed for $dest_rel" >&2; exit 2; }
+      if [[ "$dry_run" != true ]]; then
+        manifest_record "$dest_rel" "$dest" || { echo "bootstrap: aborting — manifest record failed for $dest_rel" >&2; exit 2; }
+      fi
       return 0
     fi
     if [[ "$upgrade" == true ]]; then
       local eck
       eck=$(manifest_get "$dest_rel")
       if [[ -n "$eck" && "$eck" == "$(file_cksum "$dest")" ]]; then
+        if [[ "$dry_run" == true ]]; then
+          echo "[dry-run] would update    $dest_rel (upgrade; unchanged since install)"
+          upgraded=$(( upgraded + 1 ))
+          return 0
+        fi
         install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
         echo "updated      $dest_rel (upgrade; unchanged since install)"
         upgraded=$(( upgraded + 1 ))
         return 0
       fi
       if [[ "$force" == true ]]; then
+        if [[ "$dry_run" == true ]]; then
+          echo "[dry-run] would overwrite $dest_rel (--force)"
+          overwritten=$(( overwritten + 1 ))
+          return 0
+        fi
         install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
         echo "overwrite    $dest_rel (user-modified since install — --force given; previous content in git history)"
         overwritten=$(( overwritten + 1 ))
@@ -845,9 +870,19 @@ install_file() {
       echo "bootstrap: aborting — partial install: installed=$installed up-to-date=$skipped; re-run with --force to complete" >&2
       exit 2
     fi
+    if [[ "$dry_run" == true ]]; then
+      echo "[dry-run] would overwrite $dest_rel (--force)"
+      overwritten=$(( overwritten + 1 ))
+      return 0
+    fi
     install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
     echo "overwrite    $dest_rel"
     overwritten=$(( overwritten + 1 ))
+    return 0
+  fi
+  if [[ "$dry_run" == true ]]; then
+    echo "[dry-run] would install   $dest_rel"
+    installed=$(( installed + 1 ))
     return 0
   fi
   install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
@@ -1013,6 +1048,12 @@ done
 # Append-only and idempotent: existing .gitignore content is never rewritten.
 ensure_agent_state_ignored() {
   local gi="$target/.gitignore" tracked
+  if [[ "$dry_run" == true ]]; then
+    if ! { [[ -f "$gi" ]] && grep -qE '^[[:space:]]*([*]{1,2}/)?\.agent-state/?[[:space:]]*$' "$gi" 2>/dev/null; }; then
+      echo "[dry-run] would add .agent-state/ to .gitignore"
+    fi
+    return 0
+  fi
   if ! { [[ -f "$gi" ]] && grep -qE '^[[:space:]]*([*]{1,2}/)?\.agent-state/?[[:space:]]*$' "$gi" 2>/dev/null; }; then
     if [[ -f "$gi" ]]; then
       printf '\n# dev-standards runtime state (local only — never commit)\n.agent-state/\n' >> "$gi"
@@ -1042,6 +1083,12 @@ ensure_agent_state_ignored
 # explicit paths: block before profile:, so the ambiguity disappears on upgrade.
 ensure_paths_block() {
   local tmpf
+  if [[ "$dry_run" == true ]]; then
+    if [[ -f "$GOV_YML" ]] && ! grep -qE '^paths:[[:space:]]*$' "$GOV_YML" 2>/dev/null; then
+      echo "[dry-run] would pin paths: block in .agent-governance.yml"
+    fi
+    return 0
+  fi
   [[ -f "$GOV_YML" ]] || return 0
   grep -qE '^paths:[[:space:]]*$' "$GOV_YML" 2>/dev/null && return 0
   tmpf=$(mktemp 2>/dev/null) || return 0
@@ -1251,6 +1298,10 @@ apply_path_overrides() {
   if [[ "$PATHS_CUSTOM" != 1 ]]; then
     return 0
   fi
+  if [[ "$dry_run" == true ]]; then
+    echo "[dry-run] would update path overrides in .agent-governance.yml (docs=$DOCS_DIR scripts=$SCRIPTS_DIR tests=$TESTS_DIR githooks=$GITHOOKS_DIR)"
+    return 0
+  fi
   if [[ ! -f "$GOV_YML" ]]; then
     mkdir -p "$(dirname "$GOV_YML")"
     cp "$SKILL_ROOT/resources/templates/agent-governance.yml" "$GOV_YML"
@@ -1290,6 +1341,10 @@ apply_path_overrides
 # CHG-012: guard auto-wiring — after install, wire everything that can be
 # wired without asking. Respect existing user config; never overwrite.
 auto_wire_guard() {
+  if [[ "$dry_run" == true ]]; then
+    echo "[dry-run] would run auto_wire_guard (hooksPath=$GITHOOKS_DIR / client adapter / verification_command / profile)"
+    return 0
+  fi
   # v3.90.2 (CHG-124, P1-4): profile detection runs for every guard install,
   # independent of path overrides (it used to hang off the PATHS_CUSTOM branch).
   if [[ ! -f "$GOV_YML" ]]; then
@@ -1464,9 +1519,12 @@ if [[ "$upgrade" == true ]]; then
   echo "upgrade-behavior: profile gains schema_version + nine scenario keys; an existing profile block only receives missing keys (user values never rewritten)"
 fi
 
+if [[ "$dry_run" == true ]]; then
+  echo "bootstrap: dry-run complete (no files modified)."
+fi
 cat <<EOF
 
-bootstrap: done. Summary for $target:
+bootstrap: done. Summary for $target$([[ "$dry_run" == true ]] && echo " [DRY-RUN]"):
   installed: $installed   overwritten: $overwritten   upgraded: $upgraded   up-to-date: $skipped   conflicts: 0
   roots: docs=$DOCS_DIR scripts=$SCRIPTS_DIR tests=$TESTS_DIR githooks=$GITHOOKS_DIR
 Next (per SKILL.md):

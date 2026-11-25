@@ -154,9 +154,82 @@ tag() {
   echo "release: created annotated tag v$v (not pushed)"
 }
 
+checksum_files() {
+  (
+    cd "$ROOT"
+    {
+      printf '%s\n' SKILL.md \
+        scripts/bootstrap.sh scripts/install.sh scripts/release.sh \
+        scripts/friction-report.sh scripts/mcp-governance-server.sh scripts/sync-local-wrappers.sh \
+        resources/DEVELOPMENT_STANDARDS.md resources/AGENTS.md resources/CLAUSE_REGISTRY.md \
+        resources/METHODOLOGY.md resources/STAGE_PLAYBOOK.md resources/STANDARDS_CHANGELOG.md \
+        resources/templates/pre-commit resources/templates/pre-push resources/templates/commit-msg \
+        resources/templates/agent-governance.yml
+      for _cf in resources/templates/*.sh; do
+        [[ -f "$_cf" ]] && printf '%s\n' "$_cf"
+      done
+    } | LC_ALL=C sort -u
+  )
+}
+
+sha256_file() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    echo "release: neither shasum nor sha256sum found" >&2
+    return 2
+  fi
+}
+
+checksums() {
+  local mode="write" f h sums="$ROOT/SHA256SUMS"
+  [[ "${1:-}" == "--check" ]] && mode="check"
+  if [[ -n "${1:-}" && "${1:-}" != "--check" ]]; then
+    echo "usage: release.sh checksums [--check]" >&2; exit 2
+  fi
+  if [[ "$mode" == "write" ]]; then
+    local tmp; tmp=$(mktemp) || exit 2
+    while IFS= read -r f; do
+      [[ -f "$ROOT/$f" ]] || { echo "release: missing checksum target $f" >&2; rm -f "$tmp"; exit 2; }
+      h=$(sha256_file "$ROOT/$f") || { rm -f "$tmp"; exit 2; }
+      printf '%s  %s\n' "$h" "$f" >> "$tmp"
+    done < <(checksum_files)
+    mv "$tmp" "$sums"
+    echo "release: wrote $(wc -l < "$sums" | tr -d ' ') checksums to SHA256SUMS"
+    return 0
+  fi
+  [[ -s "$sums" ]] || { echo "FAIL SHA256SUMS missing or empty" >&2; return 1; }
+  local bad=0 line exp rel got
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    exp="${line%% *}"
+    rel="${line#*  }"
+    if [[ ! -f "$ROOT/$rel" ]]; then
+      echo "FAIL checksum missing file: $rel" >&2; bad=1; continue
+    fi
+    got=$(sha256_file "$ROOT/$rel") || return 2
+    if [[ "$got" != "$exp" ]]; then
+      echo "FAIL checksum mismatch: $rel" >&2; bad=1
+    fi
+  done < "$sums"
+  while IFS= read -r f; do
+    if ! awk -v tgt="$f" 'length($1)==64 && $1 ~ /^[0-9a-f]+$/ && substr($0,67)==tgt {ok=1; exit} END{exit !ok}' "$sums" 2>/dev/null; then
+      echo "FAIL SHA256SUMS missing tracked entry: $f" >&2; bad=1
+    fi
+  done < <(checksum_files)
+  if [[ "$bad" -eq 0 ]]; then
+    echo "release: checksums PASS ($(wc -l < "$sums" | tr -d ' ') files verified)"
+    return 0
+  fi
+  return 1
+}
+
 case "${1:-check}" in
   check) check ;;
   bump) shift; bump "${1:-}" ;;
   tag) shift; tag "${1:-}" ;;
-  *) echo "usage: release.sh check|bump <X.Y.Z>|tag [<X.Y.Z>]" >&2; exit 2 ;;
+  checksums) shift; checksums "${1:-}" ;;
+  *) echo "usage: release.sh check|bump <X.Y.Z>|tag [<X.Y.Z>]|checksums [--check]" >&2; exit 2 ;;
 esac

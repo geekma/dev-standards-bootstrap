@@ -2342,6 +2342,15 @@ report "A73 sync-local-wrappers --check passes in source repo (CHG-154)" 0 "$_a7
 report "A73 lib-json shared by gate, bootstrap, and ci-adapter (CHG-154)" 3 "$(( $(grep -cF 'lib-json.sh' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'lib-json.sh' "$ROOT/scripts/bootstrap.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'lib-json.sh' "$ROOT/resources/templates/install-ci-adapter.sh" >/dev/null && echo 1 || echo 0) ))"
 at_least_f "A73 lib-gate-cold lazy loader wired in agent-gate (CHG-154)" 1 "$GATE_TPL" 'load_gate_cold()'
 report "A73 lib-gate-cold parses cleanly with bash -n (CHG-154)" 0 "$(/bin/bash -n "$COLD_TPL" >/dev/null 2>&1; echo $?)"
+
+# --- A74 (v4.10.0, CHG-155, REQ-1444~1450): P4 7项渐进执法/自诊/校验/MCP收官 ---
+report "A74 agent-gate supports enforcement_mode with E164 never downgraded (CHG-155)" 2 "$(( $(grep -cF 'enforcement_mode()' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'GATE-E164) ;;' "$GATE_TPL" >/dev/null && echo 1 || echo 0) ))"
+at_least_f "A74 lib-gate-cold provides doctor_cmd diagnostics (CHG-155)" 1 "$COLD_TPL" 'doctor_cmd()'
+at_least_f "A74 lib-gate-cold emit_metrics supports --summary aggregation (CHG-155)" 1 "$COLD_TPL" '--summary)'
+at_least_f "A74 bootstrap supports --dry-run preview (CHG-155)" 1 "$ROOT/scripts/bootstrap.sh" '--dry-run)'
+report "A74 SHA256SUMS checksums --check passes and install supports --verify-sha256 (CHG-155)" 2 "$(( $(bash "$ROOT/scripts/release.sh" checksums --check >/dev/null 2>&1 && echo 1 || echo 0) + $(grep -cF -- '--verify-sha256)' "$ROOT/scripts/install.sh" >/dev/null && echo 1 || echo 0) ))"
+report "A74 scripts/friction-report.sh is executable and parses cleanly (CHG-155)" 0 "$([[ -x "$ROOT/scripts/friction-report.sh" ]] && /bin/bash -n "$ROOT/scripts/friction-report.sh" >/dev/null 2>&1; echo $?)"
+report "A74 scripts/mcp-governance-server.sh passes --self-test (CHG-155)" 0 "$([[ -x "$ROOT/scripts/mcp-governance-server.sh" ]] && bash "$ROOT/scripts/mcp-governance-server.sh" --self-test >/dev/null 2>&1; echo $?)"
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else

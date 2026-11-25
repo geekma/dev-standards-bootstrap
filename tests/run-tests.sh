@@ -2074,6 +2074,37 @@ if [[ -f "$BOOT_SRC" ]]; then
     report "T14 TC-10068 governance-smoke fails when lib-gate-cold missing" 1 $?
   fi
   rm -rf "$BT8"
+  # TC-10073 (ITEM-50): SHA256SUMS + release.sh checksums --check + install.sh --verify-sha256
+  if [[ -f "$ROOT/SHA256SUMS" && -f "$ROOT/scripts/install.sh" ]]; then
+    bash "$ROOT/scripts/release.sh" checksums --check >/dev/null 2>&1
+    report "T14 TC-10073 release.sh checksums --check passes" 0 $?
+    _sh_src=$(mktemp -d); _sh_tgt=$(mktemp -d); _sh_tgt2=$(mktemp -d)
+    ( cd "$_sh_tgt" && git init -q && git config user.email t@t && git config user.name t )
+    ( cd "$_sh_tgt2" && git init -q && git config user.email t@t && git config user.name t )
+    cp -R "$ROOT/resources" "$ROOT/scripts" "$ROOT/SKILL.md" "$ROOT/SHA256SUMS" "$_sh_src/"
+    out=$(bash "$_sh_src/scripts/install.sh" --from "$_sh_src" --verify-sha256 --layer core "$_sh_tgt" 2>&1); rc=$?
+    report "T14 TC-10073 install.sh --verify-sha256 passes on clean checkout" 0 "$rc"
+    echo "# tampered" >> "$_sh_src/scripts/bootstrap.sh"
+    out=$(bash "$_sh_src/scripts/install.sh" --from "$_sh_src" --verify-sha256 --layer core "$_sh_tgt2" 2>&1); rc=$?
+    report "T14 TC-10073 install.sh --verify-sha256 rejects tampered file" 2 "$rc"
+    check_output "T14 TC-10073 tamper error names mismatch" "mismatch" "$out"
+    rm -rf "$_sh_src" "$_sh_tgt" "$_sh_tgt2"
+  else
+    report "T14 TC-10073 SHA256SUMS verify (skip)" 0 0
+  fi
+  # TC-10074 (ITEM-51): scripts/friction-report.sh 5-col + 2-col legacy + missing file
+  if [[ -x "$ROOT/scripts/friction-report.sh" ]]; then
+    _fr_tmp=$(mktemp -d)
+    out=$(bash "$ROOT/scripts/friction-report.sh" --file "$_fr_tmp/missing.tsv" --json 2>&1); rc=$?
+    report "T14 TC-10074 friction-report handles missing file with rc0" 0 "$rc"
+    check_output "T14 TC-10074 missing file reports total 0" '"total":0' "$out"
+    printf 'GATE-E164\t2026-11-25T00:00:00Z\tCHG-1\tDIE\tsecret hit\nGATE-E83\t2026-11-25T00:00:01Z\tCHG-1\tADVISORY\tdowngraded\nGATE-E164\t2026-11-25T00:00:02Z\n' > "$_fr_tmp/fr.tsv"
+    out=$(bash "$ROOT/scripts/friction-report.sh" --file "$_fr_tmp/fr.tsv" --json 2>&1); rc=$?
+    report "T14 TC-10074 friction-report parses 5-col and legacy 2-col TSV" 0 "$rc"
+    check_output "T14 TC-10074 friction-report totals 3 events" '"total":3' "$out"
+    check_output "T14 TC-10074 friction-report ranks GATE-E164" '"code":"GATE-E164","count":2' "$out"
+    rm -rf "$_fr_tmp"
+  fi
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
@@ -2181,6 +2212,37 @@ if [[ -f "$BOOT_SRC" ]]; then
   out=$(bash "$BOOT_SRC" --upgrade "$D5L" 2>&1); rc=$?
   report "T15 upgrade allows archived skill rows in legacy changelog (ITEM-40)" 0 "$rc"
   rm -rf "$D5L"
+
+  # TC-10072 (ITEM-49): bootstrap --upgrade --dry-run prints plan and writes ZERO bytes
+  DR=$(mktemp -d)
+  ( cd "$DR" && git init -q && git config user.email t@t && git config user.name t )
+  bash "$BOOT_SRC" --all "$DR" >/dev/null 2>&1
+  perl -pi -e 's/规范版本：v[0-9.]+/规范版本：v3.0.0/' "$DR/docs/DEVELOPMENT_STANDARDS.md"
+  ( cd "$DR" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
+  dr_before=$(fingerprint "$DR")
+  out=$(bash "$BOOT_SRC" --upgrade --dry-run "$DR" 2>&1); rc=$?
+  dr_after=$(fingerprint "$DR")
+  report "T15 TC-10072 --upgrade --dry-run exits 0" 0 "$rc"
+  check_output "T15 TC-10072 --upgrade --dry-run prints dry-run plan" "\[dry-run\]" "$out"
+  report "T15 TC-10072 --upgrade --dry-run makes zero filesystem modifications" "$dr_before" "$dr_after"
+  rm -rf "$DR"
+  DR2=$(mktemp -d)
+  ( cd "$DR2" && git init -q && git config user.email t@t && git config user.name t )
+  dr2_before=$(fingerprint "$DR2")
+  out=$(bash "$BOOT_SRC" --all --dry-run "$DR2" 2>&1); rc=$?
+  dr2_after=$(fingerprint "$DR2")
+  report "T15 TC-10072 fresh --all --dry-run exits 0 and writes nothing" 1 "$([[ "$rc" -eq 0 && "$dr2_before" == "$dr2_after" ]] && echo 1 || echo 0)"
+  rm -rf "$DR2"
+  DR3=$(mktemp -d)
+  ( cd "$DR3" && git init -q && git config user.email t@t && git config user.name t )
+  bash "$BOOT_SRC" --all "$DR3" >/dev/null 2>&1
+  perl -0777 -pi -e 's/^paths:\n(?:\s+.*\n)*//m' "$DR3/.agent-governance.yml"
+  ( cd "$DR3" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
+  dr3_before=$(fingerprint "$DR3")
+  out=$(bash "$BOOT_SRC" --upgrade --dry-run "$DR3" 2>&1); rc=$?
+  dr3_after=$(fingerprint "$DR3")
+  report "T15 TC-10072 legacy no-paths --upgrade --dry-run writes nothing" 1 "$([[ "$rc" -eq 0 && "$dr3_before" == "$dr3_after" ]] && echo 1 || echo 0)"
+  rm -rf "$DR3"
 
   # --- D1：非 git 克隆的 Skill 目录，--self-update 必须显式说明不可用（不得静默成功）---
   NG=$(mktemp -d)
@@ -3396,6 +3458,32 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   PATH="$_rm_bin" bash scripts/agent-gate review-models --verify .agent-review-models.json >/dev/null 2>&1
   report "T26 TC-10062 awk fallback rejects second model object missing id" 2 $?
   rm -rf "$_rm_bin" .agent-review-models.json
+  # TC-10070 (ITEM-47): agent-gate doctor [--json]
+  out=$(bash scripts/agent-gate doctor --json 2>&1); rc=$?
+  report "T26 TC-10070 doctor --json passes on clean fixture" 0 "$rc"
+  check_output "T26 TC-10070 doctor --json reports zero failures" '"failed":0' "$out"
+  mkdir -p .git/agent-governance && echo "CHG-NOEXIST" > .git/agent-governance/active-change
+  out=$(bash scripts/agent-gate doctor --json 2>&1); rc=$?
+  report "T26 TC-10070 doctor --json exits 1 on dangling active-change" 1 "$rc"
+  check_output "T26 TC-10070 doctor names failing check and fix" 'scripts/agent-gate start CHG-NOEXIST' "$out"
+  rm -f .git/agent-governance/active-change
+  # TC-10071 (ITEM-48): agent-gate metrics --summary [--json]
+  out=$(bash scripts/agent-gate metrics --summary 2>&1); rc=$?
+  report "T26 TC-10071 metrics --summary exits 0" 0 "$rc"
+  check_output "T26 TC-10071 metrics --summary prints summary header" 'metrics summary:' "$out"
+  out=$(bash scripts/agent-gate metrics --summary --json 2>&1); rc=$?
+  report "T26 TC-10071 metrics --summary --json emits valid fields" 0 "$rc"
+  check_output "T26 TC-10071 metrics --summary --json carries delivery_ready" '"delivery_ready":' "$out"
+  # TC-10075 (ITEM-52): scripts/mcp-governance-server.sh --self-test & stdio tools/call
+  if [[ -f "$ROOT/scripts/mcp-governance-server.sh" ]]; then
+    bash "$ROOT/scripts/mcp-governance-server.sh" --self-test >/dev/null 2>&1
+    report "T26 TC-10075 mcp-governance-server --self-test passes" 0 $?
+    out=$(bash "$ROOT/scripts/mcp-governance-server.sh" <<< '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"governance_status","arguments":{}}}' 2>&1); rc=$?
+    report "T26 TC-10075 mcp-governance-server tools/call governance_status rc0" 0 "$rc"
+    check_output "T26 TC-10075 mcp response includes enforcement_mode" 'enforcement_mode' "$out"
+    out=$(bash "$ROOT/scripts/mcp-governance-server.sh" --print-config 2>&1)
+    check_output "T26 TC-10075 --print-config emits mcpServers JSON" '"mcpServers":' "$out"
+  fi
   rm -f .agent-governance.yml
 else
   echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
@@ -6280,6 +6368,41 @@ touch -t 202001010000 src/mt.js
 seed_t53_delivery CHG-1068
 out=$(scripts/agent-gate --stage stop 2>&1)
 check_output "T53 TC-10052 stop emits WARN [MTIME] when doc newer than code" "WARN \[MTIME\]" "$out"
+
+# TC-10069 (ITEM-46): enforcement.mode strict | ratchet | advisory (GATE-E164 never downgraded)
+new_repo
+_t53_ef=$(pwd)
+mkdir -p src
+printf 'export const x = 1;\n' > src/a.js
+git add src/a.js
+out=$(AGENT_GUARD_ENFORCEMENT_MODE=advisory bash scripts/agent-gate --stage staged 2>&1); rc=$?
+report "T53 TC-10069 advisory mode downgrades non-security staged gate to rc0" 0 "$rc"
+check_output "T53 TC-10069 advisory mode prints ADVISORY tag" "ADVISORY" "$out"
+printf 'const tok = "%s%s";\n' "ghp_" "1234567890abcdef1234567890abcdef1234" > src/sec.js
+git add src/sec.js
+out=$(AGENT_GUARD_ENFORCEMENT_MODE=advisory bash scripts/agent-gate --stage staged 2>&1); rc=$?
+report "T53 TC-10069 advisory mode NEVER downgrades GATE-E164 secret scan" 2 "$rc"
+check_output "T53 TC-10069 refusal names GATE-E164" "GATE-E164" "$out"
+git reset -q && rm -f src/sec.js src/a.js
+mkdir -p docs/changes/CHG-OLD docs/changes/CHG-NEW .git/agent-governance
+printf '# CHG-OLD\n' > docs/changes/CHG-OLD/00-intent.md
+printf '{"change_id":"CHG-OLD","change_uid":"CHG-20261001-01","risk_level":"L1"}\n' > docs/changes/CHG-OLD/00-governance.json
+printf '# 01\n### REQ-1\n' > docs/changes/CHG-OLD/01-spec.md
+printf '| REQ-1 | r | DES-1 | d | T-1 | c | TC-1 | m | 待验证 |\n' > docs/changes/CHG-OLD/01.5-rtvm-matrix.md
+printf '# 09\n' > docs/changes/CHG-OLD/09-changelog.md
+printf '# CHG-NEW\n' > docs/changes/CHG-NEW/00-intent.md
+printf '{"change_id":"CHG-NEW","change_uid":"CHG-20261125-01","risk_level":"L1"}\n' > docs/changes/CHG-NEW/00-governance.json
+printf '# 01\n### REQ-1\n' > docs/changes/CHG-NEW/01-spec.md
+printf '| REQ-1 | r | DES-1 | d | T-1 | c | TC-1 | m | 待验证 |\n' > docs/changes/CHG-NEW/01.5-rtvm-matrix.md
+printf '# 09\n' > docs/changes/CHG-NEW/09-changelog.md
+echo "CHG-OLD" > .git/agent-governance/active-change
+out=$(AGENT_GUARD_ENFORCEMENT_MODE=ratchet AGENT_GUARD_RATCHET_SINCE=2026-11-01 bash scripts/agent-gate --stage rtvm 2>&1); rc=$?
+report "T53 TC-10069 ratchet mode treats pre-since change as advisory" 0 "$rc"
+echo "CHG-NEW" > .git/agent-governance/active-change
+out=$(AGENT_GUARD_ENFORCEMENT_MODE=ratchet AGENT_GUARD_RATCHET_SINCE=2026-11-01 bash scripts/agent-gate --stage rtvm 2>&1); rc=$?
+report "T53 TC-10069 ratchet mode enforces strict on post-since change" 2 "$rc"
+cd "$ROOT"
+rm -rf "$_t53_ef"
 }
 
 section_T54() {

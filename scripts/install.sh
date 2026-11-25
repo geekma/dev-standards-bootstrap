@@ -50,6 +50,7 @@ Flags:
   --skills-root <path>     override the parent root for named --as-skill clients (tests / CI)
   --force                  pass --force through to bootstrap (override conflicts / dirty tree);
                            for --as-skill: retarget an existing symlink or replace an EMPTY dir
+  --verify-sha256          verify skill checkout files against SHA256SUMS before installing (fail-closed)
   --layer <name>           pass a layer flag through (core/claude/ci/guard/pipeline; repeatable)
   --docs-dir <p> / --scripts-dir <p> / --tests-dir <p> / --githooks-dir <p>
                            pass-through to bootstrap (default roots when omitted)
@@ -74,6 +75,7 @@ as_skill=""
 as_skill_given=false
 skills_root_given=false
 force=false
+verify_sha256=false
 mode="auto"          # auto | install | upgrade | check
 layers_given=false
 passthrough=()
@@ -102,6 +104,7 @@ for arg in "$@"; do
     --upgrade)   mode="upgrade" ;;
     --check)     mode="check" ;;
     --force)     force=true; passthrough+=("--force") ;;
+    --verify-sha256) verify_sha256=true ;;
     --skill-dir) pending="skill-dir" ;;
     --skill-dir=*) opt_skill_dir="${arg#*=}" ;;
     --from)      pending="from" ;;
@@ -202,6 +205,39 @@ fi
 
 [[ -f "$skill_dir/scripts/bootstrap.sh" ]] \
   || { echo "install: $skill_dir does not look like dev-standards-bootstrap (scripts/bootstrap.sh missing)" >&2; exit 2; }
+
+if [[ "$verify_sha256" == true ]]; then
+  sums_file="$skill_dir/SHA256SUMS"
+  [[ -s "$sums_file" ]] || { echo "install: --verify-sha256 failed: $sums_file missing or empty" >&2; exit 2; }
+  _sha_bad=0
+  while IFS= read -r _sline; do
+    [[ -n "$_sline" ]] || continue
+    _sexp="${_sline%% *}"
+    _srel="${_sline#*  }"
+    if [[ ! -f "$skill_dir/$_srel" ]]; then
+      echo "install: --verify-sha256 failed: missing file $_srel" >&2; _sha_bad=1; continue
+    fi
+    if command -v shasum >/dev/null 2>&1; then
+      _sgot=$(shasum -a 256 "$skill_dir/$_srel" | awk '{print $1}')
+    elif command -v sha256sum >/dev/null 2>&1; then
+      _sgot=$(sha256sum "$skill_dir/$_srel" | awk '{print $1}')
+    else
+      echo "install: --verify-sha256 failed: neither shasum nor sha256sum available" >&2; exit 2
+    fi
+    if [[ "$_sgot" != "$_sexp" ]]; then
+      echo "install: --verify-sha256 failed: mismatch at $_srel (expected $_sexp, got $_sgot)" >&2
+      _sha_bad=1
+    fi
+  done < "$sums_file"
+  [[ "$_sha_bad" -eq 0 ]] || exit 2
+  for _req_sum in SKILL.md scripts/bootstrap.sh scripts/install.sh resources/DEVELOPMENT_STANDARDS.md resources/templates/agent-gate.sh; do
+    if ! awk -v tgt="$_req_sum" 'length($1)==64 && $1 ~ /^[0-9a-f]+$/ && substr($0,67)==tgt {ok=1; exit} END{exit !ok}' "$sums_file" 2>/dev/null; then
+      echo "install: --verify-sha256 failed: SHA256SUMS missing required entry $_req_sum" >&2
+      exit 2
+    fi
+  done
+  echo "install: SHA256SUMS verified cleanly"
+fi
 
 carried=$(grep -oE '规范版本：v[0-9.]+' "$skill_dir/resources/DEVELOPMENT_STANDARDS.md" 2>/dev/null \
   | head -1 | grep -oE '[0-9.]+' || true)

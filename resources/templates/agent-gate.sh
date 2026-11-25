@@ -82,18 +82,39 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
   esac
 }
 
+_AG_CURRENT_STAGE=""
 die() {
+  local _code4="${1%%:*}" _code="${1%%:*}" _re='^GATE-E[0-9]+$'
+  if [[ -n "${_AG_CURRENT_STAGE:-}" && "$_code4" =~ $_re ]]; then
+    case "$_code4" in
+      GATE-E01|GATE-E76|GATE-E77|GATE-E78|GATE-E79|GATE-E132|GATE-E149|GATE-E155|GATE-E164) ;;
+      *)
+        local _eff_mode="strict"
+        if command -v enforcement_mode >/dev/null 2>&1; then
+          _eff_mode=$(enforcement_mode || echo strict)
+        fi
+        if [[ "$_eff_mode" == "ratchet" ]] && command -v ratchet_is_legacy >/dev/null 2>&1; then
+          if ratchet_is_legacy; then _eff_mode="advisory"; else _eff_mode="strict"; fi
+        fi
+        if [[ "$_eff_mode" == "advisory" ]]; then
+          echo "agent-gate: ADVISORY [downgraded from $_code4] $*" >&2
+          if [[ -d ".agent-state" ]]; then
+            friction_append "$_code" ADVISORY "$*"
+          fi
+          exit 0
+        fi
+        ;;
+    esac
+  fi
   echo "agent-gate: $*" >&2
   # v3.90.2 (CHG-123, P0-7): append the four elements unless the message already
   # carries them (new codes like E132/E134 do). Zero standing cost: only a
   # FAILING gate prints these lines.
-  local _code4="${1%%:*}"
   case "$_code4" in
     GATE-E[0-9]*) case "$*" in *expected:*) : ;; *) gate_hint "$_code4" >&2 ;; esac ;;
   esac
   # v3.43.0 (REQ-960): gate 摩擦事件账（append-only TSV，metrics 侧聚合）。
   # fail-open：缺 .agent-state 或写失败不影响拒绝语义；TSV 而非 JSON——bash 零依赖。
-  local _code="${1%%:*}" _re='^GATE-E[0-9]+$'
   if [[ -d ".agent-state" && "$_code" =~ $_re ]]; then
     friction_append "$_code" DIE "$*"
   fi
@@ -431,6 +452,45 @@ re_escape() { printf '%s' "$1" | sed 's/[.[\*^$]/\\&/g'; }
 docs_re=$(re_escape "$docs_dir")
 scripts_re=$(re_escape "$scripts_dir")
 tests_re=$(re_escape "$tests_dir")
+
+# v4.10.0 (CHG-155, ITEM-46): progressive enforcement (strict | ratchet | advisory)
+enforcement_mode() {
+  local m="${AGENT_GUARD_ENFORCEMENT_MODE:-}"
+  if [[ -z "$m" && -f "$repo_root/.agent-governance.yml" ]]; then
+    m=$(sed -nE '/^enforcement:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+mode:[[:space:]]*([^#]*).*$/\1/p' "$repo_root/.agent-governance.yml" 2>/dev/null \
+      | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  case "${m:-strict}" in
+    strict|ratchet|advisory) printf '%s' "${m:-strict}" ;;
+    *) echo "agent-gate: WARN invalid enforcement.mode '$m' — falling back to strict" >&2; printf 'strict' ;;
+  esac
+}
+
+ratchet_is_legacy() {
+  local since="${AGENT_GUARD_RATCHET_SINCE:-}" cid d c_ts c_date="" uid
+  if [[ -z "$since" && -f "$repo_root/.agent-governance.yml" ]]; then
+    since=$(sed -nE '/^enforcement:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+ratchet_since:[[:space:]]*([^#]*).*$/\1/p' "$repo_root/.agent-governance.yml" 2>/dev/null \
+      | head -n 1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ "$since" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  cid=$(active_change_quiet)
+  [[ -n "$cid" ]] || return 1
+  d=$(change_dir "$cid" 2>/dev/null || true)
+  if [[ -n "$d" && -f "$d/00-intent.md" ]]; then
+    c_ts=$(git -C "$repo_root" log --format=%ct --diff-filter=A -- "$d/00-intent.md" 2>/dev/null | tail -n 1 || true)
+    if [[ "$c_ts" =~ ^[0-9]+$ && "$c_ts" -gt 0 ]]; then
+      c_date=$(date -u -d "@$c_ts" +%Y-%m-%d 2>/dev/null || date -u -r "$c_ts" +%Y-%m-%d 2>/dev/null || true)
+    fi
+  fi
+  if [[ -z "$c_date" && -n "$d" && -f "$d/00-governance.json" ]]; then
+    uid=$(json_field "$(gov_record "$d/00-governance.json" "$cid")" change_uid)
+    if [[ "$uid" =~ ^CHG-([0-9]{4})([0-9]{2})([0-9]{2})- ]]; then
+      c_date="${BASH_REMATCH[1]}-${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+    fi
+  fi
+  [[ "$c_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+  [[ "$c_date" < "$since" ]]
+}
 githooks_re=$(re_escape "$githooks_dir")
 change_root_re=$(re_escape "$change_root")
 # 00-intent.md is the pipeline entry point (problem / expected outcome / constraints);
@@ -5162,7 +5222,13 @@ delivery_ready() {
 
 # v3.91.0 (CHG-127, G10/G9): runtime status + profile refresh probe.
 runtime_status() {
-  local jmode=0 adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin ac_st=""
+  local jmode=0 adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin ac_st="" emode="strict"
+  if [[ "${1:-}" == "--json" ]]; then
+    jmode=1
+    emode=$(enforcement_mode 2>/dev/null || echo strict)
+  else
+    emode=$(enforcement_mode || echo strict)
+  fi
   [[ "${1:-}" == "--json" ]] && jmode=1
   for c in "$repo_root/scripts/install-hook-adapter" "$repo_root/scripts/install-hook-adapter.sh"; do
     [[ -x "$c" ]] && adapter="$c" && break
@@ -5184,12 +5250,12 @@ runtime_status() {
   fi
   if [[ "$jmode" -eq 1 ]]; then
     ac_st=$(active_change_quiet)
-    printf '{"runtime":"%s","family":"%s","enforcement":"%s","layers":"%s","handshake":"%s","model":"%s","window":"%s","active_change":"%s"}\n' \
-      "$(json_escape "$rt")" "$(json_escape "$fam")" "$(json_escape "$enforce")" "$(json_escape "${layers:-none}")" \
+    printf '{"runtime":"%s","family":"%s","enforcement":"%s","enforcement_mode":"%s","layers":"%s","handshake":"%s","model":"%s","window":"%s","active_change":"%s"}\n' \
+      "$(json_escape "$rt")" "$(json_escape "$fam")" "$(json_escape "$enforce")" "$(json_escape "$emode")" "$(json_escape "${layers:-none}")" \
       "$(json_escape "$hand")" "$(json_escape "${mid:-unknown}")" "$(json_escape "${mwin:-unknown}")" "$(json_escape "${ac_st:-}")"
     return 0
   fi
-  echo "status: runtime=$rt family=$fam enforcement=$enforce layers=${layers:-none}"
+  echo "status: runtime=$rt family=$fam enforcement=$enforce enforcement_mode=$emode layers=${layers:-none}"
   echo "status: handshake=$hand model=${mid:-unknown} window=${mwin:-unknown}"
 }
 
@@ -5836,8 +5902,14 @@ case "$command" in
     resume_change "$resid"
     ;;
   metrics)
+    shift
     load_gate_cold
-    emit_metrics
+    emit_metrics "$@"
+    ;;
+  doctor)
+    shift
+    load_gate_cold
+    doctor_cmd "$@"
     ;;
   --stage)
     # v3.93.0 (CHG-130, REQ-1301): a missing stage name is a usage error, not a
@@ -5845,6 +5917,7 @@ case "$command" in
     # one-code-one-die-site invariant T41 enforces.
     [[ $# -ge 2 && -n "${2:-}" ]] || unknown_stage "${2:-}"
     stage="${2}"; shift 2
+    _AG_CURRENT_STAGE="$stage"
     case "$stage" in
       pre-write)
         file=""
@@ -5868,18 +5941,18 @@ case "$command" in
       core)
         # v3.92.2 (CHG-128): stateless explicit validation of the environment /
         # evidence / independence gates (E150/E151/E153) for the active change.
-        cc_id=$(active_change)
+        cc_id=$(active_change); [[ -n "$cc_id" ]] || exit 0
         core_gate_check "$cc_id"
         echo "agent-gate: core gate green ($cc_id)" ;;
       scope)
         # v3.92.2 (CHG-128): stateless explicit validation of the scope budget (E152).
-        sc_id=$(active_change)
+        sc_id=$(active_change); [[ -n "$sc_id" ]] || exit 0
         scope_overrun_check "$sc_id"
         echo "agent-gate: scope gate green ($sc_id)" ;;
       rtvm)
         # v3.92.2 (CHG-128 batch 3): stateless E154 — every unverified RTVM REQ
         # must be declared in 09 (silent scope reduction becomes a signed claim).
-        rt_id=$(active_change)
+        rt_id=$(active_change); [[ -n "$rt_id" ]] || exit 0
         unverified_req_check "$rt_id"
         echo "agent-gate: rtvm gate green ($rt_id)" ;;
       shift)
@@ -5898,8 +5971,14 @@ case "$command" in
       close)
         # v3.90.5: `--stage close <N>` closes a numbered stage; a non-numeric
         # argument keeps the historical meaning (explicit change id).
-        if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
-        else stage_close_check "${1:-$(active_change)}"; fi ;;
+        if [[ "${1:-}" =~ ^[1-8]$ ]]; then
+          _cl_id=$(active_change); [[ -n "$_cl_id" ]] || exit 0
+          stage_close_check "$_cl_id" "$1"
+        else
+          _cl_arg="${1:-}"
+          [[ -n "$_cl_arg" ]] || { _cl_arg=$(active_change); [[ -n "$_cl_arg" ]] || exit 0; }
+          stage_close_check "$_cl_arg"
+        fi ;;
       staged) validate_secret_scan; validate_test_weakening staged; validate_causal_dag staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; warn_ai_laziness; check_prewrite_heartbeat "${rc_cid:-}"; record_stage_receipt "${rc_cid:-}" staged; record_delivery staged ;;
       stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; record_stage_receipt "$cost_cid" stop; fi; record_delivery stop ;;
       ci)
