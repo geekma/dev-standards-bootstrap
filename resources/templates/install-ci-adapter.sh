@@ -20,6 +20,11 @@
 #   install-ci-adapter --verify-wiring <ci-config-path> [--repo <dir>]
 set -uo pipefail
 
+_CI_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for _lj in "$_CI_SELF_DIR/lib-json.sh" "$_CI_SELF_DIR/../resources/templates/lib-json.sh"; do
+  if [[ -f "$_lj" ]]; then . "$_lj"; break; fi
+done
+
 ci_cfg_path() { # <repo_root> <key> <default>
   local root="$1" k="$2" d="$3" yml="$1/.agent-governance.yml" v=""
   if [[ -f "$yml" ]]; then
@@ -37,7 +42,11 @@ ci_cfg_path() { # <repo_root> <key> <default>
 }
 
 ci_json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  if command -v json_escape >/dev/null 2>&1; then
+    json_escape "$1"
+  else
+    printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  fi
 }
 
 ci_detect_default_branch() { # <repo_root>

@@ -245,7 +245,7 @@ else
   fi
   # FU-933 (CHG-045)：不再自动脚手架 03.6-ui-spec.md——E92 已兜底「ui_change: true
   # 而 03.6 缺失」（gate staged/stop 拒），自动生成会让作者跳过十节规格设计
-  #（§2.5 阶段 3 条 9，形状唯一权威=entry/03.6-ui-spec.md 模板）；需要时作者从
+  #（§2.5 阶段 3 条 6，形状唯一权威=entry/03.6-ui-spec.md 模板）；需要时作者从
   # templates/entry/ 手动复制并填写，E92 红即提示。
   echo "new-change: scaffolded $d"
 fi

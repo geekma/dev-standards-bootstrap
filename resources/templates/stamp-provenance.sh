@@ -39,7 +39,14 @@
 #   显式 unknown，不猜、不编。
 set -euo pipefail
 
-ROOT=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo "")
+_SP_SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo "")
+if [[ -n "$_SP_SCRIPT_DIR" && "$(basename "$(dirname "$_SP_SCRIPT_DIR")")/$(basename "$_SP_SCRIPT_DIR")" == "resources/templates" ]]; then
+  ROOT=$(cd "$_SP_SCRIPT_DIR/../.." 2>/dev/null && pwd || echo "")
+elif [[ -n "$_SP_SCRIPT_DIR" ]]; then
+  ROOT=$(cd "$_SP_SCRIPT_DIR/.." 2>/dev/null && pwd || echo "")
+else
+  ROOT=""
+fi
 GOV_YML="$ROOT/.agent-governance.yml"
 
 # 与 agent-gate 同源的路径解析（只读两个键，够用即止）
@@ -446,6 +453,7 @@ skill_ver="unknown"
 # repos keep DS at docs/, the source repo at resources/ (docs/ is untracked or
 # a stub there). First readable footer wins; otherwise stay "unknown".
 for std in "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" \
+           "$ROOT/resources/DEVELOPMENT_STANDARDS.md" \
            "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/resources/DEVELOPMENT_STANDARDS.md"; do
   [[ -f "$std" ]] || continue
   v=$(grep -oE '规范版本：v[0-9.]+' "$std" 2>/dev/null | head -1 | grep -oE '[0-9.]+' || true)

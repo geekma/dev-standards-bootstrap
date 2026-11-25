@@ -67,7 +67,7 @@
 | R43 | 沟通先行门（§2.17.2d） | DEVELOPMENT_STANDARDS.md::#### 2.17.2d 沟通先行门 | universal | 硬 | 结构 | 元 |
 | R44 | 项目上下文包 10 域（§2.5 阶段 1 条 7） | DEVELOPMENT_STANDARDS.md::**项目上下文包（v3.67.0，强制先于 REQ）** | universal | 硬 | 结构 | 参照 |
 | R45 | 用户任务 UJ 与 ui_change 声明（§2.5 阶段 1 条 8） | DEVELOPMENT_STANDARDS.md::**用户任务（`UJ-xxx`，v3.67.0）** | universal | 硬 | 结构 | 盘点 |
-| R46 | 禁裸主键作用户入口（§2.5 阶段 3 条 9） | DEVELOPMENT_STANDARDS.md::禁止 DB 主键 | L2-architecture | 硬 | 行为 | 参照 |
+| R46 | 禁裸主键作用户入口（§2.5 阶段 3 条 6） | DEVELOPMENT_STANDARDS.md::禁止 DB 主键 | L2-architecture | 硬 | 行为 | 参照 |
 | R47 | 用户旅程 E2E 阈值（§2.5 阶段 4） | DEVELOPMENT_STANDARDS.md::**用户旅程 E2E（v3.67.0）** | L2-architecture | 硬 | 行为 | 断言 |
 | R48 | 产品可用性专家 UAT 与五方证据（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**「用户可用性验收」节** | L2-architecture | 硬 | 结构 | 见证 |
 | R49 | 业务度量埋点强制（§2.8） | DEVELOPMENT_STANDARDS.md::**业务度量埋点强制（v3.67.0）** | L2-architecture | 硬 | 行为 | 断言 |
@@ -79,7 +79,7 @@
 | R55 | 评审跑旅程与上游错误计数（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**评审跑旅程与上游错误计数（v3.68.0，CHG-043）** | universal | 硬 | 行为 | 见证 |
 | R56 | 发现处置闭环与来源维（§2.5 阶段 8） | DEVELOPMENT_STANDARDS.md::**发现处置（v3.74.0；逐条处置，严重/安全发现未处置即拒 E114/E115，无发现可单行声明；v3.75.0 增「来源」列——本次引入/既有存量，E117）** | universal | 硬 | 行为 | 收口 |
 | R57 | 评审轮次收敛与超限处置（§2.1.8） | DEVELOPMENT_STANDARDS.md::**评审收敛（v3.74.0）** | universal | 硬 | 行为 | 元 |
-| R58 | 评审质效度量的七项字段（§2.17.5；缺「来源」列时后两项输出 `null`，不臆造 0） | templates/agent-gate.sh::metrics prints one JSON object per change | universal | 软 | 计数 | 元 |
+| R58 | 评审质效度量的七项字段（§2.17.5；缺「来源」列时后两项输出 `null`，不臆造 0） | templates/lib-gate-cold.sh::metrics prints one JSON object per change | universal | 软 | 计数 | 元 |
 | R59 | 事故/回归复盘「应捕获层」与补强（§2.17.2） | DEVELOPMENT_STANDARDS.md::**复盘义务（v3.75.0，CHG-099，REQ-1112）** | universal | 硬 | 行为 | 盘点 |
 | R60 | 评测资产派生与重打分（§2.17.4） | DEVELOPMENT_STANDARDS.md::**评测资产与重打分（v3.75.0，CHG-099，REQ-1108~1110）** | universal | 软 | 行为 | 元 |
 | R61 | 按仓评审要点承载面（AGENTS 区块） | resources/AGENTS.md::## 本仓评审要点（按仓定制承载面） | universal | 软 | 措辞 | 参照 |

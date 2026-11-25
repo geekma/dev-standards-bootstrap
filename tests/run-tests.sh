@@ -396,6 +396,8 @@ new_repo() {
       seed_project_masters
       cp "$GATE_SRC" scripts/agent-gate
       chmod +x scripts/agent-gate
+      [[ -f "$ROOT/resources/templates/lib-json.sh" ]] && cp "$ROOT/resources/templates/lib-json.sh" scripts/lib-json.sh
+      [[ -f "$ROOT/resources/templates/lib-gate-cold.sh" ]] && cp "$ROOT/resources/templates/lib-gate-cold.sh" scripts/lib-gate-cold.sh
       cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/
       echo init > README.md
       git add README.md scripts
@@ -2026,7 +2028,52 @@ if [[ -f "$BOOT_SRC" ]]; then
   printf 'a\n' > "$_pc_dir/f1.zzz" && printf 'b\n' > "$_pc_dir/f2.zzz" && printf 'c\n' > "$_pc_dir/f3.zzz" && printf 'd\n' > "$_pc_dir/f4.aaa"
   out=$(bash "$BOOT_SRC" --print-profile-contract "$_pc_dir" 2>&1)
   check_output "T14 TC-10062 profile contract sorts extensions by frequency" '"detected_extensions": "zzz,aaa"' "$out"
-  rm -rf "$_pc_dir" "$BT8"
+  rm -rf "$_pc_dir"
+  # TC-10066 (ITEM-43): single-source wrapper check & direct execution (isolated fixture so git worktrees without gitignored mirrors also verify sync + --check + wrapped ROOT resolution)
+  if [[ -f "$ROOT/scripts/sync-local-wrappers.sh" ]]; then
+    _sw_tmp=$(mktemp -d)
+    mkdir -p "$_sw_tmp/scripts" "$_sw_tmp/.githooks" "$_sw_tmp/resources/templates" "$_sw_tmp/docs/changes/CHG-T"
+    cp "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$_sw_tmp/resources/"
+    cp "$ROOT/resources/templates/"*.sh "$ROOT/resources/templates/pre-commit" "$_sw_tmp/resources/templates/" 2>/dev/null || true
+    cp "$ROOT/scripts/sync-local-wrappers.sh" "$_sw_tmp/scripts/sync-local-wrappers.sh"
+    bash "$_sw_tmp/scripts/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_sw_tmp/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1
+    _sw_rc=$?
+    bash "$_sw_tmp/scripts/sync-local-wrappers.sh" --badopt >/dev/null 2>&1; _sw_bad_rc=$?
+    printf '{"change_id":"CHG-T","risk_level":"L1"}\n' > "$_sw_tmp/docs/changes/CHG-T/00-governance.json"
+    _sw_sp_out=$(cd "$_sw_tmp" && git init -q && bash "$_sw_tmp/scripts/stamp-provenance.sh" --print CHG-T 2>/dev/null || true)
+    ( cd "$_sw_tmp" && bash "$_sw_tmp/scripts/session-gate.sh" check >/dev/null 2>&1 || true )
+    _sw_root_ok=0
+    [[ -d "$_sw_tmp/.agent-state" && ! -d "$_sw_tmp/resources/.agent-state" ]] && _sw_root_ok=1
+    if [[ -f "$ROOT/.githooks/pre-commit" ]]; then
+      bash "$ROOT/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1 || _sw_rc=$?
+    fi
+    rm -rf "$_sw_tmp"
+    report "T14 TC-10066 sync-local-wrappers --check passes" 0 "$_sw_rc"
+    report "T14 TC-10066 sync-local-wrappers rejects unknown option" 2 "$_sw_bad_rc"
+    report "T14 TC-10066 wrapped stamp-provenance resolves skill_version (not unknown)" 1 "$(grep -qE '^skill_version: [0-9]+\.[0-9]+\.[0-9]+' <<< "$_sw_sp_out" && echo 1 || echo 0)"
+    report "T14 TC-10066 wrapped session-gate resolves repo root (not resources/)" 1 "$_sw_root_ok"
+  else
+    report "T14 TC-10066 sync-local-wrappers --check (skip)" 0 0
+  fi
+  # TC-10067 (ITEM-44): lib-json.sh shared helpers preserve quoted-only json_field & escape
+  if [[ -f "$ROOT/resources/templates/lib-json.sh" ]]; then
+    _j_null=$(bash -c '. "$1"; json_field '\''{"bug_ref": null, "risk_level": "L2"}'\'' bug_ref' _ "$ROOT/resources/templates/lib-json.sh")
+    _j_str=$(bash -c '. "$1"; json_field '\''{"bug_ref": null, "risk_level": "L2"}'\'' risk_level' _ "$ROOT/resources/templates/lib-json.sh")
+    _j_esc=$(bash -c '. "$1"; json_escape "a\"b\\c"' _ "$ROOT/resources/templates/lib-json.sh")
+    report "T14 TC-10067 lib-json json_field returns empty on null" "" "$_j_null"
+    report "T14 TC-10067 lib-json json_field extracts string" "L2" "$_j_str"
+    report "T14 TC-10067 lib-json json_escape escapes quotes and backslashes" 'a\"b\\c' "$_j_esc"
+  fi
+  # TC-10068 (ITEM-41): governance-smoke.sh passes on bootstrapped repo and fails on broken repo
+  if [[ -f "$BT8/tests/governance-smoke.sh" ]]; then
+    out=$(bash "$BT8/tests/governance-smoke.sh" --repo "$BT8" --skip-docs --json 2>&1); rc=$?
+    report "T14 TC-10068 governance-smoke passes on bootstrapped repo" 0 "$rc"
+    check_output "T14 TC-10068 governance-smoke emits JSON summary" '"failed":0' "$out"
+    rm -f "$BT8/tools/lib-gate-cold.sh"
+    bash "$BT8/tests/governance-smoke.sh" --repo "$BT8" --skip-docs --json >/dev/null 2>&1
+    report "T14 TC-10068 governance-smoke fails when lib-gate-cold missing" 1 $?
+  fi
+  rm -rf "$BT8"
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
@@ -2124,6 +2171,16 @@ if [[ -f "$BOOT_SRC" ]]; then
   grep -q 'v9.9.9-local' "$D5/docs/STANDARDS_CHANGELOG.md"
   report "T15 local changelog rows survive the refusal" 0 $?
   rm -rf "$D5"
+
+  # D5-archive regression (CHG-154 ITEM-40): archived skill rows (v2.9.0..v4.2.0) in an older target repo must NOT block --upgrade
+  D5L=$(mktemp -d)
+  ( cd "$D5L" && git init -q && git config user.email t@t && git config user.name t )
+  bash "$BOOT_SRC" --all "$D5L" >/dev/null 2>&1
+  printf '| v4.2.0 | 2026-10-12 | archived legacy skill row | 无 |\n' >> "$D5L/docs/STANDARDS_CHANGELOG.md"
+  ( cd "$D5L" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
+  out=$(bash "$BOOT_SRC" --upgrade "$D5L" 2>&1); rc=$?
+  report "T15 upgrade allows archived skill rows in legacy changelog (ITEM-40)" 0 "$rc"
+  rm -rf "$D5L"
 
   # --- D1：非 git 克隆的 Skill 目录，--self-update 必须显式说明不可用（不得静默成功）---
   NG=$(mktemp -d)
@@ -2736,8 +2793,8 @@ if [[ -f "$ROOT/scripts/install.sh" && -f "$BOOT_SRC" ]]; then
   # TC-141 离线全量安装
   out=$(bash "$ROOT/scripts/install.sh" --from "$FAKE_SRC" "$TGT" 2>&1); rc=$?
   report "T21 install.sh --from performs a full offline install" 0 "$rc"
-  for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate scripts/lib-suite-tree-fingerprint.sh scripts/lib-suite-lock.sh .githooks/pre-commit \
-           .agent-governance.yml tests/run-tests.sh tests/fresh-clone-check.sh; do
+  for f in AGENTS.md docs/DEVELOPMENT_STANDARDS.md scripts/agent-gate scripts/lib-json.sh scripts/lib-gate-cold.sh scripts/lib-suite-tree-fingerprint.sh scripts/lib-suite-lock.sh .githooks/pre-commit \
+           .agent-governance.yml tests/run-tests.sh tests/governance-smoke.sh tests/fresh-clone-check.sh; do
     [[ -e "$TGT/$f" ]] || { echo "T21 missing after install: $f" >&2; rc=1; }
   done
   report "T21 install lands the governance payload" 0 "$rc"
@@ -3249,6 +3306,8 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     mkdir -p "$t26_repo/scripts" "$t26_repo/.agents"
     cp "$ROOT/resources/templates/install-hook-adapter.sh" "$t26_repo/scripts/install-hook-adapter"
     cp "$ROOT/resources/templates/agent-gate.sh" "$t26_repo/scripts/agent-gate"
+    cp "$ROOT/resources/templates/lib-json.sh" "$t26_repo/scripts/lib-json.sh"
+    cp "$ROOT/resources/templates/lib-gate-cold.sh" "$t26_repo/scripts/lib-gate-cold.sh"
     chmod +x "$t26_repo/scripts/agent-gate"
     cp .agents/hooks.json "$t26_repo/.agents/hooks.json"
     out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json 2>&1)
@@ -3273,6 +3332,14 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
 ' > "$t26_repo/.agents/hooks.json"
     (cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json >/dev/null 2>&1)
     report "T26 TC-10026 rejects missing wired script" 2 $?
+    _t26_ag_tmp=$(mktemp -d)
+    mkdir -p "$_t26_ag_tmp/resources/templates"
+    cp "$ROOT/resources/templates/agent-gate.sh" "$ROOT/resources/templates/lib-gate-cold.sh" "$ROOT/resources/templates/lib-json.sh" "$_t26_ag_tmp/resources/templates/"
+    ( cd "$_t26_ag_tmp" && git init -q && git config user.email t@t && git config user.name t && git commit --allow-empty -qm init ) >/dev/null 2>&1
+    _t26_adv_out=$(cd "$_t26_ag_tmp" && bash resources/templates/agent-gate.sh advance CHG-999 2>&1); _t26_adv_rc=$?
+    report "T26 TC-10068 advance fallback invokes agent-gate (not silent cold lib rc=0)" 1 "$([[ "$_t26_adv_rc" -ne 0 ]] && echo 1 || echo 0)"
+    check_output "T26 TC-10068 advance fallback fails on begin GATE-E03" "GATE-E03" "$_t26_adv_out"
+    rm -rf "$_t26_ag_tmp"
     rm -rf "$t26_bin" "$t26_repo" .agents
   else
     report "T26 TC-10016 --print-contract (skip: template absent)" 0 0
@@ -4433,7 +4500,7 @@ REG47
   report "T40 gate exempt generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/templates/agent-gate.sh")"
   report "T40 AGENTS pack route row" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/AGENTS.md")"
   report "T40 DS registry clause" 1 "$(grep -c '2.17.2c' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-  report "T40 changelog v3.46.0 row" 1 "$(grep -c '^| v3.46.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+  report "T40 changelog v3.46.0 row" 1 "$(cat "$ROOT/resources/STANDARDS_CHANGELOG.md" "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -c '^| v3.46.0 ')"
   report "T40 generator profile vocab declared" 1 "$(grep -c 'PROFILE_VOCAB=' "$ROOT/resources/templates/generate-reading-pack.sh")"
 else
   echo "SKIP T40: generator absent — 跳过阅读包生成器 golden cases"
@@ -4742,7 +4809,7 @@ report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF "�
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
-report "T48 TC-1073 CHANGELOG v3.70.0 row exists (superseded by current top)" 1 "$(grep -c '^| v3.70.0 ' "$ROOT/resources/STANDARDS_CHANGELOG.md")"
+report "T48 TC-1073 CHANGELOG v3.70.0 row exists (superseded by current top)" 1 "$(cat "$ROOT/resources/STANDARDS_CHANGELOG.md" "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -c '^| v3.70.0 ')"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"
@@ -6142,6 +6209,25 @@ else
   report "T53 TC-10056 passing pre-commit clears streak (skip: template absent)" 0 0
 fi
 
+# TC-10063 (ITEM-45): hot/cold split — begin/preflight stay hot; help/next/review-models load cold lib
+new_repo
+seed_artifacts CHG-1069 L0 claude/s-7
+_tc63_pre=$(bash -c 'scripts/agent-gate preflight CHG-1069 2>&1 || true')
+check_output "T53 TC-10063 hot preflight works without error" "preflight" "$_tc63_pre"
+out=$(bash scripts/agent-gate help 2>&1)
+check_output "T53 TC-10063 cold help prints usage via lib-gate-cold" "Usage:" "$out"
+out=$(bash scripts/agent-gate next CHG-1069 --json 2>&1)
+check_output "T53 TC-10063 cold next --json returns JSON" '"change_id":"CHG-1069"' "$out"
+
+# TC-10064 (ITEM-40) & TC-10065 (ITEM-42): STANDARDS_CHANGELOG <= 20480 + archive & DS <= 155648
+if [[ -f "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]]; then
+  _cl_sz=$(wc -c < "$ROOT/resources/STANDARDS_CHANGELOG.md" | tr -d ' ')
+  _ds_sz=$(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ')
+  report "T53 TC-10064 STANDARDS_CHANGELOG <= 20480B" 1 "$([[ "$_cl_sz" -le 20480 ]] && echo 1 || echo 0)"
+  report "T53 TC-10064 STANDARDS_CHANGELOG_ARCHIVE retains v2.9.0" 1 "$(grep -c '^| v2\.9\.0 ' "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" || true)"
+  report "T53 TC-10065 DEVELOPMENT_STANDARDS <= 155648B" 1 "$([[ "$_ds_sz" -le 155648 ]] && echo 1 || echo 0)"
+fi
+
 # TC-10061 (ITEM-29): optional L0/L1 single-file change-card mode
 new_repo
 printf 'change_card_mode: true\n' > .agent-governance.yml
@@ -6577,7 +6663,7 @@ section_T56() {
   report "T56 TC-1277 bypass env does not relax preflight (rc stays 1)" 1 "$t56_bypass_rc"
   report "T56 TC-1277 preflight still collects GATE-E83 under bypass env" 1 "$(printf '%s\n' "$t56_bypass_out" | grep -c 'GATE-E83')"
   # TC-1278（N4 顺手项）：tpl usage 块 preflight 行存在钉
-  report "T56 TC-1278 tpl usage block carries the preflight line" 1 "$(grep -c '^  scripts/agent-gate preflight <change-id>' "$ROOT/resources/templates/agent-gate.sh")"
+  report "T56 TC-1278 tpl usage block carries the preflight line" 1 "$(grep -c '^  scripts/agent-gate preflight <change-id>' "$ROOT/resources/templates/lib-gate-cold.sh")"
 }
 
 # ------------------------------------------------ T57 -j 并行调度 + 红归档/FORCE_RED 缝自测（v3.72.0 erratum，CHG-095/DES-1868~1869）
@@ -7426,8 +7512,18 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   out=$(bash scripts/session-gate.sh idle 2>&1 || true)
   check_output "T62 TC-1354 idle yellow wording" "YELLOW.*调用批处理" "$out"
   check_output "T62 TC-1354 report file carries 09 wording" "调用批处理.*登记 09" "$(cat .agent-state/session-gate-last.md 2>/dev/null || echo)"
-  # mirror consistency (source vs template) — same-file identity
-  report "T62 TC-1355 session-gate source/template byte-identical" 0 "$([[ ! -f "$ROOT/scripts/session-gate.sh" ]] && echo 0 || { cmp -s "$ROOT/scripts/session-gate.sh" "$SESSION_GATE_SRC" && echo 0 || echo 2; })"
+  # mirror consistency (source vs template) — byte-identical OR single-source exec wrapper (ITEM-43)
+  _t62_m_ok=0
+  if [[ -f "$ROOT/scripts/session-gate.sh" ]]; then
+    if cmp -s "$ROOT/scripts/session-gate.sh" "$SESSION_GATE_SRC"; then
+      _t62_m_ok=0
+    elif grep -qF '# single-source wrapper -> resources/templates/session-gate.sh' "$ROOT/scripts/session-gate.sh" && grep -qF 'exec bash' "$ROOT/scripts/session-gate.sh"; then
+      _t62_m_ok=0
+    else
+      _t62_m_ok=2
+    fi
+  fi
+  report "T62 TC-1355 session-gate source/template byte-identical" 0 "$_t62_m_ok"
 else
   echo "SKIP T62: session-gate.sh absent — 跳过 edit/write 密度 golden cases"
 fi
@@ -10657,7 +10753,7 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     .claude-plugin/*)                  printf 'T48' ;;
     resources/DEVELOPMENT_STANDARDS.md) printf 'T11 T14 T15 T20 T21 T31 T38 T40 T43 T48 T55 T63 T64 T67' ;;
     resources/AGENTS.md)               printf 'T26c T40 T43 T48 T55 T63 T64' ;;
-    resources/STANDARDS_CHANGELOG.md)  printf 'T15 T40 T48' ;;
+    resources/STANDARDS_CHANGELOG.md|resources/STANDARDS_CHANGELOG_ARCHIVE.md) printf 'T15 T40 T48' ;;
     SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
     resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
     resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49 T78' ;;

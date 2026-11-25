@@ -45,11 +45,14 @@ RM_ZH="$ROOT/README.zh-CN.md"
 # blocks (and by the A10b/A10 tail), which run in separate subshells under
 # AGENT_GUARD_AUDIT_PARALLEL=1. Pure path/pattern derivations, no side effects.
 SLOG="$ROOT/resources/STANDARDS_CHANGELOG.md"
+SLOG_ARCHIVE="$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md"
 V=$(grep -oE '规范版本：v[0-9.]+' "$STD" | head -1 | grep -oE '[0-9.]+')
 [[ -n "$V" ]] || V="UNKNOWN"
 log_head=$(grep -m1 -oE '^\| v[0-9.]+' "$SLOG" 2>/dev/null | grep -oE '[0-9.]+')
 GEN="$ROOT/scripts/update-assertion-count.sh"
 GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
+COLD_TPL="$ROOT/resources/templates/lib-gate-cold.sh"
+JLIB_TPL="$ROOT/resources/templates/lib-json.sh"
 GOV_WF="$ROOT/resources/templates/github-agent-governance.yml"
 AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
 AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
@@ -670,7 +673,7 @@ chg_nums=$( { basename -s '' $(ls -d "$REPO_CHANGES"/CHG-* 2>/dev/null) 2>/dev/n
   | sed -E 's/^##[[:space:]]+CHG-//';
   # 号声明面只取「（CHG-xxx」括注形态（版本行的变更号引法），避免把历史行里的
   # 假想示例（如 `## CHG-903`）当真实占用号（v3.19.0 行实测含此类示例）。
-  grep -hoE '[（(]CHG-[0-9]+' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null \
+  grep -hoE '[（(]CHG-[0-9]+' "$SLOG" "$SLOG_ARCHIVE" 2>/dev/null \
   | grep -oE '[0-9]+'; } \
   | awk '{printf "%d\n", $1}' | sort -nu)
 a6c_ran=0
@@ -810,13 +813,12 @@ at_least "A9 change-id occupancy-verification clause present (FU-016)" 1 "$STD" 
 #   ③ 按 +4KB 步进重设为 168KB（172,032 字节），余量 6,095B——**不是**按当前体量贴合；
 #      软警线随上界 −4KiB = 167,936B。独立评审核回+8KB 步进放宽过多，此处兑现 +4KB。
 # std_bytes hoisted to the setup region (REQ-1323 cross-block reads).
-report "A11 standards body size <= 180KB (FU-017; ratchet-up v3.99.0 CHG-140, +4KiB step; CHG-147 重校准 FU-1013)" 1 "$([[ "$std_bytes" -le 184320 ]] && echo 1 || echo 0)"
-# A11s 软预警档（v3.58.0 / REQ-1008）：DS ≥172,032B（硬上界 −4KiB）即 soft warn——重校准前主动减法，
-# 防无声撞墙（v3.53 余量 847B、v3.56 余量 1,825B 先例；§5.1 阶梯同构）。硬上界语义不变。
-report_soft "A11s standards body approaching hard cap (soft warn >= 180,224B)" 0 "$([[ "$std_bytes" -ge 180224 ]] && echo 1 || echo 0)"
+report "A11 standards body size <= 160KB (ITEM-42; slimmed in v4.9.0 CHG-154)" 1 "$([[ "$std_bytes" -le 163840 ]] && echo 1 || echo 0)"
+# A11s 软预警档（v3.58.0 / REQ-1008；v4.9.0 CHG-154 下调随 160KB 收敛）：DS ≥155,648B（152KB）即 soft warn。
+report_soft "A11s standards body approaching hard cap (soft warn >= 155,648B)" 0 "$([[ "$std_bytes" -ge 155648 ]] && echo 1 || echo 0)"
 at_least "A11 layered reading map present (FU-018)" 1 "$STD" '分层阅读路由'
 # A28 §5.1 口径一致性（CHG-057/REQ-974）：MAINTAINER「当前上界」句必须与 A11 断言同源——v3.43.0 重校曾漏同步 144KB 口径（漂移实存），A28 防复发
-report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '180 KB / 184,320 字节' "$ROOT/MAINTAINER.md")"
+report "A28 maintainer 5.1 bound sentence matches A11" 1 "$(grep -cF '160 KB / 163,840 字节' "$ROOT/MAINTAINER.md")"
 # A29 SKILL 清单枚举面（CHG-057 sweep 防复发）：bootstrap 分发的治理新件必须出现在 SKILL.md 核心/强制层清单——批 1 曾漏列（README 树有、SKILL 无），枚举面漂移实存
 report "A29 SKILL core layer lists clause registry" 1 "$(grep -c 'CLAUSE_REGISTRY' "$ROOT/SKILL.md")"
 report "A29 SKILL guard layer lists reading-pack generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/SKILL.md")"
@@ -1030,7 +1032,7 @@ report "A20 governance records are scoped per change (one record per change id)"
 report "A20 governance state is scoped to this change's own record" 1 "$(a17_at_least_1 "$(grep -c 'rec=\$(gov_record "\$file" "\$id")' "$GATE_TPL" || true)")"
 report "A20 batches are L0/L1 only (refused on the record, not on the path)" 1 "$(a17_at_least_1 "$(grep -c 'batches are L0/L1 only' "$GATE_TPL" || true)")"
 report "A20 batch closure is this change's own anchor, not the shared file" 1 "$(a17_at_least_1 "$(grep -c "carries a '## \$id' section" "$GATE_TPL" || true)")"
-report "A20 metrics emits one row per change, not per directory" 1 "$(a17_at_least_1 "$(grep -c 'change_ids_in_dir "\${dir%/}"' "$GATE_TPL" || true)")"
+report "A20 metrics emits one row per change, not per directory" 1 "$(a17_at_least_1 "$(grep -c 'change_ids_in_dir "\${dir%/}"' "$COLD_TPL" || true)")"
 report "A20 diff attribution reads a batch file's governance roster" 1 "$(a17_at_least_1 "$(grep -c 'id_list=\$(gov_ids "\$(dirname "\$f")/00-governance.json")' "$GATE_TPL" || true)")"
 report "A20 stamper resolves the batch directory too" 1 "$(a17_at_least_1 "$(grep -c 'resolve_dir() {' "$STAMP_TPL" || true)")"
 report "A20 stamper attests the batch and lists its members" 1 "$(a17_at_least_1 "$(grep -c 'batch_changes:' "$STAMP_TPL" || true)")"
@@ -1061,7 +1063,7 @@ report "A20 audit and gate share one anchor shape" 1 "$(a17_at_least_1 "$(grep -
 at_least "A20 standards documents the change batch" 1 "$STD" '变更批次'
 at_least "A20 SKILL.md documents the batch layout" 1 "$SKILL" '变更批次'
 at_least "A20 AGENTS.md states the batch rule in the gate steps" 1 "$ROOT/resources/AGENTS.md" 'BATCH-YYYYMMDD'
-at_least "A20 changelog carries the v3.18.0 entry" 1 "$ROOT/resources/STANDARDS_CHANGELOG.md" 'v3.18.0'
+report "A20 changelog carries the v3.18.0 entry" 1 "$(a17_at_least_1 "$(cat "$SLOG" "$SLOG_ARCHIVE" 2>/dev/null | grep -c 'v3.18.0' || true)")"
 # 反向断言：bash 3.2 缺陷不得回潮。`local a="$1" b="$x/$a"` 里 `$a` 尚未赋值
 # （local 先展开全部词再赋值），set -u 下报 unbound variable；在 begin 路径因 id
 # 恰为全局而侥幸通过，在 --stage staged / CI 路径（id 是局部变量，不进入 $( ) 子壳）
@@ -1091,7 +1093,7 @@ report "A21 shipped governance template is the multi-line shape" 1 "$(grep -cE '
 report "A21 the template was NOT collapsed to one line (fix the reader, not the data)" 0 "$(grep -cE '^\{.*\"change_id\".*\}$' "$ROOT/resources/templates/governance-state.json" || true)"
 report "A21 golden suite covers a pretty-printed record end-to-end" 1 "$(a17_at_least_1 "$(grep -c 'T19 begin accepts a pretty-printed governance record' "$ROOT/tests/run-tests.sh" || true)")"
 report "A21 golden suite pins that a sibling's risk cannot leak" 1 "$(a17_at_least_1 "$(grep -c 'T19 the sibling reads its own risk, not the first record' "$ROOT/tests/run-tests.sh" || true)")"
-report "A21 changelog carries the v3.20.0 entry" 1 "$(a17_at_least_1 "$(grep -c 'v3.20.0' "$ROOT/resources/STANDARDS_CHANGELOG.md" || true)")"
+report "A21 changelog carries the v3.20.0 entry" 1 "$(a17_at_least_1 "$(cat "$SLOG" "$SLOG_ARCHIVE" 2>/dev/null | grep -c 'v3.20.0' || true)")"
 at_least "A21 SKILL.md documents the format-agnostic record reader" 1 "$SKILL" '格式无关'
 at_least "A21 MAINTAINER documents the record-reader coupling" 1 "$ROOT/MAINTAINER.md" 'gov_record'
 
@@ -1117,7 +1119,7 @@ report "A22 G3/G5/G6 are scoped to living docs only" 1 "$(a17_at_least_1 "$(grep
 at_least "A22 the audit header documents the frozen-history scoping" 1 "$AUDIT_TPL" '不变量对冻结历史的适用性'
 report "A22 golden suite pins the change-dir REQ gap end-to-end" 1 "$(a17_at_least_1 "$(grep -c 'T20 audit reds on a REQ gap inside a change dir' "$ROOT/tests/run-tests.sh" || true)")"
 report "A22 golden suite pins that in-prose refs do not widen the span" 1 "$(a17_at_least_1 "$(grep -c 'T20 in-prose REQ references do not widen the definition span' "$ROOT/tests/run-tests.sh" || true)")"
-report "A22 changelog carries the v3.21.0 entry" 1 "$(a17_at_least_1 "$(grep -c 'v3.21.0' "$ROOT/resources/STANDARDS_CHANGELOG.md" || true)")"
+report "A22 changelog carries the v3.21.0 entry" 1 "$(a17_at_least_1 "$(cat "$SLOG" "$SLOG_ARCHIVE" 2>/dev/null | grep -c 'v3.21.0' || true)")"
 at_least "A22 MAINTAINER documents the audit-unit scoping" 1 "$ROOT/MAINTAINER.md" 'g36_dirs'
 
 # A22b 源仓台账审计不再空转 / 历史红灯可见（v3.86.0，CHG-113）——防三类反向回退：
@@ -1240,7 +1242,7 @@ report "A25 gate begin reads the session water level" 1 "$(a17_at_least_1 "$(gre
 report "A25 gate water refusal names the escape hatch" 1 "$(a17_at_least_1 "$(grep -c 'AGENT_GUARD_ALLOW_OVER_WATER' "$GATE_TPL" || true)")"
 report "A25 adapter counts chat.message turns" 1 "$(a17_at_least_1 "$(grep -c 'chat.message' "$ROOT/resources/templates/install-hook-adapter.sh" || true)")"
 report "A25 session-gate maintains the water file" 1 "$(a17_at_least_1 "$(grep -c 'session-water.json' "$ROOT/resources/templates/session-gate.sh" || true)")"
-report "A25 metrics emits artifact cost fields" 1 "$(a17_at_least_1 "$(grep -c 'artifact_bytes' "$GATE_TPL" || true)")"
+report "A25 metrics emits artifact cost fields" 1 "$(a17_at_least_1 "$(grep -c 'artifact_bytes' "$COLD_TPL" || true)")"
 report "A25 scaffolder template exists" 1 "$([[ -s "$ROOT/resources/templates/new-change.sh" ]] && echo 1 || echo 0)"
 report "A25 scaffolder shipped by bootstrap guard" 1 "$(a17_at_least_1 "$(grep -c 'resources/templates/new-change.sh' "$ROOT/scripts/bootstrap.sh" || true)")"
 report "A25 entry templates exist (8 core + conditional 03.6 + shape 4, CHG-045)" 13 "$(ls "$ROOT/resources/templates/entry/"* 2>/dev/null | wc -l | tr -d ' ')"
@@ -1404,23 +1406,26 @@ report "A41 provenance block-tail blank-run canary (REQ-1027)" 0 "$canary_viol"
 # append-only 历史不改写（§2.15），新条目纪律由评审承载（v2.17.0 即通用化改版记录）。
 a42_hits=""
 for a42_f in $(git ls-files 'resources/*' 'SKILL.md' 'README.md' 'README.zh-CN.md' 'scripts/bootstrap.sh' '.claude-plugin/*' 2>/dev/null); do
-  [[ "$a42_f" == "resources/STANDARDS_CHANGELOG.md" ]] && continue
+  [[ "$a42_f" == "resources/STANDARDS_CHANGELOG.md" || "$a42_f" == "resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && continue
   a42_hit=$(grep -nE '儿童内分泌|newCDSScode|CDSS|候诊|预问诊|ptSwitch|btnDemo|FU-942|FU-935|diagnosis-round|observation\(id|ingest 管线|dev\.sh' "$a42_f" 2>/dev/null | head -1)
   [[ -n "$a42_hit" ]] && a42_hits="$a42_hits${a42_f}: ${a42_hit}"$'\n'
 done
 report "A42 payload genericity — no single-project markers (user hard gate 2026-10-12)" 0 "$([[ -z "$a42_hits" ]] && echo 0 || { printf 'foreign markers:\n%s' "$a42_hits" >&2; echo 1; })"
 
 # A44 private-face drift tripwire (2026-10-16 user directive, CHG-097/REQ-1103):
-# 源仓本地安装副本必须与 shipped 模板 byte-identical——防「私有面落后于公开面」复发
-# （实证：.githooks/pre-commit 与 scripts/session-gate.sh 滞后于 v3.73.0 交付）。
-# 判定口径（DES-1874）：本地缺=SKIP（未安装/新克隆合法态）；模板缺=RED（公开面破损）；
-# 两全且 cmp 不等=RED（漂移）。本文件为 source-layer，目标仓不可见，无 payload 面。
+# 源仓本地安装副本必须与 shipped 模板一致（byte-identical 或 3 行单源 exec wrapper, ITEM-43）。
 a44_bad=""
 for a44_p in scripts/agent-gate:resources/templates/agent-gate.sh scripts/stamp-provenance.sh:resources/templates/stamp-provenance.sh scripts/session-gate.sh:resources/templates/session-gate.sh scripts/eval-cases:resources/templates/eval-cases.sh scripts/eval-rescore:resources/templates/eval-rescore.sh .githooks/pre-commit:resources/templates/pre-commit; do
-  a44_l="$ROOT/${a44_p%%:*}"; a44_t="$ROOT/${a44_p##*:}"
+  a44_l="$ROOT/${a44_p%%:*}"; a44_t="$ROOT/${a44_p##*:}"; a44_tr="${a44_p##*:}"
   [[ -f "$a44_t" ]] || { a44_bad="$a44_bad${a44_p}(template-missing) "; continue; }
   [[ -f "$a44_l" ]] || continue
-  cmp -s "$a44_l" "$a44_t" || a44_bad="$a44_bad${a44_p} "
+  if ! cmp -s "$a44_l" "$a44_t"; then
+    if grep -qF "# single-source wrapper -> $a44_tr" "$a44_l" && grep -qF 'exec bash' "$a44_l"; then
+      :
+    else
+      a44_bad="$a44_bad${a44_p} "
+    fi
+  fi
 done
 report "A44 local-copy drift vs template (private face == public face, CHG-097)" 0 "$([[ -z "$a44_bad" ]] && echo 0 || { printf 'drifted: %s\n' "$a44_bad" >&2; echo 1; })"
 
@@ -1431,7 +1436,7 @@ at_least "A45 gate carries the disposition gates (E114/E115, CHG-098)" 2 "$GATE_
 at_least "A45 gate carries the round-cap gate (E116, CHG-098)" 1 "$GATE_TPL" 'GATE-E116'
 at_least "A45 gate derives review rounds from the ledger (CHG-098)" 1 "$GATE_TPL" 'review-rounds.tsv'
 at_least "A45 gate exposes the round-limit knob (CHG-098)" 1 "$GATE_TPL" 'AGENT_GUARD_REVIEW_ROUND_LIMIT'
-at_least "A45 metrics emits the dismissal rate (CHG-098)" 1 "$GATE_TPL" 'dismissal_rate'
+at_least "A45 metrics emits the dismissal rate (CHG-098)" 1 "$COLD_TPL" 'dismissal_rate'
 at_least "A45 07 template carries the disposition section (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '发现处置'
 at_least "A45 07 template carries the conditional cap-disposition line (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '超限处置'
 at_least "A45 standards body carries the disposition clause (CHG-098)" 1 "$STD" '发现处置（v3.74.0'
@@ -1441,7 +1446,7 @@ at_least "A45 registry indexes the new gate codes (CHG-098)" 3 "$ROOT/resources/
 at_least "A45 registry registers the new clauses (CHG-098)" 3 "$ROOT/resources/CLAUSE_REGISTRY.md" '^| R5[678] '
 at_least "A45 golden suite registers the T59 section (CHG-098)" 1 "$ROOT/tests/run-tests.sh" 'T58 T59'
 at_least "A45 cap-disposition predicate requires a filled line, not a bare word (CHG-098)" 1 "$GATE_TPL" '\[\^\[:space:\]<\]'
-at_least "A45 disposition tally skips template placeholder rows (CHG-098)" 1 "$GATE_TPL" '\^<\.\*>\$'
+at_least "A45 disposition tally skips template placeholder rows (CHG-098)" 1 "$COLD_TPL" '\^<\.\*>\$'
 at_least "A45 07 template marks its example row as a placeholder (CHG-098)" 1 "$ROOT/resources/templates/entry/07-review-report.md" '^| <编号> |'
 
 # A46 评测资产派生 + 重打分 + 来源维 + 复盘汲取（v3.75.0，CHG-099/REQ-1108~1114）：六面互锁——
@@ -1460,7 +1465,7 @@ at_least "A46 rescore workflow calls the local script (CHG-099)" 1 "$ROOT/resour
 at_least "A46 gate carries the provenance gate (E117, CHG-099)" 1 "$GATE_TPL" 'GATE-E117'
 at_least "A46 gate soft-passes legacy 07 shapes (CHG-099)" 1 "$GATE_TPL" '发现处置表缺「来源」列'
 at_least "A46 gate counts finding provenance (CHG-099)" 1 "$GATE_TPL" 'finding_source_counts'
-at_least_e "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$GATE_TPL" 'findings_introduced|findings_pre_existing'
+at_least_e "A46 metrics emits the finding-provenance fields (CHG-099)" 1 "$COLD_TPL" 'findings_introduced|findings_pre_existing'
 # v3.75.0 (CHG-099, 收尾整改 C-1)：pin 必须钉**真表头行**而非「本次引入|既有存量」字面——
 # 后者在模板的条件注释里本就出现，删掉真表头行后仍 ≥1 → 恒真断言（独立验证子代理 M2 变异未变红）。
 # 注意 `grep_count` 走 **BRE**（基础 grep）：`\|` 在 BRE 是**交替**不是字面管道——实测
@@ -1541,7 +1546,7 @@ at_least "A47 skip-verify behaviour is pinned (CHG-100)" 1 "$ROOT/tests/run-test
 at_least "A48 eval-rescore samples the installed docs face (CHG-102)" 4 "$ROOT/resources/templates/eval-rescore.sh" 'face_add "\$docs_dir/'
 at_least "A48 eval-rescore resolves the docs root (CHG-102)" 1 "$ROOT/resources/templates/eval-rescore.sh" 'AGENT_GUARD_DOCS_DIR'
 report "A48 eval-rescore never samples the source tree as its primary face (CHG-102)" 0 "$(grep_count "$ROOT/resources/templates/eval-rescore.sh" '^face_add resources/')"
-report "A48 eval-rescore source/template byte-identical (CHG-102)" 0 "$(cmp -s "$ROOT/scripts/eval-rescore" "$ROOT/resources/templates/eval-rescore.sh" && echo 0 || echo 1)"
+report "A48 eval-rescore source/template byte-identical (CHG-102)" 0 "$([[ ! -f "$ROOT/scripts/eval-rescore" ]] && echo 0 || { cmp -s "$ROOT/scripts/eval-rescore" "$ROOT/resources/templates/eval-rescore.sh" && echo 0 || { grep -qF '# single-source wrapper -> resources/templates/eval-rescore.sh' "$ROOT/scripts/eval-rescore" && grep -qF 'exec bash' "$ROOT/scripts/eval-rescore" && echo 0 || echo 1; }; })"
 A48_WF="$ROOT/resources/templates/github-reviewer-rescore.yml"
 # paths 块按缩进取段（注释行说明改前形态，不计入）：块内零源仓路径 + 9 条安装落点
 a48_paths=$(awk '/^[[:space:]]+paths:/{f=1;next} f && /^[[:space:]]*[[:alnum:]_]/ && !/^[[:space:]]*#/{exit} f{print}' "$A48_WF")
@@ -1555,17 +1560,15 @@ at_least_unique "A48 aggregator runs unconditionally (CHG-102)" "$GOV_WF" '^    
 at_least "A48 aggregator fails on any non-success dependency (CHG-102)" 1 "$GOV_WF" 'an upstream job did not succeed'
 at_least "A48 verification command stays fail-closed when unset (CHG-102)" 1 "$GOV_WF" 'Set repository variable AGENT_GUARD_VERIFY_COMMAND'
 report "A48 only the two working jobs check out (aggregator does no work) (CHG-102)" 2 "$(grep_count "$GOV_WF" 'uses: actions/checkout@v5')"
-report "A48 gate help no longer claims the 12-master range (CHG-102)" 0 "$(grep_count "$GATE_TPL" 'P00\.\.P11')"
-at_least "A48 gate help names the 13-master range (CHG-102)" 1 "$GATE_TPL" 'P00\.\.P12'
-report "A48 gate source/template byte-identical (CHG-102; source-only face absent on fresh clone = SKIP, A44 semantics)" 0 "$([[ -f "$ROOT/scripts/agent-gate" ]] && { cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || echo 1; } || echo 0)"
+report "A48 gate help no longer claims the 12-master range (CHG-102)" 0 "$(grep_count "$COLD_TPL" 'P00\.\.P11')"
+at_least "A48 gate help names the 13-master range (CHG-102)" 1 "$COLD_TPL" 'P00\.\.P12'
+report "A48 gate source/template byte-identical (CHG-102; source-only face absent on fresh clone = SKIP, A44 semantics)" 0 "$([[ ! -f "$ROOT/scripts/agent-gate" ]] && echo 0 || { cmp -s "$ROOT/scripts/agent-gate" "$GATE_TPL" && echo 0 || { grep -qF '# single-source wrapper -> resources/templates/agent-gate.sh' "$ROOT/scripts/agent-gate" && grep -qF 'exec bash' "$ROOT/scripts/agent-gate" && echo 0 || echo 1; }; })"
 report "A48 SKILL never names a shipped script with a .sh suffix (CHG-102)" 0 "$(grep_count "$SKILL" 'install-hook-adapter.sh')"
 at_least_e "A48 usage lists the guard-layer entry scripts (CHG-102)" 2 "$ROOT/scripts/bootstrap.sh" 'bug-autointent|generate-reading-pack.sh'
 at_least "A48 usage lists the regression workflow (CHG-102)" 1 "$ROOT/scripts/bootstrap.sh" 'regression-to-bug.yml'
 report "A48 DS carries no authority pointer at a non-shipped file (CHG-102)" 0 "$(grep_count "$STD" 'MAINTAINER §')"
 at_least "A48 DS points at the shipped intent template (CHG-102)" 1 "$STD" 'templates/entry/00-intent.md'
-# v3.97.0（CHG-134）：§2.13.4 返工分治条款入 DS，三轮压缩后仍在 171,600B 之上；本条收紧棘轮
-# 与硬上界收敛（172,032）——**收敛即信号**：下一次 DS 增长必须结构性减法，或走 A11 的 +4KiB 重校准仪式。
-report "A48 standards body ratchet (CHG-107; ratcheted v3.99.0 CHG-140; CHG-147 重校准)" 1 "$([[ "$std_bytes" -le 184320 ]] && echo 1 || echo 0)"
+report "A48 standards body ratchet (CHG-107; ratcheted v4.9.0 CHG-154)" 1 "$([[ "$std_bytes" -le 163840 ]] && echo 1 || echo 0)"
 # v3.80.0 (CHG-107, REQ-1152/1153): scaffold single-sourcing + phase read-set pins.
 at_least "A49 gate carries the scaffold generator (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'scaffold_change\(\)'
 at_least_f "A49 gate usage names --scaffold (CHG-107)" 1 "$ROOT/resources/templates/agent-gate.sh" 'usage: scripts/agent-gate begin <change-id> [--risk L0|L1|L2|L3] [--scaffold]'
@@ -1613,7 +1616,7 @@ at_least "A52 gate splits delivery into probe-safe back face (CHG-109)" 2 "$GATE
 at_least "A52 preflight wires the front shape face (CHG-109)" 1 "$GATE_TPL" 'p_run validate_delivery_shape_front'
 at_least "A52 preflight wires the back shape face (CHG-109)" 1 "$GATE_TPL" 'p_run validate_delivery_shape_back'
 at_least "A52 round-ledger write documented stop-lane-only (CHG-109)" 1 "$GATE_TPL" 'round-ledger write stays'
-at_least "A52 preflight usage discloses the widened face (CHG-109)" 1 "$GATE_TPL" 'v3.82.0 adds the delivery shape face'
+at_least "A52 preflight usage discloses the widened face (CHG-109)" 1 "$COLD_TPL" 'v3.82.0 adds the delivery shape face'
 at_least "A52 verify channel wraps in caffeinate when available (CHG-109)" 1 "$GATE_TPL" 'caffeinate -dims bash -lc'
 at_least "A52 darwin missing-caffeinate warning stays loud (CHG-109)" 1 "$GATE_TPL" 'WARNING: caffeinate unavailable or disabled'
 at_least "A52 begin carries the telemetry-liveness backstop (CHG-109)" 2 "$GATE_TPL" 'YELLOW liveness'
@@ -1632,7 +1635,7 @@ at_least "A53 TTL is env-tunable with a numeric guard (CHG-110)" 1 "$GATE_TPL" '
 at_least "A53 opt-out env is honored at both read and write (CHG-110)" 2 "$GATE_TPL" 'AGENT_GUARD_VERIFY_CACHE:-1'
 at_least "A53 cached run surfaces a CACHED line and evidence (CHG-110)" 1 "$GATE_TPL" 'CACHED (receipt match'
 at_least "A53 non-git repos degrade to always-run (CHG-110)" 1 "$GATE_TPL" 'Non-git repos (empty fingerprint) degrade'
-at_least "A53 usage discloses the opt-out boundary (CHG-110)" 1 "$GATE_TPL" 'external mutable state set AGENT_GUARD_VERIFY_CACHE=0'
+at_least "A53 usage discloses the opt-out boundary (CHG-110)" 1 "$COLD_TPL" 'external mutable state set AGENT_GUARD_VERIFY_CACHE''=0'
 at_least "A53 golden section T66 is defined (CHG-110)" 1 "$ROOT/tests/run-tests.sh" '^section_T66() {'
 at_least_unique "A53 golden section T67 is registered once (CHG-110 tail; CHG-111 joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T67 '
 at_least_unique "A53 golden section T68 is registered once (CHG-113 lock joins)" "$ROOT/tests/run-tests.sh" '^SECTIONS=.* T68 '
@@ -2047,7 +2050,7 @@ report "A58b fresh-clone tool emits a receipt" 1 "$(a17_at_least_1 "$(grep -c 'f
 report "A58c DS documents the environment gate" 1 "$(grep -cE 'fresh-clone|环境等价' "$STD" 2>/dev/null || true)"
 report "A58d AGENTS documents the fresh-clone/CI equivalence" 1 "$(grep -c 'fresh clone / 无 CI 仓必须全绿' "$AGENTS" 2>/dev/null || true)"
 report "A58e pre-push carries the G-FEED hint" 1 "$(grep -c 'G-FEED tip' "$ROOT/resources/templates/pre-push" 2>/dev/null || true)"
-report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(grep -c '| v3.92.0 |' "$ROOT/resources/STANDARDS_CHANGELOG.md" 2>/dev/null || true)"
+report "A58f CHANGELOG carries the v3.92.0 row" 1 "$(cat "$SLOG" "$SLOG_ARCHIVE" 2>/dev/null | grep -c '| v3\.92\.0 |' || true)"
 report "A58g fresh-clone history ledger is declared" 1 "$(a17_at_least_1 "$(grep -c 'fresh-clone-history.tsv' "$ROOT/tests/fresh-clone-check.sh" 2>/dev/null || true)")"
 report "A58h unverified-REQ declaration face is shipped" 1 "$([[ $(grep -c 'GATE-E154' "$GATE_TPL") -ge 1 && $(grep -c '未验证 REQ 清单' "$ROOT/resources/templates/entry/09-changelog.md") -ge 1 ]] && echo 1 || echo 0)"
 # v3.92.3 (CHG-128 fix): 只下发门禁、不下发执行件 = E153 永远无法满足。v3.92.0
@@ -2145,7 +2148,7 @@ report "A62 entry/00-governance carries the dispatch_contract placeholder (CHG-1
   "$(grep_count_f "$A62_GOV" '"dispatch_contract": "__DISPATCH_CONTRACT__"')"
 report "A62 new-change stamps dispatch_contract v2 (CHG-131)" 1 \
   "$(grep_count_f "$A62_NC" 's/__DISPATCH_CONTRACT__/v2/g')"
-at_least_f "A62 gate assembles the P0-P8 skeleton once (CHG-131)" 1 "$GATE_TPL" 'dispatch_run() { # <stage> <change-id> <text|--json>'
+at_least_f "A62 gate assembles the P0-P8 skeleton once (CHG-131)" 1 "$COLD_TPL" 'dispatch_run() { # <stage> <change-id> <text|--json>'
 at_least_f "A62 gate wires the dispatch subcommand (CHG-131)" 1 "$GATE_TPL" '  dispatch)'
 at_least_f "A62 gate scaffolds dispatch_contract v2 (CHG-131)" 1 "$GATE_TPL" '"dispatch_contract": "v2"'
 at_least_f "A62 gate emits E155 from one die site (CHG-131)" 1 "$GATE_TPL" 'die "GATE-E155: '
@@ -2234,7 +2237,11 @@ at_least_f "A67 E160 die site in gate template (CHG-145)" 1 "$ROOT/resources/tem
 # 文件。按 A6a 惯用法：同名断言恒执行（保 A10/A10b/GEN 基线集合跨环境稳定），
 # 缺文件时 SKIP 行声明 + 自洽值；执法面由上方模板钉承载。
 if [[ -f "$ROOT/scripts/agent-gate" ]]; then
-  at_least_f "A67 E160 die site in source gate (CHG-145)" 1 "$ROOT/scripts/agent-gate" 'die "GATE-E160: 测试弱化命中'
+  if grep -qF '# single-source wrapper -> resources/templates/agent-gate.sh' "$ROOT/scripts/agent-gate" && grep -qF 'exec bash' "$ROOT/scripts/agent-gate"; then
+    report "A67 E160 die site in source gate (CHG-145)" 1 1
+  else
+    at_least_f "A67 E160 die site in source gate (CHG-145)" 1 "$ROOT/scripts/agent-gate" 'die "GATE-E160: 测试弱化命中'
+  fi
 else
   echo "SKIP A67: scripts/agent-gate absent in a fresh source checkout (gitignored mirror; template pin enforces)"
   report "A67 E160 die site in source gate (CHG-145)" 1 1
@@ -2294,7 +2301,7 @@ report "A71 install-ci-adapter.sh exists and is executable (CHG-152)" 0 "$([[ -x
 at_least_f "A71 install-ci-adapter emits CI and branch-protection contracts (CHG-152)" 1 "$ROOT/resources/templates/install-ci-adapter.sh" '--print-branch-protection-contract'
 at_least_f "A71 bootstrap exposes profile contract and verify flags (CHG-152)" 1 "$ROOT/scripts/bootstrap.sh" '--verify-profile'
 report "A71 four code-path checkers read dynamic code_extensions (CHG-152)" 4 "$(( $(grep -cF 'code_extensions' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'code_extensions' "$ROOT/resources/templates/session-gate.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'code_extensions' "$ROOT/resources/templates/audit-docs-consistency.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'code_extensions' "$ROOT/resources/templates/check-standards-compliance.sh" >/dev/null && echo 1 || echo 0) ))"
-at_least_f "A71 agent-gate exposes review-models command (CHG-152)" 1 "$GATE_TPL" 'review_models_cmd'
+at_least_f "A71 agent-gate exposes review-models command (CHG-152)" 1 "$COLD_TPL" 'review_models_cmd'
 at_least_f "A71 agent-gate supports extensible test_weakening_patterns (CHG-152)" 1 "$GATE_TPL" 'test_weakening_patterns'
 at_least_f "A71 agent-gate supports kv_field structured checks (CHG-152)" 1 "$GATE_TPL" 'kv_field()'
 at_least_f "A71 agent-gate enforces GATE-E164 secret scan (CHG-152)" 1 "$GATE_TPL" 'GATE-E164:'
@@ -2303,15 +2310,38 @@ at_least_f "A71 agent-gate emits AI-LAZY soft warn (CHG-152)" 1 "$GATE_TPL" 'AI-
 # --- A72 (v4.8.0, CHG-153, REQ-1426~1437): P1 3B批 11项过程真实性/原子流 + FU-15202 ---
 at_least_f "A72 agent-gate enforces GATE-E163 causal DAG gate (CHG-153)" 1 "$GATE_TPL" 'GATE-E163:'
 at_least_f "A72 agent-gate records stage-gate receipts and mtime check (CHG-153)" 1 "$GATE_TPL" 'record_stage_receipt'
-at_least_f "A72 agent-gate exposes record-red red-first receipt command (CHG-153)" 1 "$GATE_TPL" 'record_red_cmd'
+at_least_f "A72 agent-gate exposes record-red red-first receipt command (CHG-153)" 1 "$COLD_TPL" 'record_red_cmd'
 at_least_f "A72 agent-gate records pre-write heartbeat ledger (CHG-153)" 1 "$GATE_TPL" 'prewrite_ledger_append'
-at_least_f "A72 dispatch review injects process_honesty_summary (CHG-153)" 1 "$GATE_TPL" 'process_honesty_summary'
+at_least_f "A72 dispatch review injects process_honesty_summary (CHG-153)" 1 "$COLD_TPL" 'process_honesty_summary'
 at_least_f "A72 pre-commit template carries RETROACTIVE_PROBE defense (CHG-153)" 1 "$ROOT/resources/templates/pre-commit" 'RETROACTIVE_PROBE'
-at_least_f "A72 agent-gate exposes start advance next fix commands (CHG-153)" 4 "$GATE_TPL" 'next_cmd'
+at_least_f "A72 agent-gate exposes start advance next fix commands (CHG-153)" 4 "$COLD_TPL" 'next_cmd'
 at_least_f "A72 agent-gate supports optional single-file change-card mode (CHG-153)" 1 "$GATE_TPL" 'validate_change_card'
 at_least_f "A72 FU-15202 is_code_path caches extensions (CHG-153)" 1 "$GATE_TPL" '_AG_EXT_LOADED'
 at_least_f "A72 FU-15202 install-ci-adapter reports candidates and filters comments (CHG-153)" 1 "$ROOT/resources/templates/install-ci-adapter.sh" 'candidates:'
 at_least_f "A72 CLAUSE_REGISTRY documents GATE-E163 (CHG-153)" 1 "$ROOT/resources/CLAUSE_REGISTRY.md" 'GATE-E163'
+
+# --- A73 (v4.9.0, CHG-154, REQ-1438~1443): P3 6项架构收敛与热冷分层 ---
+a73_cl_bytes=$(wc -c < "$SLOG" | tr -d ' ')
+report "A73 STANDARDS_CHANGELOG slimmed <= 20KB with archive split (CHG-154)" 1 "$([[ "$a73_cl_bytes" -le 20480 && -s "$SLOG_ARCHIVE" ]] && echo 1 || echo 0)"
+report "A73 STANDARDS_CHANGELOG_ARCHIVE retains v2.9.0..v4.2.0 history (CHG-154)" 1 "$(a17_at_least_1 "$(grep -c '^| v2\.9\.0 ' "$SLOG_ARCHIVE" || true)")"
+report "A73 governance-smoke ships in guard layer (CHG-154)" 1 "$([[ -x "$ROOT/resources/templates/governance-smoke.sh" ]] && grep -cF 'governance-smoke.sh' "$ROOT/scripts/bootstrap.sh" | awk '{print ($1>=1)?1:0}' || echo 0)"
+_a73_sw_rc=1
+if [[ -x "$ROOT/scripts/sync-local-wrappers.sh" ]]; then
+  _a73_sw_tmp=$(mktemp -d)
+  mkdir -p "$_a73_sw_tmp/scripts" "$_a73_sw_tmp/.githooks"
+  ln -s "$ROOT/resources" "$_a73_sw_tmp/resources"
+  cp "$ROOT/scripts/sync-local-wrappers.sh" "$_a73_sw_tmp/scripts/sync-local-wrappers.sh"
+  bash "$_a73_sw_tmp/scripts/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_a73_sw_tmp/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1
+  _a73_sw_rc=$?
+  rm -rf "$_a73_sw_tmp"
+  if [[ -f "$ROOT/.githooks/pre-commit" ]]; then
+    bash "$ROOT/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1 || _a73_sw_rc=$?
+  fi
+fi
+report "A73 sync-local-wrappers --check passes in source repo (CHG-154)" 0 "$_a73_sw_rc"
+report "A73 lib-json shared by gate, bootstrap, and ci-adapter (CHG-154)" 3 "$(( $(grep -cF 'lib-json.sh' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'lib-json.sh' "$ROOT/scripts/bootstrap.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'lib-json.sh' "$ROOT/resources/templates/install-ci-adapter.sh" >/dev/null && echo 1 || echo 0) ))"
+at_least_f "A73 lib-gate-cold lazy loader wired in agent-gate (CHG-154)" 1 "$GATE_TPL" 'load_gate_cold()'
+report "A73 lib-gate-cold parses cleanly with bash -n (CHG-154)" 0 "$(/bin/bash -n "$COLD_TPL" >/dev/null 2>&1; echo $?)"
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else

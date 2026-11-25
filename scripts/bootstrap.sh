@@ -28,6 +28,10 @@ set -u
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 SKILL_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+if [[ -f "$SKILL_ROOT/resources/templates/lib-json.sh" ]]; then
+  # shellcheck source=/dev/null
+  . "$SKILL_ROOT/resources/templates/lib-json.sh"
+fi
 
 usage() {
   cat <<'EOF'
@@ -46,7 +50,7 @@ Flags (layers; default --core when none given):
                <tests>/audit-docs-consistency.sh (通用层审计)
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, <scripts>/check-standards-compliance.sh
-  --guard      强制执行包: <scripts>/agent-gate, <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
+  --guard      强制执行包: <scripts>/agent-gate (+ lib-json.sh + lib-gate-cold.sh, v4.9.0), <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
                <scripts>/behavior-extract.sh (HTML/JS 原型行为抽取器, v3.68.0),
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/eval-cases + <scripts>/eval-rescore (评测资产派生与重打分, v3.75.0),
@@ -58,6 +62,7 @@ Flags (layers; default --core when none given):
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
                <github>/workflows/agent-governance.yml (按目标仓默认分支动态适配),
                .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4),
+               <tests>/governance-smoke.sh (目标仓轻量冒烟自检, v4.9.0),
                <tests>/fresh-clone-check.sh (G-ENV 环境等价检查, 随强制包, v3.92.3),
                <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0),
                <scripts>/lib-suite-lock.sh (全量套件工作区锁 lib, 随 run-tests.sh 同包, v3.86.0),
@@ -397,7 +402,7 @@ if [[ "$print_profile_contract" == true ]]; then
     -not -path '*/target/*' -not -path '*/dist/*' 2>/dev/null \
     | awk -F/ '{f=$NF; if (f ~ /\.[A-Za-z0-9_+]+$/) { sub(/^.*\./, "", f); c[f]++ }} END { for (k in c) printf "%d %s\n", c[k], k }' \
     | sort -rn -k1,1 -k2,2 | awk '{print $2}' | head -n 20 | paste -sd, - || true)
-  _pc_target_esc=$(printf '%s' "$target" | tr '\t\n' '  ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+  _pc_target_esc=$(json_escape "$target" 2>/dev/null || printf '%s' "$target" | tr '\t\n\r' '   ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
   _pc_mono=""
   for _d in packages apps services modules libs; do
     [[ -d "$target/$_d" ]] && _pc_mono="${_pc_mono:+${_pc_mono},}\"${_d}\""
@@ -732,11 +737,13 @@ manifest_user_modified() { # dest_rel dest -> 0 = entry 存在且 hash 异（用
 # case and refuse (fail-closed) instead of overwriting or trying to merge:
 # a merge would destroy the only answer to "who maintains this line?".
 divergence_guard() { # src dest -> 0 when dest has version rows src lacks
-  local src="$1" dest="$2" extra
+  local src="$1" dest="$2" arch="$SKILL_ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" extra
   [[ -f "$dest" ]] || return 1
+  local -a known_files=("$src")
+  [[ -f "$arch" ]] && known_files+=("$arch")
   extra=$(comm -23 \
     <(grep -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+' "$dest" 2>/dev/null | sort -u) \
-    <(grep -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+' "$src"  2>/dev/null | sort -u) 2>/dev/null \
+    <(grep -h -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+' "${known_files[@]}" 2>/dev/null | sort -u) 2>/dev/null \
     | tr -d ' |' | tr '\n' ' ')
   [[ -n "$extra" ]] || return 1
   printf '%s' "$extra"
@@ -915,6 +922,9 @@ run_layer() {
       ;;
     guard)
       install_file - "$SCRIPTS_DIR/agent-gate" resources/templates/agent-gate.sh 755
+      install_file - "$SCRIPTS_DIR/lib-json.sh" resources/templates/lib-json.sh 644
+      install_file - "$SCRIPTS_DIR/lib-gate-cold.sh" resources/templates/lib-gate-cold.sh 644
+      install_file - "$TESTS_DIR/governance-smoke.sh" resources/templates/governance-smoke.sh 755
       install_file - "$SCRIPTS_DIR/behavior-extract.sh" resources/templates/behavior-extract.sh 755
       install_file - "$SCRIPTS_DIR/stamp-provenance.sh" resources/templates/stamp-provenance.sh 755
       install_file - "$SCRIPTS_DIR/new-change" resources/templates/new-change.sh 755
@@ -1186,6 +1196,10 @@ write_profile_section() { # <yml> <target>
 yml_key_value() { # file key
   local f="$1" k="$2"
   [[ -f "$f" ]] || return 0
+  if command -v yml_flat_scalar >/dev/null 2>&1; then
+    yml_flat_scalar "$f" "$k"
+    return 0
+  fi
   sed -nE "s/^[[:space:]]*${k}:[[:space:]]*([^#]*).*$/\1/p" "$f" 2>/dev/null \
     | head -n 1 | tr -d "[:space:]\"'" || true
   return 0

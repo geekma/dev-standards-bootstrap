@@ -70,12 +70,20 @@ check() {
   # hardcoded literal. A version bump no longer edits the gate.
   eq "gate receipt version derives from DS footer (template)" "$(grep -cF 'gate_receipt_json "$vc_gver"' resources/templates/agent-gate.sh || true)" "1"
   eq "gate receipt version compares derived (template)" "$(grep -cF '"$vc_r_ver" == "$vc_gver"' resources/templates/agent-gate.sh || true)" "1"
-  # scripts/agent-gate is a gitignored local mirror (source layout), so absence is
-  # legal on a fresh clone; when present it must be byte-identical (checked below).
+  # scripts/agent-gate is a gitignored local mirror or single-source exec wrapper
+  # (ITEM-43), so absence is legal on a fresh clone; when present it must either
+  # be byte-identical OR wrap resources/templates/agent-gate.sh directly.
   if [[ -f scripts/agent-gate ]]; then
-    eq "gate mirror byte-identical" "$([[ "$(cmp -s scripts/agent-gate resources/templates/agent-gate.sh; echo $?)" == "0" ]] && echo yes || echo no)" "yes"
-    eq "gate receipt version derives from DS footer (mirror)" "$(grep -cF 'gate_receipt_json "$vc_gver"' scripts/agent-gate || true)" "1"
-    eq "gate receipt version compares derived (mirror)" "$(grep -cF '"$vc_r_ver" == "$vc_gver"' scripts/agent-gate || true)" "1"
+    local _ag_ok="no"
+    if cmp -s scripts/agent-gate resources/templates/agent-gate.sh; then
+      _ag_ok="yes"
+      eq "gate receipt version derives from DS footer (mirror)" "$(grep -cF 'gate_receipt_json "$vc_gver"' scripts/agent-gate || true)" "1"
+      eq "gate receipt version compares derived (mirror)" "$(grep -cF '"$vc_r_ver" == "$vc_gver"' scripts/agent-gate || true)" "1"
+    elif grep -qF '# single-source wrapper -> resources/templates/agent-gate.sh' scripts/agent-gate \
+      && grep -qF 'exec bash' scripts/agent-gate; then
+      _ag_ok="yes"
+    fi
+    eq "gate mirror byte-identical or single-source wrapper" "$_ag_ok" "yes"
   fi
   # tracked-carrier check: a carrier outside git can never ship with a tag.
   if git rev-parse --git-dir >/dev/null 2>&1; then

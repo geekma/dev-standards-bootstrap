@@ -74,13 +74,14 @@ if [[ "$FORCE" == 1 ]]; then echo "uninstall-standards: --force ON — Tier3 ass
 # NOTE: tests/run-tests.sh and tests/audit-docs-consistency.sh are deliberately
 # NOT here — run-tests is a MERGED extension point (user projects append their
 # own T-sections), so both live in Tier3 (keep & report; --force backup-moves).
-for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_DIR/new-change" \
+for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/lib-json.sh" "$SCRIPTS_DIR/lib-gate-cold.sh" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_DIR/new-change" \
          "$SCRIPTS_DIR/session-gate.sh" "$SCRIPTS_DIR/install-hook-adapter" "$SCRIPTS_DIR/install-ci-adapter" \
          "$SCRIPTS_DIR/bug-autointent" "$SCRIPTS_DIR/generate-reading-pack.sh" \
          "$SCRIPTS_DIR/eval-cases" "$SCRIPTS_DIR/eval-rescore" \
          "$SCRIPTS_DIR/check-standards-compliance.sh"; do
   act_rm "$f"
 done
+act_rm "$TESTS_DIR/governance-smoke.sh"
 act_rm ".agent-state"
 act_rm ".dev-standards-manifest"   # v3.51.0 install baseline ledger (runtime artifact)
 act_rm ".git/agent-governance"
