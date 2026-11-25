@@ -395,8 +395,9 @@ if [[ "$print_profile_contract" == true ]]; then
   _pc_exts=$(find "$target" -maxdepth 4 -type f \
     -not -path '*/.git/*' -not -path '*/.agent-state/*' -not -path '*/node_modules/*' \
     -not -path '*/target/*' -not -path '*/dist/*' 2>/dev/null \
-    | awk -F/ '{f=$NF; if (f ~ /\.[A-Za-z0-9_+]+$/) { sub(/^.*\./, "", f); c[f]++ }} END { for (k in c) print k }' \
-    | sort | head -n 20 | paste -sd, - || true)
+    | awk -F/ '{f=$NF; if (f ~ /\.[A-Za-z0-9_+]+$/) { sub(/^.*\./, "", f); c[f]++ }} END { for (k in c) printf "%d %s\n", c[k], k }' \
+    | sort -rn -k1,1 -k2,2 | awk '{print $2}' | head -n 20 | paste -sd, - || true)
+  _pc_target_esc=$(printf '%s' "$target" | tr '\t\n' '  ' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
   _pc_mono=""
   for _d in packages apps services modules libs; do
     [[ -d "$target/$_d" ]] && _pc_mono="${_pc_mono:+${_pc_mono},}\"${_d}\""
@@ -408,7 +409,7 @@ if [[ "$print_profile_contract" == true ]]; then
   cat <<EOF
 {
   "contract_version": "1",
-  "target": "$target",
+  "target": "${_pc_target_esc}",
   "detected_extensions": "${_pc_exts}",
   "monorepo_roots": [${_pc_mono}],
   "test_dirs": [${_pc_tests}],

@@ -66,6 +66,7 @@ gate_hint() { # <GATE-Exxx> -> four-element hint block
     GATE-E162) printf 'expected: entry-owns-exit delivery completeness — never mark 已交付 while an exposed downstream target is hung/unreachable or deferred via 挂接待其 owner without entry degradation\nallowed: degrade/hide the entry (已降级/已隐藏/已置灰) OR mark change status as 部分完成/阻塞\nfix: degrade the exposed entry or change 09 status from 已交付 to 阻塞/部分完成\nref: standards §0.6 / §2.5 stage 9 / v4.5.0' ;;
     GATE-E126|GATE-E127|GATE-E128|GATE-E129|GATE-E130) printf 'expected: the stage-gate preconditions hold for this change\nallowed: required artifacts + confirmation + one non-empty reviews/Pxx.review.md per claim\nfix: backfill the named stage artifacts, then re-run the same stage command\nref: standards §2.5 / §2.17.2d' ;;
     GATE-E132|GATE-E136|GATE-E138|GATE-E139|GATE-E140|GATE-E141|GATE-E149|GATE-E155) printf 'expected: a valid read-back subcommand form\nallowed: cost-line|plan|baseline|tc-index|resume|review-plan|dispatch|review-models <args>\nfix: pass an existing change id and a documented flag, then re-run\nref: standards §2.17 / CHG-126/127/131' ;;
+    GATE-E163) printf 'expected: L2/L3 intent/spec documents land BEFORE implementation code commits in the Git DAG\nallowed: commit docs/changes/<CHG>/00-intent.md first (or skip cleanly when change_root is gitignored); emergency escape AGENT_GUARD_ALLOW_CAUSAL_SKIP=1\nfix: split/commit the change artifacts before staging or pushing code commits\nref: standards §2.5 / v4.8.0' ;;
     GATE-E164) printf 'expected: no unexempted hardcoded secrets, API tokens, or private keys in staged added lines\nallowed: move credentials to env/secret-manager, or mark synthetic test fixtures with agent-guard: allow-secret\nfix: remove the leaked secret from the diff or annotate synthetic fixtures with agent-guard: allow-secret\nref: standards §2.5 / v4.7.0' ;;
     *) printf 'expected: the condition named on the line above holds\nallowed: see the clause in ref; the command is idempotent and safe to re-run\nfix: address the named condition, then run the same command again\nref: standards §2.17 / this change 09-changelog' ;;
   esac
@@ -693,11 +694,17 @@ is_code_path() {
   [[ "$path" =~ ^(${githooks_re}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${scripts_re}/agent-gate$|${scripts_re}/session-gate\.sh$|${scripts_re}/install-hook-adapter$|${scripts_re}/install-ci-adapter$|${scripts_re}/check-standards-compliance\.sh$|${scripts_re}/stamp-provenance\.sh$|${scripts_re}/generate-reading-pack\.sh$|${scripts_re}/behavior-extract\.sh$|${scripts_re}/lib-suite-tree-fingerprint\.sh$|${scripts_re}/lib-suite-lock\.sh$|${scripts_re}/shard-sum\.sh$|${scripts_re}/evidence-round\.sh$|${tests_re}/run-tests\.sh$|${tests_re}/audit-docs-consistency\.sh$|${tests_re}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$path" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]] && return 0
   local _ag_ext
-  _ag_ext=$(cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
-  if [[ -n "$_ag_ext" && "$_ag_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
-    local _ag_ext_re="${_ag_ext//,/|}"
-    _ag_ext_re="${_ag_ext_re//+/\\+}"
-    [[ "$path" =~ \.(${_ag_ext_re})$ ]] && return 0
+  if [[ "${_AG_EXT_LOADED:-0}" != "1" ]]; then
+    _ag_ext=$(cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
+    _AG_EXT_RE=""
+    if [[ -n "$_ag_ext" && "$_ag_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
+      _AG_EXT_RE="${_ag_ext//,/|}"
+      _AG_EXT_RE="${_AG_EXT_RE//+/\\+}"
+    fi
+    _AG_EXT_LOADED=1
+  fi
+  if [[ -n "${_AG_EXT_RE:-}" ]] && [[ "$path" =~ \.(${_AG_EXT_RE})$ ]]; then
+    return 0
   fi
   return 1
 }
@@ -708,6 +715,457 @@ kv_field() { # <text> <key> -> trimmed value (first match)
   local txt="$1" key="$2"
   printf '%s\n' "$txt" | sed -nE "s/^[[:space:]]*([-*][[:space:]]*)?\*?\*?${key}\*?\*?[[:space:]]*(:|：)[[:space:]]*(.*)$/\3/p" 2>/dev/null \
     | head -n 1 | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' || true
+}
+
+# ── v4.8.0 (CHG-153, ITEM-19~ITEM-29): 过程因果/回执/心跳/原子流/变更卡 ─────
+change_card_enabled() {
+  [[ "${AGENT_GUARD_CHANGE_CARD:-0}" == "1" ]] && return 0
+  local _cc_m
+  _cc_m=$(cfg_path change_card_mode "false" 2>/dev/null | tr -d '[:space:]"'"'" || true)
+  [[ "$_cc_m" == "true" ]]
+}
+
+is_change_card() { # <id>
+  local id="${1:-}"
+  [[ -n "$id" ]] || return 1
+  change_card_enabled || return 1
+  [[ ! -d "$change_root/$id" && -f "$change_root/$id.md" ]]
+}
+
+validate_change_card() { # <id> [stop]
+  local id="$1" st="${2:-}" f="$change_root/$1.md" lc rk int scp ver sst own rev _ctxt
+  if [[ ! -s "$f" ]]; then
+    echo "agent-gate: change card missing or empty: $f" >&2; exit 2
+  fi
+  lc=$(wc -l < "$f" 2>/dev/null | tr -d ' ')
+  if [[ "${lc:-0}" -gt 50 ]]; then
+    echo "agent-gate: change card $f exceeds 50-line limit (got ${lc}; upgrade to full directory $change_root/$id/)" >&2; exit 2
+  fi
+  _ctxt=$(cat "$f" 2>/dev/null || true)
+  rk=$(kv_field "$_ctxt" "risk")
+  case "$rk" in
+    L0|L1) ;;
+    *) echo "agent-gate: change card $f risk='${rk:-<empty>}' must be L0 or L1 (L2/L3 require full directory)" >&2; exit 2 ;;
+  esac
+  int=$(kv_field "$_ctxt" "intent")
+  scp=$(kv_field "$_ctxt" "scope")
+  ver=$(kv_field "$_ctxt" "verification")
+  sst=$(kv_field "$_ctxt" "status")
+  if [[ -z "$int" || -z "$scp" || -z "$ver" || -z "$sst" ]]; then
+    echo "agent-gate: change card $f missing required KV fields (intent/scope/verification/status)" >&2; exit 2
+  fi
+  own=$(kv_field "$_ctxt" "owner"); rev=$(kv_field "$_ctxt" "review")
+  if [[ -n "$own" && -n "$rev" && "$own" == "$rev" ]]; then
+    echo "agent-gate: change card $f owner '$own' cannot equal review '$rev'" >&2; exit 2
+  fi
+  if [[ "$st" == "stop" ]]; then
+    case "$sst" in
+      done|verified|closed|已交付|完成|已完成) ;;
+      *) echo "agent-gate: change card $f status='$sst' must be done|verified|已交付 before stop" >&2; exit 2 ;;
+    esac
+  fi
+}
+
+stage_receipt_file() { # <id>
+  local d
+  d=$(git -C "$repo_root" rev-parse --git-path "agent-governance/stage-receipts" 2>/dev/null || true)
+  [[ -n "$d" ]] || d="$repo_root/.git/agent-governance/stage-receipts"
+  case "$d" in /*) ;; *) d="$repo_root/$d" ;; esac
+  printf '%s/%s.tsv' "$d" "$1"
+}
+
+record_stage_receipt() { # <id> <stage>
+  local id="${1:-}" st="${2:-}" rf dir sha ts
+  [[ -n "$id" && -n "$st" ]] || return 0
+  rf=$(stage_receipt_file "$id")
+  dir=$(change_dir "$id" 2>/dev/null || true)
+  mkdir -p "$(dirname "$rf")" 2>/dev/null || return 0
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  sha="none"
+  local sha_tool=""
+  if command -v shasum >/dev/null 2>&1; then
+    sha_tool="shasum -a 256"
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha_tool="sha256sum"
+  fi
+  if [[ -n "$sha_tool" ]]; then
+    if [[ -d "$dir" ]]; then
+      sha=$({ cat "$dir"/*.md "$dir"/00-governance.json 2>/dev/null || true; } | $sha_tool 2>/dev/null | awk '{print $1}' || echo none)
+    elif is_change_card "$id"; then
+      sha=$($sha_tool "$change_root/$id.md" 2>/dev/null | awk '{print $1}' || echo none)
+    fi
+  fi
+  printf '%s\t%s\t%s\n' "$ts" "$st" "${sha:-none}" >> "$rf" 2>/dev/null || true
+}
+
+check_stage_mtime() { # <id> — non-blocking WARN [MTIME]
+  local id="${1:-}" d cf min_code=0 max_doc=0 m cfiles df
+  [[ -n "$id" ]] || return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" ]] || return 0
+  cfiles=$(git -C "$repo_root" -c core.quotepath=false diff --name-only HEAD 2>/dev/null || true)
+  [[ -n "$cfiles" ]] || return 0
+  while IFS= read -r cf; do
+    [[ -n "$cf" && -f "$repo_root/$cf" ]] || continue
+    is_code_path "$cf" || continue
+    m=$(gate_mtime "$repo_root/$cf")
+    if [[ "$m" =~ ^[0-9]+$ && "$m" -gt 0 ]] && { [[ "$min_code" -eq 0 ]] || [[ "$m" -lt "$min_code" ]]; }; then
+      min_code="$m"
+    fi
+  done <<< "$cfiles"
+  [[ "$min_code" -gt 0 ]] || return 0
+  for df in "$d/00-intent.md" "$d/01-spec.md" "$d/03-modification-plan.md"; do
+    [[ -f "$df" ]] || continue
+    m=$(gate_mtime "$df")
+    if [[ "$m" =~ ^[0-9]+$ && "$m" -gt "$max_doc" ]]; then max_doc="$m"; fi
+  done
+  if [[ "$max_doc" -gt "$min_code" ]]; then
+    echo "agent-gate: WARN [MTIME] $id stage docs modified AFTER code files (max_doc=$max_doc > min_code=$min_code) — verify doc-first discipline" >&2
+  fi
+}
+
+prewrite_ledger_append() { # <chg> <file>
+  local lg="$repo_root/.agent-state/pre-write-ledger.tsv"
+  mkdir -p "$repo_root/.agent-state" 2>/dev/null || return 0
+  printf '%s\t%s\t%s\tpass\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$1" "$2" >> "$lg" 2>/dev/null || true
+}
+
+check_prewrite_heartbeat() { # <chg>
+  local id="${1:-}" lg="$repo_root/.agent-state/pre-write-ledger.tsv" has_code=0 cf _p
+  [[ -n "$id" ]] || return 0
+  cf=$( { git -C "$repo_root" -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true; git -C "$repo_root" -c core.quotepath=false diff --name-only 2>/dev/null || true; } )
+  while IFS= read -r _p; do
+    [[ -n "$_p" ]] || continue
+    is_code_path "$_p" && { has_code=1; break; }
+  done <<< "$cf"
+  [[ "$has_code" -eq 1 ]] || return 0
+  if [[ ! -s "$lg" ]] || ! awk -F'\t' -v id="$id" '$2==id && $4=="pass"{f=1;exit} END{exit !f}' "$lg" 2>/dev/null; then
+    echo "agent-gate: WARN [PRE-WRITE] $id has code changes with 0 pre-write hook pass records in .agent-state/pre-write-ledger.tsv" >&2
+  fi
+}
+
+validate_causal_dag() { # <staged|ci> [base] — ITEM-19 GATE-E163 (one die site)
+  local mode="$1" base="${2:-}" e163_msg="" id d risk sf has_code=0 f
+  if [[ "$mode" == "staged" ]]; then
+    id=$(active_change_quiet)
+    [[ -n "$id" ]] || return 0
+    is_change_card "$id" && return 0
+    d=$(change_dir "$id" 2>/dev/null || true)
+    [[ -d "$d" ]] || return 0
+    risk=$(json_field "$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)" risk_level)
+    case "$risk" in L2|L3) ;; *) return 0 ;; esac
+    if [[ "${AGENT_GUARD_ALLOW_CAUSAL_SKIP:-0}" == "1" ]]; then
+      echo "agent-gate: WARN — E163 causal DAG skipped by AGENT_GUARD_ALLOW_CAUSAL_SKIP=1" >&2; return 0
+    fi
+    if git -C "$repo_root" check-ignore -q "$d/00-intent.md" 2>/dev/null; then
+      echo "agent-gate: NOTE — E163 causal DAG skipped ($d/00-intent.md is gitignored)" >&2; return 0
+    fi
+    sf=$(git -C "$repo_root" -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      is_code_path "$f" && { has_code=1; break; }
+    done <<< "$sf"
+    if [[ "$has_code" -eq 1 ]] && ! git -C "$repo_root" cat-file -e "HEAD:$d/00-intent.md" 2>/dev/null; then
+      if grep -qFx "$d/00-intent.md" <<< "$sf" || [[ "${AGENT_GUARD_CAUSAL_DAG:-0}" == "1" ]]; then
+        e163_msg="$id ($risk) stages code without prior committed $d/00-intent.md in HEAD (staged causal violation)"
+      fi
+    fi
+  elif [[ "$mode" == "ci" ]]; then
+    local range="" cf code_commits="" first_code="" cid cdir crisk c_intent
+    if [[ -n "$base" ]]; then range="$base..HEAD"
+    elif git -C "$repo_root" rev-parse --verify -q HEAD~1 >/dev/null 2>&1; then range="HEAD~1..HEAD"
+    else return 0; fi
+    cf=$(git -C "$repo_root" -c core.quotepath=false diff --name-only "$range" 2>/dev/null || true)
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      if is_code_path "$f"; then
+        local fc
+        fc=$(git -C "$repo_root" log --format=%H "$range" -- "$f" 2>/dev/null | tail -n 1 || true)
+        [[ -n "$fc" ]] && code_commits="${code_commits}${fc}"$'\n'
+      fi
+    done <<< "$cf"
+    [[ -n "$code_commits" ]] || return 0
+    first_code=$(git -C "$repo_root" rev-list --reverse --no-walk $code_commits 2>/dev/null | head -n 1 || true)
+    [[ -n "$first_code" ]] || return 0
+    local cids=""
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      if [[ "$f" =~ ^${change_root_re}/([A-Za-z0-9_-]+)/ ]]; then
+        cids="${cids}${BASH_REMATCH[1]}"$'\n'
+      fi
+    done <<< "$cf"
+    local ac_ci; ac_ci=$(active_change_quiet)
+    [[ -n "$ac_ci" ]] && cids="${cids}${ac_ci}"$'\n'
+    cids=$(printf '%s' "$cids" | awk 'NF && !s[$0]++')
+    while IFS= read -r cid; do
+      [[ -n "$cid" ]] || continue
+      is_change_card "$cid" && continue
+      cdir=$(change_dir "$cid" 2>/dev/null || true)
+      [[ -d "$cdir" && -f "$cdir/00-intent.md" ]] || continue
+      crisk=$(json_field "$(gov_record "$cdir/00-governance.json" "$cid" 2>/dev/null || true)" risk_level)
+      case "$crisk" in L2|L3) ;; *) continue ;; esac
+      if [[ "${AGENT_GUARD_ALLOW_CAUSAL_SKIP:-0}" == "1" ]]; then
+        echo "agent-gate: WARN — E163 causal DAG skipped by AGENT_GUARD_ALLOW_CAUSAL_SKIP=1" >&2; continue
+      fi
+      if git -C "$repo_root" check-ignore -q "$cdir/00-intent.md" 2>/dev/null; then
+        echo "agent-gate: NOTE — E163 causal DAG skipped ($cdir/00-intent.md is gitignored)" >&2; continue
+      fi
+      c_intent=$(git -C "$repo_root" log --format=%H -- "$cdir/00-intent.md" 2>/dev/null | tail -n 1 || true)
+      if [[ -z "$c_intent" ]]; then
+        e163_msg="$cid ($crisk) has committed code in $range without committed $cdir/00-intent.md"
+        break
+      elif [[ "$c_intent" != "$first_code" ]] && git -C "$repo_root" merge-base --is-ancestor "$first_code" "$c_intent" 2>/dev/null; then
+        e163_msg="$cid ($crisk) first code commit ($first_code) precedes $cdir/00-intent.md commit ($c_intent) in Git DAG"
+        break
+      fi
+    done <<< "$cids"
+  fi
+  [[ -z "$e163_msg" ]] || die "GATE-E163: $e163_msg"
+}
+
+process_honesty_summary() { # <chg> -> P3 honesty summary line (ITEM-23)
+  local id="$1" d lg rf redf ac_ok="no" docs_ok="no" pw_ok="no" red_ok="no" retries=0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  rf=$(stage_receipt_file "$id")
+  [[ -s "$rf" ]] && grep -qE $'\tbegin\t' "$rf" 2>/dev/null && ac_ok="yes"
+  if [[ -n "$d" && -f "$d/00-intent.md" ]]; then
+    if git -C "$repo_root" check-ignore -q "$d/00-intent.md" 2>/dev/null; then
+      docs_ok="gitignored"
+    elif git -C "$repo_root" cat-file -e "HEAD:$d/00-intent.md" 2>/dev/null; then
+      docs_ok="yes"
+    fi
+  fi
+  lg="$repo_root/.agent-state/pre-write-ledger.tsv"
+  if [[ -s "$lg" ]] && awk -F'\t' -v id="$id" '$2==id && $4=="pass"{f=1;exit} END{exit !f}' "$lg" 2>/dev/null; then
+    pw_ok="yes"
+  fi
+  redf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/red-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$redf" && "$redf" != /* ]] && redf="$repo_root/$redf"
+  [[ -n "$redf" && -s "$redf" ]] && grep -qE '"exit_code":[1-9]' "$redf" 2>/dev/null && red_ok="yes"
+  if [[ -s "$repo_root/.agent-state/pre-commit-streak.tsv" ]]; then
+    retries=$(awk -F'\t' -v id="$id" '$1==id{print $2; exit}' "$repo_root/.agent-state/pre-commit-streak.tsv" 2>/dev/null || echo 0)
+    [[ "$retries" =~ ^[0-9]+$ ]] || retries=0
+  fi
+  printf '过程诚实度摘要：active_change_before_code=%s | docs_committed_before_code=%s | pre_write_hook_observed=%s | red_receipt_verified=%s | gate_probe_retries_before_pass=%s' \
+    "$ac_ok" "$docs_ok" "$pw_ok" "$red_ok" "$retries"
+}
+
+record_red_cmd() { # <chg> -- <cmd...> — ITEM-21
+  local id="${1:-}" cmd="" rc=0 rf d ts sha f05
+  shift || true
+  [[ "${1:-}" == "--" ]] && shift
+  cmd="$*"
+  if [[ -z "$id" || -z "$cmd" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+    echo "agent-gate: usage: scripts/agent-gate record-red <change-id> -- <failing-test-cmd>" >&2; exit 2
+  fi
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" ]] || is_change_card "$id" || { echo "agent-gate: record-red unknown change: $id" >&2; exit 2; }
+  if [[ $# -eq 1 ]]; then
+    bash -lc "$1" >/dev/null 2>&1 || rc=$?
+  else
+    "$@" >/dev/null 2>&1 || rc=$?
+  fi
+  if [[ "$rc" -eq 0 ]]; then
+    echo "agent-gate: record-red refused — command exited 0 (a red-first receipt requires a failing test): $cmd" >&2; exit 2
+  fi
+  rf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/red-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$rf" ]] || rf="$repo_root/.git/agent-governance/red-receipts/${id}.json"
+  [[ "$rf" != /* ]] && rf="$repo_root/$rf"
+  mkdir -p "$(dirname "$rf")" 2>/dev/null || { echo "agent-gate: record-red cannot create receipt dir" >&2; exit 2; }
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  sha=$(tracked_tree_sha 2>/dev/null || echo unknown)
+  printf '{"change_id":"%s","cmd":"%s","exit_code":%s,"recorded_at":"%s","tree_sha":"%s"}\n' \
+    "$(json_escape "$id")" "$(json_escape "$cmd")" "$rc" "$ts" "${sha:-unknown}" > "$rf"
+  f05="$d/05-test-results.md"
+  if [[ -d "$d" && -f "$f05" ]] && ! grep -qE '^[[:space:]]*red_repro:' "$f05" 2>/dev/null; then
+    printf '\nred_repro: %s -> FAIL rc=%s @ %s\n' "$cmd" "$rc" "$ts" >> "$f05"
+  fi
+  echo "agent-gate: red receipt recorded ($id rc=$rc -> $rf)"
+}
+
+start_cmd() { # <chg> [--risk L0|L1|L2|L3] — ITEM-25
+  local id="" risk="L1" d nc="" _self_bin=""
+  _self_bin="${BASH_SOURCE[0]}"
+  [[ -f "$repo_root/$scripts_dir/agent-gate" ]] && _self_bin="$repo_root/$scripts_dir/agent-gate"
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --risk)
+        [[ -n "${2:-}" ]] || { echo "agent-gate: start --risk needs L0|L1|L2|L3" >&2; exit 2; }
+        risk="$2"; shift 2 ;;
+      L0|L1|L2|L3) risk="$1"; shift ;;
+      -*) echo "agent-gate: start unknown option '$1'" >&2; exit 2 ;;
+      *)
+        [[ -z "$id" ]] || { echo "agent-gate: start unexpected argument '$1'" >&2; exit 2; }
+        id="$1"; shift ;;
+    esac
+  done
+  case "$risk" in L0|L1|L2|L3) ;; *) echo "agent-gate: start invalid risk '$risk'" >&2; exit 2 ;; esac
+  if [[ -z "$id" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+    echo "agent-gate: usage: scripts/agent-gate start <change-id> [--risk L0|L1|L2|L3]" >&2; exit 2
+  fi
+  d=$(change_dir "$id")
+  if [[ ! -d "$d" ]] && ! is_change_card "$id"; then
+    for nc in "$repo_root/$scripts_dir/new-change" "$repo_root/scripts/new-change" "$repo_root/scripts/new-change.sh" "$repo_root/resources/templates/new-change.sh"; do
+      if [[ -f "$nc" ]]; then
+        bash "$nc" "$id" --risk "$risk" || exit $?
+        break
+      fi
+    done
+    d=$(change_dir "$id")
+    if [[ ! -d "$d" ]] && ! is_change_card "$id"; then
+      scaffold_change "$id" "$risk"
+    fi
+  fi
+  bash "$_self_bin" session-start >/dev/null 2>&1 || true
+  if bash "$_self_bin" begin "$id" >/dev/null 2>&1; then
+    echo "agent-gate: start complete ($id risk=$risk active)"
+  else
+    echo "agent-gate: start initialized ($id risk=$risk -> $d); fill entry artifacts then run: scripts/agent-gate begin $id"
+  fi
+}
+
+advance_cmd() { # [chg] — ITEM-26
+  local id="${1:-}" rf _self_bin="" cur_ac=""
+  _self_bin="${BASH_SOURCE[0]}"
+  [[ -f "$repo_root/$scripts_dir/agent-gate" ]] && _self_bin="$repo_root/$scripts_dir/agent-gate"
+  [[ -n "$id" ]] || id=$(active_change_quiet)
+  [[ -n "$id" ]] || { echo "agent-gate: advance needs a change id or active change" >&2; exit 2; }
+  rf=$(stage_receipt_file "$id")
+  cur_ac=$(active_change_quiet)
+  if is_change_card "$id"; then
+    if [[ "$cur_ac" != "$id" || ! -s "$rf" ]] || ! grep -qE $'\tbegin\t' "$rf" 2>/dev/null; then
+      echo "agent-gate: advancing $id -> begin (change-card)"
+      bash "$_self_bin" begin "$id"; return $?
+    fi
+    echo "agent-gate: advancing $id -> preflight (change-card)"
+    bash "$_self_bin" preflight "$id"; return $?
+  fi
+  if [[ "$cur_ac" != "$id" || ! -s "$rf" ]] || ! grep -qE $'\tbegin\t' "$rf" 2>/dev/null; then
+    echo "agent-gate: advancing $id -> begin"
+    bash "$_self_bin" begin "$id"
+  elif ! grep -qE $'\tspec\t' "$rf" 2>/dev/null; then
+    echo "agent-gate: advancing $id -> spec"
+    bash "$_self_bin" --stage spec
+  elif ! grep -qE $'\tdesign\t' "$rf" 2>/dev/null; then
+    echo "agent-gate: advancing $id -> design"
+    bash "$_self_bin" --stage design
+  elif ! grep -qE $'\ttestplan\t' "$rf" 2>/dev/null; then
+    echo "agent-gate: advancing $id -> testplan"
+    bash "$_self_bin" --stage testplan
+  else
+    echo "agent-gate: advancing $id -> preflight"
+    bash "$_self_bin" preflight "$id"
+  fi
+}
+
+next_cmd() { # [chg] [--json] — ITEM-27 read-only wizard
+  local id="" jmode=0 cur_ac rf cur_stage="none" next_cmd_str="" d _blk_raw="" _ln
+  local -a blockers
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) jmode=1 ;;
+      -*) echo "agent-gate: next unknown option '$1'" >&2; exit 2 ;;
+      *) id="$1" ;;
+    esac
+    shift
+  done
+  [[ -n "$id" ]] || id=$(active_change_quiet)
+  cur_ac=$(active_change_quiet)
+  if [[ -z "$id" ]]; then
+    cur_stage="uninitialized"
+    next_cmd_str="scripts/agent-gate start CHG-xxx --risk L1"
+    blockers+=("no active change pointer")
+  elif is_change_card "$id"; then
+    rf=$(stage_receipt_file "$id")
+    if [[ "$cur_ac" != "$id" || ! -s "$rf" ]] || ! grep -qE $'\tbegin\t' "$rf" 2>/dev/null; then
+      cur_stage="entry"
+      next_cmd_str="scripts/agent-gate begin $id"
+    else
+      cur_stage="ready_for_stop"
+      next_cmd_str="scripts/agent-gate --stage stop"
+    fi
+    _blk_raw=$( ( validate_change_card "$id" ) 2>&1 ) || {
+      while IFS= read -r _ln; do [[ -n "$_ln" ]] && blockers+=("$_ln"); done <<< "$_blk_raw"
+    }
+  else
+    d=$(change_dir "$id" 2>/dev/null || true)
+    if [[ ! -d "$d" ]]; then
+      cur_stage="missing"
+      next_cmd_str="scripts/agent-gate start $id --risk L1"
+      blockers+=("missing change directory $d")
+    else
+      rf=$(stage_receipt_file "$id")
+      if [[ "$cur_ac" != "$id" || ! -s "$rf" ]] || ! grep -qE $'\tbegin\t' "$rf" 2>/dev/null; then
+        cur_stage="entry"
+        next_cmd_str="scripts/agent-gate begin $id"
+      elif ! grep -qE $'\tspec\t' "$rf" 2>/dev/null; then
+        cur_stage="spec"
+        next_cmd_str="scripts/agent-gate --stage spec"
+      elif ! grep -qE $'\tdesign\t' "$rf" 2>/dev/null; then
+        cur_stage="design"
+        next_cmd_str="scripts/agent-gate --stage design"
+      elif ! grep -qE $'\ttestplan\t' "$rf" 2>/dev/null; then
+        cur_stage="testplan"
+        next_cmd_str="scripts/agent-gate --stage testplan"
+      elif [[ ! -s "$d/05-test-results.md" || ! -s "$d/09-changelog.md" ]]; then
+        cur_stage="implementation"
+        next_cmd_str="scripts/agent-gate --stage staged"
+      else
+        cur_stage="delivery"
+        next_cmd_str="scripts/agent-gate --stage stop"
+      fi
+      _blk_raw=$( ( die() { printf '%s\n' "$*"; }; required_docs_present "$id" entry; validate_governance_state "$id" ) 2>&1 || true )
+      while IFS= read -r _ln; do
+        [[ "$_ln" == *GATE-E[0-9]* ]] && blockers+=("$_ln")
+      done <<< "$_blk_raw"
+    fi
+  fi
+  if [[ "$jmode" -eq 1 ]]; then
+    printf '{"change_id":"%s","current_stage":"%s","next_command":"%s","blockers":%s}\n' \
+      "$(json_escape "${id:-none}")" "$(json_escape "$cur_stage")" "$(json_escape "$next_cmd_str")" \
+      "$(djson_arr ${blockers[@]+"${blockers[@]}"})"
+  else
+    echo "next: change=${id:-none} stage=$cur_stage next_command='$next_cmd_str'"
+    if [[ -n "${blockers[*]+x}" ]]; then
+      local _b
+      for _b in "${blockers[@]}"; do echo "  blocker: $_b"; done
+    fi
+  fi
+}
+
+fix_cmd() { # [chg] — ITEM-28 mechanical auto-fix
+  local id="${1:-}" d fixed=0 req sp="" p
+  [[ -n "$id" ]] || id=$(active_change_quiet)
+  [[ -n "$id" ]] || { echo "agent-gate: fix needs a change id or active change" >&2; exit 2; }
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" ]] || { echo "agent-gate: fix unknown change dir for $id" >&2; exit 2; }
+  if [[ -s "$d/01-spec.md" && -f "$d/01.5-rtvm-matrix.md" ]]; then
+    for req in $(grep -oE 'REQ-[0-9]+' "$d/01-spec.md" 2>/dev/null | sort -u); do
+      if ! grep -qE "^\|[[:space:]]*\`?${req}\`?([[:space:]]|\|)" "$d/01.5-rtvm-matrix.md" 2>/dev/null; then
+        printf '| %s | 待补充 | TBD | TBD | TBD | %s | TBD | TBD | 待验证 |\n' "$req" "$id" >> "$d/01.5-rtvm-matrix.md"
+        fixed=$((fixed + 1))
+      fi
+    done
+  fi
+  if [[ -f "$d/09-changelog.md" ]]; then
+    if ! grep -q '项目总册回填清单' "$d/09-changelog.md" 2>/dev/null; then
+      printf '\n#### 项目总册回填清单\n\n' >> "$d/09-changelog.md"
+    fi
+    for p in P00 P01 P02 P03 P04 P05 P06 P07 P08 P09 P10 P11 P12; do
+      if ! grep -qE "^[[:space:]]*-[[:space:]]*\[[xX ]\][[:space:]]*${p}" "$d/09-changelog.md" 2>/dev/null; then
+        printf -- '- [ ] %s — 未命中（由 agent-gate fix 补齐骨架）\n' "$p" >> "$d/09-changelog.md"
+        fixed=$((fixed + 1))
+      fi
+    done
+  fi
+  for sp in "$repo_root/$scripts_dir/stamp-provenance.sh" "$repo_root/scripts/stamp-provenance.sh" "$repo_root/resources/templates/stamp-provenance.sh"; do
+    if [[ -f "$sp" ]]; then
+      bash "$sp" --all "$id" >/dev/null 2>&1 || true
+      fixed=$((fixed + 1))
+      break
+    fi
+  done
+  echo "agent-gate: fix applied ($id updates=$fixed)"
 }
 
 # v3.89.0 (CHG-117, REQ-1199/1200, DES-1956): unaccounted source-change gate —
@@ -1083,6 +1541,7 @@ stage_gate_check() { # <spec|design|testplan> — active-change scoped, disk anc
       ;;
     *) unknown_stage "$stage" ;;
   esac
+  record_stage_receipt "$id" "$stage"
   echo "agent-gate: stage gate $stage green ($id)"
 }
 
@@ -1957,6 +2416,10 @@ extract_file_from_hook_input() {
 validate_active_change() {
   local id
   id=$(active_change)
+  if is_change_card "$id"; then
+    validate_change_card "$id"
+    return 0
+  fi
   required_docs_present "$id"
   validate_governance_state "$id"
 }
@@ -2467,9 +2930,9 @@ GATE-E57: defect group $gid is missing:$missing — complete the six-piece ancho
 # bug_refs_current set by validate_governance_state (stop stage only; begin
 # must not demand provenance on freshly created groups).
 validate_bug_ref_provenance() {
-  local ref doc gdir
-  [[ -z "${bug_refs_current// /}" ]] && return 0
-  for ref in $bug_refs_current; do
+  local ref doc gdir _brc="${bug_refs_current:-}"
+  [[ -z "${_brc// /}" ]] && return 0
+  for ref in $_brc; do
     gdir=$(bug_group_dir "$ref") || gdir="$bugs_root/$ref"
     for doc in 01-diagnosis.md 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
       validate_provenance "$gdir/$doc"
@@ -2997,7 +3460,7 @@ review_models_cmd() { # [--discover | --print-contract | --verify [path]]
       fam=$(printf '%s\n' "$raw" | sed -n 's/^  runtime: .*(family: *\([^)]*\)).*/\1/p' | head -1 || true)
       [[ -f "$cfg_def" ]] && exists="true"
       cat <<EOF
-{"runtime":"${rt:-unknown}","family":"${fam:-unknown}","detected_clis":[${clis_json}],"config_file":"${cfg_def}","config_exists":${exists},"tiers":["fast","standard","deep"],"deep_requires_user_approval":true}
+{"runtime":"$(json_escape "${rt:-unknown}")","family":"$(json_escape "${fam:-unknown}")","detected_clis":[${clis_json}],"config_file":"$(json_escape "${cfg_def}")","config_exists":${exists},"tiers":["fast","standard","deep"],"deep_requires_user_approval":true}
 EOF
       ;;
     contract)
@@ -3085,6 +3548,9 @@ PY
             cnt = split(raw, objs, /\}[ \t]*,[ \t]*\{/)
             for (j = 1; j <= cnt; j++) {
               o = objs[j]
+              if (o !~ /"id"[ \t]*:[ \t]*"[^"]+"/) {
+                print "agent-gate: review-models --verify failed — missing non-empty models[].id" > "/dev/stderr"; exit 2
+              }
               if (o !~ /"tier"[ \t]*:[ \t]*"(fast|standard|deep)"/) {
                 print "agent-gate: review-models --verify failed — tier must be fast|standard|deep" > "/dev/stderr"; exit 2
               }
@@ -3236,31 +3702,34 @@ dispatch_run() { # <stage> <change-id> <text|--json> — print-only, never write
       p1+=("${m}：${mt:-（无标题）} — $docs_dir/project/$m")
     else
       p1+=("${m}：缺失")
-      gaps+=("P1 缺 $m（$docs_dir/project/$m）：项目背景维度未装载")
+      gaps+=("P1 缺 ${m}（$docs_dir/project/${m}）：项目背景维度未装载")
     fi
   done
   p1+=("仓库入口与约定：$repo_root/AGENTS.md + $docs_dir/DEVELOPMENT_STANDARDS.md")
 
-  p2+=("风险等级：$risk；ui_change：$ui")
+  p2+=("风险等级：${risk}；ui_change：${ui}")
   p2+=("功能目的：${goal:-（00-intent 未给出预期结果，先补 00-intent）}")
-  if [[ -n "$reqs" ]]; then p2+=("受影响 REQ：$reqs"); else gaps+=("P2 缺 REQ 清单：$d/01-spec.md 无 REQ-xxx"); fi
+  if [[ -n "$reqs" ]]; then p2+=("受影响 REQ：${reqs}"); else gaps+=("P2 缺 REQ 清单：$d/01-spec.md 无 REQ-xxx"); fi
   p2+=("业务规则 / UJ：见 01-spec「用户任务」；非目标：见 00-intent「非目标」")
 
   needs=$(dispatch_needs "$stage")
   for f in $needs; do
     if [[ -s "$d/$f" ]]; then
-      p3+=("$f（$(wc -l < "$d/$f" 2>/dev/null | tr -d ' ') 行）— $d/$f")
+      p3+=("${f}（$(wc -l < "$d/$f" 2>/dev/null | tr -d ' ') 行）— $d/$f")
     else
-      p3+=("$f（未产出）")
-      gaps+=("P3 缺 $f：${stage} 阶段必带输入（$d/$f）")
+      p3+=("${f}（未产出）")
+      gaps+=("P3 缺 ${f}：${stage} 阶段必带输入（$d/${f}）")
     fi
   done
   [[ -n "$des" || -n "$tcs" ]] && p3+=("DES：${des:-未登记}；TC：${tcs:-未登记}")
+  if [[ "$stage" == "review" ]]; then
+    p3+=("$(process_honesty_summary "$id")")
+  fi
   p3+=("diff 摘要：由编排者贴入 git diff --stat + 关键 hunk（生成器不猜改动面）")
 
   if [[ -s "$docs_dir/bugfix-log.md" ]]; then
     cnt=$(grep -cE '^#{2,3}[[:space:]]+BUG-' "$docs_dir/bugfix-log.md" 2>/dev/null || true); cnt=${cnt:-0}
-    p4+=("bugfix-log：$cnt 条 BUG 记录 — $docs_dir/bugfix-log.md（先检索同族教训）")
+    p4+=("bugfix-log：${cnt} 条 BUG 记录 — $docs_dir/bugfix-log.md（先检索同族教训）")
   else
     p4+=("bugfix-log：缺失")
     gaps+=("P4 缺 $docs_dir/bugfix-log.md：同族教训面为空")
@@ -4420,7 +4889,10 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
 
   # E150: red→green evidence in 05 (shape only; truth is vouched for by the independent reviewer).
   f="$d/05-test-results.md"
-  local e150="" have_red=0 have_green=0
+  local e150="" have_red=0 have_green=0 _rrf=""
+  _rrf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/red-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$_rrf" && "$_rrf" != /* ]] && _rrf="$repo_root/$_rrf"
+  [[ -n "$_rrf" && -s "$_rrf" ]] && grep -qE '"exit_code":[1-9]' "$_rrf" 2>/dev/null && have_red=1
   grep -qE '^[[:space:]]*red_repro:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_red=1
   grep -qE '^[[:space:]]*green_after:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_green=1
   if [[ "$have_red" -eq 0 || "$have_green" -eq 0 ]]; then
@@ -4768,13 +5240,19 @@ validate_stop() {
   working_code_changed || return 0
   validate_active_change
   id=$(active_change)
-  validate_delivery "$id"
-  # v3.99.1 (CHG-141): 沟通期锚点执法 (E157) — before the dimensional lane so
-  # the check survives the spec-missing early return (00.5 is begin-required).
-  validate_mechanism_stop "$(change_dir "$id")"
-  # v3.68.0 (CHG-043): G13/G14 stop lane — three-way reconciliation, replay,
-  # per-UJ runtime evidence, review journey, waiver transitivity (E101–E108).
-  validate_dimensional_stop "$(change_dir "$id")"
+  if is_change_card "$id"; then
+    validate_change_card "$id" stop
+  else
+    validate_delivery "$id"
+    # v3.99.1 (CHG-141): 沟通期锚点执法 (E157) — before the dimensional lane so
+    # the check survives the spec-missing early return (00.5 is begin-required).
+    validate_mechanism_stop "$(change_dir "$id")"
+    # v3.68.0 (CHG-043): G13/G14 stop lane — three-way reconciliation, replay,
+    # per-UJ runtime evidence, review journey, waiver transitivity (E101–E108).
+    validate_dimensional_stop "$(change_dir "$id")"
+    check_stage_mtime "$id"
+    check_prewrite_heartbeat "$id"
+  fi
   # v3.28.0: repo-wide six-piece sweep + provenance for this change's bound
   # defect groups (stamp-provenance.sh --bug).
   validate_bug_groups
@@ -5015,8 +5493,12 @@ complete_valid_change_exists() {
   # --stage commit-msg now pins per-commit attribution and branch-mode CI
   # (pre-push) enforces delivery evidence per touched change; residual
   # cross-change drift stays a B-layer (review) responsibility.
-  local dir id doc complete
+  local dir id doc complete _ac_cc
   [[ -d "$change_root" ]] || return 1
+  _ac_cc=$(active_change_quiet)
+  if [[ -n "$_ac_cc" ]] && is_change_card "$_ac_cc"; then
+    ( validate_change_card "$_ac_cc" ) >/dev/null 2>&1 && return 0
+  fi
   for dir in "$change_root"/*/; do
     [[ -d "$dir" ]] || continue
     complete=true
@@ -5058,7 +5540,7 @@ validate_test_weakening() {
     for _dw_item in $_dw_cfg_pat; do
       [[ -n "$_dw_item" ]] || continue
       local _dw_prc=0
-      printf '' | grep -qE -- "$_dw_item" 2>/dev/null || _dw_prc=$?
+      grep -qE -- "$_dw_item" <<< "" 2>/dev/null || _dw_prc=$?
       if [[ "$_dw_prc" -ge 2 ]]; then
         echo "agent-gate: WARN — test_weakening_patterns item skipped (invalid ERE): $_dw_item" >&2
         continue
@@ -5136,10 +5618,10 @@ validate_secret_scan() {
   local files f added sec_hits=""
   files=$(git -c core.quotepath=false diff --cached --name-only --diff-filter=ACMR 2>/dev/null || true)
   [[ -n "$files" ]] || return 0
-  local _sec_re1='(^|[^A-Za-z0-9_])AK''IA[0-9A-Z]{16}'
-  local _sec_re2='(^|[^A-Za-z0-9_])gh''p_[A-Za-z0-9]{36}'
-  local _sec_re3='(^|[^A-Za-z0-9_-])sk''-((proj|live|test|ant)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{20,})'
-  local _sec_re4='-----BEGIN (RSA |EC |DSA |OPENSSH )?PRI''VATE KEY-----'
+  local _sec_re1='(^|[^A-Za-z0-9_])(AK''IA|AS''IA)[0-9A-Z]{16}'
+  local _sec_re2='(^|[^A-Za-z0-9_])(gh''[pousr]_[A-Za-z0-9]{36}|github_p''at_[A-Za-z0-9_]{20,})'
+  local _sec_re3='(^|[^A-Za-z0-9_-])(sk''-((proj|live|test|ant)-[A-Za-z0-9_-]{20,}|[A-Za-z0-9]{20,})|sk''_(live|test)_[A-Za-z0-9]{20,})'
+  local _sec_re4='-----BEGIN ((RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRI''VATE KEY|PGP PRI''VATE KEY BLOCK)-----'
   local _sec_re5='(^|[^A-Za-z0-9_])AI''za[0-9A-Za-z_-]{35}'
   local _sec_re6='(^|[^A-Za-z0-9_])xox''[baprs]-[0-9A-Za-z-]{10,}'
   local _sec_re="${_sec_re1}|${_sec_re2}|${_sec_re3}|${_sec_re4}|${_sec_re5}|${_sec_re6}"
@@ -5183,6 +5665,11 @@ validate_diff() {
   seen_ids=""
   while IFS= read -r f; do
     is_code_path "$f" && code_changed=true
+    if [[ "$f" =~ ^${change_root_re}/([A-Za-z0-9_-]+)\.md$ ]] && is_change_card "${BASH_REMATCH[1]}"; then
+      docs_changed=true
+      validate_change_card "${BASH_REMATCH[1]}"
+      continue
+    fi
     if [[ "$f" =~ ^${change_root_re}/([A-Za-z0-9._-]+)/[A-Za-z0-9._-]+$ ]]; then
       docs_changed=true
       dir_id="${BASH_REMATCH[1]}"
@@ -5266,6 +5753,10 @@ validate_commit_msg() { # message-file
   if [[ -z "$id" ]]; then
     die "GATE-E68: code commit must reference its change id (e.g. 'feat: CHG-123 implement ...')"
   fi
+  if is_change_card "$id"; then
+    validate_change_card "$id"
+    return 0
+  fi
   required_docs_present "$id"
   validate_governance_state "$id"
 }
@@ -5319,7 +5810,8 @@ delivery_ready() {
 
 # v3.91.0 (CHG-127, G10/G9): runtime status + profile refresh probe.
 runtime_status() {
-  local adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin
+  local jmode=0 adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin ac_st=""
+  [[ "${1:-}" == "--json" ]] && jmode=1
   for c in "$repo_root/scripts/install-hook-adapter" "$repo_root/scripts/install-hook-adapter.sh"; do
     [[ -x "$c" ]] && adapter="$c" && break
   done
@@ -5337,6 +5829,13 @@ runtime_status() {
   if [[ -s "$repo_root/.agent-state/model-profile.json" ]]; then
     mid=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/model-profile.json" | head -1)
     mwin=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$repo_root/.agent-state/model-profile.json" | head -1)
+  fi
+  if [[ "$jmode" -eq 1 ]]; then
+    ac_st=$(active_change_quiet)
+    printf '{"runtime":"%s","family":"%s","enforcement":"%s","layers":"%s","handshake":"%s","model":"%s","window":"%s","active_change":"%s"}\n' \
+      "$(json_escape "$rt")" "$(json_escape "$fam")" "$(json_escape "$enforce")" "$(json_escape "${layers:-none}")" \
+      "$(json_escape "$hand")" "$(json_escape "${mid:-unknown}")" "$(json_escape "${mwin:-unknown}")" "$(json_escape "${ac_st:-}")"
+    return 0
   fi
   echo "status: runtime=$rt family=$fam enforcement=$enforce layers=${layers:-none}"
   echo "status: handshake=$hand model=${mid:-unknown} window=${mwin:-unknown}"
@@ -5583,6 +6082,14 @@ case "$command" in
     # would close every change that joins the batch later (false positive).
     # Closure for a batch member is therefore its OWN `## <id>` section in the
     # changelog, which is the same FU-015 semantics read one level finer.
+    if is_change_card "$id"; then
+      validate_change_card "$id"
+      mkdir -p "$(dirname "$active_file")"
+      printf '%s\n' "$id" > "$active_file"
+      record_stage_receipt "$id" begin
+      echo "agent-gate: active change is $id (change-card)"
+      exit 0
+    fi
     d=$(change_dir "$id")
     if is_batch_dir "$d"; then
       if [[ -e "$d/09-changelog.md" || -L "$d/09-changelog.md" ]] \
@@ -5730,6 +6237,7 @@ case "$command" in
     fi
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
+    record_stage_receipt "$id" begin
     echo "agent-gate: active change is $id"
     # v3.90.2 (CHG-124, P1-1): decision is generated by default at begin (the
     # mandatory waypoint) so it is actually read instead of being an opt-in
@@ -5819,19 +6327,44 @@ case "$command" in
     # v3.82.0 (CHG-109, REQ-1160): the probe face widens to the stop-side
     # delivery shape checks (validate_delivery_shape_front/back) — same die
     # sites, still zero side effects (round ledger excluded, see below).
-    id="${2:-}"
+    id="" pf_json=0
+    for pf_arg in "${@:2}"; do
+      case "$pf_arg" in
+        --json) pf_json=1 ;;
+        -*) echo "agent-gate: preflight unknown option '$pf_arg'" >&2; exit 2 ;;
+        *) id="$pf_arg" ;;
+      esac
+    done
     if [[ -z "$id" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
-      printf 'agent-gate: preflight requires a valid change id (FU-023 shape: start with [A-Za-z0-9], then alnum/_/-; no dots) — usage: scripts/agent-gate preflight <change-id> (exit 0 = all artifact gates clean, 1 = violations listed, 2 = usage)\n' >&2
+      printf 'agent-gate: preflight requires a valid change id (FU-023 shape: start with [A-Za-z0-9], then alnum/_/-; no dots) — usage: scripts/agent-gate preflight <change-id> [--json] (exit 0 = all artifact gates clean, 1 = violations listed, 2 = usage)\n' >&2
       exit 2
+    fi
+    if is_change_card "$id"; then
+      _cc_err="" _cc_rc=0
+      _cc_err=$( ( validate_change_card "$id" ) 2>&1 ) || _cc_rc=$?
+      if [[ "$pf_json" -eq 1 ]]; then
+        if [[ "$_cc_rc" -eq 0 ]]; then
+          printf '{"change_id":"%s","clean":true,"count":0,"violations":[]}\n' "$(json_escape "$id")"
+        else
+          printf '{"change_id":"%s","clean":false,"count":1,"violations":["%s"]}\n' "$(json_escape "$id")" "$(json_escape "$_cc_err")"
+        fi
+      elif [[ "$_cc_rc" -eq 0 ]]; then
+        echo "agent-gate: preflight: $id: change-card clean"
+      else
+        printf '%s\n' "$_cc_err" >&2
+      fi
+      exit "$_cc_rc"
     fi
     pf_d=$(change_dir "$id")
     p_n=0
     p_seen=""
+    declare -a p_viols=()
     # v3.90.3 (CHG-125, P2-3): L2/L3 without a confirmed 00.5 is collected as an
     # E130 violation (die shadowed in the subshell, like every other probe).
     _e130_out=$( ( die() { printf 'agent-gate: preflight: %s\n' "$*"; }; confirm_required_check "$id" E130 ) 2>&1 ) || true
     if [[ -n "$_e130_out" ]]; then
-      printf '%s\n' "$_e130_out" >&2
+      [[ "$pf_json" -eq 1 ]] || printf '%s\n' "$_e130_out" >&2
+      p_viols+=("$_e130_out")
       p_n=$(( p_n + 1 )); p_seen="$_e130_out"
     fi
     p_run() {
@@ -5842,7 +6375,8 @@ case "$command" in
         [[ "$p_line" == *GATE-E[0-9]* ]] || continue
         if [[ -z "$p_seen" || "$p_seen" != *"$p_line"* ]]; then
           p_seen="$p_seen"$'\n'"$p_line"
-          printf '%s\n' "$p_line" >&2
+          p_viols+=("$p_line")
+          [[ "$pf_json" -eq 1 ]] || printf '%s\n' "$p_line" >&2
           p_n=$((p_n+1))
         fi
       done <<< "$out"
@@ -5882,6 +6416,15 @@ case "$command" in
       # 留在 validate_delivery / stop lane），round ledger 仍 stop-lane only。
       p_run validate_mechanism_stop "$pf_d"
       p_run validate_dimensional_stop "$pf_d"
+    fi
+    if [[ "$pf_json" -eq 1 ]]; then
+      if [[ "$p_n" -eq 0 ]]; then
+        printf '{"change_id":"%s","clean":true,"count":0,"violations":[]}\n' "$(json_escape "$id")"
+        exit 0
+      else
+        printf '{"change_id":"%s","clean":false,"count":%d,"violations":%s}\n' "$(json_escape "$id")" "$p_n" "$(djson_arr ${p_viols[@]+"${p_viols[@]}"})"
+        exit 1
+      fi
     fi
     if [[ "$p_n" -eq 0 ]]; then
       echo "agent-gate: preflight: $id: all artifact gates clean"
@@ -5957,13 +6500,14 @@ case "$command" in
     # advice itself; a bad invocation is still a usage error (E136).
     pcid="${2:-}"; pmode="${3:-}"; pdir=""
     [[ -n "$pcid" ]] && pdir=$(change_dir "$pcid")
-    if [[ -z "$pcid" || ! -d "$pdir" || ( -n "$pmode" && "$pmode" != "--dry-run" && "$pmode" != "--explain" && "$pmode" != "--refresh-profile" ) ]]; then
-      die "GATE-E136: usage: scripts/agent-gate plan <change-id> [--dry-run|--explain] (got '${pcid:-<none>}' '${pmode:-}') — expected an existing change; allowed: --dry-run (no writes) / --explain (print cost basis); fix: pass a real change id; ref: CHG-124 P1-1 / ADAPT=0 disables this face"
+    if [[ -z "$pcid" || ! -d "$pdir" || ( -n "$pmode" && "$pmode" != "--dry-run" && "$pmode" != "--explain" && "$pmode" != "--refresh-profile" && "$pmode" != "--json" ) ]]; then
+      die "GATE-E136: usage: scripts/agent-gate plan <change-id> [--dry-run|--explain|--json] (got '${pcid:-<none>}' '${pmode:-}') — expected an existing change; allowed: --dry-run (no writes) / --explain (print cost basis) / --json; fix: pass a real change id; ref: CHG-124 P1-1 / ADAPT=0 disables this face"
     fi
     if ! plan_enabled; then
       echo "agent-gate: plan disabled (AGENT_GUARD_ADAPT=0) — no decision generated (P1-1)"
     else
       case "$pmode" in
+        --json)    plan_json "$pcid"; printf '\n' ;;
         --dry-run) plan_run "$pcid" dry ;;
         --explain) plan_run "$pcid" dry explain ;;
         --refresh-profile) profile_refresh_check || true ;;
@@ -6010,6 +6554,26 @@ case "$command" in
     shift
     review_models_cmd "$@"
     ;;
+  record-red)
+    shift
+    record_red_cmd "$@"
+    ;;
+  start)
+    shift
+    start_cmd "$@"
+    ;;
+  advance)
+    shift
+    advance_cmd "$@"
+    ;;
+  next)
+    shift
+    next_cmd "$@"
+    ;;
+  fix)
+    shift
+    fix_cmd "$@"
+    ;;
   dispatch)
     # v3.94.0 (CHG-131, REQ-1315): read-only prompt assembler (never on a gate
     # chain). Usage errors are usage errors — E155, not a silent empty prompt.
@@ -6045,7 +6609,7 @@ case "$command" in
     dispatch_run "$dstage" "$dcid" "$dmode"
     ;;
   status)
-    runtime_status
+    runtime_status "${2:-}"
     ;;
   resume)
     resid="${2:-}"
@@ -6072,6 +6636,7 @@ case "$command" in
         validate_freeze_window "$file"
         if is_code_path "$file"; then
           validate_active_change
+          prewrite_ledger_append "$(active_change_quiet)" "$file"
         fi
         ;;
       # v3.89.0 (CHG-117, REQ-1202, DES-1960): stateless stage gates. Explicit
@@ -6115,12 +6680,13 @@ case "$command" in
         # argument keeps the historical meaning (explicit change id).
         if [[ "${1:-}" =~ ^[1-8]$ ]]; then stage_close_check "$(active_change)" "$1"
         else stage_close_check "${1:-$(active_change)}"; fi ;;
-      staged) validate_secret_scan; validate_test_weakening staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; warn_ai_laziness; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; fi; record_delivery stop ;;
+      staged) validate_secret_scan; validate_test_weakening staged; validate_causal_dag staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; warn_ai_laziness; check_prewrite_heartbeat "${rc_cid:-}"; record_stage_receipt "${rc_cid:-}" staged; record_delivery staged ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; record_stage_receipt "$cost_cid" stop; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi
         validate_diff branch "$base"
+        validate_causal_dag ci "$base"
         validate_ux_conditions
         validate_dimensional_active
         ;;
@@ -6145,6 +6711,11 @@ Usage:
   scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)
   scripts/agent-gate tc-index <change-id> [--write]          # v3.90.5: three-source TC index cache (P1-2)
   scripts/agent-gate review-plan <change-id> [--json|--write|--approve <model>]  # v3.90.4: runtime-aware review plan; deep/high-cost needs USER consent
+  scripts/agent-gate start <change-id> [--risk L0|L1|L2|L3]  # v4.8.0: atomic scaffold + session-start + begin (ITEM-25)
+  scripts/agent-gate advance [change-id]                     # v4.8.0: auto-advance next unpassed stage gate (ITEM-26)
+  scripts/agent-gate next [change-id] [--json]               # v4.8.0: read-only state-machine wizard (ITEM-27)
+  scripts/agent-gate fix [change-id]                         # v4.8.0: mechanical P00-P12 / RTVM / provenance fix (ITEM-28)
+  scripts/agent-gate record-red <change-id> -- <cmd>         # v4.8.0: record real non-zero red-first receipt (ITEM-21)
   scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)

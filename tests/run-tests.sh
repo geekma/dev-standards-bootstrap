@@ -2014,7 +2014,19 @@ if [[ -f "$BOOT_SRC" ]]; then
   printf 'code_extensions: proto\n' > "$BT8/.agent-governance.yml"
   (cd "$BT8" && bash tools/agent-gate --stage pre-write --file api.proto >/dev/null 2>&1)
   report "T14 TC-10044 dynamic code_extensions flags api.proto as source code" 2 $?
-  rm -rf "$BT8"
+  # TC-10062 (CHG-153 FU-15202): CI candidates, comment filter, profile freq sort
+  mkdir -p "$BT8/.github/workflows"
+  printf 'name: ci\non: push\njobs:\n  g:\n    steps: []\n' > "$BT8/.github/workflows/ci.yml"
+  out=$(bash "$BT8/tools/install-ci-adapter" --detect --repo "$BT8" 2>&1)
+  check_output "T14 TC-10062 multi-CI detect emits candidates" "candidates: gitlab,github" "$out"
+  printf 'governance:\n  script:\n    # bash tools/agent-gate --stage ci\n    # bash tools/check-standards-compliance.sh\n    - echo noop\n' > "$BT8/commented.yml"
+  bash "$BT8/tools/install-ci-adapter" --verify-wiring commented.yml --repo "$BT8" >/dev/null 2>&1
+  report "T14 TC-10062 --verify-wiring rejects commented-out wiring" 2 $?
+  _pc_dir=$(mktemp -d)
+  printf 'a\n' > "$_pc_dir/f1.zzz" && printf 'b\n' > "$_pc_dir/f2.zzz" && printf 'c\n' > "$_pc_dir/f3.zzz" && printf 'd\n' > "$_pc_dir/f4.aaa"
+  out=$(bash "$BOOT_SRC" --print-profile-contract "$_pc_dir" 2>&1)
+  check_output "T14 TC-10062 profile contract sorts extensions by frequency" '"detected_extensions": "zzz,aaa"' "$out"
+  rm -rf "$_pc_dir" "$BT8"
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
@@ -2835,6 +2847,7 @@ seed_artifacts CHG-902 L0 claude/s-1
 printf '{"change_id":"CHG-902","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"t/x","review_owner":"r/x","bug_ref":"BUG-901"}\n' > docs/changes/CHG-902/00-governance.json
 scripts/agent-gate begin CHG-902 >/dev/null 2>&1
 report "T18c begin resolves a bug_ref bound to a batched defect group" 0 $?
+git add docs/changes/CHG-902 && git commit -qm "seed CHG-902 intent"
 mkdir -p docs/bugs/BUG-902
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
   printf '# %s\n' "$d6" > "docs/bugs/BUG-902/$d6.md"
@@ -2920,6 +2933,7 @@ section_T18d_E58R() {
 # provenance 今日章（正向同键控）；未章/非今日 fail-open 跳过与正向一致。
 new_repo
 seed_begin CHG-933 L2 claude/s-47 tester reviewer
+git add docs/changes/CHG-933 && git commit -qm "seed CHG-933 intent"
 unset AGENT_GUARD_ALLOW_INDEPENDENT
 mkdir -p docs/bugs/BUG-907
 for d6 in 01-diagnosis 02-impact 03-test-plan 04-matrix 05-config 06-tasks; do
@@ -3276,6 +3290,45 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     report "T26 TC-10026 malformed JSON (skip: template absent)" 0 0
     report "T26 TC-10026 missing script (skip: template absent)" 0 0
   fi
+  # ---- v4.8.0 (CHG-153): receipts, pre-write ledger, honesty summary, start/advance/next/fix/--json, awk obj id ----
+  new_repo
+  seed_artifacts CHG-1530 L1 claude/s-1
+  mkdir -p src
+  scripts/agent-gate begin CHG-1530 >/dev/null 2>&1
+  _rf_153=$(git rev-parse --git-path "agent-governance/stage-receipts/CHG-1530.tsv" 2>/dev/null)
+  report "T26 TC-10052 begin writes stage-receipts TSV" 0 "$([[ -s "$_rf_153" ]] && grep -qE $'\tbegin\t' "$_rf_153"; echo $?)"
+  out=$(scripts/agent-gate next CHG-1530 --json 2>&1)
+  check_output "T26 TC-10059 next --json reports spec next_command" '"next_command":"scripts/agent-gate --stage spec"' "$out"
+  out=$(scripts/agent-gate status --json 2>&1)
+  check_output "T26 TC-10059 status --json includes active_change" '"active_change":"CHG-1530"' "$out"
+  out=$(scripts/agent-gate preflight CHG-1530 --json 2>&1)
+  check_output "T26 TC-10059 preflight --json returns clean true" '"clean":true' "$out"
+  # owner=geek007 deadline=2099-12-31
+  out=$(AGENT_GUARD_ADAPT=1 scripts/agent-gate plan CHG-1530 --json 2>&1)
+  check_output "T26 TC-10059 plan --json emits engine_version" '"engine_version":' "$out"
+  scripts/agent-gate advance CHG-1530 >/dev/null 2>&1
+  report "T26 TC-10058 advance progresses through spec gate" 0 "$(grep -qE $'\tspec\t' "$_rf_153"; echo $?)"
+  scripts/agent-gate --stage pre-write --file src/a.js >/dev/null 2>&1
+  report "T26 TC-10054 pre-write records pass in ledger" 0 "$(grep -q 'CHG-1530' .agent-state/pre-write-ledger.tsv 2>/dev/null; echo $?)"
+  echo 'x' > src/a.js
+  touch -t 202001010000 src/a.js 2>/dev/null || true
+  out=$(scripts/agent-gate dispatch review CHG-1530 --json 2>&1)
+  check_output "T26 TC-10055 dispatch review injects process honesty summary" 'pre_write_hook_observed=yes' "$out"
+  printf '\n- REQ-999: extra req for fix\n' >> docs/changes/CHG-1530/01-spec.md
+  printf '# 09\n- **Observation**：fix test\n' > docs/changes/CHG-1530/09-changelog.md
+  scripts/agent-gate fix CHG-1530 >/dev/null 2>&1
+  report "T26 TC-10060 fix backfills P00-P12 and missing REQ in 01.5" 0 "$(grep -q 'REQ-999' docs/changes/CHG-1530/01.5-rtvm-matrix.md && grep -q 'P12' docs/changes/CHG-1530/09-changelog.md; echo $?)"
+  scripts/agent-gate start CHG-1531 --risk L2 >/dev/null 2>&1
+  report "T26 TC-10057 start scaffolds CHG-1531 directory" 0 "$([[ -s docs/changes/CHG-1531/00-intent.md ]]; echo $?)"
+  # FU-15202 review-models awk fallback checks id per object
+  _rm_bin=$(mktemp -d)
+  for _c in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env git; do
+    _cp=$(command -v "$_c" 2>/dev/null || true); [[ -n "$_cp" ]] && ln -sf "$_cp" "$_rm_bin/$_c"
+  done
+  printf '{"models":[{"id":"ok1","tier":"fast"},{"tier":"standard"}]}\n' > .agent-review-models.json
+  PATH="$_rm_bin" bash scripts/agent-gate review-models --verify .agent-review-models.json >/dev/null 2>&1
+  report "T26 TC-10062 awk fallback rejects second model object missing id" 2 $?
+  rm -rf "$_rm_bin" .agent-review-models.json
   rm -f .agent-governance.yml
 else
   echo "SKIP T26: session-gate.sh absent — 跳过会话遥测 golden cases"
@@ -4783,6 +4836,12 @@ if [[ -n "${XDG_DATA_HOME:-}" ]]; then
     printf '%s\n' "timestamp=T level=INFO message=\"plugin loaded: $PWD/.opencode/plugins/dev-standards-gate.js (stub)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
   fi
 fi
+# SG_STUB_DESKTOP_REJECT=1：desktop 形态调用（$1=workdir 路径）单独拒载——E13 主用回退路径
+if [[ "${SG_STUB_DESKTOP_REJECT:-0}" == "1" && "$1" != "serve" && "$1" != "--version" && "$1" != "run" && -n "${XDG_DATA_HOME:-}" ]]; then
+  mkdir -p "$XDG_DATA_HOME/opencode/log" 2>/dev/null
+  printf '%s\n' "timestamp=T level=WARN message=\"failed to load plugin\" target=$PWD/.opencode/plugins/dev-standards-gate.js cause=\"SchemaError(stub-desktop)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
+  exit 0
+fi
 if [[ "${SG_STUB_MARKER:-0}" == "1" && "${SG_STUB_REJECT:-0}" != "1" ]]; then
   mkdir -p out 2>/dev/null
   printf 'sg-call start\n' >> out/sg-runs.log
@@ -4790,12 +4849,6 @@ if [[ "${SG_STUB_MARKER:-0}" == "1" && "${SG_STUB_REJECT:-0}" != "1" ]]; then
   mkdir -p .agent-state 2>/dev/null
   touch .agent-state/session-started.json
   printf 'probe-tag: %s\n' "${AGENT_GUARD_SESSION_TAG:-}" > .agent-state/session-gate-last.md
-fi
-# SG_STUB_DESKTOP_REJECT=1：desktop 形态调用（$1=workdir 路径）单独拒载——E13 主用回退路径
-if [[ "${SG_STUB_DESKTOP_REJECT:-0}" == "1" && "$1" != "serve" && "$1" != "--version" && "$1" != "run" && -n "${XDG_DATA_HOME:-}" ]]; then
-  mkdir -p "$XDG_DATA_HOME/opencode/log" 2>/dev/null
-  printf '%s\n' "timestamp=T level=WARN message=\"failed to load plugin\" target=$PWD/.opencode/plugins/dev-standards-gate.js cause=\"SchemaError(stub-desktop)\"" > "$XDG_DATA_HOME/opencode/log/opencode.log"
-  exit 0
 fi
 # 存活窗只需盖过探测窗（ arb 窗上限 3s + 终验重试 2s）：日志/功能标记均为
 # spawn 同步落盘，先于本 sleep；探针按进程组回收，早退只让 kill 变 no-op。
@@ -5963,6 +6016,184 @@ rc=0
 out=$(scripts/agent-gate --stage staged 2>&1) || rc=$?
 report "T53 TC-10050 AI-LAZY soft warn does not block staged (rc0)" 0 "$rc"
 check_output "T53 TC-10050 stderr emits WARN [AI-LAZY]" "WARN \[AI-LAZY\]" "$out"
+
+# ---- TC-10051, TC-10053, TC-10056, TC-10061, TC-10062 (v4.8.0 CHG-153) ----
+# TC-10051 (ITEM-19): GATE-E163 causal DAG blocks code-before-intent & skips gitignored
+new_repo
+seed_artifacts CHG-1061 L2 claude/s-1
+mkdir -p src
+echo 'code1' > src/dag.js
+git add docs/changes/CHG-1061 src/dag.js
+scripts/agent-gate begin CHG-1061 >/dev/null 2>&1
+rc=0
+out=$(scripts/agent-gate --stage staged 2>&1) || rc=$?
+report "T53 TC-10051 GATE-E163 blocks L2 code staged alongside uncommitted intent" 2 "$rc"
+check_output "T53 TC-10051 names GATE-E163" "GATE-E163" "$out"
+echo 'docs/changes/' > .gitignore
+git reset -q HEAD docs/changes/CHG-1061
+rc=0
+scripts/agent-gate --stage staged >/dev/null 2>&1 || rc=$?
+# If E125/E66 checks docs when ignored, check note emitted; restore explicit commit flow
+rm -f .gitignore
+git reset -q HEAD .
+git add docs/changes/CHG-1061
+git commit -qm "docs: CHG-1061 artifacts"
+echo 'code1' > src/dag.js
+git add src/dag.js
+rc=0
+scripts/agent-gate --stage staged >/dev/null 2>&1 || rc=$?
+report "T53 TC-10051 L2 staged passes once 00-intent.md is committed in HEAD" 0 "$rc"
+# Also check gitignored skip inside check-ignore repo
+new_repo
+seed_artifacts CHG-1062 L2 claude/s-2
+echo 'docs/changes/' > .gitignore
+git add .gitignore && git commit -qm "ignore changes"
+scripts/agent-gate begin CHG-1062 >/dev/null 2>&1
+mkdir -p src && echo 'x' > src/g.js && git add src/g.js
+# owner=geek007 deadline=2099-12-31
+out=$(AGENT_GUARD_CAUSAL_DAG=1 scripts/agent-gate --stage staged 2>&1) || true
+check_output "T53 TC-10051 gitignored change_root degrades cleanly without E163" "is gitignored" "$out"
+# Check --stage ci DAG order: oldest commits checked (intent -> code -> intent-edit passes; code -> intent -> code-edit blocks E163)
+new_repo
+seed_artifacts CHG-1066 L2 claude/s-6
+scripts/agent-gate begin CHG-1066 >/dev/null 2>&1
+base_ci1=$(git rev-parse HEAD)
+git add docs/changes/CHG-1066 && git commit -qm "docs: initial intent"
+mkdir -p src && echo 'c1' > src/dagci.js && git add src/dagci.js && git commit -qm "feat: code after intent"
+printf '\n# follow-up intent clarification\n' >> docs/changes/CHG-1066/00-intent.md
+printf '| REQ-001 | ok | DES-001 | TC-001 | PASS |\n' > docs/changes/CHG-1066/01.5-rtvm-matrix.md
+printf '# code\n- src/dagci.js\n' > docs/changes/CHG-1066/04.5-coding-record.md
+printf '# test\nPASS\n' > docs/changes/CHG-1066/05-test-results.md
+printf '# delivery\n#### 遗留\n- 无\n' > docs/changes/CHG-1066/06-delivery-summary.md
+printf '未命中，不适用（无配置变更）\n' > docs/changes/CHG-1066/06.5-deployment-config.md
+printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具，无发现）\n- 评审主体：platform / glm-5.3-flash / ses-t53ci\n' > docs/changes/CHG-1066/07-review-report.md
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-1066/09-changelog.md
+append_masters docs/changes/CHG-1066/09-changelog.md
+ci_stamp_all docs/changes/CHG-1066
+git add docs/changes/CHG-1066 && git commit -qm "docs: CHG-1066 delivery and intent refine"
+rc=0
+scripts/agent-gate --stage ci --base "$base_ci1" >/dev/null 2>&1 || rc=$?
+report "T53 TC-10051 ci mode passes when initial intent precedes code even if intent refined later" 0 "$rc"
+new_repo
+seed_artifacts CHG-1067 L2 claude/s-7
+scripts/agent-gate begin CHG-1067 >/dev/null 2>&1
+base_ci2=$(git rev-parse HEAD)
+mkdir -p src && echo 'c1' > src/dagbad.js && git add src/dagbad.js && git commit -qm "feat: premature code"
+printf '| REQ-001 | ok | DES-001 | TC-001 | PASS |\n' > docs/changes/CHG-1067/01.5-rtvm-matrix.md
+printf '# code\n- src/dagbad.js\n' > docs/changes/CHG-1067/04.5-coding-record.md
+printf '# test\nPASS\n' > docs/changes/CHG-1067/05-test-results.md
+printf '# delivery\n#### 遗留\n- 无\n' > docs/changes/CHG-1067/06-delivery-summary.md
+printf '未命中，不适用（无配置变更）\n' > docs/changes/CHG-1067/06.5-deployment-config.md
+printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具，无发现）\n- 评审主体：platform / glm-5.3-flash / ses-t53ci\n' > docs/changes/CHG-1067/07-review-report.md
+printf 'chg\n#### 执行记录（ReAct）\n| Observation |\n|---|\n| t -> ok |\n' > docs/changes/CHG-1067/09-changelog.md
+append_masters docs/changes/CHG-1067/09-changelog.md
+ci_stamp_all docs/changes/CHG-1067
+git add docs/changes/CHG-1067 && git commit -qm "docs: CHG-1067 retroactive delivery"
+echo 'c2' >> src/dagbad.js && git add src/dagbad.js && git commit -qm "feat: second code edit"
+out=$(scripts/agent-gate --stage ci --base "$base_ci2" 2>&1 || true)
+check_output "T53 TC-10051 ci mode catches earliest code before intent even with later code edit" "GATE-E163" "$out"
+
+# TC-10053 (ITEM-21): record-red records non-zero receipt and satisfies E150
+new_repo
+seed_artifacts CHG-1063 L1 claude/s-3
+scripts/agent-gate begin CHG-1063 >/dev/null 2>&1
+scripts/agent-gate record-red CHG-1063 -- "exit 0" >/dev/null 2>&1
+report "T53 TC-10053 record-red refuses passing command (rc2)" 2 $?
+scripts/agent-gate record-red CHG-1063 -- "false" >/dev/null 2>&1
+report "T53 TC-10053 record-red succeeds on failing command" 0 $?
+mkdir -p resources/templates && echo '# edited core' >> resources/templates/agent-gate.sh
+git add resources/templates/agent-gate.sh
+mkdir -p docs/changes/CHG-1063
+cat > docs/changes/CHG-1063/05-test-results.md <<'EOF'
+# 05
+green_after: echo ok -> rc0
+EOF
+# owner=geek007 deadline=2099-12-31
+out=$(AGENT_GUARD_FRESH_CLONE=0 scripts/agent-gate --stage core 2>&1 || true)
+report "T53 TC-10053 red-receipt satisfies E150 (reaches E151 next)" 0 "$(grep -q 'GATE-E151' <<< "$out"; echo $?)"
+
+# TC-10056 (ITEM-24): pre-commit RETROACTIVE_PROBE triggers without begin receipt
+if [[ -s "$ROOT/resources/templates/pre-commit" ]]; then
+  new_repo
+  seed_artifacts CHG-1064 L1 claude/s-4
+  mkdir -p .githooks .git/agent-governance
+  cp "$ROOT/resources/templates/pre-commit" .githooks/pre-commit
+  chmod +x .githooks/pre-commit
+  rm -rf docs/changes/CHG-1064
+  mkdir -p src && echo 'bad' > src/p.js && git add src/p.js
+  printf 'CHG-1064\n' > .git/agent-governance/active-change
+  mkdir -p .agent-state
+  rc=0
+  out=$(bash .githooks/pre-commit 2>&1) || rc=$?
+  report "T53 TC-10056 pre-commit fails when active change docs missing" 2 "$rc"
+  check_output "T53 TC-10056 triggers RETROACTIVE_PROBE defense" "RETROACTIVE_PROBE" "$out"
+  _pc_fcol1=$(awk -F'\t' '$1=="RETROACTIVE_PROBE"{print $1; exit}' .agent-state/gate-friction.tsv 2>/dev/null || true)
+  report "T53 TC-10056 gate-friction col1 is RETROACTIVE_PROBE (5-col schema)" "RETROACTIVE_PROBE" "$_pc_fcol1"
+  seed_artifacts CHG-1064 L1 claude/s-4
+  scripts/agent-gate begin CHG-1064 >/dev/null 2>&1
+  git add docs/changes/CHG-1064 src/p.js
+  bash .githooks/pre-commit >/dev/null 2>&1
+  _pc_left=$(grep -c '^CHG-1064	' .agent-state/pre-commit-streak.tsv 2>/dev/null || true)
+  report "T53 TC-10056 passing pre-commit clears single-row streak" 0 "${_pc_left:-0}"
+else
+  report "T53 TC-10056 pre-commit fail (skip: template absent)" 0 0
+  report "T53 TC-10056 RETROACTIVE_PROBE (skip: template absent)" 0 0
+  report "T53 TC-10056 gate-friction col1 is RETROACTIVE_PROBE (skip: template absent)" 0 0
+  report "T53 TC-10056 passing pre-commit clears streak (skip: template absent)" 0 0
+fi
+
+# TC-10061 (ITEM-29): optional L0/L1 single-file change-card mode
+new_repo
+printf 'change_card_mode: true\n' > .agent-governance.yml
+cat > docs/changes/CHG-1065.md <<'EOF'
+# CHG-1065
+risk: L1
+intent: small bugfix
+scope: src/c.js
+verification: echo ok
+status: done
+EOF
+scripts/agent-gate begin CHG-1065 >/dev/null 2>&1
+report "T53 TC-10061 L1 change-card begin passes" 0 $?
+mkdir -p src && echo 'ok' > src/c.js && git add .agent-governance.yml docs/changes/CHG-1065.md src/c.js
+scripts/agent-gate --stage pre-write --file src/c.js >/dev/null 2>&1
+report "T53 TC-10061 change-card pre-write passes" 0 $?
+scripts/agent-gate --stage staged >/dev/null 2>&1
+report "T53 TC-10061 change-card staged passes" 0 $?
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-10061 change-card stop passes" 0 $?
+cat > docs/changes/CHG-1066.md <<'EOF'
+# CHG-1066
+risk: L2
+intent: not allowed
+scope: src/c.js
+verification: echo ok
+status: pending
+EOF
+scripts/agent-gate begin CHG-1066 >/dev/null 2>&1
+report "T53 TC-10061 change-card rejects L2 risk" 2 $?
+
+# TC-10062b (FU-15202): E164 detects Stripe underscore secret & github_pat_
+new_repo
+seed_artifacts CHG-1067 L0 claude/s-5
+scripts/agent-gate begin CHG-1067 >/dev/null 2>&1
+mkdir -p src
+_t53_pat='github_p''at_1234567890abcdefghij123' # agent-guard: allow-secret
+printf 'TOK="%s"\n' "$_t53_pat" > src/tok.py
+git add src/tok.py
+rc=0
+out=$(scripts/agent-gate --stage staged 2>&1) || rc=$?
+report "T53 TC-10062 FU-15202 E164 blocks github_pat_ token" 2 "$rc"
+
+# TC-10052b (ITEM-20): stop emits non-blocking WARN [MTIME] when doc mtime > earliest code mtime
+new_repo
+seed_artifacts CHG-1068 L0 claude/s-6
+scripts/agent-gate begin CHG-1068 >/dev/null 2>&1
+mkdir -p src && echo 'old' > src/mt.js && git add src/mt.js
+touch -t 202001010000 src/mt.js
+seed_t53_delivery CHG-1068
+out=$(scripts/agent-gate --stage stop 2>&1)
+check_output "T53 TC-10052 stop emits WARN [MTIME] when doc newer than code" "WARN \[MTIME\]" "$out"
 }
 
 section_T54() {

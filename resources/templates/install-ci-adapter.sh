@@ -59,24 +59,39 @@ ci_has_glob() { # <dir> <glob>
   return 1
 }
 
-ci_detect_platform() { # <repo_root> -> "<platform>|<evidence>|<remote_url>"
-  local root="$1" plat="" ev="" remote_url=""
+ci_detect_platform() { # <repo_root> -> "<platform>|<evidence>|<remote_url>|<candidates>"
+  local root="$1" plat="" ev="" remote_url="" cands=""
   if [[ -f "$root/.gitlab-ci.yml" ]]; then
-    plat="gitlab"; ev=".gitlab-ci.yml"
-  elif ci_has_glob "$root/.gitea/workflows" "*.yml" || ci_has_glob "$root/.gitea/workflows" "*.yaml"; then
-    plat="gitea"; ev=".gitea/workflows/*"
-  elif [[ -f "$root/.woodpecker.yml" ]] || ci_has_glob "$root/.woodpecker" "*.yml" || ci_has_glob "$root/.woodpecker" "*.yaml"; then
-    plat="woodpecker"; ev=".woodpecker"
-  elif [[ -f "$root/Jenkinsfile" ]]; then
-    plat="jenkins"; ev="Jenkinsfile"
-  elif [[ -f "$root/bitbucket-pipelines.yml" ]]; then
-    plat="bitbucket"; ev="bitbucket-pipelines.yml"
-  elif [[ -f "$root/.flow.yml" ]] || ci_has_glob "$root/.yunxiao" "*.yml"; then
-    plat="yunxiao"; ev="yunxiao/.flow.yml"
-  elif [[ -f "$root/azure-pipelines.yml" ]]; then
-    plat="azure-devops"; ev="azure-pipelines.yml"
-  elif ci_has_glob "$root/.github/workflows" "*.yml" || ci_has_glob "$root/.github/workflows" "*.yaml"; then
-    plat="github"; ev=".github/workflows/*"
+    [[ -n "$plat" ]] || { plat="gitlab"; ev=".gitlab-ci.yml"; }
+    cands="${cands:+${cands},}gitlab"
+  fi
+  if ci_has_glob "$root/.gitea/workflows" "*.yml" || ci_has_glob "$root/.gitea/workflows" "*.yaml"; then
+    [[ -n "$plat" ]] || { plat="gitea"; ev=".gitea/workflows/*"; }
+    cands="${cands:+${cands},}gitea"
+  fi
+  if [[ -f "$root/.woodpecker.yml" ]] || ci_has_glob "$root/.woodpecker" "*.yml" || ci_has_glob "$root/.woodpecker" "*.yaml"; then
+    [[ -n "$plat" ]] || { plat="woodpecker"; ev=".woodpecker"; }
+    cands="${cands:+${cands},}woodpecker"
+  fi
+  if [[ -f "$root/Jenkinsfile" ]]; then
+    [[ -n "$plat" ]] || { plat="jenkins"; ev="Jenkinsfile"; }
+    cands="${cands:+${cands},}jenkins"
+  fi
+  if [[ -f "$root/bitbucket-pipelines.yml" ]]; then
+    [[ -n "$plat" ]] || { plat="bitbucket"; ev="bitbucket-pipelines.yml"; }
+    cands="${cands:+${cands},}bitbucket"
+  fi
+  if [[ -f "$root/.flow.yml" ]] || ci_has_glob "$root/.yunxiao" "*.yml"; then
+    [[ -n "$plat" ]] || { plat="yunxiao"; ev="yunxiao/.flow.yml"; }
+    cands="${cands:+${cands},}yunxiao"
+  fi
+  if [[ -f "$root/azure-pipelines.yml" ]]; then
+    [[ -n "$plat" ]] || { plat="azure-devops"; ev="azure-pipelines.yml"; }
+    cands="${cands:+${cands},}azure-devops"
+  fi
+  if ci_has_glob "$root/.github/workflows" "*.yml" || ci_has_glob "$root/.github/workflows" "*.yaml"; then
+    [[ -n "$plat" ]] || { plat="github"; ev=".github/workflows/*"; }
+    cands="${cands:+${cands},}github"
   fi
 
   if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
@@ -93,7 +108,7 @@ ci_detect_platform() { # <repo_root> -> "<platform>|<evidence>|<remote_url>"
     esac
   fi
   [[ -n "$plat" ]] || { plat="unknown"; ev="none"; }
-  printf '%s|%s|%s' "$plat" "$ev" "${remote_url:-none}"
+  printf '%s|%s|%s|%s' "$plat" "$ev" "${remote_url:-none}" "${cands:-$plat}"
 }
 
 ci_branch_protection_guidance() { # <platform> <branch>
@@ -117,11 +132,12 @@ ci_branch_protection_guidance() { # <platform> <branch>
 }
 
 ci_cmd_detect() {
-  local root="${1:-$PWD}" info plat ev rurl br docs scripts tests
+  local root="${1:-$PWD}" info plat ev rurl cands docs scripts tests br
   [[ -d "$root" ]] || { echo "install-ci-adapter: directory not found: $root" >&2; exit 2; }
   info=$(ci_detect_platform "$root")
   plat="${info%%|*}"; info="${info#*|}"
-  ev="${info%%|*}"; rurl="${info#*|}"
+  ev="${info%%|*}"; info="${info#*|}"
+  rurl="${info%%|*}"; cands="${info#*|}"
   br=$(ci_detect_default_branch "$root")
   docs=$(ci_cfg_path "$root" docs docs)
   scripts=$(ci_cfg_path "$root" scripts scripts)
@@ -130,6 +146,7 @@ ci_cmd_detect() {
 install-ci-adapter detect:
   repo: $root
   platform: $plat (evidence: $ev)
+  candidates: $cands
   default_branch: $br
   remote: $rurl
   paths: docs=$docs scripts=$scripts tests=$tests
@@ -221,7 +238,7 @@ EOF
 }
 
 ci_cmd_verify_wiring() {
-  local cfg="${1:-}" root="${2:-$PWD}" sdir gate_path
+  local cfg="${1:-}" root="${2:-$PWD}" sdir gate_path _nc
   [[ -n "$cfg" ]] || { echo "install-ci-adapter: --verify-wiring requires <ci-config-path>" >&2; exit 2; }
   [[ -d "$root" ]] || { echo "install-ci-adapter: directory not found: $root" >&2; exit 2; }
   case "$cfg" in
@@ -237,11 +254,13 @@ ci_cmd_verify_wiring() {
       fi
       ;;
   esac
-  if ! grep -q 'agent-gate' "$cfg" 2>/dev/null || ! grep -qE -- '--stage[[:space:]]+ci' "$cfg" 2>/dev/null; then
+  # Review F7: strip pure comment lines so commented-out wiring never passes.
+  _nc=$(grep -vE '^[[:space:]]*#' "$cfg" 2>/dev/null || true)
+  if ! grep -q 'agent-gate' <<< "$_nc" 2>/dev/null || ! grep -qE -- '--stage[[:space:]]+ci' <<< "$_nc" 2>/dev/null; then
     echo "install-ci-adapter: CI config missing required 'agent-gate --stage ci' step: $cfg" >&2
     exit 2
   fi
-  if ! grep -qE 'check-standards-compliance|audit-docs-consistency' "$cfg" 2>/dev/null; then
+  if ! grep -qE 'check-standards-compliance|audit-docs-consistency' <<< "$_nc" 2>/dev/null; then
     echo "install-ci-adapter: CI config missing check-standards-compliance.sh or audit-docs-consistency.sh: $cfg" >&2
     exit 2
   fi

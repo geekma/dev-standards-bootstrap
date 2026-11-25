@@ -92,4 +92,38 @@ if [[ -s "$lastd" ]]; then
   fi
 fi
 
-scripts/agent-gate --stage staged
+_pc_rc=0
+scripts/agent-gate --stage staged || _pc_rc=$?
+_pc_id=""
+if [[ -n "${active:-}" && -s "$active" ]]; then
+  _pc_id=$(tr -d '[:space:]' < "$active" 2>/dev/null || true)
+fi
+if [[ "$_pc_rc" -eq 0 ]]; then
+  if [[ -n "$_pc_id" && -s ".agent-state/pre-commit-streak.tsv" ]]; then
+    awk -F'\t' -v id="$_pc_id" '$1!=id' ".agent-state/pre-commit-streak.tsv" > ".agent-state/pre-commit-streak.tsv.tmp" 2>/dev/null \
+      && mv -f ".agent-state/pre-commit-streak.tsv.tmp" ".agent-state/pre-commit-streak.tsv" || rm -f ".agent-state/pre-commit-streak.tsv.tmp"
+  fi
+  exit 0
+fi
+if [[ -n "$_pc_id" ]]; then
+  mkdir -p .agent-state 2>/dev/null || true
+  _pc_streak=1
+  if [[ -s ".agent-state/pre-commit-streak.tsv" ]]; then
+    _pc_prev=$(awk -F'\t' -v id="$_pc_id" '$1==id{print $2; exit}' ".agent-state/pre-commit-streak.tsv" 2>/dev/null || echo 0)
+    [[ "$_pc_prev" =~ ^[0-9]+$ ]] && _pc_streak=$(( _pc_prev + 1 ))
+    awk -F'\t' -v id="$_pc_id" '$1!=id' ".agent-state/pre-commit-streak.tsv" > ".agent-state/pre-commit-streak.tsv.tmp" 2>/dev/null \
+      && mv -f ".agent-state/pre-commit-streak.tsv.tmp" ".agent-state/pre-commit-streak.tsv" || rm -f ".agent-state/pre-commit-streak.tsv.tmp"
+  fi
+  printf '%s\t%s\n' "$_pc_id" "$_pc_streak" >> ".agent-state/pre-commit-streak.tsv" 2>/dev/null || true
+  _pc_rfile=$(git rev-parse --git-path "agent-governance/stage-receipts/${_pc_id}.tsv" 2>/dev/null || true)
+  _pc_has_begin=0
+  if [[ -n "$_pc_rfile" && -s "$_pc_rfile" ]] && grep -qE $'\tbegin\t' "$_pc_rfile" 2>/dev/null; then
+    _pc_has_begin=1
+  fi
+  if [[ "$_pc_has_begin" -eq 0 || "$_pc_streak" -ge 2 ]]; then
+    echo "pre-commit: RETROACTIVE_PROBE defense triggered (change=$_pc_id streak=$_pc_streak begin_receipt=$_pc_has_begin) — running preflight" >&2
+    scripts/agent-gate preflight "$_pc_id" >&2 || true
+    printf '%s\t%s\t%s\t%s\t%s\n' "RETROACTIVE_PROBE" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$_pc_id" "PROBE" "streak=$_pc_streak begin=$_pc_has_begin" >> ".agent-state/gate-friction.tsv" 2>/dev/null || true
+  fi
+fi
+exit "$_pc_rc"

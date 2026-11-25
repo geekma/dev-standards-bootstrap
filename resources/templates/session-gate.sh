@@ -491,11 +491,17 @@ sg_is_code_path() { # <path>
   [[ "$p" =~ ^(${GITHOOKS_RE}/|\.agents/|\.claude/|\.cursor/|\.gemini/|\.opencode/|\.agent-state/|\.agent-governance\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/session-gate\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/install-ci-adapter$|${SCRIPTS_RE}/check-standards-compliance\.sh$|${SCRIPTS_RE}/stamp-provenance\.sh$|${SCRIPTS_RE}/generate-reading-pack\.sh$|${SCRIPTS_RE}/behavior-extract\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\.sh$|${SCRIPTS_RE}/lib-suite-lock\.sh$|${SCRIPTS_RE}/shard-sum\.sh$|${SCRIPTS_RE}/evidence-round\.sh$|${TESTS_RE}/run-tests\.sh$|${TESTS_RE}/audit-docs-consistency\.sh$|${TESTS_RE}/fresh-clone-check\.sh$) ]] && return 1
   [[ "$p" =~ \.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$ ]] && return 0
   local _sg_ext
-  _sg_ext=$(sg_cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
-  if [[ -n "$_sg_ext" && "$_sg_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
-    local _sg_ext_re="${_sg_ext//,/|}"
-    _sg_ext_re="${_sg_ext_re//+/\\+}"
-    [[ "$p" =~ \.(${_sg_ext_re})$ ]] && return 0
+  if [[ "${_SG_EXT_LOADED:-0}" != "1" ]]; then
+    _sg_ext=$(sg_cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
+    _SG_EXT_RE=""
+    if [[ -n "$_sg_ext" && "$_sg_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
+      _SG_EXT_RE="${_sg_ext//,/|}"
+      _SG_EXT_RE="${_SG_EXT_RE//+/\\+}"
+    fi
+    _SG_EXT_LOADED=1
+  fi
+  if [[ -n "${_SG_EXT_RE:-}" ]] && [[ "$p" =~ \.(${_SG_EXT_RE})$ ]]; then
+    return 0
   fi
   return 1
 }

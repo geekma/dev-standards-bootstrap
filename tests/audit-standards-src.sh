@@ -2299,6 +2299,19 @@ at_least_f "A71 agent-gate supports extensible test_weakening_patterns (CHG-152)
 at_least_f "A71 agent-gate supports kv_field structured checks (CHG-152)" 1 "$GATE_TPL" 'kv_field()'
 at_least_f "A71 agent-gate enforces GATE-E164 secret scan (CHG-152)" 1 "$GATE_TPL" 'GATE-E164:'
 at_least_f "A71 agent-gate emits AI-LAZY soft warn (CHG-152)" 1 "$GATE_TPL" 'AI-LAZY'
+
+# --- A72 (v4.8.0, CHG-153, REQ-1426~1437): P1 3B批 11项过程真实性/原子流 + FU-15202 ---
+at_least_f "A72 agent-gate enforces GATE-E163 causal DAG gate (CHG-153)" 1 "$GATE_TPL" 'GATE-E163:'
+at_least_f "A72 agent-gate records stage-gate receipts and mtime check (CHG-153)" 1 "$GATE_TPL" 'record_stage_receipt'
+at_least_f "A72 agent-gate exposes record-red red-first receipt command (CHG-153)" 1 "$GATE_TPL" 'record_red_cmd'
+at_least_f "A72 agent-gate records pre-write heartbeat ledger (CHG-153)" 1 "$GATE_TPL" 'prewrite_ledger_append'
+at_least_f "A72 dispatch review injects process_honesty_summary (CHG-153)" 1 "$GATE_TPL" 'process_honesty_summary'
+at_least_f "A72 pre-commit template carries RETROACTIVE_PROBE defense (CHG-153)" 1 "$ROOT/resources/templates/pre-commit" 'RETROACTIVE_PROBE'
+at_least_f "A72 agent-gate exposes start advance next fix commands (CHG-153)" 4 "$GATE_TPL" 'next_cmd'
+at_least_f "A72 agent-gate supports optional single-file change-card mode (CHG-153)" 1 "$GATE_TPL" 'validate_change_card'
+at_least_f "A72 FU-15202 is_code_path caches extensions (CHG-153)" 1 "$GATE_TPL" '_AG_EXT_LOADED'
+at_least_f "A72 FU-15202 install-ci-adapter reports candidates and filters comments (CHG-153)" 1 "$ROOT/resources/templates/install-ci-adapter.sh" 'candidates:'
+at_least_f "A72 CLAUSE_REGISTRY documents GATE-E163 (CHG-153)" 1 "$ROOT/resources/CLAUSE_REGISTRY.md" 'GATE-E163'
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else

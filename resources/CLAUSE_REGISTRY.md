@@ -274,4 +274,5 @@
 | GATE-E160 | 测试弱化五类 diff-watch：暂存面测试文件 ①断言删除/弱化②skip/only 跳测③阈值下调④检查器静默⑤既有文件新增豁免无 owner+期限（唯一逃生口=owner+期限标注；枚举权威=review-intelligence §8） | agent-gate.sh::validate_test_weakening() |
 | GATE-E161 | ui_change:true 时 01-spec「出站出口」节存在但含占位符或缺少 UJ-xxx/豁免/降级裁决（盘点机制：交付页可点击出口须全集入 UJ 或显式裁决，v4.5.0） | agent-gate.sh::validate_dimensional_stop() |
 | GATE-E162 | ui_change:true 时 09 标「已交付」却在 05/07/09 存在未降级的下游挂起/不可达/挂接待其 owner（收口机制：入口即承责，禁交付半扇门，v4.5.0） | agent-gate.sh::validate_dimensional_stop() |
+| GATE-E163 | L2/L3 Git DAG 因果序门：`staged`/`ci` 检查立项意图早于源码提交落盘（`change_root` 被 `.gitignore` 时自动降级放行；唯一逃生口=`AGENT_GUARD_ALLOW_CAUSAL_SKIP=1`，v4.8.0） | agent-gate.sh::validate_causal_dag() |
 | GATE-E164 | 暂存面 diff 含未豁免的 secret/token/私钥特征（AWS/GitHub/OpenAI 类/Google/Slack/PEM；唯一逃生口=同行 `agent-guard: allow-secret` 标注，v4.7.0） | agent-gate.sh::validate_secret_scan() |
