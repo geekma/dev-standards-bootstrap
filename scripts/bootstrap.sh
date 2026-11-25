@@ -53,7 +53,7 @@ Flags (layers; default --core when none given):
                <tests>/audit-docs-consistency.sh (通用层审计)
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, <scripts>/check-standards-compliance.sh
-  --guard      强制执行包: <scripts>/agent-gate (+ lib-json.sh + lib-gate-cold.sh, v4.9.0), <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
+  --guard      强制执行包: <scripts>/agent-gate (+ lib-json.sh + lib-gate-staged.sh + lib-gate-cold.sh, v4.13.0), <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
                <scripts>/behavior-extract.sh (HTML/JS 原型行为抽取器, v3.68.0),
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/eval-cases + <scripts>/eval-rescore (评测资产派生与重打分, v3.75.0),
@@ -961,6 +961,7 @@ run_layer() {
     guard)
       install_file - "$SCRIPTS_DIR/agent-gate" resources/templates/agent-gate.sh 755
       install_file - "$SCRIPTS_DIR/lib-json.sh" resources/templates/lib-json.sh 644
+      install_file - "$SCRIPTS_DIR/lib-gate-staged.sh" resources/templates/lib-gate-staged.sh 644
       install_file - "$SCRIPTS_DIR/lib-gate-cold.sh" resources/templates/lib-gate-cold.sh 644
       install_file - "$TESTS_DIR/governance-smoke.sh" resources/templates/governance-smoke.sh 755
       install_file - "$SCRIPTS_DIR/behavior-extract.sh" resources/templates/behavior-extract.sh 755
@@ -982,6 +983,15 @@ run_layer() {
       install_file agent-governance-yml .agent-governance.yml resources/templates/agent-governance.yml
       # 治理自测试随强制包（打包错位修复）：改 agent-gate/hooks 前必须能跑 golden cases
       install_file - "$TESTS_DIR/run-tests.sh" tests/run-tests.sh 755
+      install_file - "$TESTS_DIR/lib/test-harness.sh" tests/lib/test-harness.sh 644
+      install_file - "$TESTS_DIR/suites/suite-01-core.sh" tests/suites/suite-01-core.sh 644
+      install_file - "$TESTS_DIR/suites/suite-02-install.sh" tests/suites/suite-02-install.sh 644
+      install_file - "$TESTS_DIR/suites/suite-03-session.sh" tests/suites/suite-03-session.sh 644
+      install_file - "$TESTS_DIR/suites/suite-04-gates.sh" tests/suites/suite-04-gates.sh 644
+      install_file - "$TESTS_DIR/suites/suite-05-adapter.sh" tests/suites/suite-05-adapter.sh 644
+      install_file - "$TESTS_DIR/suites/suite-06-runner.sh" tests/suites/suite-06-runner.sh 644
+      install_file - "$TESTS_DIR/suites/suite-07-adapt.sh" tests/suites/suite-07-adapt.sh 644
+      install_file - "$TESTS_DIR/suites/suite-08-infra.sh" tests/suites/suite-08-infra.sh 644
       # v3.92.3 (CHG-128 fix): G-ENV 的执行件。E153 的 fix 提示与 pre-push 都指向
       # tests/fresh-clone-check.sh；只下发门禁不下发执行件 = 门永远无法满足（v3.92.0
       # 起三个批次漏装）。与 run-tests.sh 同层同源，不再另建模板副本防双份漂移。

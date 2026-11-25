@@ -111,9 +111,13 @@ else record R1 ok "all install_file sources resolve (loop members expanded)"; fi
 # (scripts/ and tests/: a missing tests/ copy reds the install assertions the
 # same way, and a static check costs nothing).
 _r2_bad=""
+_r2_files=("$SUITE")
+for _r2_sf in "$ROOT"/tests/suites/*.sh; do
+  [[ -f "$_r2_sf" ]] && _r2_files+=("$_r2_sf")
+done
 while IFS=$'\t' read -r _dest _src; do
   case "$_src" in scripts/*|tests/*) ;; *) continue ;; esac
-  grep -qF "cp \"\$ROOT/$_src\" \"\$FAKE_SRC/$_src\"" "$SUITE" \
+  grep -qF "cp \"\$ROOT/$_src\" \"\$FAKE_SRC/$_src\"" "${_r2_files[@]}" \
     || _r2_bad+="$_src "
 done <<< "$MANIFEST"
 if [[ -n "$_r2_bad" ]]; then record R2 fail "not copied into the T21 FAKE_SRC fixture: $_r2_bad"
@@ -125,14 +129,13 @@ else record R2 ok "every scripts/ and tests/ manifest source is copied by T21"; 
 _r3_bad=""
 while IFS=$'\t' read -r _dest _src; do
   case "$_dest" in
-    *'$SCRIPTS_DIR/'*) _dir=scripts ;;
-    *'$TESTS_DIR/'*) _dir=tests ;;
+    *'$SCRIPTS_DIR/'*) _dir=scripts; _rel="${_dest#*\$SCRIPTS_DIR/}" ;;
+    *'$TESTS_DIR/'*) _dir=tests; _rel="${_dest#*\$TESTS_DIR/}" ;;
     *) continue ;;
   esac
-  _name="${_dest##*/}"
-  case "$_name" in *.sh) ;; *) continue ;; esac
-  _re="\${${_dir}_re}/${_name//./\\.}"
-  grep -qF "$_re" "$GATE" || _r3_bad+="$_dir/$_name "
+  case "$_rel" in *.sh) ;; *) continue ;; esac
+  _re="\${${_dir}_re}/${_rel//./\\.}"
+  grep -qF "$_re" "$GATE" || _r3_bad+="$_dir/$_rel "
 done <<< "$MANIFEST"
 if [[ -n "$_r3_bad" ]]; then record R3 fail "installed code files missing from is_code_path(): $_r3_bad"
 else record R3 ok "every installed code file is whitelisted by the gate"; fi

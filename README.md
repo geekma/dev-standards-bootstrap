@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v4.12.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v4.13.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -88,7 +88,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
 | **Release Integrity + Evidence Reuse** | One version authority (`scripts/release.sh check\|bump`) verifies every carrier and rewrites only declared sites; CI runs the full suite once, uploads a tree-keyed receipt, and reuses it for hard audit gates; a workspace suite lock admits one full run at a time and reclaims dead owners |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (2104 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (2116 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics [--summary] [--json]` emits read-only JSON Lines or aggregate pipeline metrics (`doctor [--json]` runs a 6-point health check; `enforcement.mode` supports `strict|ratchet|advisory` with `GATE-E164` secret blocking never downgraded; optional `scripts/friction-report.sh` and zero-dep read-only `scripts/mcp-governance-server.sh`) — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -408,9 +408,9 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v4.12.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v4.13.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
-    ├── STANDARDS_CHANGELOG_ARCHIVE.md      # Historical standards changelog archive v1.0.0–v4.4.0 (source-only, ITEM-40)
+    ├── STANDARDS_CHANGELOG_ARCHIVE.md      # Historical standards changelog archive v1.0.0–v4.5.0 (source-only, ITEM-40)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
     ├── methodologies/
@@ -431,6 +431,7 @@ dev-standards-bootstrap/
         ├── check-standards-compliance.sh   # CI compliance check script
         ├── agent-gate.sh                   # Shared pre-write / commit-msg / Git / CI validator (+ metrics, + change-batch resolution)
         ├── lib-json.sh                     # Shared zero-dependency JSON and scalar YAML helper library (ITEM-44, sourced by gate/bootstrap/ci-adapter)
+        ├── lib-gate-staged.sh              # Lazy-loaded warm staged/stop/begin/preflight tier for agent-gate (CHG-158)
         ├── lib-gate-cold.sh                # Lazy-loaded cold subcommand handlers for agent-gate (ITEM-45)
         ├── governance-smoke.sh             # Lightweight target-repo governance smoke self-check (ITEM-41, -> tests/)
         ├── behavior-extract.sh             # HTML/JS prototype behavior extractor → JSONL inventory (G13/G14 source dimension, v3.68.0)
@@ -496,8 +497,8 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 828) |
-| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (2104 golden-case assertions) in throwaway git repos; bash + git only |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 833) |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (2116 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
 **There is no soft mode and no double run in CI.** golden-case runs the suite once with `-j 4` under a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`, so a regression fails loudly instead of drifting into the job timeout) and uploads `.agent-state/last-suite-receipt.json` for human forensics. source-audit no longer consumes that artifact: A3/A3c/A10 read the **committed baselines** and run as hard gates (no `AGENT_GUARD_AUDIT_SOFT`), which is also why it needs no dependency on the suite job and runs in parallel with it. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
@@ -536,7 +537,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v4.12.0 | **Last Updated:** 2026-11-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v4.13.0 | **Last Updated:** 2026-11-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

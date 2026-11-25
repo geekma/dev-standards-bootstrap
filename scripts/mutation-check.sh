@@ -135,7 +135,7 @@ mutate() { # name dest
       printf '规范版本：v0.0.0\n' > "$tmp" && cat "$f" >> "$tmp" && mv "$tmp" "$f"
       ;;
     gate-version-drift)
-      f="$dest/resources/templates/agent-gate.sh"
+      f="$dest/resources/templates/lib-gate-staged.sh"
       tmp="$f.mut"
       # v4.4.0 (CHG-148, FU-1012): the receipt version derives from the DS
       # footer, so the mutation target moved from the (removed) hardcoded
@@ -166,7 +166,7 @@ checker_for() { # name
 target_for() { # name
   case "$1" in
     version-drift) printf 'resources/DEVELOPMENT_STANDARDS.md\n' ;;
-    gate-version-drift) printf 'resources/templates/agent-gate.sh\n' ;;
+    gate-version-drift) printf 'resources/templates/lib-gate-staged.sh\n' ;;
     baseline-missing) printf 'tests/.suite-baseline\n' ;;
     readme-count-drift) printf 'README.md\n' ;;
   esac

@@ -109,9 +109,9 @@
 | R79 | UI 范式卡（P12 单源） | templates/project/P12-product-context.md::## UI 范式卡 | L2-architecture | 硬 | 结构 | 参照 | frontend |
 | R80 | 证据类型分层（真实点击链路+视觉证据） | DEVELOPMENT_STANDARDS.md::### 阶段 7：运行测试与证据闭环 | L2-architecture | 硬 | 行为 | 断言 |
 | R81 | 评审见证实义（自产证据+所见即所评） | DEVELOPMENT_STANDARDS.md::### 阶段 8：代码审查与安全门禁 | L2-architecture | 硬 | 行为 | 见证 |
-| R82 | E104 证据词表扩两类（点击链路/视觉证据） | templates/agent-gate.sh::证据行格式（唯一权威） | L2-architecture | 硬 | 行为 | 断言 |
-| R83 | E107 自产证据标记机校 | templates/agent-gate.sh::validate_dimensional_stop() | L2-architecture | 硬 | 行为 | 见证 |
-| R84 | 三查与判定卡触发面（E157-E159） | templates/agent-gate.sh::validate_mechanism_stop() | L2-architecture | 硬 | 结构 | 收口 |
+| R82 | E104 证据词表扩两类（点击链路/视觉证据） | templates/lib-gate-staged.sh::证据行格式（唯一权威） | L2-architecture | 硬 | 行为 | 断言 |
+| R83 | E107 自产证据标记机校 | templates/lib-gate-staged.sh::validate_dimensional_stop() | L2-architecture | 硬 | 行为 | 见证 |
+| R84 | 三查与判定卡触发面（E157-E159） | templates/lib-gate-staged.sh::validate_mechanism_stop() | L2-architecture | 硬 | 结构 | 收口 |
 
 | 码 | 语义 | 落点 |
 | --- | --- | --- |
