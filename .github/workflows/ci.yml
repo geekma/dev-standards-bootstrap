@@ -110,3 +110,31 @@ jobs:
           echo "golden-case: ${{ needs.golden-case.result }}"
           echo "source-audit: ${{ needs.source-audit.result }}"
           [[ "${{ needs.golden-case.result }}" == "success" && "${{ needs.source-audit.result }}" == "success" ]]
+
+  windows-smoke:
+    name: Windows Git Bash smoke
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    env:
+      MSYS_NO_PATHCONV: '1'
+      MSYS2_ARG_CONV_EXCL: '*'
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify SHA256SUMS and release carriers
+        run: |
+          bash scripts/release.sh checksums --check
+          bash scripts/release.sh check
+      - name: Dry-run and smoke bootstrap + doctor on temp repo
+        run: |
+          tgt=$(mktemp -d)
+          ( cd "$tgt" && git init -q && git config user.email ci@local && git config user.name ci )
+          bash scripts/bootstrap.sh --all --dry-run "$tgt"
+          bash scripts/bootstrap.sh --all "$tgt"
+          ( cd "$tgt" && bash scripts/agent-gate doctor --json || true )
+          ( cd "$tgt" && bash tests/governance-smoke.sh --repo "$tgt" --skip-docs --json )
+          rm -rf "$tgt"
+      - name: Core golden-case subset (T14, T15, T26)
+        run: bash tests/run-tests.sh -T T14,T15,T26

@@ -37,4 +37,20 @@ yml_flat_scalar() { # <file> <key> [default] -> scalar without quotes or # comme
     | head -n 1 | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//' | tr -d "\"'" || true)
   [[ -n "$v" ]] && printf '%s' "$v" || printf '%s' "$def"
 }
+
+is_windows_shell() {
+  case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if is_windows_shell; then
+  export MSYS_NO_PATHCONV=1
+  export MSYS2_ARG_CONV_EXCL='*'
+fi
+
+has_real_python3() {
+  command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1
+}
 fi

@@ -1959,7 +1959,7 @@ fi
 a56_leak=0
 # Untracked-but-not-ignored files are part of the tracked face the moment they
 # are committed, so a commit-less working tree must not be scanned as "clean".
-a56_tracked=$( { git -C "$ROOT" ls-files 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+a56_tracked=$( { git -C "$ROOT" -c core.quotePath=false ls-files 2>/dev/null; git -C "$ROOT" -c core.quotePath=false ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
 for a56_pair in "1:no-polling" "2:read-output" "3:subagent-cap" "4:prompt-cache" "5:split-batches" "6:receipt-buy"; do
   a56_tag="PD-${a56_pair%%:*} ${a56_pair##*:}"
   while IFS= read -r a56_f; do
@@ -2372,6 +2372,18 @@ report "A75 CAPABILITY-COMPARISON en/zh include v4.5-v4.10 evolution note (CHG-1
 at_least_f "A75 sync-local-wrappers manages tests/audit-docs-consistency.sh (CHG-156)" 1 "$ROOT/scripts/sync-local-wrappers.sh" 'tests/audit-docs-consistency.sh:resources/templates/audit-docs-consistency.sh'
 report "A75 release/update-assertion-count/shard-sum enforce 0644 on generated files (CHG-156)" 3 "$(( $(grep -cF 'chmod 0644' "$ROOT/scripts/release.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/update-assertion-count.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/shard-sum.sh" >/dev/null && echo 1 || echo 0) ))"
 at_least_f "A75 .gitignore excludes .screenshots/ (CHG-156)" 1 "$ROOT/.gitignore" '.screenshots/'
+
+# --- A76 (v4.12.0, CHG-157, REQ-1455~1459): Windows Git Bash/WSL2 兼容与 CI 冒烟 ---
+report "A76 .gitattributes enforces LF on shell scripts and hooks (CHG-157)" 1 "$([[ -f "$ROOT/.gitattributes" ]] && grep -qF '*.sh text eol=lf' "$ROOT/.gitattributes" && grep -qF '.githooks/* text eol=lf' "$ROOT/.gitattributes" && echo 1 || echo 0)"
+_a76_msys_bad=0
+for _a76_f in "$ROOT/resources/templates/lib-json.sh" "$GATE_TPL" "$ROOT/scripts/bootstrap.sh" "$ROOT/scripts/install.sh" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh" "$ROOT/resources/templates/install-hook-adapter.sh" "$ROOT/resources/templates/install-ci-adapter.sh" "$ROOT/resources/templates/stamp-provenance.sh" "$ROOT/tests/run-tests.sh"; do
+  grep -qF 'MSYS_NO_PATHCONV=1' "$_a76_f" 2>/dev/null || { echo "A76 missing MSYS_NO_PATHCONV in $_a76_f" >&2; _a76_msys_bad=$(( _a76_msys_bad + 1 )); }
+done
+report "A76 lib-json and core entrypoints export MSYS_NO_PATHCONV on Windows shells (CHG-157)" 0 "$_a76_msys_bad"
+report "A76 has_real_python3 guards against Windows Store python3 stub (CHG-157)" 4 "$(( $(grep -cF 'has_real_python3' "$ROOT/resources/templates/lib-json.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'has_real_python3' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'has_real_python3' "$COLD_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'has_real_python3' "$ROOT/resources/templates/install-hook-adapter.sh" >/dev/null && echo 1 || echo 0) ))"
+at_least_f "A76 install.sh --as-skill supports Windows copy-mode fallback (CHG-157)" 1 "$ROOT/scripts/install.sh" '.dev-standards-skill-copy'
+report "A76 install-hook-adapter emits windows_note and avoids bare System32 bash (CHG-157)" 2 "$(( $(grep -cF 'windows_note' "$ROOT/resources/templates/install-hook-adapter.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'resolve_hook_bash' "$ROOT/resources/templates/install-hook-adapter.sh" >/dev/null && echo 1 || echo 0) ))"
+report "A76 ci.yml defines windows-smoke job and READMEs carry Windows support matrix (CHG-157)" 3 "$(( $(grep -cF 'windows-smoke:' "$ROOT/.github/workflows/ci.yml" >/dev/null && echo 1 || echo 0) + $(grep -cF '### Windows Support Matrix' "$RM_EN" >/dev/null && echo 1 || echo 0) + $(grep -cF '### Windows 支持矩阵' "$RM_ZH" >/dev/null && echo 1 || echo 0) ))"
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else

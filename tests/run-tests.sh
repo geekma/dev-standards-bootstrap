@@ -14,6 +14,9 @@
 #   AGENT_GUARD_REPEAT_LIMIT=N  warn on stderr when the same HEAD + section set
 #   already ran N times within 30 min (default 3; 0 disables the guard entirely)
 set -uo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 # v3.66.0 (CHG-088, REQ-1049): cache the suite HEAD up front — by the time the
@@ -2151,6 +2154,63 @@ if [[ -f "$BOOT_SRC" ]]; then
     report "T14 TC-10078 CAPABILITY-COMPARISON.md carries v4.10 snapshot and evolution note" 1 "$_cc_en"
     report "T14 TC-10078 能力对比分析.md carries v4.10 snapshot and evolution note" 1 "$_cc_zh"
   fi
+  # TC-10079 (CHG-157, REQ-1455): .gitattributes enforces LF on scripts and hooks
+  if [[ -f "$ROOT/.gitattributes" ]]; then
+    _ga_ok=0
+    grep -qF '*.sh text eol=lf' "$ROOT/.gitattributes" && grep -qF '.githooks/* text eol=lf' "$ROOT/.gitattributes" && grep -qF 'resources/templates/*.sh text eol=lf' "$ROOT/.gitattributes" && _ga_ok=1
+    report "T14 TC-10079 .gitattributes enforces LF on scripts and hooks" 1 "$_ga_ok"
+  fi
+  # TC-10080 (CHG-157, REQ-1456): lib-json exports MSYS protection & has_real_python3 rejects Store stub
+  if [[ -f "$ROOT/resources/templates/lib-json.sh" ]]; then
+    _msys_out=$(AGENT_GUARD_FORCE_OS=MINGW64_NT-10.0 bash -c '. "$1"; printf "%s:%s\n" "${MSYS_NO_PATHCONV:-}" "${MSYS2_ARG_CONV_EXCL:-}"' _ "$ROOT/resources/templates/lib-json.sh")
+    report "T14 TC-10080 lib-json exports MSYS pathconv vars on MINGW" "1:*" "$_msys_out"
+    _stub_d=$(mktemp -d)
+    printf '#!/usr/bin/env bash\nexit 9009\n' > "$_stub_d/python3" && chmod +x "$_stub_d/python3"
+    PATH="$_stub_d:/usr/bin:/bin" bash -c '. "$1"; has_real_python3' _ "$ROOT/resources/templates/lib-json.sh" >/dev/null 2>&1
+    _stub_rc=$?
+    report "T14 TC-10080 has_real_python3 rejects fake python3 Store stub" 1 "$([[ "$_stub_rc" -ne 0 ]] && echo 1 || echo 0)"
+    rm -rf "$_stub_d"
+  fi
+  # TC-10081 (CHG-157, REQ-1457): install.sh --as-skill falls back to safe copy mode on Windows
+  if [[ -f "$ROOT/scripts/install.sh" ]]; then
+    _w_src=$(mktemp -d); _w_dst_root=$(mktemp -d)
+    cp -R "$ROOT/SKILL.md" "$ROOT/resources" "$ROOT/scripts" "$ROOT/.claude-plugin" "$_w_src/"
+    [[ -f "$ROOT/SHA256SUMS" ]] && cp "$ROOT/SHA256SUMS" "$_w_src/"
+    mkdir -p "$_w_src/.git" && touch "$_w_src/.git/HEAD"
+    _w_out=$(AGENT_GUARD_FORCE_OS=MINGW64_NT-10.0 bash "$ROOT/scripts/install.sh" --from "$_w_src" --as-skill "$_w_dst_root/my-skill" 2>&1); _w_rc=$?
+    report "T14 TC-10081 --as-skill Windows copy mode exits 0" 0 "$_w_rc"
+    report "T14 TC-10081 --as-skill creates real copy dir (not symlink) with marker" 1 "$([[ ! -L "$_w_dst_root/my-skill" && -f "$_w_dst_root/my-skill/SKILL.md" && -f "$_w_dst_root/my-skill/.dev-standards-skill-copy" && ! -d "$_w_dst_root/my-skill/.git" ]] && echo 1 || echo 0)"
+    check_output "T14 TC-10081 --as-skill logs Windows copy fallback" "symlink skipped" "$_w_out"
+    AGENT_GUARD_FORCE_OS=MINGW64_NT-10.0 bash "$ROOT/scripts/install.sh" --from "$_w_src" --as-skill "$_w_dst_root/my-skill" >/dev/null 2>&1
+    report "T14 TC-10081 --as-skill copy mode refuses overwrite without --force" 2 $?
+    AGENT_GUARD_FORCE_OS=MINGW64_NT-10.0 bash "$ROOT/scripts/install.sh" --from "$_w_src" --as-skill "$_w_dst_root/my-skill" --force >/dev/null 2>&1
+    report "T14 TC-10081 --as-skill copy mode refreshes with --force" 0 $?
+    rm -rf "$_w_src" "$_w_dst_root"
+  fi
+  # TC-10082 (CHG-157, REQ-1458): install-hook-adapter emits windows_note & cursor falls back to json_sanity_check
+  if [[ -f "$ROOT/resources/templates/install-hook-adapter.sh" ]]; then
+    _ha_c=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --print-contract 2>&1)
+    _ha_g=$(bash "$ROOT/resources/templates/install-hook-adapter.sh" --print-global-contract 2>&1)
+    check_output "T14 TC-10082 --print-contract includes windows_note" '"windows_note"' "$_ha_c"
+    check_output "T14 TC-10082 --print-global-contract warns against System32" 'System32' "$_ha_g"
+    _ha_tmp=$(mktemp -d)
+    mkdir -p "$_ha_tmp/scripts" "$_ha_tmp/.stub"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$_ha_tmp/scripts/agent-gate" && chmod +x "$_ha_tmp/scripts/agent-gate"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$_ha_tmp/scripts/session-gate.sh" && chmod +x "$_ha_tmp/scripts/session-gate.sh"
+    printf '#!/usr/bin/env bash\nexit 9009\n' > "$_ha_tmp/.stub/python3" && chmod +x "$_ha_tmp/.stub/python3"
+    cp "$ROOT/resources/templates/install-hook-adapter.sh" "$_ha_tmp/scripts/install-hook-adapter.sh"
+    ( cd "$_ha_tmp" && AGENT_GUARD_FORCE_OS=MINGW64_NT-10.0 PATH="$_ha_tmp/.stub:/usr/bin:/bin" bash scripts/install-hook-adapter.sh --client cursor >/dev/null 2>&1 )
+    report "T14 TC-10082 cursor config succeeds via json_sanity_check under fake python3 stub" 0 $?
+    report "T14 TC-10082 cursor Windows command avoids bare System32 bash" 1 "$(grep -qF 'MSYS_NO_PATHCONV=1' "$_ha_tmp/.cursor/hooks.json" && echo 1 || echo 0)"
+    rm -rf "$_ha_tmp"
+  fi
+  # TC-10083 (CHG-157, REQ-1459): ci.yml carries windows-smoke & READMEs carry Windows matrix
+  if [[ -f "$ROOT/.github/workflows/ci.yml" ]]; then
+    _ci_w=0
+    grep -qF 'windows-smoke:' "$ROOT/.github/workflows/ci.yml" && grep -qF 'windows-latest' "$ROOT/.github/workflows/ci.yml" && grep -qF 'MSYS_NO_PATHCONV' "$ROOT/.github/workflows/ci.yml" && _ci_w=1
+    report "T14 TC-10083 ci.yml carries windows-smoke job" 1 "$_ci_w"
+    report "T14 TC-10083 READMEs carry Windows support matrix" 2 "$(( $(grep -cF '### Windows Support Matrix' "$ROOT/README.md" || true) + $(grep -cF '### Windows 支持矩阵' "$ROOT/README.zh-CN.md" || true) ))"
+  fi
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi
@@ -3676,7 +3736,7 @@ if [[ -s "$GT82" ]]; then
   # review #1: a SECOND write must not corrupt the JSON (key stripped fully)
   scripts/agent-gate plan CHG-960 >/dev/null 2>&1
   report "T82 second plan keeps exactly one decision key" 0 "$(( $(grep -o '\"decision\"' docs/changes/CHG-960/00-governance.json | wc -l | tr -d ' ') - 1 ))"
-  if command -v python3 >/dev/null 2>&1; then
+  if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
     python3 -c 'import json,sys; json.load(open(sys.argv[1]))' docs/changes/CHG-960/00-governance.json >/dev/null 2>&1
     report "T82 governance JSON stays valid after re-plan" 0 $?
   else
@@ -4023,7 +4083,7 @@ cp "$ROOT/resources/templates/audit-docs-consistency.sh" "$S83/scripts/audit-doc
 ( cd "$S83" && git init -q . && git config user.email t@e.invalid && git config user.name t && git add -A >/dev/null 2>&1 && git commit -qm seed >/dev/null 2>&1 )
 out=$( cd "$S83" && bash scripts/agent-gate plan CHG-124 2>&1 ); report "T83 self-boot plan on CHG-124 copy" 0 "$?"
 ( cd "$S83" && bash scripts/agent-gate plan CHG-124 >/dev/null 2>&1 )
-if command -v python3 >/dev/null 2>&1; then
+if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$S83/docs/changes/CHG-124/00-governance.json" >/dev/null 2>&1
   report "T83 self-boot CHG-124 JSON valid after re-plan" 0 "$?"
 fi

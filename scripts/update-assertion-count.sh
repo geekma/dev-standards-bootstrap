@@ -249,6 +249,7 @@ if [[ ! -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
     status=1
   else
     cp "$AUDIT_LAST" "$AUDIT_BASELINE"
+    chmod 0644 "$AUDIT_BASELINE"
     echo "created tests/.audit-baseline -> $(cat "$AUDIT_BASELINE")"
   fi
 elif [[ -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
@@ -258,6 +259,7 @@ elif [[ -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
       status=1
     else
       cp "$AUDIT_LAST" "$AUDIT_BASELINE"
+      chmod 0644 "$AUDIT_BASELINE"
       echo "updated tests/.audit-baseline -> $(cat "$AUDIT_BASELINE")"
     fi
   fi

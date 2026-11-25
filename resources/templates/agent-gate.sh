@@ -3,6 +3,9 @@
 # It deliberately validates evidence and execution state; it never trusts an
 # agent's natural-language claim that a check has run.
 set -euo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 _AG_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _AG_SELF_BIN="${BASH_SOURCE[0]}"
@@ -13,6 +16,9 @@ for _ag_jlib in "$_AG_SELF_DIR/lib-json.sh" "$_AG_SELF_DIR/../resources/template
     break
   fi
 done
+if ! command -v has_real_python3 >/dev/null 2>&1; then
+  has_real_python3() { command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; }
+fi
 
 # CHG-121 (batch 0): the friction ledger used to carry only (code, timestamp).
 # 1037 such rows cannot be attributed to any change, so "is this friction
@@ -3157,7 +3163,7 @@ review_plan_json() { # <id> -> one-line plan JSON; no writes, never exits 2
   [[ -n "$rt" ]] || rt="unknown"
   [[ -n "$fam" ]] || fam="unknown"
   cfg=$(review_models_file)
-  if command -v python3 >/dev/null 2>&1; then
+  if has_real_python3; then
     python3 - "$cfg" "$(printf '%s' "$roles" | tr ' ' ',')" "$id" "$rt" "$fam" "$clients" "$layers" <<'PY'
 import json, os, sys, datetime
 cfg, roles_s, cid, rt, fam, clients, layers = sys.argv[1:8]
@@ -3881,7 +3887,7 @@ plan_write_json() { # <file> <decision-json> — append-only key, validated befo
     echo "agent-gate: WARN — decision not written: rebuilt $f failed structural validation (P1-1)" >&2
     return 1
   fi
-  if command -v python3 >/dev/null 2>&1; then
+  if has_real_python3; then
     python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$tmp" >/dev/null 2>&1 || {
       rm -f "$tmp"
       echo "agent-gate: WARN — decision not written: rebuilt $f is not valid JSON (P1-1)" >&2

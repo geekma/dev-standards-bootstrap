@@ -82,6 +82,9 @@
 #
 # 零依赖：bash 3.2+、git；被调脚本缺失时降级为显式提示，不猜不编。
 set -uo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 mode="${1:-}"
   case "$mode" in

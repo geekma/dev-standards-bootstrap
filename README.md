@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v4.11.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v4.12.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -88,7 +88,7 @@ Not theory — a three-way contribution analysis measured on 11 real working ses
 | **Bug Fix Log + Same-Family Scan + Root-Cause Classification** | Repo-level append-only `bugfix-log.md` index; root-cause tables carry a **same-family** scan row and a mutually-exclusive classification anchored at the earliest unrecovered failure point (AgentRx-derived; §2.5 Stage 6) — fix without family scan is rejected |
 | **Deterministic Gate + Pipeline Automation** | One dependency-free validator shared by write-time hooks, Git hooks, and CI; spec merge auto-dispatches skeletons, changelog merge auto-opens a release checklist, incidents auto-create `BUG-<ts>` intent PRs; autonomy capped at A2 (§2.17) |
 | **Release Integrity + Evidence Reuse** | One version authority (`scripts/release.sh check\|bump`) verifies every carrier and rewrites only declared sites; CI runs the full suite once, uploads a tree-keyed receipt, and reuses it for hard audit gates; a workspace suite lock admits one full run at a time and reclaims dead owners |
-| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (2090 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
+| **Golden-Case Self-Tests** | `tests/run-tests.sh` regression-tests the gate and the installer (2104 golden-case assertions) in throwaway git repos — bash + git only (§2.17.4) |
 
 `agent-gate metrics [--summary] [--json]` emits read-only JSON Lines or aggregate pipeline metrics (`doctor [--json]` runs a 6-point health check; `enforcement.mode` supports `strict|ratchet|advisory` with `GATE-E164` secret blocking never downgraded; optional `scripts/friction-report.sh` and zero-dep read-only `scripts/mcp-governance-server.sh`) — observation only, never a substitute for DoD (§2.17.5). Specialized standards cover deployment/config/DB changes, AI/LLM pipelines, test data isolation, emergency hotfixes, release, monitoring, and supply chain (§2.6–§2.13). The single version history is [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md) (shipped to target repos, machine-pinned by audit G1).
 
@@ -155,11 +155,20 @@ curl -fsSL https://raw.githubusercontent.com/geekma/dev-standards-bootstrap/main
 - The skill checkout is kept at `~/.dev-standards-bootstrap/dev-standards-bootstrap` (override with `--skill-dir <path>`); an existing checkout is reused and fast-forward pulled — **local changes there are never overwritten** (the command refuses and tells you). If the pull fails (e.g. offline), the command continues with the **existing local copy, which may be stale** — it says so; rerun when back online, or run `bash <skill-dir>/scripts/bootstrap.sh --self-update` to update the skill copy on its own.
 - Already-governed target → automatic `--upgrade`: governance-owned files (standards, templates, scripts, hooks, workflows, tests) move to the carried version — **except files you have modified locally, which are kept untouched and reported** (pass `--force` to overwrite them with the carried version); a dirty target work tree blocks the upgrade until committed or stashed (`--force` overrides). **Live records always stay untouched**: `bugfix-log.md`, delivery summaries, 06.5 records, your `.agent-governance.yml`, and everything under `docs/changes/**` and `docs/bugs/BUG-*/`. Commit the target repo first so git history preserves any customization.
 - Offline / pinned installs: `--from <local-checkout>`, `--repo <url>`, `--ref <branch-or-tag>`.
-- **Platforms**: macOS and Linux with bash 3.2+ (the shipped gate targets stock macOS `/bin/bash 3.2`); native Windows is **not supported** — use WSL. Git Bash/MSYS is unverified, not a compatibility claim.
+- **Platforms**: macOS and Linux with bash 3.2+ (the shipped gate targets stock macOS `/bin/bash 3.2`), plus **Windows WSL2** and **Windows Git Bash / MSYS2** (`.gitattributes` LF enforcement, `MSYS_NO_PATHCONV=1`, `--as-skill` copy fallback, and `has_real_python3` stub guard). Native Windows CMD / PowerShell are not supported directly — invoke via Git Bash or WSL2.
 - **Supply chain**: the `curl | bash` form executes whatever is at `main` *at that moment*. When you need a fixed input, pin it — `curl -fsSL …/vX.Y.Z/scripts/install.sh | bash -s -- . --ref vX.Y.Z`, or clone the repo, inspect it, and run `scripts/bootstrap.sh` locally. Since `v4.10.0`, the repo also ships root [`SHA256SUMS`](SHA256SUMS) (maintained by `scripts/release.sh checksums [--check]`); pass `--verify-sha256` to `install.sh` for fail-closed pre-install verification, and `--dry-run` to `bootstrap.sh` for a zero-write preview.
 - Selective layers (`--layer core|claude|ci|guard|pipeline`) and custom directory roots (`--docs-dir`, `--scripts-dir`, `--tests-dir`, `--githooks-dir`) pass through to the installer. Omit them for the full `--all` install with default roots.
 - The target should be a git repository: hook wiring (`core.hooksPath`) requires `.git/` — a bare directory gets the files but no Git-hook enforcement (CI still applies once connected).
 - Version check without side effects: `--check` compares carried / upstream / installed versions and exits 1 on drift (CI-friendly). Update **the skill copy itself** (not the target repo) with `--self-update` — it pulls the checkout `--ff-only` and touches nothing else.
+
+### Windows Support Matrix
+
+| Environment | Status | Notes |
+|---|---|---|
+| macOS / Linux (Bash 3.2+) | Full support | Primary reference runtime (`/bin/bash 3.2.57` + POSIX tools) |
+| Windows WSL2 | Full support | Native Linux Bash inside WSL2 |
+| Windows Git Bash / MSYS2 | Supported (`windows-latest` CI smoke) | `.gitattributes` enforces LF; `MSYS_NO_PATHCONV=1` auto-exported; `--as-skill` falls back to safe copy mode; `has_real_python3` ignores Store `python3.exe` stub (note: MSYS2 `fork()` is slower than POSIX) |
+| Windows CMD / PowerShell | Not directly supported | Run commands inside Git Bash or WSL2 |
 
 ### `--as-skill` details (route D in Quick Start)
 
@@ -356,6 +365,7 @@ dev-standards-bootstrap/
 ├── README.md                               # English documentation (this file)
 ├── README.zh-CN.md                         # Chinese documentation
 ├── LICENSE                                 # MIT License
+├── .gitattributes                          # Enforces LF line endings for scripts, hooks, templates, config & markdown
 ├── SHA256SUMS                              # Core deliverable SHA-256 checksums (generated/verified by scripts/release.sh checksums [--check])
 ├── MAINTAINER.md                           # Maintainer notes (NOT shipped with the skill): file roles / change-coupling table / the two self-tests and their order / version carriers / per-version upgrade actions
 ├── CAPABILITY-COMPARISON.md                # Three-way contribution analysis (model / harness / governance) behind the Measured Impact section
@@ -398,9 +408,9 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v4.11.0 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v4.12.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
-    ├── STANDARDS_CHANGELOG_ARCHIVE.md      # Historical standards changelog archive v1.0.0–v4.3.0 (source-only, ITEM-40)
+    ├── STANDARDS_CHANGELOG_ARCHIVE.md      # Historical standards changelog archive v1.0.0–v4.4.0 (source-only, ITEM-40)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
     ├── methodologies/
@@ -486,8 +496,8 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 822) |
-| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (2090 golden-case assertions) in throwaway git repos; bash + git only |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 828) |
+| **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (2104 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
 **There is no soft mode and no double run in CI.** golden-case runs the suite once with `-j 4` under a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`, so a regression fails loudly instead of drifting into the job timeout) and uploads `.agent-state/last-suite-receipt.json` for human forensics. source-audit no longer consumes that artifact: A3/A3c/A10 read the **committed baselines** and run as hard gates (no `AGENT_GUARD_AUDIT_SOFT`), which is also why it needs no dependency on the suite job and runs in parallel with it. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
@@ -526,7 +536,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v4.11.0 | **Last Updated:** 2026-11-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v4.12.0 | **Last Updated:** 2026-11-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

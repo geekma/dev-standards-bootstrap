@@ -75,6 +75,9 @@
 # 路径根（docs 等）由 <repo_root>/.agent-governance.yml 的 paths.* 决定；
 # 未配置即用内置默认 docs/，行为与 v3.14.0 一致（v3.15.0）。
 set -uo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 ROOT=""
 only_fail=0

@@ -21,6 +21,9 @@
 # 零依赖：bash 3.2+、git、curl（仅 URL 模式需要）。不删除任何文件；网络只用于
 # 克隆/拉取本仓库——克隆落地之后运行的全部是仓内脚本，不再执行任何网络下载物。
 set -euo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 DEFAULT_REPO="https://github.com/geekma/dev-standards-bootstrap.git"
 DEFAULT_SKILL_DIR="$HOME/.dev-standards-bootstrap/dev-standards-bootstrap"
@@ -251,7 +254,39 @@ if [[ -n "$as_skill" ]]; then
     || { echo "install: $skill_dir has no SKILL.md at its root — not a skill layout" >&2; exit 2; }
 
   link_dest() { # $1 = destination directory (the dev-standards-bootstrap link path)
-    local dest="$1"
+    local dest="$1" win_copy=false
+    case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+      MINGW*|MSYS*|CYGWIN*) win_copy=true ;;
+    esac
+    if [[ "$win_copy" == true ]]; then
+      if [[ -L "$dest" ]]; then
+        if [[ "$force" != true ]]; then
+          echo "install: $dest is a symlink to '$(readlink "$dest")' — pass --force to replace with copy" >&2
+          return 2
+        fi
+        rm -f "$dest"
+      elif [[ -e "$dest" ]]; then
+        if [[ "$force" == true ]] && { [[ -f "$dest/.dev-standards-skill-copy" ]] || { [[ -d "$dest" ]] && [[ -z "$(ls -A "$dest")" ]]; }; }; then
+          rm -rf "$dest"
+        else
+          echo "install: $dest already exists — refusing to overwrite (fail-closed;" >&2
+          echo "install:   move it aside, or pass --force to replace an EMPTY or dev-standards skill-copy directory)" >&2
+          return 2
+        fi
+      fi
+      mkdir -p "$dest" || return 2
+      cp -R "$skill_dir/SKILL.md" "$skill_dir/resources" "$skill_dir/scripts" "$dest/" || return 2
+      [[ -d "$skill_dir/.claude-plugin" ]] && { cp -R "$skill_dir/.claude-plugin" "$dest/" || return 2; }
+      [[ -f "$skill_dir/SHA256SUMS" ]] && { cp "$skill_dir/SHA256SUMS" "$dest/" || return 2; }
+      [[ -f "$skill_dir/LICENSE" ]] && { cp "$skill_dir/LICENSE" "$dest/" || return 2; }
+      printf 'source=%s\nversion=%s\n' "$skill_dir" "${carried:-unknown}" > "$dest/.dev-standards-skill-copy"
+      if [[ ! -f "$dest/SKILL.md" ]]; then
+        echo "install: copy created but SKILL.md is not reachable at $dest" >&2
+        return 2
+      fi
+      echo "install: Windows/MSYS detected — symlink skipped; copied skill payload to $dest (re-run with --force after updating checkout)"
+      return 0
+    fi
     if [[ -L "$dest" ]]; then
       if [[ "$(readlink "$dest")" == "$skill_dir" ]]; then
         echo "install: skill already linked: $dest -> $skill_dir"

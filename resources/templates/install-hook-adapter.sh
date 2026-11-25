@@ -35,6 +35,46 @@
 #     传空=name-only 降级（两计数器停摆，现状行为）。Claude/cursor hook 走 stdin JSON
 #     `tool_input.command` 无需 adapter 改动；判定口径/阈值唯一权威=session-gate.sh 头注释。
 set -euo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
+
+is_windows_shell() {
+  case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+has_real_python3() {
+  command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1
+}
+
+resolve_hook_bash() {
+  if ! is_windows_shell; then
+    printf 'bash'
+    return 0
+  fi
+  if [[ -x /usr/bin/bash ]]; then
+    printf '/usr/bin/bash'
+    return 0
+  fi
+  local p b
+  local IFS=':'
+  for p in ${PATH:-}; do
+    [[ -n "$p" ]] || continue
+    case "$p" in
+      *System32*|*system32*|*WindowsApps*) continue ;;
+    esac
+    for b in "$p/bash.exe" "$p/bash"; do
+      if [[ -x "$b" ]]; then
+        printf '%s' "$b"
+        return 0
+      fi
+    done
+  done
+  printf 'bash'
+}
 
 usage() {
   cat <<'EOF'
@@ -107,6 +147,7 @@ print_contract() {
     }
   },
   "verify_command": "bash scripts/install-hook-adapter --verify-wiring <generated-config-path>",
+  "windows_note": "On Windows Git Bash / MSYS2, ensure Git Bash precedes C:\\Windows\\System32\\bash.exe (WSL stub) in PATH or invoke /usr/bin/bash explicitly with MSYS_NO_PATHCONV=1.",
   "fallback": "If the current Agent genuinely has no repository-scoped hook surface, rely on Git hooks (.githooks) + CI without fabricating invalid config."
 }
 EOF
@@ -132,6 +173,7 @@ print_global_contract() {
     ],
     "blocking": true
   },
+  "windows_note": "On Windows Git Bash / MSYS2, avoid C:\\Windows\\System32\\bash.exe (WSL stub); use Git Bash (/usr/bin/bash) with MSYS_NO_PATHCONV=1.",
   "notes": "Install in user-level client hooks (e.g. ~/.claude/settings.json or global client hook config); skips repositories without <scripts>/agent-gate (resolves paths.scripts from .agent-governance.yml, default scripts)."
 }
 EOF
@@ -182,7 +224,7 @@ verify_wiring() { # <config-path>
   [[ -n "$cfg" && -f "$cfg" ]] || die "ADAPTER-E14: --verify-wiring target not found: ${cfg:-<empty>}"
   case "$cfg" in
     *.json)
-      if command -v python3 >/dev/null 2>&1; then
+      if has_real_python3; then
         python3 -m json.tool "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg"
       elif command -v jq >/dev/null 2>&1; then
         jq empty "$cfg" >/dev/null 2>&1 || die "ADAPTER-E14: invalid JSON in $cfg"
@@ -294,10 +336,15 @@ need_gate() {
 
 # ---------- claude：JSON 合并（保用户既有 hooks，按 command 串幂等去重） ----------
 adapter_claude() {
-  local f=".claude/settings.json"
-  python3 - "$f" <<'PY'
+  has_real_python3 || die "ADAPTER-E05: python3 required to merge .claude/settings.json (or use --print-contract for zero-dep dynamic wiring)"
+  local f=".claude/settings.json" cmd_prefix=""
+  if is_windows_shell; then
+    cmd_prefix="MSYS_NO_PATHCONV=1 $(resolve_hook_bash) "
+  fi
+  python3 - "$f" "$cmd_prefix" <<'PY'
 import json, sys, os
 path = sys.argv[1]
+prefix = sys.argv[2]
 d = {}
 if os.path.exists(path):
     with open(path) as fh:
@@ -313,14 +360,14 @@ def ensure(stage, entry):
                 return
     lst.append(entry)
 
-ensure("SessionStart", {"matcher": "", "hooks": [{"type": "command", "command": "scripts/session-gate.sh start"}]})
-ensure("PreToolUse", {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "scripts/agent-gate --stage pre-write"}]})
-ensure("Stop", {"hooks": [{"type": "command", "command": "scripts/agent-gate --stage stop"}]})
+ensure("SessionStart", {"matcher": "", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh start"}]})
+ensure("PreToolUse", {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": prefix + "scripts/agent-gate --stage pre-write"}]})
+ensure("Stop", {"hooks": [{"type": "command", "command": prefix + "scripts/agent-gate --stage stop"}]})
 # v3.39.0（CHG-042）会话遥测：计数逻辑在 session-gate.sh 通用层，Claude 只做事件转发
-ensure("UserPromptSubmit", {"matcher": "", "hooks": [{"type": "command", "command": "scripts/session-gate.sh count turn"}]})
-ensure("PostToolUse", {"matcher": "Bash|Grep|Glob|Read|Task", "hooks": [{"type": "command", "command": "scripts/session-gate.sh count tool -"}]})
+ensure("UserPromptSubmit", {"matcher": "", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh count turn"}]})
+ensure("PostToolUse", {"matcher": "Bash|Grep|Glob|Read|Task", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh count tool -"}]})
 # v3.58.0（REQ-1008）handoff 硬拦：PreToolUse exit 2 = Claude 原生块工具（stderr 回给 Agent）
-ensure("PreToolUse", {"matcher": "Bash|Edit|Write|Task|Grep|Glob|Read", "hooks": [{"type": "command", "command": "scripts/session-gate.sh check"}]})
+ensure("PreToolUse", {"matcher": "Bash|Edit|Write|Task|Grep|Glob|Read", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh check"}]})
 
 os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
 with open(path, "w") as fh:
@@ -328,14 +375,15 @@ with open(path, "w") as fh:
     fh.write("\n")
 PY
   # 生成后验证：JSON 必须可解析，五条接线必须就位
-  python3 - "$f" <<'PY'
+  python3 - "$f" "$cmd_prefix" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
+prefix = sys.argv[2]
 h = d.get("hooks", {})
 cmds = [hk.get("command") for st in h.values() for e in st for hk in e.get("hooks", [])]
 for want in ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop", "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -", "scripts/session-gate.sh check"):
-    if want not in cmds:
-        sys.exit(f"missing hook after merge: {want}")
+    if (prefix + want) not in cmds:
+        sys.exit(f"missing hook after merge: {prefix + want}")
 PY
   ok "claude -> $f merged + verified (SessionStart audit / pre-write / stop / telemetry count turn+tool / handoff hard-stop check)"
 }
@@ -649,7 +697,7 @@ adapter_opencode() {
   # 候选集：AI 安装会话可经 DEV_STANDARDS_OPENCODE_CONTRACT（JSON）注入候选序与来源；
   # 缺省用内置候选序。无论来源，最终形状一律由真加载探测裁决——候选不是真理，探针才是。
   local candidates="dual-active server-only setup-v2"
-  if [[ -n "${DEV_STANDARDS_OPENCODE_CONTRACT:-}" ]] && command -v python3 >/dev/null 2>&1; then
+  if [[ -n "${DEV_STANDARDS_OPENCODE_CONTRACT:-}" ]] && has_real_python3; then
     local inj=""
     inj="$(OC_CONTRACT_JSON="$DEV_STANDARDS_OPENCODE_CONTRACT" python3 - <<'PY' 2>/dev/null || true
 import json, os
@@ -1022,29 +1070,32 @@ MD
 
 # ---------- cursor / gemini：静态 schema（保守保留 v3.17 行为，diff + --force） ----------
 static_schema() { # name path
-  local tool="$1" path="$2" content=""
+  local tool="$1" path="$2" content="" cmd_prefix=""
+  if is_windows_shell; then
+    cmd_prefix="MSYS_NO_PATHCONV=1 $(resolve_hook_bash) "
+  fi
   case "$tool" in
-    cursor) content='{
-  "version": 1,
-  "hooks": {
-    "sessionStart": [
-      { "command": "scripts/session-gate.sh start" }
+    cursor) content="{
+  \"version\": 1,
+  \"hooks\": {
+    \"sessionStart\": [
+      { \"command\": \"${cmd_prefix}scripts/session-gate.sh start\" }
     ],
-    "beforeSubmitPrompt": [
-      { "command": "scripts/session-gate.sh count turn" }
+    \"beforeSubmitPrompt\": [
+      { \"command\": \"${cmd_prefix}scripts/session-gate.sh count turn\" }
     ],
-    "postToolUse": [
-      { "matcher": "Shell|Read|Grep|Task", "command": "scripts/session-gate.sh count tool -" }
+    \"postToolUse\": [
+      { \"matcher\": \"Shell|Read|Grep|Task\", \"command\": \"${cmd_prefix}scripts/session-gate.sh count tool -\" }
     ],
-    "preToolUse": [
-      { "matcher": "Write", "command": "scripts/agent-gate --stage pre-write" },
-      { "matcher": "Shell|Write|Task|Grep|Read", "command": "scripts/session-gate.sh check" }
+    \"preToolUse\": [
+      { \"matcher\": \"Write\", \"command\": \"${cmd_prefix}scripts/agent-gate --stage pre-write\" },
+      { \"matcher\": \"Shell|Write|Task|Grep|Read\", \"command\": \"${cmd_prefix}scripts/session-gate.sh check\" }
     ],
-    "stop": [
-      { "command": "scripts/agent-gate --stage stop" }
+    \"stop\": [
+      { \"command\": \"${cmd_prefix}scripts/agent-gate --stage stop\" }
     ]
   }
-}'
+}"
     ;;
     gemini) content='' ;;  # v3.63.0 (REQ-1036): gemini CLI has no repository-scoped hook surface — handled by no_hook_surface, never write fabricated config keys
   esac
@@ -1063,7 +1114,11 @@ static_schema() { # name path
   mkdir -p "$(dirname "$path")"
   printf '%s\n' "$content" > "$path"
   # 静态 schema 同样过验证
-  python3 -m json.tool "$path" >/dev/null 2>&1 || die "ADAPTER-E06: $tool -> $path is not valid JSON after write"
+  if has_real_python3; then
+    python3 -m json.tool "$path" >/dev/null 2>&1 || die "ADAPTER-E06: $tool -> $path is not valid JSON after write"
+  else
+    json_sanity_check "$path" || die "ADAPTER-E06: $tool -> $path is not valid JSON after write"
+  fi
   # v3.63.0 (REQ-1036, DES-1824): cursor 结构断言——遥测/硬拦键必须就位（假绿防线）
   if [[ "$tool" == "cursor" ]]; then
     grep -q '"beforeSubmitPrompt"' "$path" || die "ADAPTER-E10: cursor hooks.json missing beforeSubmitPrompt (turn telemetry dead)"

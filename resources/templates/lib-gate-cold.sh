@@ -305,7 +305,7 @@ EOF
     verify)
       local target_cfg="${cfg_arg:-$cfg_def}"
       [[ -s "$target_cfg" ]] || { echo "agent-gate: review-models --verify failed — missing or empty: $target_cfg" >&2; exit 2; }
-      if command -v python3 >/dev/null 2>&1; then
+      if has_real_python3; then
         python3 - "$target_cfg" <<'PY'
 import json, sys
 p = sys.argv[1]

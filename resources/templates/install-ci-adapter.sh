@@ -19,6 +19,9 @@
 #   install-ci-adapter --print-branch-protection-contract [platform] [--repo <dir>]
 #   install-ci-adapter --verify-wiring <ci-config-path> [--repo <dir>]
 set -uo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 _CI_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for _lj in "$_CI_SELF_DIR/lib-json.sh" "$_CI_SELF_DIR/../resources/templates/lib-json.sh"; do

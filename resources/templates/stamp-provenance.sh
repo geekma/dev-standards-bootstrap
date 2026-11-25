@@ -38,6 +38,9 @@
 # 零依赖：bash 3.2+、sed、awk、grep；git / hostname / uname / date 缺失时降级为
 #   显式 unknown，不猜、不编。
 set -euo pipefail
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 _SP_SCRIPT_DIR=$(cd "$(dirname "$0")" 2>/dev/null && pwd || echo "")
 if [[ -n "$_SP_SCRIPT_DIR" && "$(basename "$(dirname "$_SP_SCRIPT_DIR")")/$(basename "$_SP_SCRIPT_DIR")" == "resources/templates" ]]; then

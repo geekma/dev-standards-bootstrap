@@ -1,0 +1,14 @@
+* text=auto
+*.sh text eol=lf
+.githooks/* text eol=lf
+scripts/agent-gate text eol=lf
+scripts/eval-cases text eol=lf
+scripts/eval-rescore text eol=lf
+resources/templates/*.sh text eol=lf
+resources/templates/pre-commit text eol=lf
+resources/templates/pre-push text eol=lf
+resources/templates/commit-msg text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf

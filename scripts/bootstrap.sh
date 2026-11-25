@@ -25,6 +25,9 @@
 #
 # target_root 缺省为当前目录；--core 为默认层（核心文档层）。
 set -u
+case "${AGENT_GUARD_FORCE_OS:-$(uname -s 2>/dev/null || echo unknown)}" in
+  MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;;
+esac
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 SKILL_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
