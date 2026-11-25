@@ -677,6 +677,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 - **检查器设计规约（v3.10.0）**：新增任何门禁/审计检查必须两段式——①**结构 guard**（适用性判定：该步/该产物是否属于检查范围，不适用即 skip 不产生记录）；②**断言裁决**（guard 命中范围内判 sat/viol）；语义类检查三值化（**CLEAR_FAIL 才判罚，证据不足/歧义一律不判罚**）；检查代码必须含**显式失败路径**（防恒真）；上线前自查误报可能并修剪（过宽检查制造假通过信号——BUG-002 S1 教训）；根因判定须排除下游症状。依据：arXiv:2602.02475 §3.2/§4.7 与本项目 BUG-001/002。
 - 任何门禁例外仅可由 Release Owner（高风险须技术/领域负责人共同）书面批准，记录适用范围、原因、风险、补偿措施、到期时间；例外到期自动失效，不能被 Agent 自行批准。
 - **返工分治（v3.97.0，CHG-134）**：只有会改变既往判定真伪的修复（产品行为或判定路径）必须重跑证据轮；纯补钉（不改已通过判定真值的新增/加强断言）定向跑绿后可延到下一变更，并在 05「延后补钉登记」记编号、理由与承接变更。判据：能否让上一轮的绿变成假绿——能则重跑，不能则登记延后；否则每深一层评审都能再挖出缺口，轮数没有终点。
+- **渐进执法与安全底线**：`.agent-governance.yml` `enforcement.mode` 支持 `strict`（默认）/ `ratchet`（`ratchet_since` 前的存量按 `advisory` 过渡）/ `advisory`（阶段门拦截降级为 `ADVISORY` 告警）；`GATE-E164`（暂存面明文密钥与私钥拦截，仅 `agent-guard: allow-secret` 显式豁免）与 CLI 参数错在所有模式下永不降级；L2/L3 受 `GATE-E163`（Git DAG 因果序：`00-intent.md` 先于源码提交，`change_root` 被 `.gitignore` 时自动降级放行）约束；空 catch/TODO 桩触发非阻断 `WARN [AI-LAZY]`。
 
 ---
 
@@ -829,7 +830,7 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 > **本地 Git Hook 强制面（v3.5.0）**：`commit-msg` 归因、`pre-push`（`--stage ci`）；`bootstrap --guard` 配 `core.hooksPath` 并生成适配器与 `.agent-governance.yml`；验证通道四态 absent/placeholder/tampered/unparsable（unparsable→`GATE-E118`）。
 
-> **无状态阶段门与无账源码改动门（v3.89.0，CHG-117，REQ-1199~1203）**：`--stage spec|design|testplan` 读磁盘锚点无状态机校（`begin` 收窄为入口门，覆盖面不变；`AGENT_GUARD_STAGE_GATES=0` 回退旧行为）。`session-gate check` 阶段感知（源码需 G-测试门或当日缺陷凭证）；无账源码改动由 `check`(exit 2) + `staged/stop`(`GATE-E125`) 双层拦截（`AGENT_GUARD_SKIP_VERIFY` 不豁免无账门）。
+> **无状态阶段门与无账源码改动门（v3.89.0，CHG-117，REQ-1199~1203）**：`--stage spec|design|testplan` 读磁盘锚点无状态机校（`begin` 收窄为入口门，覆盖面不变；`AGENT_GUARD_STAGE_GATES=0` 回退旧行为）。`session-gate check` 阶段感知（源码需 G-测试门或当日缺陷凭证）；无账源码改动由 `check`(exit 2) + `staged/stop`(`GATE-E125`) 双层拦截（`AGENT_GUARD_SKIP_VERIFY` 不豁免无账门）。日常推进可用 `agent-gate start/advance/next [--json]/fix/record-red` 与只读自诊 `doctor [--json]`；非 GitHub CI 可由 `install-ci-adapter` 动态生成并自证；`bootstrap.sh --dry-run` 支持无副作用预览，`install.sh --verify-sha256` 安装前校验根 `SHA256SUMS`；`<tests>/governance-smoke.sh` 提供轻量配置冒烟。
 
 #### 2.17.1 传动机制（Artifact Pipeline）
 
@@ -879,8 +880,8 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 #### 2.17.5 管线度量（metrics）
 
-1. `agent-gate metrics` 输出 JSON Lines（时序、`delivery_ready`、`expert_sessions`、`artifact_files`/`artifact_bytes`、评审轮次与 `dismissal_rate`、`findings_introduced`/`findings_pre_existing`；全集唯一权威=`agent-gate` 与 `lib-gate-cold.sh`）。
-2. 度量为 A0 只读观察、任一缺失值输出 `null`（**禁臆造**，**禁替代 DoD §2.16.3**）；token 级成本不进本契约，需要时由平台侧 adapter 另行导出。
+1. `agent-gate metrics [--summary] [--json]` 输出 JSON Lines 或聚合统计（时序、`delivery_ready`、`expert_sessions`、`artifact_files`/`artifact_bytes`、评审轮次与 `dismissal_rate`、`findings_introduced`/`findings_pre_existing`；全集唯一权威=`agent-gate` 与 `lib-gate-cold.sh`）；`scripts/friction-report.sh` 聚合摩擦趋势，`scripts/mcp-governance-server.sh` 提供零依赖只读 MCP 包装。
+2. 度量与只读诊断/MCP 查询均为 A0 只读观察、任一缺失值输出 `null`（**禁臆造**，**禁替代 DoD §2.16.3**）；token 级成本不进本契约，需要时由平台侧 adapter 另行导出。
 
 ---
 
@@ -1063,4 +1064,4 @@ RTVM（§1.2）在此场景**扩展第五维度**。以下映射表与 RTVM 并�
 
 ---
 
-*规范版本：v4.10.0 | 更新时间：2026-11-25 | 全局维护责任人：geekma (geekma@gmail.com)*
+*规范版本：v4.11.0 | 更新时间：2026-11-25 | 全局维护责任人：geekma (geekma@gmail.com)*

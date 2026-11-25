@@ -2105,6 +2105,52 @@ if [[ -f "$BOOT_SRC" ]]; then
     check_output "T14 TC-10074 friction-report ranks GATE-E164" '"code":"GATE-E164","count":2' "$out"
     rm -rf "$_fr_tmp"
   fi
+  # TC-10076 (CHG-156, REQ-1453): sync-local-wrappers manages tests/audit-docs-consistency.sh
+  if [[ -f "$ROOT/scripts/sync-local-wrappers.sh" ]]; then
+    _sw_a=$(mktemp -d)
+    mkdir -p "$_sw_a/scripts" "$_sw_a/.githooks" "$_sw_a/tests" "$_sw_a/resources/templates"
+    cp "$ROOT/resources/templates/"*.sh "$ROOT/resources/templates/pre-commit" "$_sw_a/resources/templates/" 2>/dev/null || true
+    cp "$ROOT/scripts/sync-local-wrappers.sh" "$_sw_a/scripts/sync-local-wrappers.sh"
+    bash "$_sw_a/scripts/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_sw_a/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1
+    _swa_rc=$?
+    report "T14 TC-10076 sync-local-wrappers creates audit wrapper and passes --check" 0 "$_swa_rc"
+    report "T14 TC-10076 wrapped audit-docs-consistency is 3-line exec wrapper" 1 "$([[ "$(wc -l < "$_sw_a/tests/audit-docs-consistency.sh" | tr -d ' ')" -eq 3 ]] && grep -qF '# single-source wrapper -> resources/templates/audit-docs-consistency.sh' "$_sw_a/tests/audit-docs-consistency.sh" && echo 1 || echo 0)"
+    bash "$_sw_a/tests/audit-docs-consistency.sh" --since no-such-ref-xyz >/dev/null 2>&1
+    report "T14 TC-10076 wrapped audit-docs-consistency forwards --since exit 2" 2 $?
+    rm -rf "$_sw_a"
+  fi
+  # TC-10077 (CHG-156, REQ-1454): release.sh checksums & update-assertion-count enforce 0644
+  if [[ -f "$ROOT/scripts/release.sh" && -f "$ROOT/scripts/update-assertion-count.sh" ]]; then
+    _perm_d=$(mktemp -d)
+    mkdir -p "$_perm_d/scripts" "$_perm_d/tests" "$_perm_d/resources/templates" "$_perm_d/resources/methodologies" "$_perm_d/.claude-plugin"
+    cp "$ROOT/SKILL.md" "$ROOT/README.md" "$ROOT/README.zh-CN.md" "$_perm_d/"
+    cp "$ROOT/scripts/"*.sh "$_perm_d/scripts/" 2>/dev/null || true
+    cp "$ROOT/resources/"*.md "$_perm_d/resources/" 2>/dev/null || true
+    cp "$ROOT/resources/templates/"* "$_perm_d/resources/templates/" 2>/dev/null || true
+    cp "$ROOT/resources/methodologies/"*.md "$_perm_d/resources/methodologies/" 2>/dev/null || true
+    cp "$ROOT/tests/.suite-baseline" "$ROOT/tests/.audit-baseline" "$ROOT/tests/.audit-assertions" "$_perm_d/tests/" 2>/dev/null || true
+    printf '99999\n' > "$_perm_d/tests/.suite-baseline"
+    chmod 0600 "$_perm_d/README.md" "$_perm_d/README.zh-CN.md"
+    bash "$_perm_d/scripts/release.sh" checksums >/dev/null 2>&1
+    bash "$_perm_d/scripts/update-assertion-count.sh" --from-baseline >/dev/null 2>&1
+    _p_sums=$(stat -c '%a' "$_perm_d/SHA256SUMS" 2>/dev/null || stat -f '%Lp' "$_perm_d/SHA256SUMS" 2>/dev/null || echo "")
+    _p_rm=$(stat -c '%a' "$_perm_d/README.md" 2>/dev/null || stat -f '%Lp' "$_perm_d/README.md" 2>/dev/null || echo "")
+    _p_zh=$(stat -c '%a' "$_perm_d/README.zh-CN.md" 2>/dev/null || stat -f '%Lp' "$_perm_d/README.zh-CN.md" 2>/dev/null || echo "")
+    _p_bl=$(stat -c '%a' "$_perm_d/tests/.suite-baseline" 2>/dev/null || stat -f '%Lp' "$_perm_d/tests/.suite-baseline" 2>/dev/null || echo "")
+    report "T14 TC-10077 release checksums enforces 0644 on SHA256SUMS" "644" "$_p_sums"
+    report "T14 TC-10077 update-assertion-count enforces 0644 on README.md" "644" "$_p_rm"
+    report "T14 TC-10077 update-assertion-count enforces 0644 on README.zh-CN.md" "644" "$_p_zh"
+    report "T14 TC-10077 baseline retains 0644" "644" "$_p_bl"
+    rm -rf "$_perm_d"
+  fi
+  # TC-10078 (CHG-156, REQ-1452): CAPABILITY-COMPARISON en/zh updated with 162 GATE-E & v4.5-v4.10 evolution note
+  if [[ -f "$ROOT/CAPABILITY-COMPARISON.md" && -f "$ROOT/能力对比分析.md" ]]; then
+    _cc_en=0; _cc_zh=0
+    grep -qF '162 `GATE-E`' "$ROOT/CAPABILITY-COMPARISON.md" && grep -qF 'Evolution Note (v4.5–v4.10)' "$ROOT/CAPABILITY-COMPARISON.md" && _cc_en=1
+    grep -qF '162 个 `GATE-E`' "$ROOT/能力对比分析.md" && grep -qF '演进说明（v4.5–v4.10）' "$ROOT/能力对比分析.md" && _cc_zh=1
+    report "T14 TC-10078 CAPABILITY-COMPARISON.md carries v4.10 snapshot and evolution note" 1 "$_cc_en"
+    report "T14 TC-10078 能力对比分析.md carries v4.10 snapshot and evolution note" 1 "$_cc_zh"
+  fi
 else
   echo "SKIP T14b: bootstrap.sh 为 Skill 仓库安装器（不随 --guard 分发）——跳过安装器路径用例"
 fi

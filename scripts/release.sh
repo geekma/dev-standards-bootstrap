@@ -196,7 +196,7 @@ checksums() {
       h=$(sha256_file "$ROOT/$f") || { rm -f "$tmp"; exit 2; }
       printf '%s  %s\n' "$h" "$f" >> "$tmp"
     done < <(checksum_files)
-    mv "$tmp" "$sums"
+    chmod 0644 "$tmp" && mv "$tmp" "$sums"
     echo "release: wrote $(wc -l < "$sums" | tr -d ' ') checksums to SHA256SUMS"
     return 0
   fi

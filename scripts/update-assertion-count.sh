@@ -207,6 +207,7 @@ if [[ "$from_baseline" -eq 0 ]]; then
       status=1
     elif [[ "$check" -eq 0 ]]; then
       printf '%s\n' "$N" > "$SUITE_BASELINE"
+      chmod 0644 "$SUITE_BASELINE"
       echo "updated tests/.suite-baseline -> ${N}"
     fi
   fi
@@ -227,6 +228,7 @@ for f in "$ROOT/README.md" "$ROOT/README.zh-CN.md"; do
       echo "drift: $f claims a stale assertion count (expected ${N}); run scripts/update-assertion-count.sh" >&2
       status=1
     else
+      chmod 0644 "$tmp"
       mv "$tmp" "$f"
       echo "updated $(basename "$f") -> ${N}"
       continue
@@ -282,6 +284,7 @@ if [[ -f "$AUDIT_NAMES_LAST" ]]; then
     status=1
     rm -f "$tmp_names"
   else
+    chmod 0644 "$tmp_names"
     mv "$tmp_names" "$AUDIT_ASSERTIONS"
     echo "updated tests/.audit-assertions -> $(wc -l < "$AUDIT_ASSERTIONS" | tr -d ' ') names"
   fi
@@ -303,6 +306,7 @@ if [[ -f "$AUDIT_BASELINE" ]]; then
         echo "drift: $f audit assertion count is stale (expected ${audit_n}); run scripts/update-assertion-count.sh" >&2
         status=1
       else
+        chmod 0644 "$tmp"
         mv "$tmp" "$f"
         echo "updated $(basename "$f") audit count -> ${audit_n}"
         continue

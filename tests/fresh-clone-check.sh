@@ -183,7 +183,7 @@ prior=$(ledger_dupes)
 # covers the pending change before it is committed — same set a clone gets after
 # the commit lands. Untracked files stay out (they never reach a clone / CI).
 # Only `cp` is used below: this tool must run on macOS and Linux alike.
-( cd "$ROOT" && git ls-files | while IFS= read -r f; do
+( cd "$ROOT" && git -c core.quotePath=false ls-files | while IFS= read -r f; do
     [[ -f "$f" ]] || continue
     d=$(dirname "$f")
     mkdir -p "$tmp/$d" || exit 1
@@ -193,7 +193,7 @@ prior=$(ledger_dupes)
   && git config user.email fresh@clone.invalid && git config user.name fresh \
   && git add -A >/dev/null 2>&1 && git commit -qm "fresh clone" >/dev/null 2>&1 ) \
   || { echo "fresh-clone-check: snapshot commit failed" >&2; exit 2; }
-archive_sha=$( cd "$ROOT" && git ls-files | while IFS= read -r f; do [[ -f "$f" ]] && cksum "$f"; done | cksum | awk '{print $1}' )
+archive_sha=$( cd "$ROOT" && git -c core.quotePath=false ls-files | while IFS= read -r f; do [[ -f "$f" ]] && cksum "$f"; done | cksum | awk '{print $1}' )
 tree_sha=$( cd "$ROOT" && git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' )
 code_face_sha=$(fc_code_face_sha)
 

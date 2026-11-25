@@ -7,9 +7,9 @@
 > **Method**: one downstream integration project, 2026-09-18 to 09-22, 11 working sessions (session-DB measurements) cross-checked against git history and governance artifacts; share = party's slice of effective output per stage (evidence-triangulated estimate, not exact measurement); Harness = the execution framework wrapping the model (tool loop, session persistence, hook/gate integration points).
 >
 > Generated: 2026-09-22 ｜ Privacy: project and personal identifiers removed
-> **Snapshot scope**: machine-enforcement counts reflect the v3.39-era snapshot; 2026-09-28 recheck — 88 GATE-E codes (v3.62.1), audit groups G1–G10 + source-layer A-group. Current values per DS footer / CLAUSE_REGISTRY.
->
-> **快照范围**：机校数为 v3.39 时代快照；2026-09-28 复核——88 个 GATE-E 码（v3.62.1）、审计组 G1–G10+源层 A 组。当前值以 DS 页脚/CLAUSE_REGISTRY 为准。
+> **Snapshot scope**: machine-enforcement counts reflect the v3.39-era snapshot; 2026-09-28 recheck — 88 GATE-E codes (v3.62.1), audit groups G1–G10 + source-layer A-group; 2026-11-25 recheck (`v4.10.0+`) — 162 `GATE-E` codes, audit groups `G1–G16` + source-layer `A`-group (stage row #16 below retains the 2026-09 measurement snapshot). Current values per DS footer / CLAUSE_REGISTRY.
+
+> **快照范围**：机校数为 v3.39 时代快照；2026-09-28 复核——88 个 GATE-E 码（v3.62.1）、审计组 G1–G10+源层 A 组；2026-11-25 复核（`v4.10.0+`）——162 个 `GATE-E` 码、审计组 `G1–G16` + 源层 `A` 组（第 16 行仍保留 2026-09 实测期快照）。当前值以 DS 页脚/CLAUSE_REGISTRY 为准。
 
 ## Summary
 
@@ -94,3 +94,10 @@ Highest value per row in bold.
 | Smallest gaps | Coding 95% / discipline 95% / discovery 92% / execution 85% (intellectual + execution) |
 | Largest gaps | Retention 25% / handoff 30% / compliance 30% / intent 40% (organizational memory) |
 | Cost change | Dropping the layer saves ~25% of tool calls + resident base, a 30–50% token reduction; but same-family defect recurrence and the "six-fix" pattern return — **rework claws back part of the savings** |
+
+## 5. Evolution Note (v4.5–v4.10)
+
+- **Dynamic client & CI adaptation (`v4.5`–`v4.7`)**: `install-hook-adapter` (env > repo > PATH runtime probe + `--print-contract` / `--print-global-contract` / `--verify-wiring`) and `install-ci-adapter` replace fixed client/CI assumptions; `.agent-governance.yml` supports dynamic `code_extensions` and `test_weakening_patterns`.
+- **Tax reduction & latency (`v4.6`, `v4.9`)**: `audit-docs-consistency.sh` merges `G2`/`G4`/`G11`/`G15`/`A20` into single-pass `awk` + default `--incremental` session start; `agent-gate.sh` splits cold subcommands into `lib-gate-cold.sh` and shares `lib-json.sh`.
+- **Process causality & security (`v4.7`–`v4.8`)**: `GATE-E163` enforces Git DAG causal order (`00-intent.md` before source commits for L2/L3), `GATE-E164` hard-blocks plaintext secrets/private keys on `--stage staged`, `AI-LAZY` warns on empty catches/TODO stubs, and `start`/`advance`/`next`/`fix`/`record-red` streamline the daily workflow.
+- **Gradual adoption & observability (`v4.10`)**: `enforcement.mode` (`strict|ratchet|advisory`, with `GATE-E164` never downgraded), `agent-gate doctor [--json]`, `metrics --summary [--json]`, `bootstrap.sh --dry-run`, root `SHA256SUMS` + `install.sh --verify-sha256`, `scripts/friction-report.sh`, and the zero-dep read-only `scripts/mcp-governance-server.sh`.

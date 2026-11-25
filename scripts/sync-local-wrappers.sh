@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sync-local-wrappers.sh — replace 6 duplicate source mirrors with 3-line single-source exec wrappers (ITEM-43)
+# sync-local-wrappers.sh — replace 7 duplicate source mirrors with 3-line single-source exec wrappers (ITEM-43, REQ-1453)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,6 +18,7 @@ scripts/eval-rescore:resources/templates/eval-rescore.sh
 scripts/session-gate.sh:resources/templates/session-gate.sh
 scripts/stamp-provenance.sh:resources/templates/stamp-provenance.sh
 .githooks/pre-commit:resources/templates/pre-commit
+tests/audit-docs-consistency.sh:resources/templates/audit-docs-consistency.sh
 "
 
 bad=0

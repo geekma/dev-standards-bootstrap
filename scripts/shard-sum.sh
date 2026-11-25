@@ -99,6 +99,7 @@ if [[ "$do_write" -eq 1 ]]; then
   baseline="$root/tests/.suite-baseline"
   [[ -d "$root/tests" ]] || { echo "shard-sum: $root/tests does not exist" >&2; exit 2; }
   printf '%s\n' "$total_p" > "$baseline"
+  chmod 0644 "$baseline"
   bash "$gen" --from-baseline
   echo "shard-sum: baseline=$total_p synced via update-assertion-count.sh --from-baseline"
 fi
