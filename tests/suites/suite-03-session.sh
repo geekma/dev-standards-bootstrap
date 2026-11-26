@@ -35,6 +35,22 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   AGENT_GUARD_MODEL=m1 AGENT_GUARD_CONTEXT_WINDOW=64000 bash scripts/session-gate.sh start >/dev/null 2>&1
   check_output "T26 cost: env declares model+window" '"context_window":64000,"source":"declared"' "$(cat .agent-state/model-profile.json)"
   check_output "T26 cost: stats carries model+window keys" '"model_id":"m1","ctx_window":64000' "$(cat .agent-state/session-tool-stats.json)"
+  # ---- CHG-160: per-runtime declaration (AGENT_GUARD_MODEL_<RUNTIME> / AGENT_GUARD_CONTEXT_WINDOW_<RUNTIME>) ----
+  _rt_bak=""; [[ -f .agent-state/runtime.json ]] && _rt_bak=$(cat .agent-state/runtime.json)
+  printf '{"runtime_id":"claude","family":"json-hooks","clients":"claude ","generated_at":"x"}\n' > .agent-state/runtime.json
+  rm -f .agent-state/model-profile.json
+  out=$(bash scripts/session-gate.sh start 2>&1)
+  check_output "T26 per-runtime: unset keeps assumed WARN and names the runtime variables" "AGENT_GUARD_CONTEXT_WINDOW_CLAUDE" "$out"
+  AGENT_GUARD_MODEL_CLAUDE=rt1 AGENT_GUARD_CONTEXT_WINDOW_CLAUDE=200000 bash scripts/session-gate.sh start >/dev/null 2>&1
+  check_output "T26 per-runtime: runtime-specific variables are declared" '"model_id":"rt1","provider":"unknown","context_window":200000,"source":"declared"' "$(cat .agent-state/model-profile.json)"
+  AGENT_GUARD_MODEL=gen1 AGENT_GUARD_CONTEXT_WINDOW=64000 AGENT_GUARD_MODEL_CLAUDE=rt1 AGENT_GUARD_CONTEXT_WINDOW_CLAUDE=200000 bash scripts/session-gate.sh start >/dev/null 2>&1
+  check_output "T26 per-runtime: generic variables take precedence" '"model_id":"gen1","provider":"unknown","context_window":64000' "$(cat .agent-state/model-profile.json)"
+  rm -f .agent-state/model-profile.json
+  out=$(AGENT_GUARD_MODEL_CURSOR=c1 AGENT_GUARD_CONTEXT_WINDOW_CURSOR=512000 bash scripts/session-gate.sh start 2>&1)
+  check_output "T26 per-runtime: another runtime's variables are not borrowed" '"source":"assumed"' "$(cat .agent-state/model-profile.json)"
+  if [[ -n "$_rt_bak" ]]; then printf '%s\n' "$_rt_bak" > .agent-state/runtime.json; else rm -f .agent-state/runtime.json; fi
+  # restore the m1/64000 session state that the model-switch assertions below start from
+  AGENT_GUARD_MODEL=m1 AGENT_GUARD_CONTEXT_WINDOW=64000 bash scripts/session-gate.sh start >/dev/null 2>&1
   # v3.91.6: v3.91.2's honesty rule requires BOTH in/out to claim "measured";
   # the fixture used to set only TOKENS_IN and now lands in "不可测".
   out=$(AGENT_GUARD_MODEL=m2 AGENT_GUARD_CONTEXT_WINDOW=32000 AGENT_GUARD_TOKENS_IN=25600 AGENT_GUARD_TOKENS_OUT=1 bash scripts/session-gate.sh count tool Bash "echo x" 2>&1)
@@ -303,7 +319,21 @@ printf '{"runtime_id":"opencode","family":"plugin-api","clients":"opencode","gen
 r16_out=$( cd "$R16" && PATH=/usr/bin:/bin bash scripts/install-hook-adapter.sh --detect 2>&1 )
 check_output "T26c runtime transition recorded" 'runtime changed' "$r16_out"
 check_output "T26c handshake file written" '"runtime":' "$( cd "$R16" && git init -q . && bash scripts/agent-gate session-start >/dev/null 2>&1; cat "$R16"/.agent-state/runtime/*.json 2>/dev/null )"
+# ---- CHG-160: per-runtime model/window declaration reaches the handshake and the installer output ----
+printf '{"runtime_id":"claude","family":"json-hooks","clients":"claude ","generated_at":"x"}\n' > "$R16/.agent-state/runtime.json"
+check_output "T26c per-runtime: handshake reads AGENT_GUARD_*_<RUNTIME>" 'runtime=claude model=rt1 window=200000 \(declared\)' "$( cd "$R16" && env -u AGENT_RUNTIME -u AGENT_GUARD_MODEL -u AGENT_GUARD_CONTEXT_WINDOW AGENT_GUARD_MODEL_CLAUDE=rt1 AGENT_GUARD_CONTEXT_WINDOW_CLAUDE=200000 bash scripts/agent-gate session-start 2>&1 )"
+check_output "T26c per-runtime: generic variables win in the handshake" 'model=gen1 window=64000' "$( cd "$R16" && env -u AGENT_RUNTIME AGENT_GUARD_MODEL=gen1 AGENT_GUARD_CONTEXT_WINDOW=64000 AGENT_GUARD_MODEL_CLAUDE=rt1 AGENT_GUARD_CONTEXT_WINDOW_CLAUDE=200000 bash scripts/agent-gate session-start 2>&1 )"
 rm -rf "$R16"
+R17=$(mktemp -d "${TMPDIR:-/tmp}/runtime-decl.XXXXXX")
+mkdir -p "$R17/scripts" "$R17/.claude"
+cp "$ROOT/resources/templates/install-hook-adapter.sh" "$R17/scripts/" 2>/dev/null || true
+cp "$ROOT/resources/templates/session-gate.sh" "$R17/scripts/" 2>/dev/null || true
+printf '#!/usr/bin/env bash\nexit 0\n' > "$R17/scripts/agent-gate"; chmod +x "$R17/scripts/agent-gate"
+r17_out=$( cd "$R17" && git init -q . && env -u AGENT_RUNTIME -u CLAUDECODE -u OPENCODE -u OPENCODE_SESSION_ID -u CURSOR_AGENT -u CURSOR_TRACE_ID -u GEMINI_CLI -u CODEX_HOME bash scripts/install-hook-adapter.sh claude 2>&1 )
+check_output "T26c per-runtime: installer prints the detected client's declaration variables" 'AGENT_GUARD_MODEL_CLAUDE=<model-id> AGENT_GUARD_CONTEXT_WINDOW_CLAUDE=<tokens>' "$r17_out"
+r17_n=$(grep -cE "AGENT_GUARD_(MODEL|CONTEXT_WINDOW)_CLAUDE" "$R17/.claude/settings.json" 2>/dev/null || true)
+report "T26c per-runtime: installer writes no model or window declaration into client config" 0 "${r17_n:-0}"
+rm -rf "$R17"
 # ---- P0-7: every gate refusal carries expected / allowed / fix / ref -------
 r16_out=$( cd "$R16" 2>/dev/null; printf '' )
 G16="$ROOT/resources/templates/lib-gate-staged.sh"

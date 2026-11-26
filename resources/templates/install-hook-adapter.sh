@@ -1284,4 +1284,10 @@ for c in $targets; do
 done
 
 ok "$installed client(s) wired; session enforcement active for supported clients"
+# CHG-160: 按 agent 的模型/窗口声明入口。只打印变量名，不写入也不猜任何模型名或窗口值。
+for _c in $matrix; do
+  case "$_c" in claude|opencode|cursor|gemini|codex) ;; *) continue ;; esac
+  _k=$(printf '%s' "$_c" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')
+  ok "context window for $_c is unverified until declared: export AGENT_GUARD_MODEL_${_k}=<model-id> AGENT_GUARD_CONTEXT_WINDOW_${_k}=<tokens> (generic AGENT_GUARD_MODEL / AGENT_GUARD_CONTEXT_WINDOW take precedence)"
+done
 ok ".agent-state/ is runtime state (telemetry/audit reports), NOT a governance artifact — add it to .gitignore; probe scratch .oc-xdg/ likewise (residue guard)"

@@ -5382,6 +5382,13 @@ gate_staged_dispatch() {
     [[ -n "$ss_rt" ]] || ss_rt="unknown"
     ss_prof="$repo_root/.agent-state/model-profile.json"
     ss_model="${AGENT_GUARD_MODEL:-}"; ss_win="${AGENT_GUARD_CONTEXT_WINDOW:-}"; ss_src="declared"
+    # CHG-160: 通用变量缺省时回落到按 agent 的 AGENT_GUARD_MODEL_<RUNTIME> / AGENT_GUARD_CONTEXT_WINDOW_<RUNTIME>（与 session-gate 同口径）
+    if [[ "$ss_rt" != "unknown" ]]; then
+      ss_key=$(printf '%s' "$ss_rt" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_')
+      ss_mv="AGENT_GUARD_MODEL_${ss_key}"; ss_wv="AGENT_GUARD_CONTEXT_WINDOW_${ss_key}"
+      [[ -n "$ss_model" ]] || ss_model="${!ss_mv:-}"
+      [[ -n "$ss_win" ]] || ss_win="${!ss_wv:-}"
+    fi
     if [[ -z "$ss_model" && -s "$ss_prof" ]]; then
       ss_model=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$ss_prof" | head -1)
       ss_win=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$ss_prof" | head -1)

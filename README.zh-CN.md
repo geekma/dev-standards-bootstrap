@@ -88,7 +88,7 @@
 | **缺陷日志 + 同族推演 + 根因分类** | 仓库级追加式 `bugfix-log.md` 索引；根因表必含**同族推演**行与互斥根因分类，锚定最早未恢复失败点（AgentRx 依据；§2.5 阶段 6）——不做同族扫描的修复被拒 |
 | **确定性门禁 + 管线自动化** | 一个零依赖校验器被写入时 Hook、Git Hook 与 CI 共享；spec 合入自动派发骨架 PR、changelog 合入自动开发布检查单、事故自动生成 `BUG-<时间戳>` 意图 PR；自主权上限 A2（§2.17） |
 | **发布完整性 + 证据复用** | 单一版本权威（`scripts/release.sh check\|bump`）校验全部载体、只重写声明位点；CI 只跑一次全量套件并上传树指纹收据，硬审计复用同一收据；工作区套件锁同一时刻只允许一次全量运行并回收死锁主 |
-| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（2143 项 golden-case 断言）——只需 bash + git（§2.17.4） |
+| **golden case 自测试** | `tests/run-tests.sh` 在临时 Git 仓库里回归测试门禁与安装器（2151 项 golden-case 断言）——只需 bash + git（§2.17.4） |
 
 `agent-gate metrics [--summary] [--json]` 从 git 历史输出只读 JSON Lines 或聚合管线度量（`doctor [--json]` 运行 6 项只读体检；`enforcement.mode` 支持 `strict|ratchet|advisory` 且 `GATE-E164` 密钥拦截永不降级；可选 `scripts/friction-report.sh` 与零依赖只读 `scripts/mcp-governance-server.sh`）——仅观察，永不替代 DoD 判定（§2.17.5）。专项规范覆盖部署/配置/DB、AI/LLM 管线、测试数据隔离、紧急热修复、发布、监控与供应链（§2.6–§2.13）。唯一版本历史是 [`resources/STANDARDS_CHANGELOG.md`](resources/STANDARDS_CHANGELOG.md)（随 --core 下发，audit G1 机校）。
 
@@ -220,7 +220,7 @@ bash dev-standards-bootstrap/scripts/bootstrap.sh --all <目标仓库>
 | `--stage core\|scope\|rtvm` | 活跃变更的无状态交付门：core = E150/E151/E153（先红后绿、验证独立、新鲜克隆收据）；scope = E152（范围预算）；rtvm = E154（未验证 REQ 清单）；幂等、不写状态文件 |
 | `--stage ci [--base <ref>]` | 复查分支/PR diff 并运行真实验证命令 |
 | `plan <变更号> [--explain\|--dry-run]` / `plan --refresh-profile` | 只读自适应判定引擎（v3.90.2 起，v3.91.0 加固）：读画像 + diff + 成本台账，把 `decision` 写进 `00-governance.json`（选节、预计秒数、CAB `deferred`/`wasted`、嵌套 artifacts/stages/masters、`must`、TC 解析率）。判定是**议案不是判决**：AI 必须把判定卡与三选一（采纳/升档/降档）交给用户选；AI 收窄必须带 `AGENT_GUARD_SCOPE_CONFIRM` 并落 `decision.scope_confirmed`。`--explain` 打印成本/覆盖账；`--refresh-profile` 报 profile 缺键。总开关 `AGENT_GUARD_ADAPT=0` |
-| `status` | 打印生效执法面——runtime、hook 协议家族、层、`enforcement=hook\|handshake`、握手是否存在、当前模型/上下文窗口（v3.91.0） |
+| `status` | 打印生效执法面——runtime、hook 协议家族、层、`enforcement=hook\|handshake`、握手是否存在、当前模型/上下文窗口（v3.91.0）；按客户端用 `AGENT_GUARD_MODEL_<RUNTIME>` / `AGENT_GUARD_CONTEXT_WINDOW_<RUNTIME>` 声明（如 `_CLAUDE`，安装结束会按检测到的客户端打印具体变量名；通用的 `AGENT_GUARD_MODEL` / `AGENT_GUARD_CONTEXT_WINDOW` 优先；不写死任何值，未声明时按保守的 128000 并告警） |
 | `resume <变更号>` | 从 `handoff.md` + `decision` 恢复换挡会话并打印下一步；只读，缺参报 `GATE-E149` |
 | `baseline <变更号> [--write]` / `tc-index <变更号> [--write]` | P0-0 五数基线与 P1-2 三源 TC 索引（04 矩阵 + 脚本自声明 + RTVM）；索引是目标仓缓存，不是契约产物 |
 | `metrics [--summary] [--json]` | 只读管线度量（JSON Lines 或 `awk` 聚合汇总）——仅观察；聚合 `gate-friction.tsv`（die/bypass/advisory/probe 计数）及采纳/wasted/stale/握手/评审独立性列 |
@@ -500,7 +500,7 @@ dev-standards-bootstrap/
 | Job | 职责 |
 |---|---|
 | **Source-layer audit** | `tests/audit-standards-src.sh`——审计规范文本自身：版本链、关键词矩阵、清单唯一性、编号、防恒真 grep（断言：842） |
-| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（2143 条 golden-case 断言）；仅依赖 bash + git |
+| **Golden-case self-tests** | `tests/run-tests.sh`——在一次性 git 仓库里回归门禁与安装器（2151 条 golden-case 断言）；仅依赖 bash + git |
 | **agent-governance** | 聚合必需检查上下文：上面两个 job 任一未成功即失败（供分支保护使用的稳定名称） |
 
 **CI 内不再软门、不再双跑**：golden-case 先以 `-j 4` 跑一遍（600s 墙钟预算 `AGENT_GUARD_CI_WALL_BUDGET_S`，超过即显式失败，不会拖到 job 上限才超时），并上传 `.agent-state/last-suite-receipt.json` 供人工取证；source-audit **不再消费该 artifact**——A3/A3c/A10 直接读**已提交的基线**做硬校验（不再设 `AGENT_GUARD_AUDIT_SOFT`），因此它对套件 job 没有任何依赖，可与之并行。**两个真实 job 受 `timeout-minutes: 15` 约束，聚合门 `agent-governance` 为 5 分钟。** 工作区套件锁（`lib-suite-lock.sh`，随 `--guard` 下发）同一时刻只允许一次全量运行并回收死锁主；收据/红档路径可用 `AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH` 覆盖，自测不会污染真实台账。workflow 级 `concurrency` 组会取消同 ref 被取代的 run。

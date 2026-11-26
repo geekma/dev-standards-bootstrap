@@ -193,10 +193,26 @@ sg_profile_get() { # <key> — read a string or numeric field from model-profile
   sed -n "s/.*\"$1\":[[:space:]]*\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$MODEL_FILE" 2>/dev/null | head -1
 }
 
-sg_model_resolve() { # sets SG_MODEL_ID / SG_CTX_WINDOW / SG_WINDOW_SOURCE
-  local env_model env_win cached_model cached_win mid win src
+sg_runtime_key() { # -> upper-case env-var suffix of the detected runtime (empty when unknown)
+  # CLAIM: install-hook-adapter 写入的 runtime_id 决定按 agent 的声明变量名；不内置任何模型名或窗口值。
+  local rid="${AGENT_RUNTIME:-}"
+  [[ -n "$rid" ]] || { [[ -s "$STATE_DIR/runtime.json" ]] \
+    && rid=$(sed -n 's/.*"runtime_id":"\([^"]*\)".*/\1/p' "$STATE_DIR/runtime.json" 2>/dev/null | head -1); }
+  case "$rid" in ''|unknown) return 0 ;; esac
+  printf '%s' "$rid" | tr '[:lower:]' '[:upper:]' | tr -c 'A-Z0-9' '_'
+}
+
+sg_model_resolve() { # sets SG_MODEL_ID / SG_CTX_WINDOW / SG_WINDOW_SOURCE / SG_RT_KEY
+  local env_model env_win cached_model cached_win mid win src mvar wvar
+  SG_RT_KEY=$(sg_runtime_key)
   env_model="${AGENT_GUARD_MODEL:-}"
   env_win=$(sg_positive_int "${AGENT_GUARD_CONTEXT_WINDOW:-}" "")
+  # 通用变量优先；缺省时回落到按 agent 的 AGENT_GUARD_MODEL_<RUNTIME> / AGENT_GUARD_CONTEXT_WINDOW_<RUNTIME>
+  if [[ -n "$SG_RT_KEY" ]]; then
+    mvar="AGENT_GUARD_MODEL_${SG_RT_KEY}"; wvar="AGENT_GUARD_CONTEXT_WINDOW_${SG_RT_KEY}"
+    [[ -n "$env_model" ]] || env_model="${!mvar:-}"
+    [[ -n "$env_win" ]] || env_win=$(sg_positive_int "${!wvar:-}" "")
+  fi
   cached_model=$(sg_profile_get model_id)
   cached_win=$(sg_positive_int "$(sg_profile_get context_window)" "")
   mid="${env_model:-$cached_model}"
@@ -833,7 +849,7 @@ if [[ "$mode" == "start" ]]; then
   sg_model_resolve
   sg_profile_write
   [[ "$SG_WINDOW_SOURCE" != "assumed" ]] \
-    || emit "session-gate: WARN — context window unverified for model '${SG_MODEL_ID}' (assumed 128000); declare with AGENT_GUARD_MODEL / AGENT_GUARD_CONTEXT_WINDOW (P0-15)"
+    || emit "session-gate: WARN — context window unverified for model '${SG_MODEL_ID}' (assumed 128000); declare with AGENT_GUARD_MODEL / AGENT_GUARD_CONTEXT_WINDOW${SG_RT_KEY:+ (or AGENT_GUARD_MODEL_${SG_RT_KEY} / AGENT_GUARD_CONTEXT_WINDOW_${SG_RT_KEY} for this runtime)} (P0-15)"
   reset_state
   if [[ ! -f "$AUDIT" ]]; then
     emit "session-gate: $AUDIT not found — cross-doc audit skipped (install --core first)"
