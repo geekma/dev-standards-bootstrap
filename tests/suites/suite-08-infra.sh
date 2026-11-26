@@ -1234,6 +1234,29 @@ EOS
     "$(awk -F'\t' '$1=="suite" && $2 ~ /stub\.sh$/ {s=1} $1=="shard_1_rc" {r1=$2} $1=="shard_2_rc" {r2=$2} END{print (s==1 && r1!="-" && r2!="-") ? 1 : 0}' \
         "$_t87_er/state/CHG-133/round-1/meta.tsv")"
   rm -rf "$_t87_er"
+  # TC-1481b / TC-1482c (CHG-160, FU-1601): the migrated scripts find the repo root from an
+  # outside cwd, and evidence-round really runs the preflight (red blocks) yet only warns when it is absent.
+  _t87_x=$(mktemp -d "${TMPDIR:-/tmp}/t87-x.XXXXXX")
+  ( cd "$_t87_x" && bash "$ROOT/scripts/dev/facts.sh" >"$_t87_x/facts.out" 2>&1 ); _t87_x1=$?
+  report "T87 TC-1481b facts.sh run from outside the repo resolves the repo root" 0 "$_t87_x1"
+  ( cd "$_t87_x" && bash "$ROOT/scripts/dev/update-assertion-count.sh" --check --from-baseline >"$_t87_x/uac.out" 2>&1 ); _t87_x2=$?
+  report "T87 TC-1481b update-assertion-count --from-baseline run from outside the repo resolves the repo root" 0 "$_t87_x2"
+  mkdir -p "$_t87_x/fx/scripts/dev"
+  cp "$ROOT/scripts/evidence-round.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$ROOT/scripts/lib-suite-lock.sh" "$_t87_x/fx/scripts/"
+  printf '#!/usr/bin/env bash\necho "2 passed, 0 failed"\n' > "$_t87_x/stub.sh"
+  printf '#!/usr/bin/env bash\necho precheck-ran >&2; exit 7\n' > "$_t87_x/fx/scripts/dev/pre-round-check.sh"
+  ( cd "$_t87_x/fx" && git init -q && git add -A && git -c user.email=t@t -c user.name=t commit -qm init \
+    && AGENT_GUARD_EVIDENCE_LOCK_DIR="$_t87_x/lock1" AGENT_GUARD_EVIDENCE_SUITE="$_t87_x/stub.sh" \
+       bash scripts/evidence-round.sh --chg CHG-X --round 1 --shards 2 --live-shard 2 --state-dir "$_t87_x/state" >"$_t87_x/pre-red.out" 2>&1 ); _t87_x3=$?
+  report "T87 TC-1482c a red preflight refuses to start the round" 2 "$_t87_x3"
+  report "T87 TC-1482c the preflight under scripts/dev really executed" 1 "$(grep -c 'precheck-ran' "$_t87_x/pre-red.out")"
+  rm -f "$_t87_x/fx/scripts/dev/pre-round-check.sh"
+  ( cd "$_t87_x/fx" && git add -A && git -c user.email=t@t -c user.name=t commit -qm nopre \
+    && AGENT_GUARD_EVIDENCE_LOCK_DIR="$_t87_x/lock2" AGENT_GUARD_EVIDENCE_SUITE="$_t87_x/stub.sh" \
+       bash scripts/evidence-round.sh --chg CHG-X --round 2 --shards 2 --live-shard 2 --no-sum --state-dir "$_t87_x/state" >"$_t87_x/pre-none.out" 2>&1 ); _t87_x4=$?
+  report "T87 TC-1482c a missing preflight script only warns and the round still runs" 0 "$_t87_x4"
+  report "T87 TC-1482c the missing-preflight notice is printed" 1 "$(grep -c 'pre-round-check.sh not present' "$_t87_x/pre-none.out")"
+  rm -rf "$_t87_x"
   # REQ-1334 (CHG-133): the receipt defaults the audit to parallel; explicit 0 wins.
   report "T87 fresh-clone defaults the audit to parallel" 1 \
     "$(grep -cF 'AGENT_GUARD_AUDIT_PARALLEL="${AGENT_GUARD_AUDIT_PARALLEL:-1}"' "$ROOT/tests/fresh-clone-check.sh")"

@@ -346,6 +346,16 @@ if [[ -f "$BOOT_SRC" ]]; then
     report "T14 TC-10082 cursor config succeeds via json_sanity_check under fake python3 stub" 0 $?
     report "T14 TC-10082 cursor Windows command avoids bare System32 bash" 1 "$(grep -qF 'MSYS_NO_PATHCONV=1' "$_ha_tmp/.cursor/hooks.json" && echo 1 || echo 0)"
     rm -rf "$_ha_tmp"
+    # FU-1601 (CHG-160): execute the real resolve_hook_bash with /usr/bin/bash masked, so the PATH scan itself is
+    # exercised: a System32 bash.exe must be skipped and the next real bash returned.
+    _hb_d=$(mktemp -d)
+    mkdir -p "$_hb_d/Windows/System32" "$_hb_d/good"
+    printf '#!/bin/sh\nexit 0\n' > "$_hb_d/Windows/System32/bash.exe"; chmod +x "$_hb_d/Windows/System32/bash.exe"
+    printf '#!/bin/sh\nexit 0\n' > "$_hb_d/good/bash"; chmod +x "$_hb_d/good/bash"
+    _hb_src=$(sed -n '/^is_windows_shell() {/,/^}/p;/^resolve_hook_bash() {/,/^}/p' "$ROOT/resources/templates/install-hook-adapter.sh" | sed 's#/usr/bin/bash#/nonexistent-masked/bash#')
+    _hb_out=$(AGENT_GUARD_FORCE_OS=MINGW64_NT-10.0 PATH="$_hb_d/Windows/System32:$_hb_d/good:/usr/bin:/bin" "${BASH:-/bin/bash}" -c "$_hb_src; resolve_hook_bash" 2>/dev/null)
+    report "T14 TC-10082 resolve_hook_bash skips a System32 bash.exe and returns the next real bash" "$_hb_d/good/bash" "$_hb_out"
+    rm -rf "$_hb_d"
   fi
   # TC-10083 (CHG-157, REQ-1459): ci.yml carries windows-smoke & READMEs carry Windows matrix
   if [[ -f "$ROOT/.github/workflows/ci.yml" ]]; then

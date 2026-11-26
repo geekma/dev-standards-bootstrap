@@ -43,7 +43,7 @@
 4. **勘探下放**：预计读 >2 文件或 >100 行定位时合并调用或派只读子代理，只回结论与行号。
 5. **无匹配 ≠ 通过**：以退出码与 FAIL 汇总行为准，禁吞掉 FAIL 行。
 6. **并行批量**：相互独立的读写/编辑单轮并行调用。
-7. **定向验证与证据轮**：单测/定向先行，改文档/模板/单脚本用 `tests/run-tests.sh -T auto` 或 `-T <节>`，禁随手裸跑全量；改被测核心（`agent-gate`/`run-tests.sh`/`.agent-governance.yml`）由 AI 给判定卡请用户三选一确认；**版本链先行（v3.95.0，CHG-132）**（`update-assertion-count.sh` 同步基线）、**证据轮 SOP（v3.96.0，CHG-133）**走 `scripts/evidence-round.sh`（默认 5 快照 + 1 非快照；起轮前 `scripts/dev/pre-round-check.sh`，纯文档可 `--carry-check`）、**返工分治（v3.97.0，CHG-134）**（纯补钉记 05「延后补钉登记」）、**冻结规则（v3.97.1，CHG-135）**（轮内改树 `GATE-E156`）与 **fresh clone / 无 CI 仓必须全绿**（`fresh-clone-check.sh` 收口前跑一次，`E153` 支持代码面指纹复用；未验证 REQ 入 09 清单 `E154`）。
+7. **定向验证与证据轮**：单测/定向先行，改文档/模板/单脚本用 `tests/run-tests.sh -T auto` 或 `-T <节>`，禁随手裸跑全量；改被测核心（`agent-gate`/`run-tests.sh`/`.agent-governance.yml`）由 AI 给判定卡请用户三选一确认；**版本链先行（v3.95.0，CHG-132）**（`update-assertion-count.sh` 同步基线）、**证据轮 SOP（v3.96.0，CHG-133）**走 `scripts/evidence-round.sh`（默认 5 快照 + 1 非快照；起轮前预检 `scripts/dev/pre-round-check.sh` 仅源仓提供（目标仓不下发，`evidence-round.sh` 找不到时提示并跳过），纯文档可 `--carry-check`）、**返工分治（v3.97.0，CHG-134）**（纯补钉记 05「延后补钉登记」）、**冻结规则（v3.97.1，CHG-135）**（轮内改树 `GATE-E156`）与 **fresh clone / 无 CI 仓必须全绿**（`fresh-clone-check.sh` 收口前跑一次，`E153` 支持代码面指纹复用；未验证 REQ 入 09 清单 `E154`）。
 8. **有状态 mock 隔离**：跨调用有状态依赖每用例重建。
 9. **禁并行集成测试**：共享远程 DB 期间禁并行跑集成测试。
 10. **长任务等待纪律**：禁独立 LLM 轮 `sleep` 轮询与 `TaskOutput block:true timeout>60s` 阻塞等（用前台 timeout / 单 shell `while` / 后台通知三式，或读 `.agent-state/suite-progress.json`）。

@@ -2482,12 +2482,14 @@ _a78_dev_set=$(git -C "$ROOT" ls-files scripts/dev | awk -F/ '{print $3}' | LC_A
 report "A78 scripts/ root holds exactly the 12 expected entries (11 files plus dev/) (CHG-160)" "bootstrap.sh dev eval-cases eval-rescore evidence-round.sh friction-report.sh install.sh lib-suite-lock.sh lib-suite-tree-fingerprint.sh mcp-governance-server.sh release.sh shard-sum.sh " "$_a78_root_set"
 report "A78 scripts/dev holds exactly the 14 source-only scripts (CHG-160)" "batch-metrics.sh ci-summary.sh facts.sh lib-source-facts.sh mutation-check.sh pre-review-check.sh pre-round-check.sh replay-plan.sh selfcheck.sh setup-branch-protection.sh shard-plan.sh sync-local-wrappers.sh update-assertion-count.sh verify-all.sh " "$_a78_dev_set"
 _a78_src_ok=0
-for _a78_s in $(grep -oE 'install_file - "[$]SCRIPTS_DIR/[^"]+" scripts/[A-Za-z0-9._-]+' "$ROOT/scripts/bootstrap.sh" | awk '{print $NF}'); do
+# Any quoting of the source operand counts, and a source under scripts/dev/ (or any subdir) is never "in the root".
+for _a78_s in $(grep -E '^[[:space:]]*install_file[[:space:]]' "$ROOT/scripts/bootstrap.sh" | grep -oE '"?scripts/[A-Za-z0-9._/-]+' | tr -d '"'); do
+  case "$_a78_s" in scripts/*/*) continue ;; esac
   [[ -f "$ROOT/$_a78_s" ]] && _a78_src_ok=$(( _a78_src_ok + 1 ))
 done
 report "A78 every scripts/-sourced bootstrap install_file stays in the scripts/ root (CHG-160)" 4 "$_a78_src_ok"
-_a78_single=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]"' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
-_a78_double=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]/[.][.]"' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
+_a78_single=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]" && pwd[)]"?$' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
+_a78_double=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]/[.][.]" && pwd[)]"?$' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
 # Dynamic proof: evaluate each script own ROOT= line with $0 set to that script; it must land on the repo root.
 _a78_rt=0
 for _a78_f in "$ROOT/scripts/dev/"*.sh; do
