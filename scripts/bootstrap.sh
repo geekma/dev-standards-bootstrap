@@ -818,7 +818,12 @@ install_file() {
     if extra=$(divergence_guard "$src" "$dest"); then
       if [[ "$force" != true ]]; then
         echo "bootstrap: $dest_rel has local rows this skill does not carry: $extra" >&2
-        echo "bootstrap: that file belongs to the skill (it ships with the spec) — move your rows to <docs>/changes/<CHG>/09-changelog.md, or pass --force to overwrite anyway" >&2
+        if [[ -f "$SKILL_ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" ]]; then
+          echo "bootstrap: that file belongs to the skill (it ships with the spec) — move your rows to <docs>/changes/<CHG>/09-changelog.md, or pass --force to overwrite anyway" >&2
+        else
+          # CHG-161 (REQ-1615): archive/ 缺失时历史版本行会被误判为本地行；此时 --force 会覆盖真实本地行，不能建议。
+          echo "bootstrap: skill copy is incomplete — archive/STANDARDS_CHANGELOG_ARCHIVE.md is missing, so archived history rows look like local rows; 请重装 skill（重新运行 install.sh，需携带 archive/）后再升级，切勿强制覆盖" >&2
+        fi
         echo "bootstrap: aborting — partial install: installed=$installed up-to-date=$skipped" >&2
         exit 2
       fi

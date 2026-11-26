@@ -3990,10 +3990,10 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
           echo "agent-gate: NOTE — E153 reused green code-face receipt (code_face_sha=$rc_cface; doc-only tree drift)" >&2
           e153=""
         else
-          e153="stale/red receipt (tree=$rc_tree want=$want_tree code_face=$rc_cface want_cf=$want_cface head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+          e153="stale/red receipt (tree=$rc_tree want=$want_tree code_face=$rc_cface want_cf=$want_cface receipt_head=$rc_head head_now=$want_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
         fi
       else
-        e153="stale/red receipt (tree=$rc_tree want=$want_tree head=$rc_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
+        e153="stale/red receipt (tree=$rc_tree want=$want_tree receipt_head=$rc_head head_now=$want_head audit_rc=${rc_audit:-?} suite_rc=${rc_suite:-?})"
       fi
     fi
     [[ -z "$e153" ]] || die "GATE-E153: $id $e153 — expected: .agent-state/fresh-clone-receipt.json whose tree_sha matches the current tracked tree, with audit_rc=0, suite_rc=0; allowed: AGENT_GUARD_FRESH_CLONE=0 with the reason recorded in 09「重要上下文」; fix: bash tests/fresh-clone-check.sh --sections <affected list> once, after the content freezes; ref: CHG-128 REQ-1278"

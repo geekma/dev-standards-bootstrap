@@ -686,6 +686,10 @@ git add -A >/dev/null 2>&1 && git commit -qm t84-next >/dev/null 2>&1
 echo more >> core.txt
 out=$(scripts/agent-gate --stage core 2>&1)
 check_output "T84 E153 stale receipt is refused" 'GATE-E153' "$out"
+# CHG-161 (REQ-1612, TC-1612a): 陈旧收据文案必须点明 head 是收据里的值，并给出当前 HEAD；不得再出现裸 `head=`
+check_output "T84 TC-1612a E153 text names receipt_head=" 'receipt_head=' "$out"
+check_output "T84 TC-1612a E153 text names head_now=" 'head_now=' "$out"
+report "T84 TC-1612a E153 text has no bare head=" 0 "$(printf '%s' "$out" | grep -c '[ (]head=')"
 # ⑨ 关闭开关 → 降级 WARN 且放行
 out=$(AGENT_GUARD_FRESH_CLONE=0 scripts/agent-gate --stage core 2>&1); report "T84 E153 fresh-clone switch degrades to WARN" 0 "$?"
 check_output "T84 degradation is announced" 'AGENT_GUARD_FRESH_CLONE=0' "$out"

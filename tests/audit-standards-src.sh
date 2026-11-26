@@ -2285,7 +2285,7 @@ run_audit_rules <<'EOF'
 @AGENTS	F_GE	1	A65 the rule names the deferral ledger (CHG-134)	延后补钉登记
 @STD	F_GE	1	A65 DS §2.13.4 carries the same rule (CHG-134)	返工分治（v3.97.0，CHG-134）
 @ROOT/resources/templates/entry/05-test-results.md	F_GE	1	A65 the 05 template has the deferral section (CHG-134)	## 延后补钉登记
-@AGENTS	F_GE	1	A65 AGENTS names the preflight tool (CHG-134)	scripts/dev/pre-round-check.sh
+@AGENTS	F_GE	1	A65 AGENTS names the preflight tool (CHG-134)	pre-round-check.sh
 @AGENTS	F_GE	1	A65 AGENTS names the fail-fast and carry switches (CHG-134)	--carry-check
 EOF
 report "A65 pre-round-check.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/dev/pre-round-check.sh" ]] && echo 0 || echo 1)"
@@ -2510,6 +2510,27 @@ _a78_sv=$(grep -m1 -oE '^version:[[:space:]]*"?[0-9]+[.][0-9]+[.][0-9]+' "$SKILL
 _a78_q='"'
 report "A78 plugin.json and marketplace.json carry the SKILL.md version (CHG-160)" 2 \
   "$(( $(grep -qF "version${_a78_q}: ${_a78_q}${_a78_sv}${_a78_q}" "$ROOT/.claude-plugin/plugin.json" && echo 1 || echo 0) + $(grep -qF "version${_a78_q}: ${_a78_q}${_a78_sv}${_a78_q}" "$ROOT/.claude-plugin/marketplace.json" && echo 1 || echo 0) ))"
+# --- A79/A80/A81 (v4.14.1, CHG-161): 页脚日期同源、shipped 文档不引用源仓独有路径、分发载荷携带 archive ---
+_a79_fd() { grep -E '^\*规范版本：' | grep -oE '更新时间：[0-9]{4}-[0-9]{2}-[0-9]{2}' | tail -1 | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' || true; }
+_a79_footer=$(_a79_fd < "$ROOT/resources/DEVELOPMENT_STANDARDS.md")
+_a79_log=$(grep -m1 -E '^\| v[0-9]+\.[0-9]+\.[0-9]+ \| [0-9]{4}-' "$ROOT/resources/STANDARDS_CHANGELOG.md" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | head -1 || true)
+report "A79 standards footer date equals the newest changelog row date (CHG-161)" 1 "$([[ -n "$_a79_log" && "$_a79_footer" == "$_a79_log" ]] && echo 1 || echo 0)"
+_a79_neg=$(printf '*规范版本：v9.9.9 | 更新时间：1999-01-01 | x*\n' | _a79_fd)
+report "A79 a stale-footer fixture is told apart from the changelog date (CHG-161)" 1 "$([[ -n "$_a79_neg" && -n "$_a79_log" && "$_a79_neg" != "$_a79_log" ]] && echo 1 || echo 0)"
+_a80_count() { grep -rIl 'scripts/dev/' "$1" --exclude=STANDARDS_CHANGELOG.md 2>/dev/null | wc -l | tr -d '[:space:]'; }
+report "A80 shipped resources do not point at source-only scripts/dev/ paths, changelog history excluded (CHG-161)" 0 "$(_a80_count "$ROOT/resources")"
+_a80_fx=$(mktemp -d); printf 'run scripts/dev/pre-round-check.sh first\n' > "$_a80_fx/doc.md"
+report "A80 a fixture doc naming scripts/dev/ is caught (CHG-161)" 1 "$(_a80_count "$_a80_fx")"
+rm -rf "$_a80_fx"
+# A81: 路径取自 bootstrap.sh 自身（divergence_guard 的 arch= 行 与 拒绝文案分支的 -f 判断），两处必须相同且指向真实文件（评审 M3，CHG-160 教训：字面串匹配在注释里出现也能过）。
+_a81_arch=$(sed -n 's/^.*arch="[$]SKILL_ROOT\/\([^"]*\)".*$/\1/p' "$ROOT/scripts/bootstrap.sh" | head -1)
+_a81_branch=$(sed -n 's/^.*\[\[ -f "[$]SKILL_ROOT\/\(archive\/[^"]*\)" \]\].*$/\1/p' "$ROOT/scripts/bootstrap.sh" | head -1)
+report "A81 bootstrap divergence_guard and its refusal-text branch name the same real archive file, and install.sh carries archive/ (CHG-161)" 3 \
+  "$(( $([[ -n "$_a81_arch" && -f "$ROOT/$_a81_arch" ]] && echo 1 || echo 0) + $([[ -n "$_a81_branch" && "$_a81_branch" == "$_a81_arch" ]] && echo 1 || echo 0) + $(grep -qF 'cp -R "$skill_dir/archive"' "$ROOT/scripts/install.sh" && echo 1 || echo 0) ))"
+# A81b: 下发的 changelog 里「已归档至 vX」的边界 = 归档文件中最新一行版本（评审 M2）
+_a81_top=$(grep -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1.2,1n -k2,2n -k3,3n | tail -1)
+_a81_note=$(grep -m1 -oE '`v1\.0\.0`–`v[0-9]+\.[0-9]+\.[0-9]+`' "$ROOT/resources/STANDARDS_CHANGELOG.md" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | tail -1)
+report "A81b changelog archive-boundary note names the newest archived version (CHG-161)" 1 "$([[ -n "$_a81_top" && "$_a81_top" == "$_a81_note" ]] && echo 1 || echo 0)"
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else

@@ -171,6 +171,98 @@ SG_STUB_MARKER=1 bash scripts/install-hook-adapter --client opencode >/dev/null 
 out=$(SG_STUB_MARKER=1 SG_STUB_REJECT=1 bash scripts/install-hook-adapter --client opencode 2>&1); rc=$?
 report "T49-04c reinstall-reject dies (rc2)" 2 "$rc"
 report "T49-04c previous adapter restored intact" 1 "$(grep -cF 'export default { id: "dev-standards-gate", setup: DevStandardsGateV2, server: DevStandardsGate }' .opencode/plugins/dev-standards-gate.js 2>/dev/null)"
+
+# ---- CHG-161 (REQ-1610/1611, DES-1610): Claude hook 语义去重 / 幂等 / 用户 hook 保留 ----
+# 键 = (事件, matcher, 归一化命令)；旧版相对路径双份接线升级后每键恰好 1 条。
+_c161_fixture_dup() {
+  mkdir -p .claude
+  cat > .claude/settings.json <<'JSON'
+{"hooks":{
+ "UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"bash scripts/session-gate.sh count turn"}]},{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh count turn"}]}],
+ "PostToolUse":[{"matcher":"Bash|Grep|Glob|Read|Task","hooks":[{"type":"command","command":"bash scripts/session-gate.sh count tool -"}]},{"matcher":"Bash|Grep|Glob|Read|Task","hooks":[{"type":"command","command":"scripts/session-gate.sh count tool -"}]}],
+ "PreToolUse":[{"matcher":"Bash|Edit|Write|Task|Grep|Glob|Read","hooks":[{"type":"command","command":"bash scripts/session-gate.sh check"}]},{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]},{"matcher":"Bash|Edit|Write|Task|Grep|Glob|Read","hooks":[{"type":"command","command":"scripts/session-gate.sh check"}]}],
+ "SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh start"}]}],
+ "Stop":[{"hooks":[{"type":"command","command":"echo user-own-stop-hook"}]},{"hooks":[{"type":"command","command":"scripts/agent-gate --stage stop"}]}]
+}}
+JSON
+}
+# 输出：项目 6 条接线（归一化后）各自出现次数的 "最小:最大"；全部恰好 1 次 → "1:1"
+_c161_counts() {
+  python3 - "$1" <<'PY'
+import json, re, sys
+d = json.load(open(sys.argv[1]))
+want = ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop",
+        "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -", "scripts/session-gate.sh check")
+def norm(c):
+    c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/)', '', c)
+    c = re.sub(r'^bash\s+', '', c)
+    return re.sub(r'^\./', '', c)
+cnt = {w: 0 for w in want}
+for ev, lst in d.get("hooks", {}).items():
+    for e in lst:
+        for hk in e.get("hooks", []):
+            n = norm(hk.get("command", ""))
+            if n in cnt: cnt[n] += 1
+print("%d:%d" % (min(cnt.values()), max(cnt.values())))
+PY
+}
+
+_t49_setup_stub
+_c161_fixture_dup
+out=$(bash scripts/install-hook-adapter --client claude 2>&1); rc=$?
+report "TC-1610a dup fixture upgrades rc0" 0 "$rc"
+report "TC-1610a each project wiring exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+report "TC-1610b user-own Stop hook preserved" 1 "$(grep -c 'user-own-stop-hook' .claude/settings.json)"
+report "TC-1610e backup exists after content change" 1 "$(ls .claude/settings.json.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+_c161_sum1=$(cksum < .claude/settings.json); _c161_bak1=$(ls .claude/settings.json.bak-* 2>/dev/null | wc -l | tr -d ' ')
+out=$(bash scripts/install-hook-adapter --client claude 2>&1); rc=$?
+report "TC-1610c second run rc0" 0 "$rc"
+report "TC-1610c second run leaves settings.json byte-identical" "$_c161_sum1" "$(cksum < .claude/settings.json)"
+report "TC-1610c second run adds no new backup" "$_c161_bak1" "$(ls .claude/settings.json.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+# TC-1611c: 去重后 count turn 对 UserPromptSubmit 事件恰好 +1
+rm -f .agent-state/session-tool-stats.json
+_c161_cmds=$(python3 -c 'import json;d=json.load(open(".claude/settings.json"));[print(hk["command"]) for e in d["hooks"]["UserPromptSubmit"] for hk in e["hooks"]]')
+while IFS= read -r _c161_c; do _c161_c="${_c161_c#bash }"; [[ -n "$_c161_c" ]] && bash $_c161_c >/dev/null 2>&1; done <<< "$_c161_cmds"
+report "TC-1611c one UserPromptSubmit event counts exactly one turn" 1 "$(python3 -c 'import json;print(json.load(open(".agent-state/session-tool-stats.json")).get("turns",0))' 2>/dev/null || echo 0)"
+
+# TC-1611a：空 {} 补齐 6 条各 1 条；TC-1611b：规范单份夹具升级后字节不变
+_t49_setup_stub
+mkdir -p .claude && printf '{}\n' > .claude/settings.json
+bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1611a empty {} gets all six wirings once" "1:1" "$(_c161_counts .claude/settings.json)"
+_c161_sum2=$(cksum < .claude/settings.json)
+bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1611b canonical single-copy stays byte-identical" "$_c161_sum2" "$(cksum < .claude/settings.json)"
+
+# TC-1610d：Windows 前缀形态（MSYS_NO_PATHCONV=1 <bash> ）与裸形态并存也去重
+_t49_setup_stub
+mkdir -p .claude
+cat > .claude/settings.json <<'JSON'
+{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"MSYS_NO_PATHCONV=1 /usr/bin/bash scripts/session-gate.sh count turn"}]},{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh count turn"}]}]}}
+JSON
+AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1610d windows-prefix + bare forms dedupe to exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+
+# TC-1610f（评审 M1）：带空格的 bash 路径前缀也要被识别，否则会重复追加
+_t49_setup_stub
+mkdir -p .claude
+cat > .claude/settings.json <<'JSON'
+{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"MSYS_NO_PATHCONV=1 C:/Program Files/Git/usr/bin/bash.exe scripts/session-gate.sh count turn"}]}]}}
+JSON
+AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1; rc=$?
+report "TC-1610f spaced-path prefix upgrade rc0" 0 "$rc"
+report "TC-1610f spaced-path prefix dedupes to exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+_c161_sum3=$(cksum < .claude/settings.json)
+AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1610f spaced-path second run byte-identical" "$_c161_sum3" "$(cksum < .claude/settings.json)"
+
+# TC-1610g（评审 H1）：合并/断言失败必须让适配器非 0，且不能打印假成功
+_t49_setup_stub
+mkdir -p .claude && printf '{bad json\n' > .claude/settings.json
+out=$(bash scripts/install-hook-adapter --client claude 2>&1); rc=$?
+report "TC-1610g unparseable settings.json makes the adapter fail non-zero" 1 "$([[ $rc -ne 0 ]] && echo 1 || echo 0)"
+report "TC-1610g no false 'merged + verified' line on failure" 0 "$(printf '%s' "$out" | grep -c 'merged + verified')"
+report "TC-1610g the unparseable file is left untouched" 1 "$(grep -c 'bad json' .claude/settings.json)"
 }
 
 section_T49c() {

@@ -495,9 +495,24 @@ if [[ -f "$BOOT_SRC" ]]; then
   out=$(bash "$BOOT_SRC" --upgrade "$D5" 2>&1); rc=$?
   report "T15 upgrade refuses local rows in the skill-owned changelog (D5)" 2 "$rc"
   check_output "T15 the refusal names the local rows" "local rows this skill does not carry" "$out"
+  check_output "T15 TC-1615b refusal with archive/ present still suggests --force" "pass --force to overwrite" "$out"
   grep -q 'v9.9.9-local' "$D5/docs/STANDARDS_CHANGELOG.md"
   report "T15 local changelog rows survive the refusal" 0 $?
   rm -rf "$D5"
+
+  # --- CHG-161 (REQ-1615, TC-1615a): skill 副本缺 archive/ 时，拒绝文案指向重装而不是 --force ---
+  D6=$(mktemp -d); D6S=$(mktemp -d)
+  ( cd "$D6" && git init -q && git config user.email t@t && git config user.name t )
+  bash "$BOOT_SRC" --all "$D6" >/dev/null 2>&1
+  _c161_hist=$(grep -m1 -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md")
+  printf '%s | 2020-01-01 | 历史行 | 无 |\n' "$_c161_hist" >> "$D6/docs/STANDARDS_CHANGELOG.md"
+  ( cd "$D6" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
+  cp -R "$ROOT/scripts" "$ROOT/resources" "$ROOT/SKILL.md" "$D6S/"
+  out=$(bash "$D6S/scripts/bootstrap.sh" --upgrade "$D6" 2>&1); rc=$?
+  report "T15 TC-1615a archive-less skill copy refuses a history-row divergence (rc2)" 2 "$rc"
+  check_output "T15 TC-1615a refusal points at reinstall" "重装" "$out"
+  report "T15 TC-1615a refusal does not suggest --force" 0 "$(printf '%s' "$out" | grep -c -- '--force')"
+  rm -rf "$D6" "$D6S"
 
   # D5-archive regression (CHG-154 ITEM-40): archived skill rows (v2.9.0..v4.2.0) in an older target repo must NOT block --upgrade
   D5L=$(mktemp -d)

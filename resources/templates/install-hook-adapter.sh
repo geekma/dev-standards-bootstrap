@@ -341,49 +341,120 @@ adapter_claude() {
   if is_windows_shell; then
     cmd_prefix="MSYS_NO_PATHCONV=1 $(resolve_hook_bash) "
   fi
-  python3 - "$f" "$cmd_prefix" <<'PY'
-import json, sys, os
+  # CHG-161（REQ-1610/1611，DES-1610）语义去重：键 =（事件, matcher, 归一化命令），只处理本项目写入的 6 条；
+  # 同键保留首个并迁到规范形态，其余删除；用户自有 hook 原样保留；内容无变化不写盘（幂等），有变化先备份；
+  # 写后从磁盘重读，断言每键恰好 1 条。
+  python3 - "$f" "$cmd_prefix" <<'PY' || die "ADAPTER-E15: merging $f failed or the exactly-once check did not hold (file left as it was before the write; see the message above)"
+import copy, datetime, json, os, re, shutil, sys
 path = sys.argv[1]
 prefix = sys.argv[2]
+existed = os.path.exists(path)
 d = {}
-if os.path.exists(path):
+if existed:
     with open(path) as fh:
         d = json.load(fh)
+orig = copy.deepcopy(d)
 hooks = d.setdefault("hooks", {})
 
-def ensure(stage, entry):
-    lst = hooks.setdefault(stage, [])
-    want = entry["hooks"][0]["command"]
+def norm(cmd):
+    c = cmd or ""
+    if prefix and c.startswith(prefix):
+        c = c[len(prefix):]  # 已知前缀直接剥离（含带空格的 bash 路径）
+    else:
+        # 其它机器写入的前缀：非贪婪吃到 scripts/ 为止，bash 路径允许带空格
+        c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/)', '', c)
+    c = re.sub(r'^bash\s+', '', c)
+    return re.sub(r'^\./', '', c)
+
+# (事件, matcher；None=条目不带 matcher 字段, 规范命令)
+WIRINGS = [
+    ("SessionStart", "", "scripts/session-gate.sh start"),
+    ("PreToolUse", "Edit|Write", "scripts/agent-gate --stage pre-write"),
+    ("Stop", None, "scripts/agent-gate --stage stop"),
+    # v3.39.0（CHG-042）会话遥测：计数逻辑在 session-gate.sh 通用层，Claude 只做事件转发
+    ("UserPromptSubmit", "", "scripts/session-gate.sh count turn"),
+    ("PostToolUse", "Bash|Grep|Glob|Read|Task", "scripts/session-gate.sh count tool -"),
+    # v3.58.0（REQ-1008）handoff 硬拦：PreToolUse exit 2 = Claude 原生块工具（stderr 回给 Agent）
+    ("PreToolUse", "Bash|Edit|Write|Task|Grep|Glob|Read", "scripts/session-gate.sh check"),
+]
+KEYS = {(s, m or "", w) for s, m, w in WIRINGS}
+
+seen = set()
+for stage in list(hooks.keys()):
+    lst = hooks[stage]
+    if not isinstance(lst, list):
+        continue
+    kept = []
     for e in lst:
-        for hk in e.get("hooks", []):
-            if hk.get("command") == want:
-                return
-    lst.append(entry)
+        if not isinstance(e, dict) or not isinstance(e.get("hooks"), list):
+            kept.append(e)
+            continue
+        m = e.get("matcher") or ""
+        nh = []
+        for hk in e["hooks"]:
+            if isinstance(hk, dict):
+                k = (stage, m, norm(hk.get("command")))
+                if k in KEYS:
+                    if k in seen:
+                        continue
+                    seen.add(k)
+                    if hk.get("command") != prefix + k[2]:
+                        hk["command"] = prefix + k[2]
+            nh.append(hk)
+        if not nh:
+            continue
+        e["hooks"] = nh
+        kept.append(e)
+    hooks[stage] = kept
 
-ensure("SessionStart", {"matcher": "", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh start"}]})
-ensure("PreToolUse", {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": prefix + "scripts/agent-gate --stage pre-write"}]})
-ensure("Stop", {"hooks": [{"type": "command", "command": prefix + "scripts/agent-gate --stage stop"}]})
-# v3.39.0（CHG-042）会话遥测：计数逻辑在 session-gate.sh 通用层，Claude 只做事件转发
-ensure("UserPromptSubmit", {"matcher": "", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh count turn"}]})
-ensure("PostToolUse", {"matcher": "Bash|Grep|Glob|Read|Task", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh count tool -"}]})
-# v3.58.0（REQ-1008）handoff 硬拦：PreToolUse exit 2 = Claude 原生块工具（stderr 回给 Agent）
-ensure("PreToolUse", {"matcher": "Bash|Edit|Write|Task|Grep|Glob|Read", "hooks": [{"type": "command", "command": prefix + "scripts/session-gate.sh check"}]})
+for stage, matcher, want in WIRINGS:
+    if (stage, matcher or "", want) in seen:
+        continue
+    entry = {"hooks": [{"type": "command", "command": prefix + want}]}
+    if matcher is not None:
+        entry = {"matcher": matcher, **entry}
+    hooks.setdefault(stage, []).append(entry)
 
-os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-with open(path, "w") as fh:
-    json.dump(d, fh, indent=2, ensure_ascii=False)
-    fh.write("\n")
-PY
-  # 生成后验证：JSON 必须可解析，五条接线必须就位
-  python3 - "$f" "$cmd_prefix" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1]))
-prefix = sys.argv[2]
-h = d.get("hooks", {})
-cmds = [hk.get("command") for st in h.values() for e in st for hk in e.get("hooks", [])]
-for want in ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop", "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -", "scripts/session-gate.sh check"):
-    if (prefix + want) not in cmds:
-        sys.exit(f"missing hook after merge: {prefix + want}")
+def tally(dd):
+    cnt = {k: 0 for k in KEYS}
+    hs = dd.get("hooks", {}) if isinstance(dd, dict) else {}
+    if not isinstance(hs, dict):
+        return cnt
+    for stage, lst in hs.items():
+        if not isinstance(lst, list):
+            continue
+        for e in lst:
+            hl = e.get("hooks", []) if isinstance(e, dict) else []
+            if not isinstance(hl, list):
+                continue
+            for hk in hl:
+                if not isinstance(hk, dict):
+                    continue
+                k = (stage, e.get("matcher") or "", norm(hk.get("command")))
+                if k in cnt:
+                    cnt[k] += 1
+    return cnt
+
+def check(dd, where):
+    cnt = tally(dd)
+    bad = [k for k, n in cnt.items() if n != 1]
+    if bad:
+        sys.exit("hook wiring not exactly-once (%s): " % where + "; ".join("%s|%s|%s x%d" % (k + (cnt[k],)) for k in sorted(bad)))
+
+# 写盘前先在内存里校验：失败时磁盘文件保持原样
+check(d, "before write")
+
+if d != orig:
+    if existed:
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        shutil.copy2(path, path + ".bak-" + stamp)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w") as fh:
+        json.dump(d, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+
+# 生成后验证：从磁盘重读，JSON 必须可解析，6 条接线每键恰好 1 条
+check(json.load(open(path)), "after write")
 PY
   ok "claude -> $f merged + verified (SessionStart audit / pre-write / stop / telemetry count turn+tool / handoff hard-stop check)"
 }
