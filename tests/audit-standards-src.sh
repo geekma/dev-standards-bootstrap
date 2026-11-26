@@ -58,7 +58,9 @@ GATE_FILES=("$GATE_TPL" "$STAGED_TPL" "$COLD_TPL")
 SUITE_FILES=("$ROOT/tests/run-tests.sh" "$ROOT/tests/lib/"*.sh "$ROOT/tests/suites/"*.sh)
 GOV_WF="$ROOT/resources/templates/github-agent-governance.yml"
 AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
-AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
+# CHG-160: key by repo root (same scheme as AUDIT_NAMES_LAST). A bare shared file let a
+# failed run in one checkout (or a fresh-clone) leave a wrong count that another run's A3 read.
+AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count.$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
 a17_at_least_1() { [[ "${1:-0}" -ge 1 ]] && echo 1 || echo 0; }
 REPO_CHANGES="$ROOT/docs/changes"
 REPO_BUGS="$ROOT/docs/bugs"

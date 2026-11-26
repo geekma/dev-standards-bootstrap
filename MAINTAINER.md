@@ -146,7 +146,7 @@ bash scripts/dev/update-assertion-count.sh --check --require-receipt
 
 1. **README 声称数** ← `run-tests.sh` **实际运行的通过数**（`N passed`；CHG-019 复核后改为运行期口径——静态调用点计数漏计同链双调用 `grep … && report … || report …` 与循环站点，曾致 281↔284、288↔291 两代 3 格漂移）。红套件拒同步（exit 2）。
 2. **`tests/.suite-baseline`（v3.87.0/CHG-115）** ← 同一份运行期实出数；写模式与 README 一起同步，所以"入库基线"永远是最近一次真实绿跑的声明。**`--from-baseline` / `--require-receipt` 两种快模式绝不写文件**：基线缺失/非数字、两模式同时给出、`--require-receipt` 无新鲜收据，一律 exit 2（fail-closed，宁可拒绝也不隐式跑 5 分钟）。注意 `--from-baseline` 只声明"声称面与入库基线一致"，**不证明基线新鲜**——新鲜度由 CI 那一次真跑 + `ci-summary.sh --check` 兜（本地同理：`verify-all.sh`）。
-3. **`tests/.audit-baseline` 执行数基线** ← 由**上一次审计运行**写出的 `${TMPDIR:-/tmp}/audit-executed-count`（闭 FU-022）。
+3. **`tests/.audit-baseline` 执行数基线** ← 由**上一次审计运行**写出的 `${TMPDIR:-/tmp}/audit-executed-count.<仓库根路径 cksum>`（闭 FU-022；CHG-160 起按仓库根路径区分，不再被其他检出或干净克隆的失败审计污染）。
 4. **gate（`verify-all` 第五步，v3.87.0/CHG-115 R4）** ← 第 1~2 项同步完才有意义：改动断言数后第一次 `--fresh` 跑，本步**必然转红**（"收据条数 ≠ 入库基线条数"就是它要喊的内容），随后跑生成器同步、再跑 `verify-all`（收据复用，不重跑整套）转绿。红在这里不是故障，是"去同步"的指令。
 
 > ⚠️ **顺序坑**：第 3 项读的是审计的**运行产物**。所以正确顺序是

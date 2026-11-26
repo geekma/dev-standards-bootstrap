@@ -240,7 +240,8 @@ done
 # audit writes its executed count to $AUDIT_LAST each run; this script syncs
 # the committed baseline. Drift (audit assertions changed without re-sync) → --check red.
 AUDIT_BASELINE="$ROOT/tests/.audit-baseline"
-AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count"
+# CHG-160: keyed by repo root, must match tests/audit-standards-src.sh (same scheme as AUDIT_NAMES_LAST below).
+AUDIT_LAST="${TMPDIR:-/tmp}/audit-executed-count.$(printf '%s' "$ROOT" | cksum | awk '{print $1}')"
 if [[ ! -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
   # first-time bootstrap of the baseline (chicken-and-egg: audit cannot pass
   # until the baseline exists; AUDIT_LAST comes from the audit run just made)
