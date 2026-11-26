@@ -2502,8 +2502,10 @@ report "A78 scripts/dev scripts compute ROOT two levels up, none one level (CHG-
 _a78_old=$(grep -rIhE 'scripts/(batch-metrics|ci-summary|facts|lib-source-facts|mutation-check|pre-review-check|pre-round-check|replay-plan|selfcheck|setup-branch-protection|shard-plan|sync-local-wrappers|update-assertion-count|verify-all)([.]sh)?([^A-Za-z0-9_-]|$)' --exclude-dir=.git --exclude-dir=docs --exclude-dir=archive --exclude-dir=graphify-out --exclude-dir=.agent-state --exclude-dir=screenshots --exclude-dir=cover-image --exclude-dir=.opencode --exclude-dir=.workbuddy --exclude-dir=.workbuddy-ai --exclude=STANDARDS_CHANGELOG.md --exclude=audit-standards-src.sh "$ROOT" 2>/dev/null | grep -vF 'a78-legacy-ok' | wc -l | tr -d '[:space:]')
 report "A78 no non-history file still names a migrated script at its old scripts/ path (CHG-160)" 0 "$_a78_old"
 report "A78 changelog archive lives under archive/, not resources/ (CHG-160)" "1/0" "$([[ -f "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && echo 1 || echo 0)/$([[ -e "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && echo 1 || echo 0)"
+# The archive path is taken from the arch= assignment in bootstrap.sh itself and must resolve to a real file (not a bare literal match).
+_a78_arch=$(sed -n 's/^.*arch="[$]SKILL_ROOT\/\([^"]*\)".*$/\1/p' "$ROOT/scripts/bootstrap.sh" | head -1)
 report "A78 divergence_guard reads archive/ and install.sh skill copy carries it (CHG-160)" 2 \
-  "$(( $(grep -qF 'archive/STANDARDS_CHANGELOG_ARCHIVE.md' "$ROOT/scripts/bootstrap.sh" && echo 1 || echo 0) + $(grep -qF 'cp -R "$skill_dir/archive"' "$ROOT/scripts/install.sh" && echo 1 || echo 0) ))"
+  "$(( $([[ "$_a78_arch" == archive/* && -f "$ROOT/$_a78_arch" ]] && echo 1 || echo 0) + $(grep -qF 'cp -R "$skill_dir/archive"' "$ROOT/scripts/install.sh" && echo 1 || echo 0) ))"
 _a78_sv=$(grep -m1 -oE '^version:[[:space:]]*"?[0-9]+[.][0-9]+[.][0-9]+' "$SKILL" | grep -oE '[0-9]+[.][0-9]+[.][0-9]+')
 _a78_q='"'
 report "A78 plugin.json and marketplace.json carry the SKILL.md version (CHG-160)" 2 \
