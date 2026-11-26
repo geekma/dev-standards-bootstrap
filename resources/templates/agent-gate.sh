@@ -84,7 +84,7 @@ die() {
   local _code4="${1%%:*}" _code="${1%%:*}" _re='^GATE-E[0-9]+$'
   if [[ -n "${_AG_CURRENT_STAGE:-}" && "$_code4" =~ $_re ]]; then
     case "$_code4" in
-      GATE-E01|GATE-E76|GATE-E77|GATE-E78|GATE-E79|GATE-E132|GATE-E149|GATE-E155|GATE-E164) ;;
+      GATE-E01|GATE-E76|GATE-E77|GATE-E78|GATE-E79|GATE-E132|GATE-E149|GATE-E155|GATE-E156|GATE-E164) ;;
       *)
         local _eff_mode="strict"
         if command -v enforcement_mode >/dev/null 2>&1; then

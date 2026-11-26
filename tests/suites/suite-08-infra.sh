@@ -1121,7 +1121,10 @@ section_T87() {
     "$(printf '%s\n' "$_t87_plan" | grep -cE '(^| )T5 T22a T16( |$)')"
   report "T87 cost plan keeps T50/T51 in one shard" 1 \
     "$(printf '%s\n' "$_t87_plan" | grep -cE '(^| )T50 T51( |$)')"
-  report "T87 N!=6 keeps the contiguous fallback (5 shards cover all sections)" "${#SECTIONS[@]}" \
+  # CHG-159 REQ-1470: pinned literal, not ${#SECTIONS[@]} — an expected value derived
+  # from the thing under test can never go red. Adding/removing a section means
+  # updating this number on purpose.
+  report "T87 N!=6 keeps the contiguous fallback (5 shards cover all sections)" 100 \
     "$(for _i in 1 2 3 4 5; do
         AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 bash tests/run-tests.sh --shard "$_i/5" 2>/dev/null \
           | sed -n 's/^shard-resolve-only: //p'
@@ -2110,6 +2113,11 @@ section_T88() {
   _t88_case '阴性-阈值上调'  $'expect("a")\ncoverage = 95'          no
   _t88_case '阴性-新增测试'  $'expect("a")\nexpect("b")'            no
   _t88_case '阴性-重构重排'  $'coverage = 90\nexpect("a")'          no
+  # CHG-159 REQ-1474: an assertion id inside the line (A39) must not be read as the threshold.
+  # TC-1474a: id appears, value unchanged (90 -> 90) => no E160 ③.
+  _t88_case '阴性-断言编号变化' $'expect("a")\ncoverage A39 = 90'  no
+  # TC-1474b: id appears AND the real threshold drops (90 -> 70) => ③ still fires.
+  _t88_case '③阈值下调-带编号' $'expect("a")\ncoverage A39 = 70'  hit '③阈值下调'
   cd "$ROOT"
 }
 

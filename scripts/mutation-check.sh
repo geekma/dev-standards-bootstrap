@@ -13,7 +13,8 @@
 # checkers must stay green before and after (auto re-green).
 #
 # Fixed mutations: version-drift (DS footer), gate-version-drift (gate template),
-# baseline-missing (tests/.suite-baseline), readme-count-drift (README claim).
+# baseline-missing (tests/.suite-baseline), readme-count-drift (README claim),
+# hot-e156-removed (agent-gate.sh loses its freeze-window call; caught by the source audit).
 # TMPDIR is redirected per run so the generator's audit-last scratch file cannot
 # leak between copies. Zero deps: bash 3.2+, git, sed, cp, cmp, cksum, cut, diff.
 #
@@ -39,7 +40,7 @@ ROOT=$(cd "$ROOT" && pwd)
   || { echo "mutation-check: scripts/lib-source-facts.sh is required under $ROOT" >&2; exit 2; }
 source "$ROOT/scripts/lib-source-facts.sh"
 
-NAMES=(version-drift gate-version-drift baseline-missing readme-count-drift)
+NAMES=(version-drift gate-version-drift baseline-missing readme-count-drift hot-e156-removed)
 # the file each mutation is expected to change inside the copy
 case "$LIST" in
   1) printf '%s\n' "${NAMES[@]}"; exit 0 ;;
@@ -57,11 +58,16 @@ trap cleanup EXIT INT TERM
 # --- the two fast checkers under test ---
 CHECK_RELEASE="bash scripts/release.sh check"
 CHECK_BASELINE="bash scripts/update-assertion-count.sh --check --from-baseline"
+# CHG-159 REQ-1473: the hot-path freeze check (GATE-E156) lives in agent-gate.sh, which neither
+# fast checker above reads; the source audit (A66) is the one that pins its call site.
+CHECK_AUDIT="bash tests/audit-standards-src.sh"
 
 copy_tree() { # dest
   local dest="$1" paths p
   mkdir -p "$dest" || return 1
-  paths=$( { git -C "$ROOT" ls-files 2>/dev/null; git -C "$ROOT" status --porcelain 2>/dev/null | sed -e 's/^...//' -e 's/^.* -> //'; } | sort -u )
+  # CHG-159: core.quotepath=false, otherwise non-ASCII names (能力对比分析.md) come back as quoted
+  # octal escapes, fail the -f test below and are silently left out of the fixture copy.
+  paths=$( { git -c core.quotepath=false -C "$ROOT" ls-files 2>/dev/null; git -c core.quotepath=false -C "$ROOT" status --porcelain 2>/dev/null | sed -e 's/^...//' -e 's/^.* -> //'; } | sort -u )
   while IFS= read -r p; do
     [ -n "$p" ] || continue
     [ -f "$ROOT/$p" ] || continue
@@ -92,7 +98,7 @@ FAILED=0
 # which is what keeps the fixture's own scratch writes out of the comparison.
 live_state() {
   local p
-  { git -C "$ROOT" ls-files 2>/dev/null; git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } \
+  { git -c core.quotepath=false -C "$ROOT" ls-files 2>/dev/null; git -c core.quotepath=false -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null; } \
   | sort -u | while IFS= read -r p; do
       [ -f "$ROOT/$p" ] || continue
       printf '%s %s\n' "$(cksum < "$ROOT/$p" | cut -d' ' -f1,2)" "$p"
@@ -150,6 +156,12 @@ mutate() { # name dest
       tmp="$f.mut"
       sed "s/($SUITE_N golden-case assertions)/(9999 golden-case assertions)/" "$f" > "$tmp" && mv "$tmp" "$f"
       ;;
+    hot-e156-removed)
+      # CHG-159 REQ-1473: drop the hot-path freeze-window call so GATE-E156 silently stops firing.
+      f="$dest/resources/templates/agent-gate.sh"
+      tmp="$f.mut"
+      sed '/^      validate_freeze_window "\$file"$/d' "$f" > "$tmp" && mv "$tmp" "$f"
+      ;;
     *) echo "mutation-check: unknown mutation '$name'" >&2; return 2 ;;
   esac
 }
@@ -159,6 +171,7 @@ checker_for() { # name
   case "$1" in
     version-drift|gate-version-drift) printf '%s\n' "$CHECK_RELEASE" ;;
     baseline-missing|readme-count-drift) printf '%s\n' "$CHECK_BASELINE" ;;
+    hot-e156-removed) printf '%s\n' "$CHECK_AUDIT" ;;
   esac
 }
 
@@ -169,6 +182,7 @@ target_for() { # name
     gate-version-drift) printf 'resources/templates/lib-gate-staged.sh\n' ;;
     baseline-missing) printf 'tests/.suite-baseline\n' ;;
     readme-count-drift) printf 'README.md\n' ;;
+    hot-e156-removed) printf 'resources/templates/agent-gate.sh\n' ;;
   esac
 }
 

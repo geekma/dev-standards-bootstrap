@@ -4691,8 +4691,15 @@ validate_test_weakening() {
       # ③阈值下调：同关键词 -/+ 首数值，加 < 删
       local kw
       for kw in coverage threshold timeout budget 覆盖率 阈值 超时; do
-        num_d=$(printf '%s\n' "$dfl" | grep -E '^-' | grep -vE '^---' | grep -E "$kw" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || true)
-        num_a=$(printf '%s\n' "$dfl" | grep -E '^\+' | grep -vE '^\+\+\+' | grep -E "$kw" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || true)
+        # CHG-159 REQ-1474: strip assertion ids (A39 / T87 / E160 / A10b) before taking the first
+        # number, otherwise the id is compared as if it were the threshold. Two sed passes because
+        # adjacent ids share one delimiter and a single global pass skips the second.
+        num_d=$(printf '%s\n' "$dfl" | grep -E '^-' | grep -vE '^---' | grep -E "$kw" \
+          | sed -E 's/(^|[^A-Za-z0-9_])[A-Z][0-9]+[a-z]?([^A-Za-z0-9_]|$)/\1\2/g; s/(^|[^A-Za-z0-9_])[A-Z][0-9]+[a-z]?([^A-Za-z0-9_]|$)/\1\2/g' \
+          | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || true)
+        num_a=$(printf '%s\n' "$dfl" | grep -E '^\+' | grep -vE '^\+\+\+' | grep -E "$kw" \
+          | sed -E 's/(^|[^A-Za-z0-9_])[A-Z][0-9]+[a-z]?([^A-Za-z0-9_]|$)/\1\2/g; s/(^|[^A-Za-z0-9_])[A-Z][0-9]+[a-z]?([^A-Za-z0-9_]|$)/\1\2/g' \
+          | grep -oE '[0-9]+(\.[0-9]+)?' | head -1 || true)
         if [[ -n "$num_d" && -n "$num_a" ]] && awk "BEGIN{exit !($num_a < $num_d)}"; then
           hit=1; cls="${cls:+$cls、}③阈值下调($kw)"; break
         fi

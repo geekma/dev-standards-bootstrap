@@ -49,7 +49,7 @@ v_ag=$(grep -oE '当前对应规范版本：v[0-9]+\.[0-9]+\.[0-9]+' AGENTS.md 2
 v_ds=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' "$DOCS_DIR/DEVELOPMENT_STANDARDS.md" 2>/dev/null | tail -n 1 || true)
 chk "AGENTS & DEVELOPMENT_STANDARDS footer versions match (${v_ds:-?})" "$([[ -n "$v_ag" && "$v_ag" == "$v_ds" ]] && echo 0 || echo 1)" "$v_ag vs $v_ds"
 
-for req_s in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/lib-json.sh" "$SCRIPTS_DIR/lib-gate-cold.sh"; do
+for req_s in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/lib-json.sh" "$SCRIPTS_DIR/lib-gate-staged.sh" "$SCRIPTS_DIR/lib-gate-cold.sh"; do
   chk "$req_s present and parses" "$([[ -f "$req_s" ]] && /bin/bash -n "$req_s" 2>/dev/null && echo 0 || echo 1)"
 done
 for opt_s in "$SCRIPTS_DIR/session-gate.sh" "$TESTS_DIR/audit-docs-consistency.sh"; do

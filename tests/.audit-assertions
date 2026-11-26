@@ -514,6 +514,7 @@ A56 CI carries the baseline gate, a parallel audit job and an un-skippable aggre
 A56 every CHG-115 suite section gates behind its SKIP branch (CHG-115 target-repo green)
 A56 every source tool declares the source-layer boundary (CHG-115)
 A56 golden section T87 closes the SECTIONS registry (CHG-132 tail; CHG-145 recalibrated T87→T88 E160 golden joins)
+A56 mutation-check also pins hot-e156-removed against agent-gate.sh (CHG-159)
 A56 mutation-check pins the four fixed mutations (CHG-115)
 A56 private execution disciplines never reach the tracked/public face (CHG-115)
 A56 private execution disciplines present on the local-only face (docs/private-dependent)

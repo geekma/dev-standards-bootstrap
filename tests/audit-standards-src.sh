@@ -214,7 +214,6 @@ at_least_f_files() { # name min literal file...
   if [[ "$c" -ge "$min" ]]; then report "$name" ok ok; else report "$name" ">=${min}" "$c"; fi
 }
 
-# E160 note (CHG-158): the gate's numeric-drop check reads the first number on each -/+ line; after the table migration that is the assertion id (A39) vs the expected value 1, a false positive. No expected value was lowered. owner=geek007 expires 2026-12-31: make the check skip assertion ids.
 run_audit_rules() {
   local _rf _res _op _exp _name _cnt _suites_spec
   _rf="${TMPDIR:-/tmp}/audit-rules.$$"
@@ -1837,7 +1836,9 @@ report "A56 the generator delegates receipt trust to the single implementation (
 # v3.93.0 (CHG-130, REQ-1294): is_code_path's exclusion face is replicated in
 # three files with a pinned sync duty. A missing entry makes the SAME path code
 # in one gate and governance in another (fresh-clone-check.sh was absent twice).
-a59_required='agent-gate session-gate.sh install-hook-adapter install-ci-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh'
+# CHG-159 REQ-1472: + lib-gate-staged.sh, test-harness.sh and suite-01..08 (the CHG-157/158 splits
+# were added to agent-gate.sh only; session-gate/audit-docs copies had silently drifted).
+a59_required='agent-gate session-gate.sh install-hook-adapter install-ci-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh lib-gate-staged.sh test-harness.sh suite-01-core.sh suite-02-install.sh suite-03-session.sh suite-04-gates.sh suite-05-adapter.sh suite-06-runner.sh suite-07-adapt.sh suite-08-infra.sh'
 a59_missing=0; a59_seen=0; a59_mutants=0
 for a59_f in "$ROOT/resources/templates/agent-gate.sh" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh"; do
   [[ -f "$a59_f" ]] || continue
@@ -1916,7 +1917,10 @@ grep -qF 'sf_baseline_num' "$a56_ci" \
 report "A56 the count baselines are parsed by one recipe everywhere (CHG-115)" 0 "$a56_parse_bad"
 
 report "A56 mutation-check pins the four fixed mutations (CHG-115)" 1 \
-  "$(grep -cE 'NAMES=\(version-drift gate-version-drift baseline-missing readme-count-drift\)' "$ROOT/scripts/mutation-check.sh")"
+  "$(grep -cE 'NAMES=\(version-drift gate-version-drift baseline-missing readme-count-drift[ )]' "$ROOT/scripts/mutation-check.sh")"
+# CHG-159 REQ-1473: the fifth mutation covers the hot-path E156 call site in agent-gate.sh.
+report "A56 mutation-check also pins hot-e156-removed against agent-gate.sh (CHG-159)" 1 \
+  "$(grep -cE 'NAMES=\(.* hot-e156-removed\)' "$ROOT/scripts/mutation-check.sh")"
 
 a56_secs="T69 T70 T71 T72 T73 T73b T74 T75 T76"
 a56_sec_bad=0
@@ -2457,7 +2461,7 @@ report "A76 ci.yml defines windows-smoke job and READMEs carry Windows support m
 # --- A77 (v4.13.0, CHG-158): 批C 大文件结构化拆解与全链提速 ---
 _a77_ag_lines=$(wc -l < "$GATE_TPL" | tr -d '[:space:]')
 report "A77 agent-gate hot tier <= 550 lines with lazy load_gate_staged (CHG-158)" 1 \
-  "$([[ "$_a77_ag_lines" -le 550 ]] && grep -qF 'load_gate_staged' "$GATE_TPL" && /bin/bash -n "$STAGED_TPL" 2>/dev/null && echo 1 || echo 0)"
+  "$([[ "$_a77_ag_lines" -le 450 ]] && grep -qF 'load_gate_staged' "$GATE_TPL" && /bin/bash -n "$STAGED_TPL" 2>/dev/null && echo 1 || echo 0)"
 report "A77 lib-gate-staged wired in bootstrap, is_code_path, and uninstall (CHG-158)" 3 \
   "$(( $(grep -cF 'lib-gate-staged.sh' "$ROOT/scripts/bootstrap.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'lib-gate-staged.sh' "$GATE_TPL" >/dev/null && echo 1 || echo 0) + $(grep -cF 'lib-gate-staged.sh' "$ROOT/resources/templates/uninstall-standards.sh" >/dev/null && echo 1 || echo 0) ))"
 _a77_rt_lines=$(wc -l < "$ROOT/tests/run-tests.sh" | tr -d '[:space:]')

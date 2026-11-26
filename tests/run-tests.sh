@@ -464,7 +464,8 @@ SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T1
 # 2026-10-29 medians in .agent-state/cost-ledger.tsv (T49 161.5s, T57 52s,
 # T16 35.5s, T14/T55 25s, T83 24s, T53 23s, ...; unseen sections 2s). The
 # contiguous 97/6 split cost 111/110/33/215/175/96s — a 6.6x spread and 244s
-# wall clock; T49 alone is the hard floor, the other five level at 115.0-115.5.
+# wall clock. (Historical: CHG-158 has since split T49 into T49a/T49b/T49c, so it is no
+# longer a single-section floor; re-derive the medians from the ledger before re-balancing.)
 # SECTIONS order is untouched (full-run and -j replay keep source order) and the
 # SERIAL_CHAIN groups are assigned whole. Adding a section to SECTIONS requires
 # adding it here: the drift guard below refuses to shard, and T87 pins coverage.
@@ -1080,6 +1081,13 @@ else
         progress_write running
         continue
       fi
+      # CHG-159 REQ-1471: new_repo exports escape vars into THIS shell; without a reset a
+      # later section that never calls new_repo silently inherits them (hidden dependency).
+      # SERIAL_CHAIN members keep the leak on purpose: they continue the previous fixture.
+      case " ${SERIAL_CHAIN[*]} " in
+        *" $_s "*) ;;
+        *) unset AGENT_GUARD_ALLOW_INDEPENDENT AGENT_GUARD_ALLOW_NO_SHIFT AGENT_GUARD_ADAPT ;;
+      esac
       _t0=$(date +%s); NEW_REPO_SETUP_S=0
       _p0=$pass; _f0=$fail
       "section_${_s//-/_}"
