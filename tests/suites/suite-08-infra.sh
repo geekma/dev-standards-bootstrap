@@ -1054,9 +1054,9 @@ section_T87() {
   rm -f "$_t87_ss"/*.log
   bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" >/dev/null 2>&1
   report "T87 shard-sum with zero logs exits 2" 2 "$?"
-  _t87_wr=$(mktemp -d "${TMPDIR:-/tmp}/t87-wr.XXXXXX"); mkdir -p "$_t87_wr/tests" "$_t87_wr/scripts"
-  printf '#!/usr/bin/env bash\necho "stub-gen $*" >> stub-gen.log\n' > "$_t87_wr/scripts/update-assertion-count.sh"
-  chmod +x "$_t87_wr/scripts/update-assertion-count.sh"
+  _t87_wr=$(mktemp -d "${TMPDIR:-/tmp}/t87-wr.XXXXXX"); mkdir -p "$_t87_wr/tests" "$_t87_wr/scripts/dev"
+  printf '#!/usr/bin/env bash\necho "stub-gen $*" >> stub-gen.log\n' > "$_t87_wr/scripts/dev/update-assertion-count.sh"
+  chmod +x "$_t87_wr/scripts/dev/update-assertion-count.sh"
   printf '2 passed, 0 failed\n' > "$_t87_ss/a.log"; printf '3 passed, 0 failed\n' > "$_t87_ss/b.log"
   bash "$ROOT/scripts/shard-sum.sh" --logs "$_t87_ss" --write --root "$_t87_wr" >/dev/null 2>&1
   report "T87 shard-sum --write exits 0 with a stub generator" 0 "$?"
@@ -1242,7 +1242,7 @@ EOS
   _t87_pcd=$(mktemp -d "${TMPDIR:-/tmp}/t87-pc.XXXXXX")
   _t87_pc_make() {
     rm -rf "$_t87_pcd/tree"
-    mkdir -p "$_t87_pcd/tree/scripts" "$_t87_pcd/tree/tests" "$_t87_pcd/tree/resources/templates"
+    mkdir -p "$_t87_pcd/tree/scripts/dev" "$_t87_pcd/tree/tests" "$_t87_pcd/tree/resources/templates"
     # Manifest shape mirrors scripts/bootstrap.sh: <logical-key> <dest> <src>.
     cat > "$_t87_pcd/tree/scripts/bootstrap.sh" <<'EOB'
 install_file foo "$SCRIPTS_DIR/foo.sh" "scripts/foo.sh"
@@ -1289,11 +1289,11 @@ _mem=${SHARD_PLAN_6[$((_i-1))]}
 printf 'shard %s: %s\n' "$2" "$_mem"
 printf 'shard-resolve-only: %s\n' "$_mem"
 EOS
-    cp "$ROOT/scripts/shard-plan.sh" "$_t87_pcd/tree/scripts/shard-plan.sh"
+    cp "$ROOT/scripts/dev/shard-plan.sh" "$_t87_pcd/tree/scripts/dev/shard-plan.sh"
   }
   _t87_pc_mut() { rm -rf "$_t87_pcd/$1"; cp -R "$_t87_pcd/tree" "$_t87_pcd/$1"; }
   _t87_pc_make
-  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/tree" 2>&1); _t87_rc=$?
+  _t87_o=$(bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/tree" 2>&1); _t87_rc=$?
   report "T87 TC-2340 precheck clean fixture exits 0" 0 "$_t87_rc"
   report "T87 precheck clean fixture reports R1..R5 ok" 5 \
     "$(printf '%s\n' "$_t87_o" | grep -cE '^ok R[1-5] ')"
@@ -1301,35 +1301,35 @@ EOS
     "$(printf '%s\n' "$_t87_o" | grep -cE '^(fail|warn) ')"
   # R1: a manifest source that is not on disk (the file was renamed/never shipped)
   _t87_pc_mut r1; rm -f "$_t87_pcd/r1/resources/templates/tpl.sh"
-  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r1" 2>&1)
+  _t87_o=$(bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/r1" 2>&1)
   report "T87 precheck R1 misses a vanished source by name" 1 \
     "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R1 .*resources/templates/tpl\.sh')"
   # R2: the install fixture (T21 FAKE_SRC) stopped copying the new script
   _t87_pc_mut r2
   grep -vF 'cp "$ROOT/scripts/foo.sh"' "$_t87_pcd/r2/tests/run-tests.sh" > "$_t87_pcd/r2/t.tmp" \
     && mv "$_t87_pcd/r2/t.tmp" "$_t87_pcd/r2/tests/run-tests.sh"
-  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r2" 2>&1)
+  _t87_o=$(bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/r2" 2>&1)
   report "T87 precheck R2 misses an uncopied fixture script by name" 1 \
     "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R2 .*scripts/foo\.sh')"
   # R3: the gate whitelist does not know the new code file (E125 on first commit)
   _t87_pc_mut r3
   grep -vF 'scripts_re}/foo' "$_t87_pcd/r3/resources/templates/agent-gate.sh" > "$_t87_pcd/r3/t.tmp" \
     && mv "$_t87_pcd/r3/t.tmp" "$_t87_pcd/r3/resources/templates/agent-gate.sh"
-  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r3" 2>&1)
+  _t87_o=$(bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/r3" 2>&1)
   report "T87 precheck R3 misses a whitelist entry by name" 1 \
     "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R3 .*scripts/foo\.sh')"
   # R4: a template shell script that is installed nowhere
   _t87_pc_mut r4
   grep -vF '"resources/templates/tpl.sh"' "$_t87_pcd/r4/scripts/bootstrap.sh" > "$_t87_pcd/r4/t.tmp" \
     && mv "$_t87_pcd/r4/t.tmp" "$_t87_pcd/r4/scripts/bootstrap.sh"
-  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r4" 2>&1)
+  _t87_o=$(bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/r4" 2>&1)
   report "T87 precheck R4 misses an uninstalled template by name" 1 \
     "$(printf '%s\n' "$_t87_o" | grep -cE '^fail R4 .*resources/templates/tpl\.sh')"
   # R6 is an observation: LPT packs 10 atoms of ~50 s onto 6 shards as 100 s
   # max against an 85 s floor, past the 1.15x tolerance. A fixture with fewer
   # atoms cannot warn: the heaviest atom then *is* the floor, so max <= floor.
   _t87_pc_mut r6
-  cp "$ROOT/scripts/shard-plan.sh" "$_t87_pcd/r6/scripts/shard-plan.sh"
+  cp "$ROOT/scripts/dev/shard-plan.sh" "$_t87_pcd/r6/scripts/dev/shard-plan.sh"
   mkdir -p "$_t87_pcd/r6/.agent-state"
   { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
     for _id in T1 T2 T3 T4 T6 T7 T8 T9; do
@@ -1343,22 +1343,23 @@ EOS
   } > "$_t87_pcd/r6/.agent-state/cost-ledger.tsv"
   # R6 compares the table with the planner's pinned model, so the fixture needs
   # that pin: --write derives both from the ledger above.
-  bash "$_t87_pcd/r6/scripts/shard-plan.sh" --root "$_t87_pcd/r6" --write >/dev/null 2>&1
+  bash "$_t87_pcd/r6/scripts/dev/shard-plan.sh" --root "$_t87_pcd/r6" --write >/dev/null 2>&1
   report "T87 precheck fixture pinned its own plan for R6" 0 "$?"
-  _t87_o=$(bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r6" 2>&1); _t87_rc=$?
+  _t87_o=$(bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/r6" 2>&1); _t87_rc=$?
   report "T87 precheck treats cost imbalance as a WARN, not a failure" 0 "$_t87_rc"
   report "T87 precheck names the predicted load gap" 1 \
     "$(printf '%s\n' "$_t87_o" | grep -c '^warn R6 ')"
-  bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/r6" --strict >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/r6" --strict >/dev/null 2>&1
   report "T87 precheck --strict escalates the WARN to rc1" 1 "$?"
-  bash "$ROOT/scripts/pre-round-check.sh" --root "$_t87_pcd/tree" --strict >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$_t87_pcd/tree" --strict >/dev/null 2>&1
   report "T87 precheck --strict leaves a clean fixture at rc0" 0 "$?"
-  bash "$ROOT/scripts/pre-round-check.sh" --wat >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/pre-round-check.sh" --wat >/dev/null 2>&1
   report "T87 precheck rejects an unknown option with rc2" 2 "$?"
   # Integration: a red preflight refuses to start a round and creates nothing.
   _t87_pc_mut g
   _t87_pcg="$_t87_pcd/g"
-  cp "$ROOT/scripts/pre-round-check.sh" "$ROOT/scripts/evidence-round.sh" \
+  mkdir -p "$_t87_pcg/scripts/dev" && cp "$ROOT/scripts/dev/pre-round-check.sh" "$_t87_pcg/scripts/dev/"
+  cp "$ROOT/scripts/evidence-round.sh" \
      "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$ROOT/scripts/shard-sum.sh" "$_t87_pcg/scripts/"
   printf '#!/usr/bin/env bash\necho "2 passed, 0 failed"\n' > "$_t87_pcg/tests/green-stub.sh"
   ( cd "$_t87_pcg" && git init -q && git add -A \
@@ -1566,7 +1567,7 @@ EOF
   rm -rf "$_t87_pcd"
   # REQ-1344 (CHG-134): the planner is deterministic, balances, and its marked
   # block is the committed plan (TC-2344).
-  report "T87 TC-2344 shard-plan.sh is executable" 0 "$([[ -x "$ROOT/scripts/shard-plan.sh" ]] && echo 0 || echo 1)"
+  report "T87 TC-2344 shard-plan.sh is executable" 0 "$([[ -x "$ROOT/scripts/dev/shard-plan.sh" ]] && echo 0 || echo 1)"
   _t87_spd=$(mktemp -d "${TMPDIR:-/tmp}/t87-sp.XXXXXX")
   { printf 'ts\tkind\tid\tsuite_key\tcost_s\tsetup_s\tcache\texit\tasserts\trc\toutcome\trepo_key\tmodel_id\tctx_window\n'
     printf '2026-10-29T00:00:00Z\tsec\tT49a\tsuite\t45\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
@@ -1577,8 +1578,8 @@ EOF
     printf '2026-10-29T00:00:00Z\tsec\tT83\tsuite\t24\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
     printf '2026-10-29T00:00:00Z\tsec\tT53\tsuite\t23\t0\t0\t0\t1\t0\tpass\tr\tm\t0\n'
   } > "$_t87_spd/l.tsv"
-  _t87_p1=$(bash "$ROOT/scripts/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" 2>&1)
-  _t87_p2=$(bash "$ROOT/scripts/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" 2>&1)
+  _t87_p1=$(bash "$ROOT/scripts/dev/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" 2>&1)
+  _t87_p2=$(bash "$ROOT/scripts/dev/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" 2>&1)
   report "T87 planner is deterministic for the same ledger" 1 \
     "$([[ "$_t87_p1" == "$_t87_p2" ]] && echo 1 || echo 0)"
   report "T87 planner covers every section exactly once" \
@@ -1588,14 +1589,14 @@ EOF
     "$(printf '%s\n' "$_t87_p1" | grep -cE '^shard [0-9]:.*(^| )T5 T22a T16( |$)')"
   report "T87 planner keeps the T50/T51 atom in one shard" 1 \
     "$(printf '%s\n' "$_t87_p1" | grep -cE '^shard [0-9]:.*(^| )T50 T51( |$)')"
-  _t87_pj=$(bash "$ROOT/scripts/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" --json 2>&1)
+  _t87_pj=$(bash "$ROOT/scripts/dev/shard-plan.sh" --root "$ROOT" --ledger "$_t87_spd/l.tsv" --json 2>&1)
   report "T87 planner predicts a load within 1.15x the packing floor" 1 \
     "$(sed -n 's/.*"max":\([0-9.]*\).*"floor":\([0-9.]*\).*/\1 \2/p' <<< "$_t87_pj" \
        | awk '{ if (NF==2 && $1 <= $2 * 1.15) print 1; else print 0 }')"
   # --check / --write round-trip on a copy, so the real suite is never touched.
   mkdir -p "$_t87_spd/r/tests"
   cp "$ROOT/tests/run-tests.sh" "$_t87_spd/r/tests/run-tests.sh"
-  cp "$ROOT/scripts/shard-plan.sh" "$_t87_spd/r/scripts.sh"
+  cp "$ROOT/scripts/dev/shard-plan.sh" "$_t87_spd/r/scripts.sh"
   chmod 755 "$_t87_spd/r/tests/run-tests.sh"
   bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --ledger "$_t87_spd/l.tsv" --write >/dev/null 2>&1
   report "T87 planner --write exits 0 on a marked copy" 0 "$?"
@@ -1655,21 +1656,21 @@ EOF
   printf 'cost\tid\n50\tT49a\n' > "$_t87_spd/r/tests/.shard-plan-costs.tsv"
   bash "$_t87_spd/r/scripts.sh" --root "$_t87_spd/r" --check >/dev/null 2>&1
   report "T87 planner refuses a malformed pin (rc2)" 2 "$?"
-  bash "$ROOT/scripts/shard-plan.sh" --shards 5 --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/shard-plan.sh" --shards 5 --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
   report "T87 planner keeps the contiguous fallback for N!=6" 0 "$?"
-  bash "$ROOT/scripts/shard-plan.sh" --shards 5 --check --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/shard-plan.sh" --shards 5 --check --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
   report "T87 planner refuses --check for N!=6 (rc2)" 2 "$?"
-  bash "$ROOT/scripts/shard-plan.sh" --shards 5 --json --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/shard-plan.sh" --shards 5 --json --root "$ROOT" --ledger "$_t87_spd/l.tsv" >/dev/null 2>&1
   report "T87 planner refuses --json for N!=6 (rc2)" 2 "$?"
   _t87_nl=$(mktemp -d "${TMPDIR:-/tmp}/t87-nl.XXXXXX"); mkdir -p "$_t87_nl/tests"
   cp "$ROOT/tests/run-tests.sh" "$_t87_nl/tests/run-tests.sh"
-  bash "$ROOT/scripts/shard-plan.sh" --root "$_t87_nl" --write >/dev/null 2>&1
+  bash "$ROOT/scripts/dev/shard-plan.sh" --root "$_t87_nl" --write >/dev/null 2>&1
   report "T87 planner --write without a ledger is rc2 (never a silent default)" 2 "$?"
   rm -rf "$_t87_nl"
   # The real repo's --check compares the shipped table against the committed pin
   # (tests/.shard-plan-costs.tsv), so it is a stable verdict: rc0 means the table
   # is exactly what the model produces. rc2 would mean the tool is broken.
-  bash "$ROOT/scripts/shard-plan.sh" --check >/dev/null 2>&1; _t87_spc=$?
+  bash "$ROOT/scripts/dev/shard-plan.sh" --check >/dev/null 2>&1; _t87_spc=$?
   report "T87 planner --check matches the pinned model on the real plan (rc0)" 0 "$_t87_spc"
   # TC-2345/2346: the two carriers of the rework-split rule, and the falsified
   # seventh lever. A65 covers the same carriers from the audit side; this pair

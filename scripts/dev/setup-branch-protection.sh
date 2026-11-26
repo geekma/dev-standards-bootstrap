@@ -6,8 +6,8 @@
 # Applying requires an admin token and the explicit --apply flag; the script
 # does not read, store, or print credentials.
 #
-#   scripts/setup-branch-protection.sh --repo owner/name
-#   scripts/setup-branch-protection.sh --repo owner/name --apply
+#   scripts/dev/setup-branch-protection.sh --repo owner/name
+#   scripts/dev/setup-branch-protection.sh --repo owner/name --apply
 set -euo pipefail
 
 usage() {

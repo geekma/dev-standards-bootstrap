@@ -175,22 +175,22 @@ if [[ -f "$BOOT_SRC" ]]; then
   check_output "T14 TC-10062 profile contract sorts extensions by frequency" '"detected_extensions": "zzz,aaa"' "$out"
   rm -rf "$_pc_dir"
   # TC-10066 (ITEM-43): single-source wrapper check & direct execution (isolated fixture so git worktrees without gitignored mirrors also verify sync + --check + wrapped ROOT resolution)
-  if [[ -f "$ROOT/scripts/sync-local-wrappers.sh" ]]; then
+  if [[ -f "$ROOT/scripts/dev/sync-local-wrappers.sh" ]]; then
     _sw_tmp=$(mktemp -d)
-    mkdir -p "$_sw_tmp/scripts" "$_sw_tmp/.githooks" "$_sw_tmp/resources/templates" "$_sw_tmp/docs/changes/CHG-T"
+    mkdir -p "$_sw_tmp/scripts/dev" "$_sw_tmp/.githooks" "$_sw_tmp/resources/templates" "$_sw_tmp/docs/changes/CHG-T"
     cp "$ROOT/resources/DEVELOPMENT_STANDARDS.md" "$_sw_tmp/resources/"
     cp "$ROOT/resources/templates/"*.sh "$ROOT/resources/templates/pre-commit" "$_sw_tmp/resources/templates/" 2>/dev/null || true
-    cp "$ROOT/scripts/sync-local-wrappers.sh" "$_sw_tmp/scripts/sync-local-wrappers.sh"
-    bash "$_sw_tmp/scripts/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_sw_tmp/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1
+    cp "$ROOT/scripts/dev/sync-local-wrappers.sh" "$_sw_tmp/scripts/dev/sync-local-wrappers.sh"
+    bash "$_sw_tmp/scripts/dev/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_sw_tmp/scripts/dev/sync-local-wrappers.sh" --check >/dev/null 2>&1
     _sw_rc=$?
-    bash "$_sw_tmp/scripts/sync-local-wrappers.sh" --badopt >/dev/null 2>&1; _sw_bad_rc=$?
+    bash "$_sw_tmp/scripts/dev/sync-local-wrappers.sh" --badopt >/dev/null 2>&1; _sw_bad_rc=$?
     printf '{"change_id":"CHG-T","risk_level":"L1"}\n' > "$_sw_tmp/docs/changes/CHG-T/00-governance.json"
     _sw_sp_out=$(cd "$_sw_tmp" && git init -q && bash "$_sw_tmp/scripts/stamp-provenance.sh" --print CHG-T 2>/dev/null || true)
     ( cd "$_sw_tmp" && bash "$_sw_tmp/scripts/session-gate.sh" check >/dev/null 2>&1 || true )
     _sw_root_ok=0
     [[ -d "$_sw_tmp/.agent-state" && ! -d "$_sw_tmp/resources/.agent-state" ]] && _sw_root_ok=1
     if [[ -f "$ROOT/.githooks/pre-commit" ]]; then
-      bash "$ROOT/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1 || _sw_rc=$?
+      bash "$ROOT/scripts/dev/sync-local-wrappers.sh" --check >/dev/null 2>&1 || _sw_rc=$?
     fi
     rm -rf "$_sw_tmp"
     report "T14 TC-10066 sync-local-wrappers --check passes" 0 "$_sw_rc"
@@ -251,12 +251,12 @@ if [[ -f "$BOOT_SRC" ]]; then
     rm -rf "$_fr_tmp"
   fi
   # TC-10076 (CHG-156, REQ-1453): sync-local-wrappers manages tests/audit-docs-consistency.sh
-  if [[ -f "$ROOT/scripts/sync-local-wrappers.sh" ]]; then
+  if [[ -f "$ROOT/scripts/dev/sync-local-wrappers.sh" ]]; then
     _sw_a=$(mktemp -d)
-    mkdir -p "$_sw_a/scripts" "$_sw_a/.githooks" "$_sw_a/tests" "$_sw_a/resources/templates"
+    mkdir -p "$_sw_a/scripts/dev" "$_sw_a/.githooks" "$_sw_a/tests" "$_sw_a/resources/templates"
     cp "$ROOT/resources/templates/"*.sh "$ROOT/resources/templates/pre-commit" "$_sw_a/resources/templates/" 2>/dev/null || true
-    cp "$ROOT/scripts/sync-local-wrappers.sh" "$_sw_a/scripts/sync-local-wrappers.sh"
-    bash "$_sw_a/scripts/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_sw_a/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1
+    cp "$ROOT/scripts/dev/sync-local-wrappers.sh" "$_sw_a/scripts/dev/sync-local-wrappers.sh"
+    bash "$_sw_a/scripts/dev/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_sw_a/scripts/dev/sync-local-wrappers.sh" --check >/dev/null 2>&1
     _swa_rc=$?
     report "T14 TC-10076 sync-local-wrappers creates audit wrapper and passes --check" 0 "$_swa_rc"
     report "T14 TC-10076 wrapped audit-docs-consistency is 3-line exec wrapper" 1 "$([[ "$(wc -l < "$_sw_a/tests/audit-docs-consistency.sh" | tr -d ' ')" -eq 3 ]] && grep -qF '# single-source wrapper -> resources/templates/audit-docs-consistency.sh' "$_sw_a/tests/audit-docs-consistency.sh" && echo 1 || echo 0)"
@@ -265,11 +265,12 @@ if [[ -f "$BOOT_SRC" ]]; then
     rm -rf "$_sw_a"
   fi
   # TC-10077 (CHG-156, REQ-1454): release.sh checksums & update-assertion-count enforce 0644
-  if [[ -f "$ROOT/scripts/release.sh" && -f "$ROOT/scripts/update-assertion-count.sh" ]]; then
+  if [[ -f "$ROOT/scripts/release.sh" && -f "$ROOT/scripts/dev/update-assertion-count.sh" ]]; then
     _perm_d=$(mktemp -d)
-    mkdir -p "$_perm_d/scripts" "$_perm_d/tests" "$_perm_d/resources/templates" "$_perm_d/resources/methodologies" "$_perm_d/.claude-plugin"
+    mkdir -p "$_perm_d/scripts/dev" "$_perm_d/tests" "$_perm_d/resources/templates" "$_perm_d/resources/methodologies" "$_perm_d/.claude-plugin"
     cp "$ROOT/SKILL.md" "$ROOT/README.md" "$ROOT/README.zh-CN.md" "$_perm_d/"
     cp "$ROOT/scripts/"*.sh "$_perm_d/scripts/" 2>/dev/null || true
+    cp "$ROOT/scripts/dev/"*.sh "$_perm_d/scripts/dev/" 2>/dev/null || true
     cp "$ROOT/resources/"*.md "$_perm_d/resources/" 2>/dev/null || true
     cp "$ROOT/resources/templates/"* "$_perm_d/resources/templates/" 2>/dev/null || true
     cp "$ROOT/resources/methodologies/"*.md "$_perm_d/resources/methodologies/" 2>/dev/null || true
@@ -277,7 +278,7 @@ if [[ -f "$BOOT_SRC" ]]; then
     printf '99999\n' > "$_perm_d/tests/.suite-baseline"
     chmod 0600 "$_perm_d/README.md" "$_perm_d/README.zh-CN.md"
     bash "$_perm_d/scripts/release.sh" checksums >/dev/null 2>&1
-    bash "$_perm_d/scripts/update-assertion-count.sh" --from-baseline >/dev/null 2>&1
+    bash "$_perm_d/scripts/dev/update-assertion-count.sh" --from-baseline >/dev/null 2>&1
     _p_sums=$(stat -c '%a' "$_perm_d/SHA256SUMS" 2>/dev/null || stat -f '%Lp' "$_perm_d/SHA256SUMS" 2>/dev/null || echo "")
     _p_rm=$(stat -c '%a' "$_perm_d/README.md" 2>/dev/null || stat -f '%Lp' "$_perm_d/README.md" 2>/dev/null || echo "")
     _p_zh=$(stat -c '%a' "$_perm_d/README.zh-CN.md" 2>/dev/null || stat -f '%Lp' "$_perm_d/README.zh-CN.md" 2>/dev/null || echo "")

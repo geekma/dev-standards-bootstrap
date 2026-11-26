@@ -114,7 +114,7 @@ else
 fi
 
 # ---- ③ UAC 并行形态（TC-1368/1369；静态形态，行为等价见 05 的 T9 三连跑证据）----
-t63_uac="$ROOT/scripts/update-assertion-count.sh"
+t63_uac="$ROOT/scripts/dev/update-assertion-count.sh"
 if [[ -f "$t63_uac" ]]; then
   report "T63 TC-1368 UAC embeds the parallel suite invocation" 1 "$(grep -cF 'tests/run-tests.sh" -j "$suite_jobs"' "$t63_uac")"
   report "T63 TC-1368 UAC defaults the pool to 4 jobs" 1 "$(grep -cF 'suite_jobs="${AGENT_GUARD_SUITE_JOBS:-4}"' "$t63_uac")"
@@ -456,7 +456,7 @@ section_T68() {
   report "T68 N=6 plan covers every section exactly once" 100 \
     "$(printf '%s\n' "$t68_shard" | sed -n 's/^shard-resolve-only: //p' | tr ' ' '\n' | grep -c .)"
   # v3.97.0 (CHG-134, REQ-1344): the plan is machine-written — the BEGIN/END
-  # markers must appear exactly once so `scripts/shard-plan.sh --write` can never
+  # markers must appear exactly once so `scripts/dev/shard-plan.sh --write` can never
   # rewrite the wrong block, and both new source tools must route to T87 under
   # `-T auto` (an unmapped governance tool silently falls back to a wider run).
   # Anchored to the block's own indentation: the marker strings also appear as
@@ -466,7 +466,7 @@ section_T68() {
   report "T68 the shard plan block carries one END marker" 1 \
     "$(grep -c '^  # SHARD_PLAN_6_END$' "$ROOT/tests/run-tests.sh")"
   report "T68 auto-resolve routes the two new source tools and their cost pin to T87" 3 \
-    "$(for _f in scripts/shard-plan.sh scripts/pre-round-check.sh tests/.shard-plan-costs.tsv; do
+    "$(for _f in scripts/dev/shard-plan.sh scripts/dev/pre-round-check.sh tests/.shard-plan-costs.tsv; do
         AGENT_GUARD_SUITE_AUTO_DIFF="$_f" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
           bash "$ROOT/tests/run-tests.sh" -T auto 2>/dev/null | grep -c 'auto-resolve-only: .*T87'
       done | grep -c 1)"
@@ -496,7 +496,7 @@ section_T69() {
 # 永不触发内嵌套件；README 声称漂移显式 rc1 且不改文件；基线缺失/非数字 fail-closed rc2；
 # --require-receipt 无新鲜收据即 rc2（绝不隐式重跑）；写模式把基线与双 README 一起回填。
   local r69 r69_rc r69_out r69_a r69_b r69_head r69_tree r69_snap r69_ts f
-  if [[ ! -f "$ROOT/scripts/update-assertion-count.sh" || ! -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" || ! -f "$ROOT/tests/.suite-baseline" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/update-assertion-count.sh" || ! -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" || ! -f "$ROOT/tests/.suite-baseline" ]]; then
     echo "SKIP T69: the committed baseline or the generator/fingerprint lib is absent (source-layer only)"
   else
     r69_a=0
@@ -510,8 +510,8 @@ section_T69() {
       "$([[ $(grep -cF -- '--check --from-baseline' "$ROOT/tests/audit-standards-src.sh" 2>/dev/null) -ge 1 && $(grep -cF '"$GEN" --check 2>&1' "$ROOT/tests/audit-standards-src.sh" 2>/dev/null) -eq 0 ]] && echo 1 || echo 0)"
     r69=$(mktemp -d "${TMPDIR:-/tmp}/suite-baseline.XXXXXX")
     mkdir -p "$r69/scripts" "$r69/tests" "$r69/.agent-state" "$r69/.tmp"
-    cp "$ROOT/scripts/update-assertion-count.sh" "$r69/scripts/"
-    cp "$ROOT/scripts/lib-source-facts.sh" "$r69/scripts/"
+    mkdir -p "$r69/scripts/dev" && cp "$ROOT/scripts/dev/update-assertion-count.sh" "$r69/scripts/dev/"
+    mkdir -p "$r69/scripts/dev" && cp "$ROOT/scripts/dev/lib-source-facts.sh" "$r69/scripts/dev/"
     cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r69/scripts/"
     printf '.agent-state/\n.tmp/\n' > "$r69/.gitignore"
     # 哨兵写在 gitignored 的 .agent-state 下：放进 tests/ 会留 untracked 文件、
@@ -531,7 +531,7 @@ R69FAKE
     r69_tree=$(git -C "$r69" rev-parse 'HEAD^{tree}' 2>/dev/null || true)
     # TMPDIR 隔离：真实审计留下的 $TMPDIR/audit-executed-count 一旦漂进 fixture，
     # .audit-baseline 同步分支会把 rc 判定污染成假红。
-    _r69_run() { ( cd "$r69" && TMPDIR="$r69/.tmp" AGENT_GUARD_SUITE_RECEIPT_PATH="$r69/.agent-state/last-suite-receipt.json" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/update-assertion-count.sh "$@" 2>&1 ); }
+    _r69_run() { ( cd "$r69" && TMPDIR="$r69/.tmp" AGENT_GUARD_SUITE_RECEIPT_PATH="$r69/.agent-state/last-suite-receipt.json" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/dev/update-assertion-count.sh "$@" 2>&1 ); }
     _r69_sent() { [[ -f "$r69/.agent-state/embedded-ran" ]] && echo 1 || echo 0; }
     _r69_seed() { printf '{"head":"%s","tree_fingerprint":"%s","passed":%s,"failed":%s,"wall_time_s":1,"generated_at":"%s"}\n' "$1" "$2" "$3" "$4" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$r69/.agent-state/last-suite-receipt.json"; }
     rm -f "$r69/.agent-state/embedded-ran"
@@ -593,12 +593,12 @@ section_T70() {
 # 每一轮 Agent 都在用 git/读文件/跑套件问同一批事实。facts 把它们压成一次只读 JSON：
 # 键集固定、随工作树变化、绝不跑套件、<10s，且是源层专属（bootstrap 清单里不能有它）。
   local r70 r70_rc r70_out r70_t0 r70_dt r70_keys r70_p f r70_hang_pid r70_watchdog
-  if [[ ! -f "$ROOT/scripts/facts.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" || ! -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/facts.sh" || ! -f "$ROOT/scripts/dev/lib-source-facts.sh" || ! -f "$ROOT/scripts/lib-suite-tree-fingerprint.sh" ]]; then
     echo "SKIP T70: facts.sh / lib-source-facts.sh absent (source-layer tools do not ship)"
   else
     r70=$(mktemp -d "${TMPDIR:-/tmp}/facts-test.XXXXXX")
     mkdir -p "$r70/scripts" "$r70/tests" "$r70/resources" "$r70/.agent-state"
-    cp "$ROOT/scripts/facts.sh" "$ROOT/scripts/lib-source-facts.sh" "$r70/scripts/"
+    mkdir -p "$r70/scripts/dev" && cp "$ROOT/scripts/dev/facts.sh" "$ROOT/scripts/dev/lib-source-facts.sh" "$r70/scripts/dev/"
     cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r70/scripts/"
     printf '.agent-state/\n' > "$r70/.gitignore"
     printf '规范版本：v1.2.3\n' > "$r70/resources/DEVELOPMENT_STANDARDS.md"
@@ -615,7 +615,7 @@ R70FAKE
     mkdir -p "$r70/.git/agent-governance"
     printf 'CHG-9001\n' > "$r70/.git/agent-governance/active-change"
     r70_t0=$(date +%s)
-    _r70_run() { ( cd "$r70" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r70/.agent-state/last-suite-receipt.json" bash scripts/facts.sh "$@" 2>&1 ); }
+    _r70_run() { ( cd "$r70" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r70/.agent-state/last-suite-receipt.json" bash scripts/dev/facts.sh "$@" 2>&1 ); }
     r70_rc=0; r70_out=$(_r70_run) || r70_rc=$?
     r70_dt=$(( $(date +%s) - r70_t0 ))
     report "T70 TC-1444 facts exits 0 on a well-formed checkout" 0 "$r70_rc"
@@ -668,7 +668,7 @@ R70FAKE
     r70_rc=0; r70_out=$(_r70_run --path) || r70_rc=$?
     report "T70 TC-1444 a trailing --path dies rc2 naming the option" 0 \
       "$([[ $r70_rc -eq 2 && $(printf '%s\n' "$r70_out" | grep -c -- '--path needs a value') -eq 1 ]] && echo 0 || echo 1)"
-    r70_rc=0; r70_out=$(bash "$ROOT/scripts/facts.sh" --root "$r70/does-not-exist" 2>&1) || r70_rc=$?
+    r70_rc=0; r70_out=$(bash "$ROOT/scripts/dev/facts.sh" --root "$r70/does-not-exist" 2>&1) || r70_rc=$?
     report "T70 TC-1444 a missing --root dies rc2 instead of inventing facts" 2 "$r70_rc"
     # N1 同族回归：随 bootstrap --guard 下发的套件自身也必须在尾随 -T 上立即失败。
     # 修复前实测是死循环（shift 2 在 $# == 1 时不推进），所以这里用看门狗把「挂住」
@@ -683,10 +683,10 @@ R70FAKE
     report "T70 TC-1444 the hang fix is a named usage error, not a silent full run" 1 \
       "$(grep -c 'invalid -T value' "$r70/trailing-t.err")"
     report "T70 TC-1447 facts declares the source-layer boundary" 1 \
-      "$([[ $(grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/facts.sh") -ge 1 && $(grep -cF 'lib-source-facts.sh' "$ROOT/scripts/lib-source-facts.sh") -ge 1 ]] && echo 1 || echo 0)"
+      "$([[ $(grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/dev/facts.sh") -ge 1 && $(grep -cF 'lib-source-facts.sh' "$ROOT/scripts/dev/lib-source-facts.sh") -ge 1 ]] && echo 1 || echo 0)"
     report "T70 TC-1447 bootstrap ships neither facts nor its lib" 0 \
       "$(grep -cE 'facts\.sh|lib-source-facts' "$ROOT/scripts/bootstrap.sh")"
-    r70_rc=0; r70_out=$(bash "$ROOT/scripts/facts.sh" 2>&1) || r70_rc=$?
+    r70_rc=0; r70_out=$(bash "$ROOT/scripts/dev/facts.sh" 2>&1) || r70_rc=$?
     report "T70 TC-1446 facts runs against the live source repo" 0 "$r70_rc"
     report "T70 TC-1446 the live facts carry this suite's version authority" 1 \
       "$(printf '%s\n' "$r70_out" | grep -c "\"version\": \"${CURRENT_VERSION:-unset}\"")"
@@ -701,12 +701,13 @@ section_T71() {
 # 五步都可注入命令（AGENT_GUARD_VERIFY_*_CMD 测试缝），本节全靠缝，不碰真实套件。
   local r71 r71_rc r71_out r71_order r71_rec r71_logs r71_srecv r71_head r71_tree
   local r71_c_rel r71_c_led r71_c_aud r71_c_sui r71_seq
-  if [[ ! -f "$ROOT/scripts/verify-all.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/verify-all.sh" || ! -f "$ROOT/scripts/dev/lib-source-facts.sh" ]]; then
     echo "SKIP T71: verify-all.sh / lib-source-facts.sh absent (source-layer tools do not ship)"
   else
     r71=$(mktemp -d "${TMPDIR:-/tmp}/verify-all.XXXXXX")
     mkdir -p "$r71/repo/scripts" "$r71/repo/tests" "$r71/repo/.agent-state"
-    cp "$ROOT/scripts/verify-all.sh" "$ROOT/scripts/lib-source-facts.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r71/repo/scripts/"
+    mkdir -p "$r71/repo/scripts/dev" && cp "$ROOT/scripts/dev/verify-all.sh" "$ROOT/scripts/dev/lib-source-facts.sh" "$r71/repo/scripts/dev/"
+    cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r71/repo/scripts/"
     printf '.agent-state/\n' > "$r71/repo/.gitignore"
     cat > "$r71/repo/tests/run-tests.sh" <<'R71FAKE'
 #!/usr/bin/env bash
@@ -723,13 +724,13 @@ R71FAKE
     r71_srecv="$r71/repo/.agent-state/last-suite-receipt.json"
     r71_head=$(git -C "$r71/repo" rev-parse HEAD 2>/dev/null || true)
     # Same reason as T73b: seed with the value sf_receipt_fresh will compare against.
-    r71_tree=$(bash -c 'source "$1/scripts/lib-source-facts.sh"; sf_tree_fingerprint "$1"' _ "$r71/repo" 2>/dev/null || true)
+    r71_tree=$(bash -c 'source "$1/scripts/dev/lib-source-facts.sh"; sf_tree_fingerprint "$1"' _ "$r71/repo" 2>/dev/null || true)
     r71_c_rel="printf 'release\\n' >> $r71_order"
     r71_c_led="printf 'ledger\\n' >> $r71_order"
     r71_c_aud="printf 'audit\\n' >> $r71_order"
     r71_c_sui="printf 'suite\\n' >> $r71_order"
     r71_c_gat="printf 'gate\\n' >> $r71_order"
-    _r71_run() { ( cd "$r71/repo" && AGENT_GUARD_VERIFY_RECEIPT_PATH="$r71_rec" AGENT_GUARD_VERIFY_LOG_DIR="$r71_logs" AGENT_GUARD_SUITE_RECEIPT_PATH="$r71_srecv" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 AGENT_GUARD_VERIFY_RELEASE_CMD="$r71_c_rel" AGENT_GUARD_VERIFY_LEDGER_CMD="$r71_c_led" AGENT_GUARD_VERIFY_AUDIT_CMD="$r71_c_aud" AGENT_GUARD_VERIFY_SUITE_CMD="$r71_c_sui" AGENT_GUARD_VERIFY_GATE_CMD="$r71_c_gat" bash scripts/verify-all.sh "$@" 2>&1 ); }
+    _r71_run() { ( cd "$r71/repo" && AGENT_GUARD_VERIFY_RECEIPT_PATH="$r71_rec" AGENT_GUARD_VERIFY_LOG_DIR="$r71_logs" AGENT_GUARD_SUITE_RECEIPT_PATH="$r71_srecv" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 AGENT_GUARD_VERIFY_RELEASE_CMD="$r71_c_rel" AGENT_GUARD_VERIFY_LEDGER_CMD="$r71_c_led" AGENT_GUARD_VERIFY_AUDIT_CMD="$r71_c_aud" AGENT_GUARD_VERIFY_SUITE_CMD="$r71_c_sui" AGENT_GUARD_VERIFY_GATE_CMD="$r71_c_gat" bash scripts/dev/verify-all.sh "$@" 2>&1 ); }
     _r71_seed() { printf '{"kind":"full","head":"%s","tree_fingerprint":"%s","passed":%s,"failed":0,"wall_time_s":123,"generated_at":"now"}\n' "$1" "$2" "$3" > "$r71_srecv"; }
     rm -f "$r71_order" "$r71_srecv" "$r71_rec"; rm -rf "$r71_logs"
 
@@ -785,8 +786,9 @@ R71FAKE
     # uncomputable fingerprint used to certify "tree_stable": true for a run whose
     # inputs were never pinned. A root that is not a git repo must fail instead.
     mkdir -p "$r71/nogit/scripts" "$r71/nogit/.agent-state"
-    cp "$ROOT/scripts/verify-all.sh" "$ROOT/scripts/lib-source-facts.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r71/nogit/scripts/"
-    r71_rc=0; r71_out=$( cd "$r71/nogit" && AGENT_GUARD_VERIFY_RECEIPT_PATH="$r71/nogit/.agent-state/verify-receipt.json" AGENT_GUARD_VERIFY_LOG_DIR="$r71/nogit/.agent-state/verify-logs" AGENT_GUARD_SUITE_RECEIPT_PATH="$r71/nogit/.agent-state/last-suite-receipt.json" AGENT_GUARD_VERIFY_RELEASE_CMD="$r71_c_rel" AGENT_GUARD_VERIFY_LEDGER_CMD="$r71_c_led" AGENT_GUARD_VERIFY_AUDIT_CMD="$r71_c_aud" AGENT_GUARD_VERIFY_SUITE_CMD="$r71_c_sui" bash scripts/verify-all.sh --root "$r71/nogit" 2>&1 ) || r71_rc=$?
+    mkdir -p "$r71/nogit/scripts/dev" && cp "$ROOT/scripts/dev/verify-all.sh" "$ROOT/scripts/dev/lib-source-facts.sh" "$r71/nogit/scripts/dev/"
+    cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r71/nogit/scripts/"
+    r71_rc=0; r71_out=$( cd "$r71/nogit" && AGENT_GUARD_VERIFY_RECEIPT_PATH="$r71/nogit/.agent-state/verify-receipt.json" AGENT_GUARD_VERIFY_LOG_DIR="$r71/nogit/.agent-state/verify-logs" AGENT_GUARD_SUITE_RECEIPT_PATH="$r71/nogit/.agent-state/last-suite-receipt.json" AGENT_GUARD_VERIFY_RELEASE_CMD="$r71_c_rel" AGENT_GUARD_VERIFY_LEDGER_CMD="$r71_c_led" AGENT_GUARD_VERIFY_AUDIT_CMD="$r71_c_aud" AGENT_GUARD_VERIFY_SUITE_CMD="$r71_c_sui" bash scripts/dev/verify-all.sh --root "$r71/nogit" 2>&1 ) || r71_rc=$?
     report "T71 TC-1451 a root with no computable fingerprint dies rc1" 1 "$r71_rc"
     report "T71 TC-1451 the missing fingerprint is named instead of guessed" 1 \
       "$(printf '%s\n' "$r71_out" | grep -c 'stability cannot be proven')"
@@ -822,7 +824,7 @@ R71FAKE
     report "T71 TC-1444 the suite spelling -j is accepted as an alias" 0 \
       "$([[ $r71_rc -eq 0 && $(printf '%s\n' "$r71_out" | grep -c 'unknown argument') -eq 0 ]] && echo 0 || echo 1)"
     report "T71 TC-1452 verify-all shares the receipt-reuse rule with the generator" 1 \
-      "$(grep -cF 'sf_receipt_fresh' "$ROOT/scripts/verify-all.sh")"
+      "$(grep -cF 'sf_receipt_fresh' "$ROOT/scripts/dev/verify-all.sh")"
     report "T71 TC-1447 verify-all declares the source-layer boundary and stays unshipped" 0 \
       "$(grep -cE 'verify-all\.sh' "$ROOT/scripts/bootstrap.sh")"
     rm -rf "$r71"
@@ -835,12 +837,12 @@ section_T72() {
 # 05 真实执行证据、责任人独立、07 署名与结论、provenance 戳、载体一致、README 计数、
 # 空 glob 陷阱——全部机检；只读，失败不许改动任何产物。
   local r72 r72_rc r72_out r72_art r72_snap f g
-  if [[ ! -f "$ROOT/scripts/pre-review-check.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/pre-review-check.sh" || ! -f "$ROOT/scripts/dev/lib-source-facts.sh" ]]; then
     echo "SKIP T72: pre-review-check.sh / lib-source-facts.sh absent (source-layer tools do not ship)"
   else
     r72=$(mktemp -d "${TMPDIR:-/tmp}/pre-review.XXXXXX")
     mkdir -p "$r72/repo/scripts" "$r72/repo/tests" "$r72/repo/.agent-state"
-    cp "$ROOT/scripts/pre-review-check.sh" "$ROOT/scripts/lib-source-facts.sh" "$r72/repo/scripts/"
+    mkdir -p "$r72/repo/scripts/dev" && cp "$ROOT/scripts/dev/pre-review-check.sh" "$ROOT/scripts/dev/lib-source-facts.sh" "$r72/repo/scripts/dev/"
     printf '.agent-state/\n' > "$r72/repo/.gitignore"
     printf 'README (1000 golden-case assertions) (assertions: 500)\n' > "$r72/repo/README.md"
     printf '这里声称 1000 项 golden-case 断言（断言：500）。\n' > "$r72/repo/README.zh-CN.md"
@@ -859,7 +861,7 @@ section_T72() {
     printf '评审人：dave\n评审结论：通过\n' >> "$r72_art/07-review-report.md"
     ( cd "$r72/repo" && git init -q >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
       && git -c user.email=t@t.local -c user.name=t commit -qm init >/dev/null 2>&1 )
-    _r72_run() { ( cd "$r72/repo" && bash scripts/pre-review-check.sh --root "$r72/repo" --skip-release --skip-audit "$@" 2>&1 ); }
+    _r72_run() { ( cd "$r72/repo" && bash scripts/dev/pre-review-check.sh --root "$r72/repo" --skip-release --skip-audit "$@" 2>&1 ); }
 
     r72_rc=0; r72_out=$(_r72_run --change CHG-9001) || r72_rc=$?
     report "T72 TC-1453 a complete artifact set passes with zero findings" 0 "$r72_rc"
@@ -948,9 +950,9 @@ section_T72() {
     r72_rc=0; r72_out=$(_r72_run --change CHG-9001) || r72_rc=$?
     report "T72 TC-1453 the fixture is green again once the baseline is restored" 0 "$r72_rc"
 
-    r72_rc=0; r72_out=$(cd "$r72/repo" && bash scripts/pre-review-check.sh --root "$r72/repo" --skip-audit 2>&1) || r72_rc=$?
+    r72_rc=0; r72_out=$(cd "$r72/repo" && bash scripts/dev/pre-review-check.sh --root "$r72/repo" --skip-audit 2>&1) || r72_rc=$?
     report "T72 TC-1453 a missing release.sh is a warning, not a failure" 0 "$r72_rc"
-    r72_rc=0; r72_out=$(cd "$r72/repo" && bash scripts/pre-review-check.sh --root "$r72/repo" --skip-audit --strict 2>&1) || r72_rc=$?
+    r72_rc=0; r72_out=$(cd "$r72/repo" && bash scripts/dev/pre-review-check.sh --root "$r72/repo" --skip-audit --strict 2>&1) || r72_rc=$?
     report "T72 TC-1453 --strict promotes the warning to rc1" 1 "$r72_rc"
     r72_rc=0; r72_out=$(_r72_run --nope) || r72_rc=$?
     report "T72 TC-1453 an unknown pre-review argument dies rc2" 2 "$r72_rc"
@@ -969,32 +971,32 @@ section_T73() {
 # 副本上跑变异：四类枚举齐全、version-drift 被捕获、control 前后各一次绿，
 # 且受跟踪文件逐字节不变——变异只发生在副本里，活树永远干净。
   local r73 r73_rc r73_out r73_before r73_after r73_n
-  if [[ ! -f "$ROOT/scripts/mutation-check.sh" || ! -f "$ROOT/scripts/release.sh" || ! -f "$ROOT/tests/.suite-baseline" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/mutation-check.sh" || ! -f "$ROOT/scripts/release.sh" || ! -f "$ROOT/tests/.suite-baseline" ]]; then
     echo "SKIP T73: mutation-check.sh / release.sh / the committed baseline are absent (source-layer only)"
   else
-    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/mutation-check.sh --list 2>&1) || r73_rc=$?
+    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/dev/mutation-check.sh --list 2>&1) || r73_rc=$?
     r73_n=$(printf '%s\n' "$r73_out" | grep -cE '^(version-drift|gate-version-drift|baseline-missing|readme-count-drift)$')
     report "T73 TC-1457 --list enumerates the four fixed mutations" 4 "$r73_n"
     report "T73 TC-1457 --list exits 0" 0 "$r73_rc"
     r73_before=$(git -C "$ROOT" status --porcelain 2>/dev/null)
-    r73_rc=0; r73_out=$(cd "$ROOT" && TMPDIR="${TMPDIR:-/tmp}" bash scripts/mutation-check.sh --only version-drift 2>&1) || r73_rc=$?
+    r73_rc=0; r73_out=$(cd "$ROOT" && TMPDIR="${TMPDIR:-/tmp}" bash scripts/dev/mutation-check.sh --only version-drift 2>&1) || r73_rc=$?
     report "T73 TC-1458 version-drift makes the release checker red (sweep PASS rc0)" 0 "$r73_rc"
     report "T73 TC-1458 the caught verdict is printed" 1 "$(printf '%s\n' "$r73_out" | grep -c 'caught by the checker')"
     report "T73 TC-1460 the un-mutated control is green before and after" 2 "$(printf '%s\n' "$r73_out" | grep -c 'control green')"
     r73_after=$(git -C "$ROOT" status --porcelain 2>/dev/null)
     report "T73 TC-1459 the sweep leaves the live tree byte-identical" 0 "$([[ "$r73_before" == "$r73_after" ]] && echo 0 || echo 1)"
-    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/mutation-check.sh --only not-a-mutation 2>&1) || r73_rc=$?
+    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/dev/mutation-check.sh --only not-a-mutation 2>&1) || r73_rc=$?
     report "T73 TC-1457 an unknown mutation name dies rc2" 2 "$r73_rc"
-    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/mutation-check.sh --list --only 2>&1) || r73_rc=$?
+    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/dev/mutation-check.sh --list --only 2>&1) || r73_rc=$?
     report "T73 TC-1444 a trailing --only dies rc2 instead of selecting every mutation" 0 \
       "$([[ $r73_rc -eq 2 && $(printf '%s\n' "$r73_out" | grep -c -- '--only needs a value') -eq 1 ]] && echo 0 || echo 1)"
-    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/mutation-check.sh --root "$ROOT/does-not-exist" --list >/dev/null 2>&1) || r73_rc=$?
+    r73_rc=0; r73_out=$(cd "$ROOT" && bash scripts/dev/mutation-check.sh --root "$ROOT/does-not-exist" --list >/dev/null 2>&1) || r73_rc=$?
     report "T73 TC-1459 a missing --root dies rc2" 2 "$r73_rc"
-    report "T73 TC-1460 the no-op mutation guard is part of the recipe" 1 "$(grep -cF 'no-op mutation' "$ROOT/scripts/mutation-check.sh")"
+    report "T73 TC-1460 the no-op mutation guard is part of the recipe" 1 "$(grep -cF 'no-op mutation' "$ROOT/scripts/dev/mutation-check.sh")"
     report "T73 TC-1460 the live-tree guard hashes every git-visible path, not a hand-picked list" 1 \
-      "$(awk '/^live_state\(\)/,/^}/' "$ROOT/scripts/mutation-check.sh" | grep -c -- '--others --exclude-standard')"
+      "$(awk '/^live_state\(\)/,/^}/' "$ROOT/scripts/dev/mutation-check.sh" | grep -c -- '--others --exclude-standard')"
     report "T73 TC-1460 an empty live-tree listing is refused instead of comparing two empty files" 1 \
-      "$(grep -cF '[ -s "$SNAP_BEFORE" ]' "$ROOT/scripts/mutation-check.sh")"
+      "$(grep -cF '[ -s "$SNAP_BEFORE" ]' "$ROOT/scripts/dev/mutation-check.sh")"
     report "T73 TC-1447 mutation-check declares the source-layer boundary and stays unshipped" 0 \
       "$(grep -cE 'mutation-check\.sh' "$ROOT/scripts/bootstrap.sh")"
   fi
@@ -1006,12 +1008,13 @@ section_T73b() {
 # （陈旧基线在 CI 里响亮地红，而不是安静地 documenting 一个没人跑的数）；batch-metrics
 # 把每批次的成本（轮次/编辑/轮询/整跑）落到 .agent-state 台账。两者都是源层私货。
   local r73b r73b_rc r73b_out r73b_head r73b_tree r73b_rec r73b_sum f
-  if [[ ! -f "$ROOT/scripts/ci-summary.sh" || ! -f "$ROOT/scripts/batch-metrics.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/ci-summary.sh" || ! -f "$ROOT/scripts/dev/batch-metrics.sh" || ! -f "$ROOT/scripts/dev/lib-source-facts.sh" ]]; then
     echo "SKIP T73b: ci-summary.sh / batch-metrics.sh absent (source-layer tools do not ship)"
   else
     r73b=$(mktemp -d "${TMPDIR:-/tmp}/ci-metrics.XXXXXX")
     mkdir -p "$r73b/repo/scripts" "$r73b/repo/tests" "$r73b/repo/resources" "$r73b/repo/.agent-state" "$r73b/repo/docs/changes/BATCH-20990101"
-    cp "$ROOT/scripts/ci-summary.sh" "$ROOT/scripts/batch-metrics.sh" "$ROOT/scripts/lib-source-facts.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r73b/repo/scripts/"
+    mkdir -p "$r73b/repo/scripts/dev" && cp "$ROOT/scripts/dev/ci-summary.sh" "$ROOT/scripts/dev/batch-metrics.sh" "$ROOT/scripts/dev/lib-source-facts.sh" "$r73b/repo/scripts/dev/"
+    cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r73b/repo/scripts/"
     printf '.agent-state/\n' > "$r73b/repo/.gitignore"
     printf '规范版本：v1.2.3\n' > "$r73b/repo/resources/DEVELOPMENT_STANDARDS.md"
     printf '1000\n' > "$r73b/repo/tests/.suite-baseline"
@@ -1025,11 +1028,11 @@ section_T73b() {
     # the fingerprint recipe differs from a bare tree OID as soon as anything in
     # the fixture is untracked or dirty, so a HEAD^{tree} seed only accidentally
     # matched while ci-summary ignored the field (v3.87.0 R4, review finding #7).
-    r73b_tree=$(bash -c 'source "$1/scripts/lib-source-facts.sh"; sf_tree_fingerprint "$1"' _ "$r73b/repo" 2>/dev/null || true)
+    r73b_tree=$(bash -c 'source "$1/scripts/dev/lib-source-facts.sh"; sf_tree_fingerprint "$1"' _ "$r73b/repo" 2>/dev/null || true)
     r73b_rec="$r73b/repo/.agent-state/last-suite-receipt.json"
     _r73b_seed() { printf '{"kind":"full","head":"%s","tree_fingerprint":"%s","passed":%s,"failed":%s,"wall_time_s":210,"generated_at":"now"}\n' "$1" "$2" "$3" "$4" > "$r73b_rec"; }
-    _r73b_ci() { ( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/ci-summary.sh "$@" 2>&1 ); }
-    _r73b_bm() { ( cd "$r73b/repo" && AGENT_GUARD_BATCH_METRICS_PATH="$r73b/repo/.agent-state/bm.json" AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/batch-metrics.sh "$@" 2>&1 ); }
+    _r73b_ci() { ( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/dev/ci-summary.sh "$@" 2>&1 ); }
+    _r73b_bm() { ( cd "$r73b/repo" && AGENT_GUARD_BATCH_METRICS_PATH="$r73b/repo/.agent-state/bm.json" AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/dev/batch-metrics.sh "$@" 2>&1 ); }
 
     _r73b_seed "$r73b_head" "$r73b_tree" 1000 0
     r73b_rc=0; r73b_out=$(_r73b_ci --check) || r73b_rc=$?
@@ -1064,7 +1067,7 @@ section_T73b() {
       "$([[ $r73b_rc -eq 1 && $(printf '%s\n' "$r73b_out" | grep -c 'no numeric passed field') -ge 1 ]] && echo 0 || echo 1)"
     _r73b_seed "$r73b_head" "$r73b_tree" 1000 0
     r73b_sum="$r73b/repo/.agent-state/step-summary.md"
-    r73b_rc=0; r73b_out=$( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" GITHUB_STEP_SUMMARY="$r73b_sum" bash scripts/ci-summary.sh 2>&1 ) || r73b_rc=$?
+    r73b_rc=0; r73b_out=$( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" GITHUB_STEP_SUMMARY="$r73b_sum" bash scripts/dev/ci-summary.sh 2>&1 ) || r73b_rc=$?
     report "T73b TC-1461 the summary renderer exits 0 and prints the table" 0 \
       "$([[ $r73b_rc -eq 0 && $(printf '%s\n' "$r73b_out" | grep -c '| suite baseline (tests/.suite-baseline) | 1000 |') -ge 1 ]] && echo 0 || echo 1)"
     report "T73b TC-1461 the summary states the private-ledger scope explicitly" 1 \
@@ -1110,7 +1113,7 @@ section_T73b() {
     _r73b_bm record --batch BATCH-20990101 >/dev/null 2>&1
     report "T73b TC-1464 a red verify step is ledgered as fail, not as the suite step" 0 \
       "$([[ $(_r73b_vfield) == fail ]] && echo 0 || echo 1)"
-    r73b_rc=0; r73b_out=$( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/ci-summary.sh 2>&1 ) || r73b_rc=$?
+    r73b_rc=0; r73b_out=$( cd "$r73b/repo" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r73b_rec" bash scripts/dev/ci-summary.sh 2>&1 ) || r73b_rc=$?
     report "T73b TC-1464 the CI summary prints the same top-level status, not a step's" 1 \
       "$(printf '%s\n' "$r73b_out" | grep -c '| verify-all status (if run locally) | fail |')"
     _r73b_vr pass pass 0
@@ -1143,7 +1146,7 @@ section_T73b() {
       "$([[ $(sed -n 's/.*split("\([^"]*\)", wd, "|").*/\1/p' "$ROOT/tests/audit-standards-src.sh" | tr '|' '\n' | grep -c . | tr -d ' ') == 14 && $(grep -oE 'PD-[0-9]' "$ROOT/tests/audit-standards-src.sh" | sort -u | wc -l | tr -d ' ') == 6 ]] && echo 1 || echo 0)"
 
     report "T73b TC-1462 both evidence tools declare the source-layer boundary" 2 \
-      "$( { grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/ci-summary.sh"; grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/batch-metrics.sh"; } | awk '{s+=$1} END{print s}')"
+      "$( { grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/dev/ci-summary.sh"; grep -cF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/dev/batch-metrics.sh"; } | awk '{s+=$1} END{print s}')"
     report "T73b TC-1462 bootstrap ships neither the CI summarizer nor the metrics ledger" 0 \
       "$(grep -cE 'ci-summary\.sh|batch-metrics\.sh' "$ROOT/scripts/bootstrap.sh")"
     report "T73b TC-1462 the private maintenance workspace stays untracked" 0 \
@@ -1158,12 +1161,12 @@ section_T74() {
 # 矩阵）双向差集必红；01.5 的 file:line（token）锚点逐条实测行内容。对账对象在 gitignored
 # docs/，本节只在本地 pre-review 存在——CI 的 not-checked-here 边界不变。
   local r74 r74_rc r74_out r74_art f
-  if [[ ! -f "$ROOT/scripts/pre-review-check.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/pre-review-check.sh" || ! -f "$ROOT/scripts/dev/lib-source-facts.sh" ]]; then
     echo "SKIP T74: pre-review-check.sh / lib-source-facts.sh absent (source-layer tools do not ship)"
   else
     r74=$(mktemp -d "${TMPDIR:-/tmp}/claims.XXXXXX")
     mkdir -p "$r74/repo/scripts" "$r74/repo/tests" "$r74/repo/.agent-state"
-    cp "$ROOT/scripts/pre-review-check.sh" "$ROOT/scripts/lib-source-facts.sh" "$r74/repo/scripts/"
+    mkdir -p "$r74/repo/scripts/dev" && cp "$ROOT/scripts/dev/pre-review-check.sh" "$ROOT/scripts/dev/lib-source-facts.sh" "$r74/repo/scripts/dev/"
     printf '.agent-state/\n' > "$r74/repo/.gitignore"
     printf 'README (1000 golden-case assertions) (assertions: 500)\n' > "$r74/repo/README.md"
     printf '这里声称 1000 项 golden-case 断言（断言：500）。\n' > "$r74/repo/README.zh-CN.md"
@@ -1188,7 +1191,7 @@ section_T74() {
     printf '矩阵：TC-1466/TC-1467；锚点 `scripts/tool.sh:3`（采集入口）。\n<!-- provenance: CHG-9002 batch BATCH-20990102 -->' > "$r74_art/01.5-rtvm-matrix.md"
     ( cd "$r74/repo" && git init -q >/dev/null 2>&1 && git add -A >/dev/null 2>&1 \
       && git -c user.email=t@t.local -c user.name=t commit -qm seed >/dev/null 2>&1 )
-    _r74_run() { ( cd "$r74/repo" && bash scripts/pre-review-check.sh 2>&1 ); }
+    _r74_run() { ( cd "$r74/repo" && bash scripts/dev/pre-review-check.sh 2>&1 ); }
     r74_rc=0; r74_out=$(_r74_run) || r74_rc=$?
     report "T74 TC-1466 an aligned claims chain passes" 0 "$r74_rc"
     report "T74 TC-1466 the claims line reports the verified id count" 1 \
@@ -1239,11 +1242,12 @@ section_T75() {
     r75_rec="$r75/last-suite-receipt.json"
     r75_part="$r75/last-suite-partial.json"
     # resolution-only seam: decide without executing sections
-    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="scripts/facts.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
+    # E160-5 既有豁免,本次仅路径改名(scripts/ -> scripts/dev/),非新增例外 owner=geek007 期限=2026-12-31
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="scripts/dev/facts.sh" AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 \
       bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
     report "T75 TC-1476 auto maps a changed tool to its sections plus the registry pin" 1 \
       "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: T50 T70')"
-    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="unknown/unmapped.xyz,scripts/facts.sh" \
+    r75_out=$(AGENT_GUARD_SUITE_AUTO_DIFF="unknown/unmapped.xyz,scripts/dev/facts.sh" \
       AGENT_GUARD_SUITE_AUTO_RESOLVE_ONLY=1 bash "$ROOT/tests/run-tests.sh" -T auto 2>&1)
     report "T75 TC-1477 an unmapped changed file falls back to FULL" 1 \
       "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: FULL')"
@@ -1264,7 +1268,7 @@ section_T75() {
       "$(printf '%s\n' "$r75_out" | grep -c 'auto-resolve-only: FULL')"
     # real partial run (T50+T70 are seconds): the authority path must stay untouched
     r75_rc=0
-    AGENT_GUARD_SUITE_AUTO_DIFF="scripts/facts.sh" AGENT_GUARD_SUITE_RECEIPT_PATH="$r75_rec" \
+    AGENT_GUARD_SUITE_AUTO_DIFF="scripts/dev/facts.sh" AGENT_GUARD_SUITE_RECEIPT_PATH="$r75_rec" \
       AGENT_GUARD_SUITE_PARTIAL_PATH="$r75_part" AGENT_GUARD_SESSION_STATS_PATH="$r75/stats.json" \
       bash "$ROOT/tests/run-tests.sh" -T auto -j 2 >/dev/null 2>&1 || r75_rc=$?
     report "T75 TC-1476 a mapped auto run is green and writes a partial receipt" 0 "$r75_rc"

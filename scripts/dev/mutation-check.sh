@@ -20,7 +20,7 @@
 #
 # Source-layer only (NOT shipped with the Skill).
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 ONLY=""
 LIST=0
 while [ $# -gt 0 ]; do
@@ -36,9 +36,9 @@ done
 ROOT=$(cd "$ROOT" && pwd)
 # The header already advertised this file as a lib consumer; make it true. One
 # baseline-number parser instead of two (v3.87.0 R4, finding #9).
-[ -f "$ROOT/scripts/lib-source-facts.sh" ] \
-  || { echo "mutation-check: scripts/lib-source-facts.sh is required under $ROOT" >&2; exit 2; }
-source "$ROOT/scripts/lib-source-facts.sh"
+[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ] \
+  || { echo "mutation-check: scripts/dev/lib-source-facts.sh is required under $ROOT" >&2; exit 2; }
+source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 NAMES=(version-drift gate-version-drift baseline-missing readme-count-drift hot-e156-removed)
 # the file each mutation is expected to change inside the copy
@@ -57,7 +57,7 @@ trap cleanup EXIT INT TERM
 
 # --- the two fast checkers under test ---
 CHECK_RELEASE="bash scripts/release.sh check"
-CHECK_BASELINE="bash scripts/update-assertion-count.sh --check --from-baseline"
+CHECK_BASELINE="bash scripts/dev/update-assertion-count.sh --check --from-baseline"
 # CHG-159 REQ-1473: the hot-path freeze check (GATE-E156) lives in agent-gate.sh, which neither
 # fast checker above reads; the source audit (A66) is the one that pins its call site.
 CHECK_AUDIT="bash tests/audit-standards-src.sh"

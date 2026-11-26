@@ -5,7 +5,7 @@
 # "$ROOT/scripts/lib-suite-tree-fingerprint.sh", and any local tool that wants to
 # trust a suite receipt (same HEAD + same tree fingerprint + freshness window)
 # sources the SAME recipe — one implementation, no drift. In the upstream repo the
-# consumer is scripts/update-assertion-count.sh; a target repo may wire its own.
+# consumer is scripts/dev/update-assertion-count.sh; a target repo may wire its own.
 #
 # Recipe: full-tree snapshot via a THROWAWAY index.
 #   GIT_INDEX_FILE=<mktemp> git read-tree HEAD

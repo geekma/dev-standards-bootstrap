@@ -164,7 +164,7 @@ checksum_files() {
     {
       printf '%s\n' SKILL.md \
         scripts/bootstrap.sh scripts/install.sh scripts/release.sh \
-        scripts/friction-report.sh scripts/mcp-governance-server.sh scripts/sync-local-wrappers.sh \
+        scripts/friction-report.sh scripts/mcp-governance-server.sh scripts/dev/sync-local-wrappers.sh \
         resources/DEVELOPMENT_STANDARDS.md resources/AGENTS.md resources/CLAUSE_REGISTRY.md \
         resources/METHODOLOGY.md resources/STAGE_PLAYBOOK.md resources/STANDARDS_CHANGELOG.md \
         resources/templates/pre-commit resources/templates/pre-push resources/templates/commit-msg \

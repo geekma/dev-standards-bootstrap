@@ -7,7 +7,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/geekma/dev-standards-bootstrap/actions/workflows/ci.yml)
-[![Standards Version](https://img.shields.io/badge/Standards-v4.13.1-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
+[![Standards Version](https://img.shields.io/badge/Standards-v4.14.0-green.svg)](resources/DEVELOPMENT_STANDARDS.md)
 [![AGENTS.md](https://img.shields.io/badge/Entry_Point-AGENTS.md-orange.svg)](resources/AGENTS.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
@@ -354,7 +354,7 @@ Any change that fails any gate is **blocked from merge to main**.
 | Surface | Paths (representative) | Reaches a target repo? |
 |---|---|---|
 | **A. Public capability** | `SKILL.md`, `resources/**`, `.claude-plugin/**`, installer entrypoints `scripts/bootstrap.sh` / `scripts/install.sh`; `tests/run-tests.sh` and `scripts/lib-suite-*.sh` are installed by `--guard` | Yes — copied or consumed by the installers |
-| **B. Source-public, not shipped** | this README pair, `MAINTAINER.md`, `CAPABILITY-COMPARISON.md`, `能力对比分析.md`, `SHA256SUMS`, `screenshots/**`, `tests/audit-standards-src.sh`, `tests/audit-docs-consistency.sh` (single-source `exec` wrapper -> `resources/templates/audit-docs-consistency.sh`), `scripts/update-assertion-count.sh`, `scripts/release.sh`, `scripts/selfcheck.sh`, `scripts/setup-branch-protection.sh`, `scripts/sync-local-wrappers.sh`, `scripts/friction-report.sh`, `scripts/mcp-governance-server.sh`, the CHG-115 verification toolchain (`scripts/facts.sh`, `scripts/verify-all.sh`, `scripts/pre-review-check.sh`, `scripts/mutation-check.sh`, `scripts/ci-summary.sh`, `scripts/batch-metrics.sh` and their shared `scripts/lib-source-facts.sh`), `.github/**`, and the `scripts/agent-gate` / `scripts/session-gate.sh` source-layout wrappers | No — maintainer and CI only |
+| **B. Source-public, not shipped** | this README pair, `MAINTAINER.md`, `CAPABILITY-COMPARISON.md`, `能力对比分析.md`, `SHA256SUMS`, `screenshots/**`, `tests/audit-standards-src.sh`, `tests/audit-docs-consistency.sh` (single-source `exec` wrapper -> `resources/templates/audit-docs-consistency.sh`), `scripts/dev/update-assertion-count.sh`, `scripts/release.sh`, `scripts/dev/selfcheck.sh`, `scripts/dev/setup-branch-protection.sh`, `scripts/dev/sync-local-wrappers.sh`, `scripts/friction-report.sh`, `scripts/mcp-governance-server.sh`, the CHG-115 verification toolchain (`scripts/dev/facts.sh`, `scripts/dev/verify-all.sh`, `scripts/dev/pre-review-check.sh`, `scripts/dev/mutation-check.sh`, `scripts/dev/ci-summary.sh`, `scripts/dev/batch-metrics.sh` and their shared `scripts/dev/lib-source-facts.sh`), `.github/**`, and the `scripts/agent-gate` / `scripts/session-gate.sh` source-layout wrappers | No — maintainer and CI only |
 | **C. Repository-private (gitignored)** | `docs/**` (CHG-017: the private change/bug ledger), `.agent-state/**`, `.claude/`, `.opencode/`, local working mirrors | Never |
 
 Claims in this README are backed by surface A behavior and surface B evidence; surface C contains project-specific material and is not part of the product contract.
@@ -378,25 +378,28 @@ dev-standards-bootstrap/
 ├── scripts/
 │   ├── bootstrap.sh                        # Manifest-driven installer (not shipped): copies resources/ into a target repo by layer, idempotent, conflict-safe
 │   ├── install.sh                          # One-command installer (not shipped): clone + install/upgrade in a single step
-│   ├── update-assertion-count.sh           # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
+│   ├── dev/                                # Source-layer only (NOT shipped): maintainer / CI tools (CHG-160) — never copied by bootstrap
+│   │   ├── update-assertion-count.sh       # Source-layer only (NOT shipped): regenerates README assertion-count claims + audit executed-count baseline
+│   │   ├── selfcheck.sh                    # Source-layer only (NOT shipped): single dogfood entry — delegates to verify-all (carriers, ledger, audit, suite) + eval cases
+│   │   ├── facts.sh                        # Source-layer only (NOT shipped): one read-only JSON snapshot (HEAD, version, baselines, suite receipt freshness) — <1s, never runs the suite
+│   │   ├── verify-all.sh                   # Source-layer only (NOT shipped): one serial verification entry (release → ledger → audit → suite → gate), collects all failures, reuses a fresh same-tree suite receipt
+│   │   ├── pre-review-check.sh             # Source-layer only (NOT shipped): mechanical "ready for review" gate over the 16 change artifacts (FILL residue, confirmation, evidence, owners, stamps, counts)
+│   │   ├── mutation-check.sh               # Source-layer only (NOT shipped): checker self-test — four fixed mutations must turn the fast checkers red, inside throwaway copies only
+│   │   ├── ci-summary.sh                   # Source-layer only (NOT shipped): renders the CI run summary and hard-gates tests/.suite-baseline against the receipt's passed count
+│   │   ├── batch-metrics.sh                # Source-layer only (NOT shipped): per-batch cost ledger (turns / edits / polls / full-suite runs / wall time) in .agent-state
+│   │   ├── replay-plan.sh                  # Source-layer only (NOT shipped): read-only replay of historical change diffs through today's `-T auto` resolver vs the sections 05 records — reports FULL-fallback rate and false negatives
+│   │   ├── lib-source-facts.sh             # Source-layer only (NOT shipped): shared read-only fact helpers used by the six tools above
+│   │   ├── sync-local-wrappers.sh          # Source-layer only (NOT shipped): enforces 7 single-source 3-line exec wrappers -> resources/templates/*
+│   │   └── setup-branch-protection.sh      # Source-layer only (NOT shipped): prints the gh api payload for the required check (dry run); `--apply` mutates the remote
 │   ├── release.sh                          # Source-layer only (NOT shipped): release carrier check / mechanical version bump / local annotated tag; never generates the CHANGELOG prose
-│   ├── selfcheck.sh                        # Source-layer only (NOT shipped): single dogfood entry — delegates to verify-all (carriers, ledger, audit, suite) + eval cases
-│   ├── facts.sh                            # Source-layer only (NOT shipped): one read-only JSON snapshot (HEAD, version, baselines, suite receipt freshness) — <1s, never runs the suite
-│   ├── verify-all.sh                       # Source-layer only (NOT shipped): one serial verification entry (release → ledger → audit → suite → gate), collects all failures, reuses a fresh same-tree suite receipt
-│   ├── pre-review-check.sh                 # Source-layer only (NOT shipped): mechanical "ready for review" gate over the 16 change artifacts (FILL residue, confirmation, evidence, owners, stamps, counts)
-│   ├── mutation-check.sh                   # Source-layer only (NOT shipped): checker self-test — four fixed mutations must turn the fast checkers red, inside throwaway copies only
-│   ├── ci-summary.sh                       # Source-layer only (NOT shipped): renders the CI run summary and hard-gates tests/.suite-baseline against the receipt's passed count
-│   ├── batch-metrics.sh                    # Source-layer only (NOT shipped): per-batch cost ledger (turns / edits / polls / full-suite runs / wall time) in .agent-state
-│   ├── replay-plan.sh                      # Source-layer only (NOT shipped): read-only replay of historical change diffs through today's `-T auto` resolver vs the sections 05 records — reports FULL-fallback rate and false negatives
-│   ├── lib-source-facts.sh                 # Source-layer only (NOT shipped): shared read-only fact helpers used by the six tools above
-│   ├── sync-local-wrappers.sh              # Source-layer only (NOT shipped): enforces 7 single-source 3-line exec wrappers -> resources/templates/*
 │   ├── friction-report.sh                  # Zero-dep friction ledger trend analyzer (5/2-col gate-friction.tsv -> report / --json)
 │   ├── mcp-governance-server.sh            # Optional zero-dep read-only stdio JSON-RPC 2.0 MCP wrapper (status/next/doctor/preflight)
-│   ├── setup-branch-protection.sh          # Source-layer only (NOT shipped): prints the gh api payload for the required check (dry run); `--apply` mutates the remote
 │   ├── lib-suite-tree-fingerprint.sh       # Shared library: suite tree fingerprint used by receipt keying (installed with tests/run-tests.sh by --guard)
 │   ├── lib-suite-lock.sh                   # Shared library: workspace suite lock — one full run at a time, dead-owner reclaim (installed by --guard)
 │   ├── eval-cases                          # Eval-case derivation runner (experimental; source-layer wrapper of resources/templates/eval-cases.sh)
 │   └── eval-rescore                        # Eval rescore runner (experimental; source-layer wrapper of resources/templates/eval-rescore.sh)
+├── archive/                                # Source-only (NOT shipped): historical standards changelog archive v1.0.0–v4.5.0 (ITEM-40; moved out of resources/ by CHG-160)
+│   └── STANDARDS_CHANGELOG_ARCHIVE.md
 ├── screenshots/                            # README screenshots (motivation, gate blocking, artifacts, gate-5 review)
 ├── tests/
 │   ├── run-tests.sh                        # Golden-case regression suite for governance templates incl. gate & bootstrap (copied to target tests/ — target-repo adaptive: unshipped/skipped cases auto-skip)
@@ -408,9 +411,8 @@ dev-standards-bootstrap/
 └── resources/
     ├── AGENTS.md                           # Entry point for AI agents (copied to target repo root)
     ├── CLAUSE_REGISTRY.md                  # Clause registry: machine index of standards clauses (Rxx id + filename::anchor + type vocab); DS stays the sole prose authority; feeds reading-pack generator (v3.46.0)
-    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v4.13.1 (copied to docs/)
+    ├── DEVELOPMENT_STANDARDS.md             # Full standards document v4.14.0 (copied to docs/)
     ├── STANDARDS_CHANGELOG.md              # Standards upgrade history (sole home of §2.14 upgrade log, v3.8.0; copied to docs/)
-    ├── STANDARDS_CHANGELOG_ARCHIVE.md      # Historical standards changelog archive v1.0.0–v4.5.0 (source-only, ITEM-40)
     ├── METHODOLOGY.md                       # Methodology selection guide: M0-M3 levels + stage x methodology x applicable / not-applicable table (copied to docs/)
     ├── STAGE_PLAYBOOK.md                    # Stage playbook: operational detail carried over from DS §2.5 / §2.16.6 (clause authority stays in DS; copied to docs/)
     ├── methodologies/
@@ -497,19 +499,19 @@ This repo's own CI (`.github/workflows/ci.yml`, not shipped as a template) runs 
 
 | Job | What it does |
 |---|---|
-| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 834) |
+| **Source-layer audit** | `tests/audit-standards-src.sh` — audits the standards text itself: version chain, keyword matrix, checklist uniqueness, numbering, tautology-proof greps (assertions: 842) |
 | **Golden-case self-tests** | `tests/run-tests.sh` — regression-tests the gate and the installer (2120 golden-case assertions) in throwaway git repos; bash + git only |
 | **agent-governance** | Aggregate required-check context: fails unless both jobs above succeed (stable name for branch protection) |
 
 **There is no soft mode and no double run in CI.** golden-case runs the suite once with `-j 4` under a 600s wall budget (`AGENT_GUARD_CI_WALL_BUDGET_S`, so a regression fails loudly instead of drifting into the job timeout) and uploads `.agent-state/last-suite-receipt.json` for human forensics. source-audit no longer consumes that artifact: A3/A3c/A10 read the **committed baselines** and run as hard gates (no `AGENT_GUARD_AUDIT_SOFT`), which is also why it needs no dependency on the suite job and runs in parallel with it. **The two real jobs are bounded by `timeout-minutes: 15`; the aggregate `agent-governance` gate by 5.** A workspace suite lock (`lib-suite-lock.sh`, shipped with `--guard`) admits one full run per workspace and reclaims dead owners; receipt and red-report paths are env-overridable (`AGENT_GUARD_SUITE_RECEIPT_PATH` / `AGENT_GUARD_SUITE_RED_PATH`) so parallel self-tests never touch live ledgers. A workflow-level `concurrency` group cancels superseded runs on the same ref.
 
-**Since CHG-115 the runtime truth of a number lives in exactly one place.** `tests/.suite-baseline` — the committed count of the last real green run — is what the source audit (assertion A3), both READMEs and the CI gate compare against, so the source audit is now a ~15s read/compare pass instead of an accidental 300s full suite (the machine truth for that number is the `audit` step duration in `.agent-state/verify-receipt.json`, not this sentence). CI's single suite run finishes with `scripts/ci-summary.sh --check`, which fails the job when the baseline and the receipt disagree (a stale committed baseline can no longer quietly document a number nobody ran) and renders the run into the job summary. Reproduce locally (no CI needed, bash + git only):
+**Since CHG-115 the runtime truth of a number lives in exactly one place.** `tests/.suite-baseline` — the committed count of the last real green run — is what the source audit (assertion A3), both READMEs and the CI gate compare against, so the source audit is now a ~15s read/compare pass instead of an accidental 300s full suite (the machine truth for that number is the `audit` step duration in `.agent-state/verify-receipt.json`, not this sentence). CI's single suite run finishes with `scripts/dev/ci-summary.sh --check`, which fails the job when the baseline and the receipt disagree (a stale committed baseline can no longer quietly document a number nobody ran) and renders the run into the job summary. Reproduce locally (no CI needed, bash + git only):
 
 ```bash
-bash scripts/facts.sh            # one read-only JSON snapshot: HEAD, version, baselines, receipt freshness (<1s)
-bash scripts/verify-all.sh       # one serial entry: carriers → private ledger → source audit → suite → baseline gate; collects every failure
-bash scripts/pre-review-check.sh # is this change reviewable? (artifact shape, evidence, owners, stamps, counts)
-bash scripts/mutation-check.sh   # do the fast checkers actually go red? (throwaway copies only)
+bash scripts/dev/facts.sh            # one read-only JSON snapshot: HEAD, version, baselines, receipt freshness (<1s)
+bash scripts/dev/verify-all.sh       # one serial entry: carriers → private ledger → source audit → suite → baseline gate; collects every failure
+bash scripts/dev/pre-review-check.sh # is this change reviewable? (artifact shape, evidence, owners, stamps, counts)
+bash scripts/dev/mutation-check.sh   # do the fast checkers actually go red? (throwaway copies only)
 bash tests/audit-standards-src.sh   # source-layer audit
 bash tests/run-tests.sh             # golden-case suite (writes .agent-state/last-suite-receipt.json, keyed by tree fingerprint)
 ```
@@ -519,8 +521,8 @@ CI green is the publish gate; the platform-side required-check step is described
 **Branch protection is a one-time admin action, not something CI can self-apply.** The required context is `agent-governance`. Preview the exact payload, then apply it with an admin token:
 
 ```bash
-bash scripts/setup-branch-protection.sh --repo <owner>/<repo>          # dry run (default)
-bash scripts/setup-branch-protection.sh --repo <owner>/<repo> --apply  # mutates the remote
+bash scripts/dev/setup-branch-protection.sh --repo <owner>/<repo>          # dry run (default)
+bash scripts/dev/setup-branch-protection.sh --repo <owner>/<repo> --apply  # mutates the remote
 ```
 
 The script never stores credentials; `--apply` delegates to your authenticated `gh` CLI. Applying it is deliberately left to a maintainer.
@@ -537,7 +539,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 <div align="center">
 
-**Standards Version:** v4.13.1 | **Last Updated:** 2026-11-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
+**Standards Version:** v4.14.0 | **Last Updated:** 2026-11-25 | **Maintainer:** [geekma](https://x.com/geekma) | **Email:** geekma@gmail.com
 
 [Report Bug](../../issues) | [Request Feature](../../issues) | [Read the Standards](resources/DEVELOPMENT_STANDARDS.md) | [Changelog](resources/STANDARDS_CHANGELOG.md)
 

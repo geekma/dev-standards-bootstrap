@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shard-plan.sh — deterministic 6-way shard planner for tests/run-tests.sh.
 #
-#   scripts/shard-plan.sh [--shards 6] [--ledger P] [--root D]
+#   scripts/dev/shard-plan.sh [--shards 6] [--ledger P] [--root D]
 #                         [--check | --write | --json]
 #
 # Source-only tool (never installed into a target repo): it reads this repo's

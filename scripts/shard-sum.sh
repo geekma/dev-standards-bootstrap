@@ -9,7 +9,7 @@
 #                  print one line per shard + `total: X passed, Y failed`
 #                  rc 0 = zero failed · rc 1 = any failed · rc 2 = usage/empty
 #   --write        GREEN sums only: write the total to tests/.suite-baseline and
-#                  run scripts/update-assertion-count.sh --from-baseline (README×2
+#                  run scripts/dev/update-assertion-count.sh --from-baseline (README×2
 #                  + audit claim face). update-assertion-count.sh is source-layer
 #                  (READMEs live in this repo) — target installs get sum-only and
 #                  --write refuses with a named missing file, never a silent skip.
@@ -91,7 +91,7 @@ if [[ "$any_bad" -eq 1 ]]; then exit 2; fi
 echo "total: $total_p passed, $total_f failed"
 [[ "$total_f" -eq 0 ]] || exit 1
 if [[ "$do_write" -eq 1 ]]; then
-  gen="$root/scripts/update-assertion-count.sh"
+  gen="$root/scripts/dev/update-assertion-count.sh"
   if [[ ! -f "$gen" ]]; then
     echo "shard-sum: --write needs $gen (source-layer only; target installs are sum-only)" >&2
     exit 2

@@ -276,6 +276,7 @@ if [[ -n "$as_skill" ]]; then
       fi
       mkdir -p "$dest" || return 2
       cp -R "$skill_dir/SKILL.md" "$skill_dir/resources" "$skill_dir/scripts" "$dest/" || return 2
+      [[ -d "$skill_dir/archive" ]] && { cp -R "$skill_dir/archive" "$dest/" || return 2; }
       [[ -d "$skill_dir/.claude-plugin" ]] && { cp -R "$skill_dir/.claude-plugin" "$dest/" || return 2; }
       [[ -f "$skill_dir/SHA256SUMS" ]] && { cp "$skill_dir/SHA256SUMS" "$dest/" || return 2; }
       [[ -f "$skill_dir/LICENSE" ]] && { cp "$skill_dir/LICENSE" "$dest/" || return 2; }

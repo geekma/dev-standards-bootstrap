@@ -141,7 +141,7 @@ REG47
   report "T40 gate exempt generator" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/templates/agent-gate.sh")"
   report "T40 AGENTS pack route row" 1 "$(grep -c 'generate-reading-pack' "$ROOT/resources/AGENTS.md")"
   report "T40 DS registry clause" 1 "$(grep -c '2.17.2c' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
-  report "T40 changelog v3.46.0 row" 1 "$(cat "$ROOT/resources/STANDARDS_CHANGELOG.md" "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -c '^| v3.46.0 ')"
+  report "T40 changelog v3.46.0 row" 1 "$(cat "$ROOT/resources/STANDARDS_CHANGELOG.md" "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -c '^| v3.46.0 ')"
   report "T40 generator profile vocab declared" 1 "$(grep -c 'PROFILE_VOCAB=' "$ROOT/resources/templates/generate-reading-pack.sh")"
 else
   echo "SKIP T40: generator absent — 跳过阅读包生成器 golden cases"
@@ -464,7 +464,7 @@ report "T48 TC-1073 AGENTS footer carries the current version" 1 "$(grep -cF "�
 # v3.72.0 erratum (CHG-095, TC-1275): v3.70.0 is no longer the top row (v3.72.0
 # is), but its history row must stay present — grep pattern unchanged, label now
 # states the superseded-row semantics.
-report "T48 TC-1073 CHANGELOG v3.70.0 row exists (superseded by current top)" 1 "$(cat "$ROOT/resources/STANDARDS_CHANGELOG.md" "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -c '^| v3.70.0 ')"
+report "T48 TC-1073 CHANGELOG v3.70.0 row exists (superseded by current top)" 1 "$(cat "$ROOT/resources/STANDARDS_CHANGELOG.md" "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" | grep -c '^| v3.70.0 ')"
 report "T48 TC-1073 DS §1.1 first-of-day creates batch" 2 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 DS wording spots updated" 3 "$(grep -cF '首个即建' "$ROOT/resources/DEVELOPMENT_STANDARDS.md")"
 report "T48 TC-1073 AGENTS gate section wording updated" 1 "$(grep -cF '当天 L0/L1 变更/缺陷首个即建' "$ROOT/resources/AGENTS.md")"

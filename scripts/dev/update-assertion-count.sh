@@ -31,7 +31,7 @@
 # compensates the FU-009 A3 regex residual (`assertions: N` form) by making
 # every claim site generated. Zero deps: bash + grep + sed + diff.
 set -euo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 check=0
 from_baseline=0
 require_receipt=0
@@ -136,8 +136,8 @@ rc_fallback="embedded full run"
 # implementation — sf_receipt_fresh (head + tree fingerprint + failed=0 + TTL).
 # Absence of the lib means absence of the fast path (REJECT, REQ-1143): without
 # the recipe we cannot prove the worktree is unchanged.
-if [[ -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
-  source "$ROOT/scripts/lib-source-facts.sh"
+if [[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ]]; then
+  source "$ROOT/scripts/dev/lib-source-facts.sh"
 fi
 if [[ -z "$N" && -n "$rc_head" && "$rc_max" != "0" && -f "$RECEIPT" ]]; then
   if ! command -v sf_receipt_fresh >/dev/null 2>&1; then
@@ -168,7 +168,7 @@ if [[ -z "$N" || -z "$F" ]]; then
   # --require-receipt is the manual fail-closed switch: no fresh evidence means
   # "run the suite yourself (or verify-all --fresh)", never an implicit rerun.
   if [[ "$require_receipt" -eq 1 ]]; then
-    echo "update-assertion-count: --require-receipt found no fresh same-HEAD/same-tree green suite receipt at $RECEIPT (run tests/run-tests.sh or scripts/verify-all.sh --fresh first)" >&2
+    echo "update-assertion-count: --require-receipt found no fresh same-HEAD/same-tree green suite receipt at $RECEIPT (run tests/run-tests.sh or scripts/dev/verify-all.sh --fresh first)" >&2
     exit 2
   fi
   # v3.78.0（CHG-102，REQ-1136）：内嵌全跑改节级并行——收口/源层审计的内嵌整跑是纯断言语义，
@@ -203,7 +203,7 @@ if [[ "$from_baseline" -eq 0 ]]; then
   [[ -f "$SUITE_BASELINE" ]] && baseline_cur=$(tr -d '[:space:]' < "$SUITE_BASELINE")
   if [[ "$baseline_cur" != "$N" ]]; then
     if [[ "$check" -eq 1 && -f "$SUITE_BASELINE" ]]; then
-      echo "drift: tests/.suite-baseline is ${baseline_cur:-missing} (expected ${N}); run scripts/update-assertion-count.sh" >&2
+      echo "drift: tests/.suite-baseline is ${baseline_cur:-missing} (expected ${N}); run scripts/dev/update-assertion-count.sh" >&2
       status=1
     elif [[ "$check" -eq 0 ]]; then
       printf '%s\n' "$N" > "$SUITE_BASELINE"
@@ -225,7 +225,7 @@ for f in "$ROOT/README.md" "$ROOT/README.zh-CN.md"; do
     "$f" > "$tmp"
   if ! diff -q "$tmp" "$f" >/dev/null 2>&1; then
     if [[ "$check" -eq 1 ]]; then
-      echo "drift: $f claims a stale assertion count (expected ${N}); run scripts/update-assertion-count.sh" >&2
+      echo "drift: $f claims a stale assertion count (expected ${N}); run scripts/dev/update-assertion-count.sh" >&2
       status=1
     else
       chmod 0644 "$tmp"
@@ -245,7 +245,7 @@ if [[ ! -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
   # first-time bootstrap of the baseline (chicken-and-egg: audit cannot pass
   # until the baseline exists; AUDIT_LAST comes from the audit run just made)
   if [[ "$check" -eq 1 ]]; then
-    echo "drift: tests/.audit-baseline missing (audit executed $(cat "$AUDIT_LAST")); run scripts/update-assertion-count.sh" >&2
+    echo "drift: tests/.audit-baseline missing (audit executed $(cat "$AUDIT_LAST")); run scripts/dev/update-assertion-count.sh" >&2
     status=1
   else
     cp "$AUDIT_LAST" "$AUDIT_BASELINE"
@@ -255,7 +255,7 @@ if [[ ! -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
 elif [[ -f "$AUDIT_BASELINE" && -f "$AUDIT_LAST" ]]; then
   if ! diff -q "$AUDIT_BASELINE" "$AUDIT_LAST" >/dev/null 2>&1; then
     if [[ "$check" -eq 1 ]]; then
-      echo "drift: audit executed count changed ($(cat "$AUDIT_LAST")); run scripts/update-assertion-count.sh" >&2
+      echo "drift: audit executed count changed ($(cat "$AUDIT_LAST")); run scripts/dev/update-assertion-count.sh" >&2
       status=1
     else
       cp "$AUDIT_LAST" "$AUDIT_BASELINE"
@@ -282,7 +282,7 @@ if [[ -f "$AUDIT_NAMES_LAST" ]]; then
   if [[ -f "$AUDIT_ASSERTIONS" ]] && diff -q "$tmp_names" "$AUDIT_ASSERTIONS" >/dev/null 2>&1; then
     rm -f "$tmp_names"
   elif [[ "$check" -eq 1 ]]; then
-    echo "drift: tests/.audit-assertions does not match the executed assertion names; run scripts/update-assertion-count.sh" >&2
+    echo "drift: tests/.audit-assertions does not match the executed assertion names; run scripts/dev/update-assertion-count.sh" >&2
     status=1
     rm -f "$tmp_names"
   else
@@ -305,7 +305,7 @@ if [[ -f "$AUDIT_BASELINE" ]]; then
       "$f" > "$tmp"
     if ! diff -q "$tmp" "$f" >/dev/null 2>&1; then
       if [[ "$check" -eq 1 ]]; then
-        echo "drift: $f audit assertion count is stale (expected ${audit_n}); run scripts/update-assertion-count.sh" >&2
+        echo "drift: $f audit assertion count is stale (expected ${audit_n}); run scripts/dev/update-assertion-count.sh" >&2
         status=1
       else
         chmod 0644 "$tmp"

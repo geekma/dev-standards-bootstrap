@@ -60,7 +60,7 @@ section_T51() {
   # v3.92.3: target repos do not receive the source-layer receipt tools. The
   # section is a self-test of THEM, so skip explicitly instead of red-lighting
   # every installed suite (G-ENV must stay usable without the source layer).
-  if [[ ! -f "$ROOT/scripts/update-assertion-count.sh" || ! -f "$ROOT/scripts/lib-source-facts.sh" ]]; then
+  if [[ ! -f "$ROOT/scripts/dev/update-assertion-count.sh" || ! -f "$ROOT/scripts/dev/lib-source-facts.sh" ]]; then
     echo "SKIP T51: source-layer receipt tools absent (target repo) — 跳过收据采信自测"
     return 0
   fi
@@ -69,14 +69,14 @@ section_T51() {
   local r51_tree fp1 fp2 fp3 r51_pre r51_post r51_mis r51_ng r51_ngfp r51_ng2
   r51=$(mktemp -d "${TMPDIR:-/tmp}/receipt-test.XXXXXX")
   mkdir -p "$r51/scripts" "$r51/tests" "$r51/.agent-state"
-  cp "$ROOT/scripts/update-assertion-count.sh" "$r51/scripts/"
+  mkdir -p "$r51/scripts/dev" && cp "$ROOT/scripts/dev/update-assertion-count.sh" "$r51/scripts/dev/"
   # v3.79.0 (CHG-103, REQ-1144): fixture carries the SAME fingerprint lib the
   # consumer sources, and ignores .agent-state like the real repo — without the
   # ignore rule the receipt file itself would be untracked content and shift
   # the tree fingerprint (TC-1378 would false-red for the wrong reason).
   printf '.agent-state/\n' > "$r51/.gitignore"
   cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r51/scripts/"
-  cp "$ROOT/scripts/lib-source-facts.sh" "$r51/scripts/"
+  mkdir -p "$r51/scripts/dev" && cp "$ROOT/scripts/dev/lib-source-facts.sh" "$r51/scripts/dev/"
   cat > "$r51/tests/run-tests.sh" <<'R51FAKE'
 #!/usr/bin/env bash
 : > "$(dirname "$0")/.embedded-ran"
@@ -109,7 +109,7 @@ R51FAKE
   # _r51_run：fixture 内 UAC 调用。MAX_AGE 显式钉 30——防外层调用方 env（如
   # UAC 强制内嵌跑 MAX_AGE=0）泄漏进 fixture 使采信门整体跳过（TC-1121/1378/
   # 1379/1381 全依赖采信门参与判定；实测红档四连）；TC-1122d 自带显式 0 覆盖。
-  _r51_run() { ( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r51_receipt" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/update-assertion-count.sh --check 2>&1 ); }
+  _r51_run() { ( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_PATH="$r51_receipt" AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=30 bash scripts/dev/update-assertion-count.sh --check 2>&1 ); }
 
   # TC-1121 采信主证：合法新鲜同 HEAD 收据 → 跳过内嵌（哨兵不在）+ N 来自收据（999）
   # v3.79.0（CHG-103）：fixture 升新 schema（含同树指纹）；TC-1378 追加断言指纹门参与判定
@@ -147,7 +147,8 @@ R51FAKE
 
   # TC-1122d MAX_AGE_MIN=0（禁用采信）→ 拒采
   _r51_seed "$r51_head" 999 0
-  r51_out=$( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=0 bash scripts/update-assertion-count.sh --check 2>&1 || true )
+  # E160-5 既有豁免,本次仅路径改名(scripts/ -> scripts/dev/),非新增例外 owner=geek007 期限=2026-12-31
+  r51_out=$( cd "$r51" && AGENT_GUARD_SUITE_RECEIPT_MAX_AGE_MIN=0 bash scripts/dev/update-assertion-count.sh --check 2>&1 || true )
   r51_sentinel=$([[ -f "$r51/tests/.embedded-ran" ]] && echo 1 || echo 0)
   r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
   report "T51 MAX_AGE_MIN=0 disables trusting (TC-1122d)" 0 "$([[ "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
@@ -155,14 +156,14 @@ R51FAKE
   # TC-2390（CHG-142，REQ-1379）：--from-evidence 分片求和 → 基线/README 同步
   r142=$(mktemp -d "${TMPDIR:-/tmp}/evidence-sync.XXXXXX")
   mkdir -p "$r142/scripts" "$r142/tests" "$r142/evidence/CHG-990/round-1"
-  cp "$ROOT/scripts/update-assertion-count.sh" "$r142/scripts/"
+  mkdir -p "$r142/scripts/dev" && cp "$ROOT/scripts/dev/update-assertion-count.sh" "$r142/scripts/dev/"
   printf '# readme\n(999 golden-case assertions)\n' > "$r142/README.md"
   printf '# readme\n（999 项 golden-case 断言）\n' > "$r142/README.zh-CN.md"
   printf '999\n' > "$r142/tests/.suite-baseline"
   printf 'ok shard-1\n10 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-1.log"
   printf '5 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-2.log"
   printf 'total: 15 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/sum.txt"
-  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142e_rc=$?
+  ( cd "$r142" && bash scripts/dev/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142e_rc=$?
   report "T51 TC-2390 --from-evidence syncs baseline from shard sum" 0 "$t142e_rc"
   report "T51 TC-2390 suite baseline equals shard sum" 15 "$(cat "$r142/tests/.suite-baseline" | tr -d '[:space:]')"
   report "T51 TC-2390 README claim rewritten to shard sum" 1 "$(grep -c '15 golden-case assertions' "$r142/README.md")"
@@ -170,7 +171,7 @@ R51FAKE
   # TC-2391（REQ-1379 负例）：分片求和 ≠ sum.txt total → 拒写、基线不动
   printf '9 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-1.log"
   printf '999\n' > "$r142/tests/.suite-baseline"
-  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142f_rc=$?
+  ( cd "$r142" && bash scripts/dev/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142f_rc=$?
   report "T51 TC-2391 drift between shard sum and sum.txt refuses" 2 "$t142f_rc"
   report "T51 TC-2391 baseline untouched on refusal" 999 "$(cat "$r142/tests/.suite-baseline" | tr -d '[:space:]')"
 
@@ -178,12 +179,12 @@ R51FAKE
   printf '10 passed, 0 failed\n' > "$r142/evidence/CHG-990/round-1/shard-1.log"
   printf '0 passed, 1 failed\n' > "$r142/evidence/CHG-990/round-1/shard-2.log"
   printf 'total: 10 passed, 1 failed\n' > "$r142/evidence/CHG-990/round-1/sum.txt"
-  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142g_rc=$?
+  ( cd "$r142" && bash scripts/dev/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142g_rc=$?
   report "T51 TC-2396 red round refuses to sync" 2 "$t142g_rc"
 
   # TC-2397（REQ-1379 负例）：无分片日志 → 拒写
   rm -f "$r142"/evidence/CHG-990/round-1/shard-*.log
-  ( cd "$r142" && bash scripts/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142h_rc=$?
+  ( cd "$r142" && bash scripts/dev/update-assertion-count.sh --from-evidence "evidence/CHG-990/round-1" >/dev/null 2>&1 ); t142h_rc=$?
   report "T51 TC-2397 no shard logs refuses" 2 "$t142h_rc"
 
   # v3.79.0 (CHG-103, REQ-1143/1144)：树指纹语义 golden（缺口主证 = SC-1841）
@@ -244,12 +245,13 @@ R51FAKE
   r51_ngfp=$(suite_tree_fingerprint "$r51_ng")
   r51_ng2="$r51/nogit"
   mkdir -p "$r51_ng2/scripts" "$r51_ng2/tests"
-  cp "$ROOT/scripts/update-assertion-count.sh" "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r51_ng2/scripts/"
-  cp "$ROOT/scripts/lib-source-facts.sh" "$r51_ng2/scripts/"
+  mkdir -p "$r51_ng2/scripts/dev" && cp "$ROOT/scripts/dev/update-assertion-count.sh" "$r51_ng2/scripts/dev/"
+  cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$r51_ng2/scripts/"
+  mkdir -p "$r51_ng2/scripts/dev" && cp "$ROOT/scripts/dev/lib-source-facts.sh" "$r51_ng2/scripts/dev/"
   cp "$r51/tests/run-tests.sh" "$r51_ng2/tests/"
   printf 'README claims 888 golden-case assertions here.\n' > "$r51_ng2/README.md"
   printf '这里声称 888 项 golden-case 断言。\n' > "$r51_ng2/README.zh-CN.md"
-  r51_out=$( cd "$r51_ng2" && AGENT_GUARD_SUITE_RECEIPT_PATH="" bash scripts/update-assertion-count.sh --check 2>&1 || true )
+  r51_out=$( cd "$r51_ng2" && AGENT_GUARD_SUITE_RECEIPT_PATH="" bash scripts/dev/update-assertion-count.sh --check 2>&1 || true )
   r51_sentinel=$([[ -f "$r51_ng2/tests/.embedded-ran" ]] && echo 1 || echo 0)
   r51_has777=$(printf '%s\n' "$r51_out" | grep -c 'expected 777')
   report "T51 non-git repo: lib yields empty, UAC runs embedded (TC-1384)" 0 "$([[ -z "$r51_ngfp" && "$r51_sentinel" == 1 && "$r51_has777" -ge 1 ]] && echo 0 || echo 1)"
@@ -1174,11 +1176,11 @@ out=$(bash scripts/agent-gate next CHG-1069 --json 2>&1)
 check_output "T53 TC-10063 cold next --json returns JSON" '"change_id":"CHG-1069"' "$out"
 
 # TC-10064 (ITEM-40) & TC-10065 (ITEM-42): STANDARDS_CHANGELOG <= 20480 + archive & DS <= 155648
-if [[ -f "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]]; then
+if [[ -f "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" ]]; then
   _cl_sz=$(wc -c < "$ROOT/resources/STANDARDS_CHANGELOG.md" | tr -d ' ')
   _ds_sz=$(wc -c < "$ROOT/resources/DEVELOPMENT_STANDARDS.md" | tr -d ' ')
   report "T53 TC-10064 STANDARDS_CHANGELOG <= 20480B" 1 "$([[ "$_cl_sz" -le 20480 ]] && echo 1 || echo 0)"
-  report "T53 TC-10064 STANDARDS_CHANGELOG_ARCHIVE retains v2.9.0" 1 "$(grep -c '^| v2\.9\.0 ' "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" || true)"
+  report "T53 TC-10064 STANDARDS_CHANGELOG_ARCHIVE retains v2.9.0" 1 "$(grep -c '^| v2\.9\.0 ' "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" || true)"
   report "T53 TC-10065 DEVELOPMENT_STANDARDS <= 155648B" 1 "$([[ "$_ds_sz" -le 155648 ]] && echo 1 || echo 0)"
 fi
 

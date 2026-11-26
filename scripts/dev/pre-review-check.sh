@@ -24,7 +24,7 @@
 # Source-layer only (NOT shipped with the Skill).
 # Zero deps: bash 3.2+, git, grep, sed, tr, date, stat.
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 CHANGE=""
 SKIP_RELEASE=0
 SKIP_AUDIT=0
@@ -42,7 +42,7 @@ while [ $# -gt 0 ]; do
 done
 [ -d "$ROOT" ] || { echo "pre-review-check: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
-source "$ROOT/scripts/lib-source-facts.sh"
+source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 # v3.93.0 (CHG-130, REQ-1298): the change root is configurable. Resolution order:
 # AGENT_GUARD_CHANGE_ROOT -> paths.change_root in .agent-governance.yml -> docs/changes.

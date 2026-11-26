@@ -2,7 +2,7 @@
 # sync-local-wrappers.sh — replace 7 duplicate source mirrors with 3-line single-source exec wrappers (ITEM-43, REQ-1453)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MODE="write"
 case "${1:-}" in
   "") ;;

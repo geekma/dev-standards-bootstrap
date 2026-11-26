@@ -45,11 +45,11 @@ RM_ZH="$ROOT/README.zh-CN.md"
 # blocks (and by the A10b/A10 tail), which run in separate subshells under
 # AGENT_GUARD_AUDIT_PARALLEL=1. Pure path/pattern derivations, no side effects.
 SLOG="$ROOT/resources/STANDARDS_CHANGELOG.md"
-SLOG_ARCHIVE="$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md"
+SLOG_ARCHIVE="$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md"
 V=$(grep -oE '规范版本：v[0-9.]+' "$STD" | head -1 | grep -oE '[0-9.]+')
 [[ -n "$V" ]] || V="UNKNOWN"
 log_head=$(grep -m1 -oE '^\| v[0-9.]+' "$SLOG" 2>/dev/null | grep -oE '[0-9.]+')
-GEN="$ROOT/scripts/update-assertion-count.sh"
+GEN="$ROOT/scripts/dev/update-assertion-count.sh"
 GATE_TPL="$ROOT/resources/templates/agent-gate.sh"
 STAGED_TPL="$ROOT/resources/templates/lib-gate-staged.sh"
 COLD_TPL="$ROOT/resources/templates/lib-gate-cold.sh"
@@ -1429,12 +1429,12 @@ run_audit_rules <<'EOF'
 @CR	F_EQ	1	A49 REGISTRY indexes GATE-E159 (CHG-141)	| GATE-E159 
 @CR	E_EQ	1	A49 REGISTRY registers R84 三查 clause (CHG-141)	^[|] R84 
 @STAGED	F_GE	1	A50 preflight probes the stop content face (CHG-142)	p_run validate_mechanism_stop
-@ROOT/scripts/update-assertion-count.sh	F_GE	2	A50 update-assertion-count --from-evidence is wired (CHG-142)	--from-evidence
+@ROOT/scripts/dev/update-assertion-count.sh	F_GE	2	A50 update-assertion-count --from-evidence is wired (CHG-142)	--from-evidence
 EOF
 
 # ── PART A10: 审计执行数基线自校验（CHG-009 / FU-022）──────────────────────────
 # 语义：audit 的实际执行断言数（pass+fail）必须与基线文件一致。断言增删（含不可达
-# 死调用）而未同步基线 → 红；红即提示跑 scripts/update-assertion-count.sh 同步。
+# 死调用）而未同步基线 → 红；红即提示跑 scripts/dev/update-assertion-count.sh 同步。
 # 不采用"静态调用数==执行数"口径：if/else 双分支站点使静态数天然≠执行数。
 # 基线文件随本变更入库；/tmp 计数文件为本轮运行现场（供生成器 --check 比对）。
 # AUDIT_BASELINE/AUDIT_LAST hoisted to setup (REQ-1323 cross-block reads).
@@ -1461,7 +1461,7 @@ report "A41 provenance block-tail blank-run canary (REQ-1027)" 0 "$canary_viol"
 # append-only 历史不改写（§2.15），新条目纪律由评审承载（v2.17.0 即通用化改版记录）。
 a42_hits=""
 for a42_f in $(git ls-files 'resources/*' 'SKILL.md' 'README.md' 'README.zh-CN.md' 'scripts/bootstrap.sh' '.claude-plugin/*' 2>/dev/null); do
-  [[ "$a42_f" == "resources/STANDARDS_CHANGELOG.md" || "$a42_f" == "resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && continue
+  [[ "$a42_f" == "resources/STANDARDS_CHANGELOG.md" || "$a42_f" == "archive/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && continue
   a42_hit=$(grep -nE '儿童内分泌|newCDSScode|CDSS|候诊|预问诊|ptSwitch|btnDemo|FU-942|FU-935|diagnosis-round|observation\(id|ingest 管线|dev\.sh' "$a42_f" 2>/dev/null | head -1)
   [[ -n "$a42_hit" ]] && a42_hits="$a42_hits${a42_f}: ${a42_hit}"$'\n'
 done
@@ -1768,20 +1768,20 @@ report "A55 DS section4 states the P00-P12 thirteen-row rule (CHG-114)" 2 \
 #   ⑬ .opencode/ 目录本身不受跟踪；⑭ 套件收据复用规则被 verify-all 与生成器共享。
 a56_self="$ROOT/tests/audit-standards-src.sh"
 # a56_suite hoisted to the setup region (REQ-1323 cross-block reads).
-a56_gen="$ROOT/scripts/update-assertion-count.sh"
+a56_gen="$ROOT/scripts/dev/update-assertion-count.sh"
 a56_ci="$ROOT/.github/workflows/ci.yml"
 a56_tools="lib-source-facts.sh facts.sh verify-all.sh pre-review-check.sh mutation-check.sh ci-summary.sh batch-metrics.sh"
 a56_missing=0
 for a56_t in $a56_tools; do
-  [[ -f "$ROOT/scripts/$a56_t" ]] || { echo "A56: missing source tool scripts/$a56_t" >&2; a56_missing=$(( a56_missing + 1 )); continue; }
-  bash -n "$ROOT/scripts/$a56_t" 2>/dev/null || { echo "A56: scripts/$a56_t does not parse" >&2; a56_missing=$(( a56_missing + 1 )); }
+  [[ -f "$ROOT/scripts/dev/$a56_t" ]] || { echo "A56: missing source tool scripts/dev/$a56_t" >&2; a56_missing=$(( a56_missing + 1 )); continue; }
+  bash -n "$ROOT/scripts/dev/$a56_t" 2>/dev/null || { echo "A56: scripts/dev/$a56_t does not parse" >&2; a56_missing=$(( a56_missing + 1 )); }
 done
 report "A56 the seven source-layer tools exist and parse (CHG-115)" 0 "$a56_missing"
 
 a56_hdr=0
 for a56_t in $a56_tools; do
-  grep -qF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/$a56_t" 2>/dev/null \
-    || { echo "A56: scripts/$a56_t lacks the source-layer boundary header" >&2; a56_hdr=$(( a56_hdr + 1 )); }
+  grep -qF 'Source-layer only (NOT shipped with the Skill)' "$ROOT/scripts/dev/$a56_t" 2>/dev/null \
+    || { echo "A56: scripts/dev/$a56_t lacks the source-layer boundary header" >&2; a56_hdr=$(( a56_hdr + 1 )); }
 done
 report "A56 every source tool declares the source-layer boundary (CHG-115)" 0 "$a56_hdr"
 
@@ -1808,8 +1808,8 @@ for a56_t in tests/.suite-baseline tests/.audit-baseline; do
     || { echo "A56: $a56_t is not tracked — CI on a fresh checkout cannot read it" >&2; a56_untracked=$(( a56_untracked + 1 )); }
 done
 for a56_t in $a56_tools; do
-  git -C "$ROOT" ls-files --error-unmatch "scripts/$a56_t" >/dev/null 2>&1 \
-    || { echo "A56: scripts/$a56_t is not tracked" >&2; a56_untracked=$(( a56_untracked + 1 )); }
+  git -C "$ROOT" ls-files --error-unmatch "scripts/dev/$a56_t" >/dev/null 2>&1 \
+    || { echo "A56: scripts/dev/$a56_t is not tracked" >&2; a56_untracked=$(( a56_untracked + 1 )); }
 done
 report "A56 both count baselines and all seven source tools are tracked (CHG-115)" 0 "$a56_untracked"
 
@@ -1907,20 +1907,20 @@ a56_parse_bad=0
 # certified the wrong files — it went red on a header comment the first time the
 # gate step's documentation mentioned the path (v3.87.0 R4, self-caught).
 for a56_f in mutation-check.sh ci-summary.sh batch-metrics.sh pre-review-check.sh; do
-  grep -qF 'sf_baseline_num' "$ROOT/scripts/$a56_f" \
-    || { echo "A56: scripts/$a56_f reads a count baseline without sf_baseline_num" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
-  grep -qF "tr -d '[:space:]' <" "$ROOT/scripts/$a56_f" \
-    && { echo "A56: scripts/$a56_f still parses a baseline by hand" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
+  grep -qF 'sf_baseline_num' "$ROOT/scripts/dev/$a56_f" \
+    || { echo "A56: scripts/dev/$a56_f reads a count baseline without sf_baseline_num" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
+  grep -qF "tr -d '[:space:]' <" "$ROOT/scripts/dev/$a56_f" \
+    && { echo "A56: scripts/dev/$a56_f still parses a baseline by hand" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
 done
 grep -qF 'sf_baseline_num' "$a56_ci" \
   || { echo "A56: CI re-implements the baseline number parse instead of sourcing the lib" >&2; a56_parse_bad=$(( a56_parse_bad + 1 )); }
 report "A56 the count baselines are parsed by one recipe everywhere (CHG-115)" 0 "$a56_parse_bad"
 
 report "A56 mutation-check pins the four fixed mutations (CHG-115)" 1 \
-  "$(grep -cE 'NAMES=\(version-drift gate-version-drift baseline-missing readme-count-drift[ )]' "$ROOT/scripts/mutation-check.sh")"
+  "$(grep -cE 'NAMES=\(version-drift gate-version-drift baseline-missing readme-count-drift[ )]' "$ROOT/scripts/dev/mutation-check.sh")"
 # CHG-159 REQ-1473: the fifth mutation covers the hot-path E156 call site in agent-gate.sh.
 report "A56 mutation-check also pins hot-e156-removed against agent-gate.sh (CHG-159)" 1 \
-  "$(grep -cE 'NAMES=\(.* hot-e156-removed\)' "$ROOT/scripts/mutation-check.sh")"
+  "$(grep -cE 'NAMES=\(.* hot-e156-removed\)' "$ROOT/scripts/dev/mutation-check.sh")"
 
 a56_secs="T69 T70 T71 T72 T73 T73b T74 T75 T76"
 a56_sec_bad=0
@@ -1990,7 +1990,7 @@ report "A56 CI carries the baseline gate, a parallel audit job and an un-skippab
 a56_doc_bad=0
 for a56_t in facts.sh verify-all.sh pre-review-check.sh mutation-check.sh; do
   for a56_f in "$RM_EN" "$RM_ZH"; do
-    grep -qF "$a56_t" "$a56_f" || { echo "A56: $(basename "$a56_f") does not document scripts/$a56_t" >&2; a56_doc_bad=$(( a56_doc_bad + 1 )); }
+    grep -qF "$a56_t" "$a56_f" || { echo "A56: $(basename "$a56_f") does not document scripts/dev/$a56_t" >&2; a56_doc_bad=$(( a56_doc_bad + 1 )); }
   done
 done
 report "A56 both READMEs document the four source-layer entry tools (CHG-115)" 0 "$a56_doc_bad"
@@ -2074,8 +2074,8 @@ grep -qF 'last-suite-partial.json' "$a56_suite" || { echo "A57: partial quaranti
 grep -qF '"kind":"partial"' "$a56_suite" || { echo "A57: partial receipt writer lacks kind:partial" >&2; a57_bad=$((a57_bad+1)); }
 grep -qE '\[\[ \$\{#WANTED\[@\]\} -eq 0' "$a56_suite" || { echo "A57: full-run gating condition missing from the runner" >&2; a57_bad=$((a57_bad+1)); }
 grep -qF 'AGENT_GUARD_SUITE_FAKE_FULL' "$a56_suite" || { echo "A57: self-count test seam absent from the runner" >&2; a57_bad=$((a57_bad+1)); }
-grep -qF 'not full authority' "$ROOT/scripts/ci-summary.sh" || { echo "A57: ci-summary does not reject partial receipts" >&2; a57_bad=$((a57_bad+1)); }
-grep -qF 'no kind field' "$ROOT/scripts/ci-summary.sh" || { echo "A57: ci-summary does not reject legacy (kind-less) receipts" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'not full authority' "$ROOT/scripts/dev/ci-summary.sh" || { echo "A57: ci-summary does not reject partial receipts" >&2; a57_bad=$((a57_bad+1)); }
+grep -qF 'no kind field' "$ROOT/scripts/dev/ci-summary.sh" || { echo "A57: ci-summary does not reject legacy (kind-less) receipts" >&2; a57_bad=$((a57_bad+1)); }
 a57_secs_line=$(grep -oE '^SECTIONS=\(.*\)' "$a56_suite")
 for a57_s in $(grep -oE "printf 'T[0-9a-z ]*'" "$a56_suite" | grep -oE 'T[0-9a-z]+' | sort -u); do
   case "$a57_secs_line" in *" $a57_s)"*|*" $a57_s "*) ;; *) echo "A57: auto map references unregistered section $a57_s" >&2; a57_bad=$((a57_bad+1)); ;; esac
@@ -2085,7 +2085,7 @@ grep -qF 'runner self-edit' "$a56_suite" || { echo "A57: runner self-edit full-f
 report "A57 -T auto keeps partial receipts quarantined and the mapping honest (CHG-116)" 0 "$a57_bad"
 
 report "A56 verify-all shares the generator receipt-reuse rule (CHG-115)" 1 \
-  "$(grep -qF 'sf_receipt_fresh' "$ROOT/scripts/verify-all.sh" && grep -qF 'sf_receipt_fresh' "$ROOT/scripts/lib-source-facts.sh" && echo 1 || echo 0)"
+  "$(grep -qF 'sf_receipt_fresh' "$ROOT/scripts/dev/verify-all.sh" && grep -qF 'sf_receipt_fresh' "$ROOT/scripts/dev/lib-source-facts.sh" && echo 1 || echo 0)"
 
 # v3.79.0 (CHG-103): 通用能力下发面防漂移钉——三能力（token 节省/运行加速/任务并行）
 # 的目标仓发现性文本与下发件在位性。声称面 = 校验面：模板指引或 usage 行被改坏时
@@ -2099,9 +2099,9 @@ report "A48 fingerprint lib ships and sources cleanly" 1 "$(bash -c 'source scri
 at_least "A48 bootstrap ships the suite-lock lib (CHG-113)" 1 "$ROOT/scripts/bootstrap.sh" 'lib-suite-lock\.sh'
 report "A48 suite-lock lib sources cleanly" 1 "$(bash -c 'ROOT=$PWD; source scripts/lib-suite-lock.sh 2>/dev/null && command -v suite_lock_acquire >/dev/null 2>&1 && echo 1 || echo 0')"
 report "A48 run-tests honors the receipt path override (CHG-113)" 1 "$([[ $(grep -cF 'AGENT_GUARD_SUITE_RECEIPT_PATH' "$ROOT/tests/run-tests.sh") -ge 1 ]] && echo 1 || echo 0)"
-report "A48 update-assertion-count honors the receipt path override (CHG-113)" 1 "$(grep -cF 'AGENT_GUARD_SUITE_RECEIPT_PATH' "$ROOT/scripts/update-assertion-count.sh")"
-report "A48 source dogfood entry ships and parses (CHG-113)" 1 "$([[ -f "$ROOT/scripts/selfcheck.sh" ]] && bash -n "$ROOT/scripts/selfcheck.sh" 2>/dev/null && echo 1 || echo 0)"
-report "A48 branch-protection helper defaults to dry-run (CHG-113)" 1 "$([[ -f "$ROOT/scripts/setup-branch-protection.sh" ]] && grep -qF 'dry run: no remote change' "$ROOT/scripts/setup-branch-protection.sh" && echo 1 || echo 0)"
+report "A48 update-assertion-count honors the receipt path override (CHG-113)" 1 "$(grep -cF 'AGENT_GUARD_SUITE_RECEIPT_PATH' "$ROOT/scripts/dev/update-assertion-count.sh")"
+report "A48 source dogfood entry ships and parses (CHG-113)" 1 "$([[ -f "$ROOT/scripts/dev/selfcheck.sh" ]] && bash -n "$ROOT/scripts/dev/selfcheck.sh" 2>/dev/null && echo 1 || echo 0)"
+report "A48 branch-protection helper defaults to dry-run (CHG-113)" 1 "$([[ -f "$ROOT/scripts/dev/setup-branch-protection.sh" ]] && grep -qF 'dry run: no remote change' "$ROOT/scripts/dev/setup-branch-protection.sh" && echo 1 || echo 0)"
 
 # A43 分层单源 tripwire（CHG-044，2026-10-13 用户硬指令）：工具词表/格式细节的唯一权威=
 # 工具头注释（behavior-extract.sh / agent-gate）与 entry 模板条件注释块；叙事层
@@ -2283,11 +2283,11 @@ run_audit_rules <<'EOF'
 @AGENTS	F_GE	1	A65 the rule names the deferral ledger (CHG-134)	延后补钉登记
 @STD	F_GE	1	A65 DS §2.13.4 carries the same rule (CHG-134)	返工分治（v3.97.0，CHG-134）
 @ROOT/resources/templates/entry/05-test-results.md	F_GE	1	A65 the 05 template has the deferral section (CHG-134)	## 延后补钉登记
-@AGENTS	F_GE	1	A65 AGENTS names the preflight tool (CHG-134)	scripts/pre-round-check.sh
+@AGENTS	F_GE	1	A65 AGENTS names the preflight tool (CHG-134)	scripts/dev/pre-round-check.sh
 @AGENTS	F_GE	1	A65 AGENTS names the fail-fast and carry switches (CHG-134)	--carry-check
 EOF
-report "A65 pre-round-check.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/pre-round-check.sh" ]] && echo 0 || echo 1)"
-report "A65 shard-plan.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/shard-plan.sh" ]] && echo 0 || echo 1)"
+report "A65 pre-round-check.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/dev/pre-round-check.sh" ]] && echo 0 || echo 1)"
+report "A65 shard-plan.sh is executable (CHG-134)" 0 "$([[ -x "$ROOT/scripts/dev/shard-plan.sh" ]] && echo 0 || echo 1)"
 run_audit_rules <<'EOF'
 @ROOT/scripts/evidence-round.sh	F_GE	1	A65 evidence-round refuses to start on a red preflight (CHG-134)	pre-round-check failed
 @RUN	F_GE	1	A65 the plan block is machine-written (CHG-134)	# SHARD_PLAN_6_BEGIN
@@ -2403,16 +2403,16 @@ report "A73 STANDARDS_CHANGELOG slimmed <= 20KB with archive split (CHG-154)" 1 
 report "A73 STANDARDS_CHANGELOG_ARCHIVE retains v2.9.0..v4.2.0 history (CHG-154)" 1 "$(a17_at_least_1 "$(grep -c '^| v2\.9\.0 ' "$SLOG_ARCHIVE" || true)")"
 report "A73 governance-smoke ships in guard layer (CHG-154)" 1 "$([[ -x "$ROOT/resources/templates/governance-smoke.sh" ]] && grep -cF 'governance-smoke.sh' "$ROOT/scripts/bootstrap.sh" | awk '{print ($1>=1)?1:0}' || echo 0)"
 _a73_sw_rc=1
-if [[ -x "$ROOT/scripts/sync-local-wrappers.sh" ]]; then
+if [[ -x "$ROOT/scripts/dev/sync-local-wrappers.sh" ]]; then
   _a73_sw_tmp=$(mktemp -d)
-  mkdir -p "$_a73_sw_tmp/scripts" "$_a73_sw_tmp/.githooks"
+  mkdir -p "$_a73_sw_tmp/scripts/dev" "$_a73_sw_tmp/.githooks"
   ln -s "$ROOT/resources" "$_a73_sw_tmp/resources"
-  cp "$ROOT/scripts/sync-local-wrappers.sh" "$_a73_sw_tmp/scripts/sync-local-wrappers.sh"
-  bash "$_a73_sw_tmp/scripts/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_a73_sw_tmp/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1
+  cp "$ROOT/scripts/dev/sync-local-wrappers.sh" "$_a73_sw_tmp/scripts/dev/sync-local-wrappers.sh"
+  bash "$_a73_sw_tmp/scripts/dev/sync-local-wrappers.sh" >/dev/null 2>&1 && bash "$_a73_sw_tmp/scripts/dev/sync-local-wrappers.sh" --check >/dev/null 2>&1
   _a73_sw_rc=$?
   rm -rf "$_a73_sw_tmp"
   if [[ -f "$ROOT/.githooks/pre-commit" ]]; then
-    bash "$ROOT/scripts/sync-local-wrappers.sh" --check >/dev/null 2>&1 || _a73_sw_rc=$?
+    bash "$ROOT/scripts/dev/sync-local-wrappers.sh" --check >/dev/null 2>&1 || _a73_sw_rc=$?
   fi
 fi
 report "A73 sync-local-wrappers --check passes in source repo (CHG-154)" 0 "$_a73_sw_rc"
@@ -2442,8 +2442,8 @@ _a75_cc_en=0; _a75_cc_zh=0
 [[ -f "$ROOT/CAPABILITY-COMPARISON.md" ]] && grep -qF 'Evolution Note (v4.5–v4.10)' "$ROOT/CAPABILITY-COMPARISON.md" && _a75_cc_en=1
 [[ -f "$ROOT/能力对比分析.md" ]] && grep -qF '演进说明（v4.5–v4.10）' "$ROOT/能力对比分析.md" && _a75_cc_zh=1
 report "A75 CAPABILITY-COMPARISON en/zh include v4.5-v4.10 evolution note (CHG-156)" 2 "$(( _a75_cc_en + _a75_cc_zh ))"
-at_least_f "A75 sync-local-wrappers manages tests/audit-docs-consistency.sh (CHG-156)" 1 "$ROOT/scripts/sync-local-wrappers.sh" 'tests/audit-docs-consistency.sh:resources/templates/audit-docs-consistency.sh'
-report "A75 release/update-assertion-count/shard-sum enforce 0644 on generated files (CHG-156)" 3 "$(( $(grep -cF 'chmod 0644' "$ROOT/scripts/release.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/update-assertion-count.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/shard-sum.sh" >/dev/null && echo 1 || echo 0) ))"
+at_least_f "A75 sync-local-wrappers manages tests/audit-docs-consistency.sh (CHG-156)" 1 "$ROOT/scripts/dev/sync-local-wrappers.sh" 'tests/audit-docs-consistency.sh:resources/templates/audit-docs-consistency.sh'
+report "A75 release/update-assertion-count/shard-sum enforce 0644 on generated files (CHG-156)" 3 "$(( $(grep -cF 'chmod 0644' "$ROOT/scripts/release.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/dev/update-assertion-count.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/shard-sum.sh" >/dev/null && echo 1 || echo 0) ))"
 at_least_f "A75 .gitignore excludes .screenshots/ (CHG-156)" 1 "$ROOT/.gitignore" '.screenshots/'
 
 # --- A76 (v4.12.0, CHG-157, REQ-1455~1459): Windows Git Bash/WSL2 兼容与 CI 冒烟 ---
@@ -2472,6 +2472,30 @@ report "A77 T49 split into T49a/T49b/T49c with CoW new_repo prewarm (CHG-158)" 1
   "$(grep -qE '^SECTIONS=.*T49a T49b T49c' "$ROOT/tests/run-tests.sh" && ! grep -qE '^SECTIONS=.* T49 ' "$ROOT/tests/run-tests.sh" && grep -qF 'cp -c -pR' "$ROOT/tests/run-tests.sh" && grep -qF 'cp --reflink=auto' "$ROOT/tests/run-tests.sh" && echo 1 || echo 0)"
 report "A77 audit-standards-src defines single-pass awk run_audit_rules engine (CHG-158)" 1 \
   "$([[ $(grep -c '^run_audit_rules()' "$ROOT/tests/audit-standards-src.sh") -ge 1 ]] && echo 1 || echo 0)"
+
+# --- A78 (v4.14.0, CHG-160): 批D scripts/dev 边界、归档迁出与分发边界 ---
+# agent-gate, session-gate.sh, stamp-provenance.sh are untracked local wrappers (sync-local-wrappers): optional here.
+_a78_root_set=$(cd "$ROOT/scripts" && LC_ALL=C ls | LC_ALL=C sort | grep -vxE 'agent-gate|session-gate[.]sh|stamp-provenance[.]sh' | tr -s '[:space:]' ' ')
+_a78_dev_set=$(cd "$ROOT/scripts/dev" 2>/dev/null && LC_ALL=C ls | LC_ALL=C sort | tr -s '[:space:]' ' ' || true)
+report "A78 scripts/ root holds exactly the 12 expected entries (11 files plus dev/) (CHG-160)" "bootstrap.sh dev eval-cases eval-rescore evidence-round.sh friction-report.sh install.sh lib-suite-lock.sh lib-suite-tree-fingerprint.sh mcp-governance-server.sh release.sh shard-sum.sh " "$_a78_root_set"
+report "A78 scripts/dev holds exactly the 14 source-only scripts (CHG-160)" "batch-metrics.sh ci-summary.sh facts.sh lib-source-facts.sh mutation-check.sh pre-review-check.sh pre-round-check.sh replay-plan.sh selfcheck.sh setup-branch-protection.sh shard-plan.sh sync-local-wrappers.sh update-assertion-count.sh verify-all.sh " "$_a78_dev_set"
+_a78_src_ok=0
+for _a78_s in $(grep -oE 'install_file - "[$]SCRIPTS_DIR/[^"]+" scripts/[A-Za-z0-9._-]+' "$ROOT/scripts/bootstrap.sh" | awk '{print $NF}'); do
+  [[ -f "$ROOT/$_a78_s" ]] && _a78_src_ok=$(( _a78_src_ok + 1 ))
+done
+report "A78 every scripts/-sourced bootstrap install_file stays in the scripts/ root (CHG-160)" 4 "$_a78_src_ok"
+_a78_single=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]"' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
+_a78_double=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]/[.][.]' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
+report "A78 scripts/dev scripts compute ROOT two levels up, none one level (CHG-160)" "0/10" "${_a78_single}/${_a78_double}"
+_a78_old=$(grep -rIlE 'scripts/(batch-metrics|ci-summary|facts|lib-source-facts|mutation-check|pre-review-check|pre-round-check|replay-plan|selfcheck|setup-branch-protection|shard-plan|sync-local-wrappers|update-assertion-count|verify-all)([.]sh)?([^A-Za-z0-9_-]|$)' --exclude-dir=.git --exclude-dir=docs --exclude-dir=archive --exclude-dir=graphify-out --exclude-dir=.agent-state --exclude-dir=screenshots --exclude-dir=cover-image --exclude-dir=.opencode --exclude-dir=.workbuddy --exclude-dir=.workbuddy-ai --exclude=STANDARDS_CHANGELOG.md --exclude=audit-standards-src.sh "$ROOT" 2>/dev/null | wc -l | tr -d '[:space:]')
+report "A78 no non-history file still names a migrated script at its old scripts/ path (CHG-160)" 0 "$_a78_old"
+report "A78 changelog archive lives under archive/, not resources/ (CHG-160)" "1/0" "$([[ -f "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && echo 1 || echo 0)/$([[ -e "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && echo 1 || echo 0)"
+report "A78 divergence_guard reads archive/ and install.sh skill copy carries it (CHG-160)" 2 \
+  "$(( $(grep -qF 'archive/STANDARDS_CHANGELOG_ARCHIVE.md' "$ROOT/scripts/bootstrap.sh" && echo 1 || echo 0) + $(grep -qF 'cp -R "$skill_dir/archive"' "$ROOT/scripts/install.sh" && echo 1 || echo 0) ))"
+_a78_sv=$(grep -m1 -oE '^version:[[:space:]]*"?[0-9]+[.][0-9]+[.][0-9]+' "$SKILL" | grep -oE '[0-9]+[.][0-9]+[.][0-9]+')
+_a78_q='"'
+report "A78 plugin.json and marketplace.json carry the SKILL.md version (CHG-160)" 2 \
+  "$(( $(grep -qF "version${_a78_q}: ${_a78_q}${_a78_sv}${_a78_q}" "$ROOT/.claude-plugin/plugin.json" && echo 1 || echo 0) + $(grep -qF "version${_a78_q}: ${_a78_q}${_a78_sv}${_a78_q}" "$ROOT/.claude-plugin/marketplace.json" && echo 1 || echo 0) ))"
 }
 
 if [[ "${AGENT_GUARD_AUDIT_PARALLEL:-1}" == "1" ]] && audit_parallel; then :; else
@@ -2509,7 +2533,7 @@ if [[ -f "$AUDIT_BASELINE" ]]; then
     report "A10 audit executed-count matches baseline (FU-022)" "$expected_total" "$(( pass + fail - soft_pass + 1 ))"
   fi
 else
-  report "A10 audit baseline exists (FU-022; run scripts/update-assertion-count.sh)" 1 0
+  report "A10 audit baseline exists (FU-022; run scripts/dev/update-assertion-count.sh)" 1 0
 fi
 # FU-937 (CHG-045): written AFTER the A10 report so the synced number equals the
 # runtime executed total (the old pre-report write recorded N-1 → 静态基线恒比

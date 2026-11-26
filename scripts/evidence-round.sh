@@ -22,7 +22,7 @@
 #                outside the repo or gitignored. An in-repo, un-ignored state dir
 #                also trips the mid-round drift check — every such round is INVALID.
 #   --skip-precheck
-#                do not run scripts/pre-round-check.sh before starting
+#                do not run scripts/dev/pre-round-check.sh before starting
 #   --fail-fast  stop the round on the first non-live shard with a non-zero rc:
 #                terminate the siblings, record 143 for them, skip the sum
 #   --carry-check
@@ -365,8 +365,8 @@ fi
 # created. Missing tool = skip notice (target repos do not ship it); rc1 =
 # refuse to start (a known-missing registration would only burn a full round).
 if [[ "$SKIP_PRECHECK" -eq 0 ]]; then
-  if [[ -f "$ROOT/scripts/pre-round-check.sh" ]]; then
-    bash "$ROOT/scripts/pre-round-check.sh" --root "$ROOT" || {
+  if [[ -f "$ROOT/scripts/dev/pre-round-check.sh" ]]; then
+    bash "$ROOT/scripts/dev/pre-round-check.sh" --root "$ROOT" || {
       _prc=$?
       echo "evidence-round: pre-round-check failed (rc=$_prc) — refusing to start a round that would burn shard time; fix the named item or pass --skip-precheck" >&2
       exit 2

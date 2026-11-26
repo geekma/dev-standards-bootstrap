@@ -22,7 +22,7 @@
 # Source-layer only (NOT shipped with the Skill).
 # Zero deps: bash 3.2+, git, sed, tr, date, grep, awk, find.
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 BATCH=""
 BATCH_GIVEN=0
 LIMIT=0
@@ -41,7 +41,7 @@ done
 case "$LIMIT" in ''|*[!0-9]*) LIMIT=0 ;; esac
 [ -d "$ROOT" ] || { echo "batch-metrics: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
-source "$ROOT/scripts/lib-source-facts.sh"
+source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 JSON_PATH="${AGENT_GUARD_BATCH_METRICS_PATH:-$ROOT/.agent-state/batch-metrics.json}"
 TSV_PATH="${AGENT_GUARD_BATCH_METRICS_TSV_PATH:-${JSON_PATH%.json}.tsv}"

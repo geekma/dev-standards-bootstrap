@@ -743,7 +743,7 @@ manifest_user_modified() { # dest_rel dest -> 0 = entry 存在且 hash 异（用
 # case and refuse (fail-closed) instead of overwriting or trying to merge:
 # a merge would destroy the only answer to "who maintains this line?".
 divergence_guard() { # src dest -> 0 when dest has version rows src lacks
-  local src="$1" dest="$2" arch="$SKILL_ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" extra
+  local src="$1" dest="$2" arch="$SKILL_ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" extra
   [[ -f "$dest" ]] || return 1
   local -a known_files=("$src")
   [[ -f "$arch" ]] && known_files+=("$arch")

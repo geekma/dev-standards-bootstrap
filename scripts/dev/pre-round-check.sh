@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # pre-round-check.sh — static, read-only preflight for an evidence round.
 #
-#   scripts/pre-round-check.sh [--root D] [--strict] [--json]
+#   scripts/dev/pre-round-check.sh [--root D] [--strict] [--json]
 #
 # Source-only tool (never installed): it inspects THIS repo's install manifest,
 # gate whitelist, T21 fixture, shard plan and cost ledger. It exists because the
@@ -153,7 +153,7 @@ else record R4 ok "all template scripts are installed"; fi
 
 # R5 — the plan is a partition and keeps the chain atoms together. The suite
 # owns SECTIONS/SERIAL_CHAIN and its own drift guard; ask it via resolve-only.
-PLANNER_DECL="$ROOT/scripts/shard-plan.sh"
+PLANNER_DECL="$ROOT/scripts/dev/shard-plan.sh"
 SECTIONS_STR=$(sed -n 's/^SECTIONS=(\(.*\))$/\1/p' "$SUITE" | head -1)
 SERIAL_STR=$(sed -n 's/^SERIAL_CHAIN=(\(.*\))$/\1/p' "$SUITE" | head -1)
 [[ -n "$SECTIONS_STR" ]] || { echo "pre-round-check: cannot read SECTIONS from $SUITE" >&2; exit 2; }
@@ -173,7 +173,7 @@ if [[ -z "$_r5_bad" ]]; then
   _want=$(printf '%s\n' $SECTIONS_STR | sort | tr '\n' ' ')
   _got=$(for _i in 1 2 3 4 5 6; do printf '%s\n' ${_sh_mem[_i]}; done | sort | tr '\n' ' ')
   [[ "$_want" == "$_got" ]] || _r5_bad+="plan members differ from SECTIONS (missing or duplicated); "
-  # The atoms are the planner's own declaration (scripts/shard-plan.sh ATOMS):
+  # The atoms are the planner's own declaration (scripts/dev/shard-plan.sh ATOMS):
   # copying the list here would let a new chain group go unchecked.
   _atom_line=$(sed -n 's/^ATOMS=(\(.*\))$/\1/p' "$PLANNER_DECL" 2>/dev/null | head -1)
   _atom_line=${_atom_line//\"/}
@@ -188,7 +188,7 @@ if [[ -z "$_r5_bad" ]]; then
     done
     [[ "$_hit" -eq 1 ]] || _r5_bad+="atom '$_atom' is split across shards; "
   done
-  [[ ${#_atoms[@]} -gt 0 ]] || _r5_bad+="no chain atoms found (scripts/shard-plan.sh ATOMS unreadable); "
+  [[ ${#_atoms[@]} -gt 0 ]] || _r5_bad+="no chain atoms found (scripts/dev/shard-plan.sh ATOMS unreadable); "
 fi
 if [[ -n "$_r5_bad" ]]; then record R5 fail "$_r5_bad"
 else record R5 ok "SHARD_PLAN_6 partitions SECTIONS and keeps both chain atoms whole"; fi
@@ -196,16 +196,16 @@ else record R5 ok "SHARD_PLAN_6 partitions SECTIONS and keeps both chain atoms w
 # R6 — plan drift + predicted imbalance (the drift face is a gate, the load face
 # is an observation). shard-plan.sh is the one implementation of both; without
 # it (or without a ledger) skip.
-PLANNER="$ROOT/scripts/shard-plan.sh"
+PLANNER="$ROOT/scripts/dev/shard-plan.sh"
 LEDGER="$ROOT/.agent-state/cost-ledger.tsv"
-if [[ ! -f "$PLANNER" ]]; then record R6 ok "skip — no scripts/shard-plan.sh (cost model unavailable)"
+if [[ ! -f "$PLANNER" ]]; then record R6 ok "skip — no scripts/dev/shard-plan.sh (cost model unavailable)"
 elif [[ ! -f "$LEDGER" ]]; then record R6 ok "skip — no cost ledger at .agent-state/cost-ledger.tsv"
 else
   # The table must equal its pinned model; a mismatch means a hand edit (or a
   # table older than the pin) and the round would run a plan nobody can recompute.
   _chk_out=$(bash "$PLANNER" --root "$ROOT" --check 2>&1); _chk_rc=$?
   if [[ "$_chk_rc" -eq 1 ]]; then
-    record R6 fail "SHARD_PLAN_6 does not match its cost model ($(grep -m1 '^shard-plan:' <<< "$_chk_out")) — run scripts/shard-plan.sh --write"
+    record R6 fail "SHARD_PLAN_6 does not match its cost model ($(grep -m1 '^shard-plan:' <<< "$_chk_out")) — run scripts/dev/shard-plan.sh --write"
   elif [[ "$_chk_rc" -ne 0 ]]; then
     record R6 fail "shard-plan --check rc=$_chk_rc ($(grep -m1 'shard-plan:' <<< "$_chk_out")) — the plan cannot be verified, so the round must not start"
   else

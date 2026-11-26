@@ -14,7 +14,7 @@
 # Source-layer only (NOT shipped with the Skill).
 # Zero deps: bash 3.2+, git, sed, tr, date, stat.
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 WRITE=0
 DEST=""
 while [ $# -gt 0 ]; do
@@ -28,7 +28,7 @@ while [ $# -gt 0 ]; do
 done
 [ -d "$ROOT" ] || { echo "facts: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
-source "$ROOT/scripts/lib-source-facts.sh"
+source "$ROOT/scripts/dev/lib-source-facts.sh"
 OUT=$(sf_emit_facts "$ROOT") || { echo "facts: failed to collect facts" >&2; exit 2; }
 if [ "$WRITE" -eq 1 ]; then
   [ -n "$DEST" ] || DEST="${AGENT_GUARD_FACTS_PATH:-$ROOT/.agent-state/facts.json}"

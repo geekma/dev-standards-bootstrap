@@ -32,7 +32,7 @@ jobs:
       # four minutes, not after.
       - name: Suite baseline is committed
         run: |
-          source scripts/lib-source-facts.sh
+          source scripts/dev/lib-source-facts.sh
           n=$(sf_baseline_num tests/.suite-baseline)
           [ -n "$n" ] || { echo "::error::tests/.suite-baseline is missing or non-numeric"; exit 1; }
           echo "committed suite baseline: $n"
@@ -52,7 +52,7 @@ jobs:
       # produced, so it is also the place the baseline is hard-checked against the
       # receipt, and the receipt/baselines are rendered into the job summary.
       - name: Baseline vs receipt hard gate
-        run: bash scripts/ci-summary.sh --check
+        run: bash scripts/dev/ci-summary.sh --check
       # v3.98.1 (CHG-138, REQ-1357): the T87 concurrency probes red on CI
       # without a proven root cause; when they do, this carries the live scene
       # (ledger copies, writer stderr, ps snapshot, core count) for forensics.
@@ -66,7 +66,7 @@ jobs:
           retention-days: 7
       - name: Golden-case run summary
         if: always()
-        run: bash scripts/ci-summary.sh
+        run: bash scripts/dev/ci-summary.sh
       - name: Upload suite receipt
         if: success()
         uses: actions/upload-artifact@v4
@@ -96,7 +96,7 @@ jobs:
       - name: Run source-layer audit
         run: bash tests/audit-standards-src.sh
 
-  # Stable required-check context for branch protection (scripts/setup-branch-protection.sh
+  # Stable required-check context for branch protection (scripts/dev/setup-branch-protection.sh
   # defaults to this name). It must fail whenever either real job fails.
   agent-governance:
     name: agent-governance

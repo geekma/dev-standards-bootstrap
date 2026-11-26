@@ -31,7 +31,7 @@
 # Source-layer only (NOT shipped with the Skill).
 # Zero deps: bash 3.2+, git, sed, tr, date, stat.
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 FRESH=0
 SKIP_RELEASE=0
 SKIP_LEDGER=0
@@ -59,7 +59,7 @@ done
 ROOT=$(cd "$ROOT" && pwd)
 case "$JOBS" in ''|*[!0-9]*) JOBS=4 ;; esac
 [ "$JOBS" -ge 1 ] || JOBS=4
-source "$ROOT/scripts/lib-source-facts.sh"
+source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 RECEIPT="${AGENT_GUARD_VERIFY_RECEIPT_PATH:-$ROOT/.agent-state/verify-receipt.json}"
@@ -144,7 +144,7 @@ fi
 
 # The batch's headline hard gate, locally as well as in CI: baseline == receipt.
 GATE_CMD="${AGENT_GUARD_VERIFY_GATE_CMD:-}"
-if [ -z "$GATE_CMD" ] && [ -f "$ROOT/scripts/ci-summary.sh" ]; then GATE_CMD="bash scripts/ci-summary.sh --check"; fi
+if [ -z "$GATE_CMD" ] && [ -f "$ROOT/scripts/dev/ci-summary.sh" ]; then GATE_CMD="bash scripts/dev/ci-summary.sh --check"; fi
 run_step gate "$SKIP_GATE" "$GATE_CMD"
 
 FP_AFTER=$(sf_tree_fingerprint "$ROOT")

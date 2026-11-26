@@ -23,7 +23,7 @@
 # Source-layer only (NOT shipped with the Skill).
 # Zero deps: bash 3.2+, git, sed, tr, date.
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 CHECK=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
 done
 [ -d "$ROOT" ] || { echo "ci-summary: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
-source "$ROOT/scripts/lib-source-facts.sh"
+source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 RECEIPT=$(sf_suite_receipt_path "$ROOT")
 HEAD=$(sf_repo_head "$ROOT")
@@ -98,7 +98,7 @@ else
     case "$R_PASS" in
       ''|*[!0-9]*) problem "suite receipt has no numeric passed field (got '${R_PASS:-<empty>}')" ;;
       *) [ "$R_PASS" = "$BASELINE" ] \
-        || problem "tests/.suite-baseline is $BASELINE but the run passed $R_PASS — run scripts/update-assertion-count.sh" ;;
+        || problem "tests/.suite-baseline is $BASELINE but the run passed $R_PASS — run scripts/dev/update-assertion-count.sh" ;;
     esac
   fi
 fi

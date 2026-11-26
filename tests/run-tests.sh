@@ -26,7 +26,7 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SUITE_HEAD=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)
 SUITE_KEY=$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)
 # v3.79.0 (CHG-103, REQ-1144): tree-fingerprint source. ONE recipe shared by the
-# emitter (closing receipt block below) and scripts/update-assertion-count.sh
+# emitter (closing receipt block below) and scripts/dev/update-assertion-count.sh
 # (consumer); the lib degrades to an empty string on ANY failure (non-git repo,
 # git error) — an empty fingerprint only makes receipts untrusted (consumer
 # falls back to the embedded run), never wrong. Absent lib file = same empty
@@ -312,7 +312,7 @@ ledger_append() { # <kind> <id> <cost_s> <setup_s> <cache> <exit> [asserts] [out
 }
 
 # v3.90.1 (CHG-123, P0-13): source-vs-target layout predicate. The old proxy was
-# "does scripts/facts.sh exist" — a filename, not a capability. Target repos now
+# "does scripts/dev/facts.sh exist" — a filename, not a capability. Target repos now
 # get -T auto and their own runner, so the gate must key on the LAYOUT instead.
 is_source_layout() {
   [[ -d "$ROOT/resources/templates" && -f "$ROOT/tests/audit-standards-src.sh" ]]
@@ -470,7 +470,7 @@ SECTIONS=(T1 T1b T2 T3 T4 T5 T22a T16 T6 T6b T7 T7b T8 T9 T10 T11 T12 T13 T14 T1
 # SERIAL_CHAIN groups are assigned whole. Adding a section to SECTIONS requires
 # adding it here: the drift guard below refuses to shard, and T87 pins coverage.
 # v3.97.0 (CHG-134, REQ-1344): the marked block is the output of
-# `scripts/shard-plan.sh --write` (median costs, LPT, chain atoms) — do not
+# `scripts/dev/shard-plan.sh --write` (median costs, LPT, chain atoms) — do not
 # hand-edit members. --write also pins the costs it used in
 # tests/.shard-plan-costs.tsv, and `--check` recomputes from that pin: the suite
 # appends its own `sec` rows, so checking against the live ledger would red the
@@ -549,14 +549,14 @@ fi
 # and ci-summary --check rejects anything else.
 _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back to FULL); rc2 = suite-irrelevant (no-op)
   case "$1" in
-    scripts/lib-source-facts.sh)       printf 'T69 T70 T71 T72 T73b' ;;
-    scripts/facts.sh)                  printf 'T70' ;;
-    scripts/verify-all.sh)             printf 'T71' ;;
-    scripts/pre-review-check.sh)       printf 'T72 T74' ;;
-    scripts/mutation-check.sh)         printf 'T73' ;;
-    scripts/ci-summary.sh)             printf 'T73b T75' ;;
-    scripts/batch-metrics.sh)          printf 'T73b' ;;
-    scripts/update-assertion-count.sh) printf 'T69' ;;
+    scripts/dev/lib-source-facts.sh)       printf 'T69 T70 T71 T72 T73b' ;;
+    scripts/dev/facts.sh)                  printf 'T70' ;;
+    scripts/dev/verify-all.sh)             printf 'T71' ;;
+    scripts/dev/pre-review-check.sh)       printf 'T72 T74' ;;
+    scripts/dev/mutation-check.sh)         printf 'T73' ;;
+    scripts/dev/ci-summary.sh)             printf 'T73b T75' ;;
+    scripts/dev/batch-metrics.sh)          printf 'T73b' ;;
+    scripts/dev/update-assertion-count.sh) printf 'T69' ;;
     scripts/bootstrap.sh)              printf 'T11 T14 T15 T21 T40 T42 T49a T49b T49c T63 T70 T71 T72 T73 T73b' ;;
     tests/audit-standards-src.sh)      printf 'T69' ;;
     tests/.suite-baseline|tests/.audit-baseline) printf 'T51' ;;
@@ -565,7 +565,7 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     .claude-plugin/*)                  printf 'T48' ;;
     resources/DEVELOPMENT_STANDARDS.md) printf 'T11 T14 T15 T20 T21 T31 T38 T40 T43 T48 T55 T63 T64 T67' ;;
     resources/AGENTS.md)               printf 'T26c T40 T43 T48 T55 T63 T64' ;;
-    resources/STANDARDS_CHANGELOG.md|resources/STANDARDS_CHANGELOG_ARCHIVE.md) printf 'T15 T40 T48' ;;
+    resources/STANDARDS_CHANGELOG.md|archive/STANDARDS_CHANGELOG_ARCHIVE.md) printf 'T15 T40 T48' ;;
     SKILL.md)                          printf 'T11 T15 T19 T21 T48 T67' ;;
     resources/templates/audit-docs-consistency.sh)  printf 'T10 T79' ;;
     resources/templates/session-gate.sh)            printf 'T24 T26 T26b T29 T49a T49b T49c T78' ;;
@@ -587,7 +587,7 @@ _auto_map() { # <file> -> sections on stdout; rc1 = unmapped (caller falls back 
     resources/templates/agent-governance.yml|resources/templates/github-*.yml) printf 'T73b' ;;
     resources/METHODOLOGY.md|resources/STAGE_PLAYBOOK.md|resources/methodologies/*|resources/templates/*.md) printf 'T40 T43 T48 T86' ;;
     scripts/shard-sum.sh)              printf 'T87' ;;
-    scripts/shard-plan.sh|scripts/pre-round-check.sh|scripts/evidence-round.sh) printf 'T87' ;;
+    scripts/dev/shard-plan.sh|scripts/dev/pre-round-check.sh|scripts/evidence-round.sh) printf 'T87' ;;
     scripts/*|resources/templates/*.sh) printf 'T19 T30 T41 T86' ;;
     docs/*)                            return 2 ;;  # 变更产物/评审记录：不影响治理工具，无需套件
     MAINTAINER.md)                     return 2 ;;

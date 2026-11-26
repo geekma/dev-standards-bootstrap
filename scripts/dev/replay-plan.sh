@@ -15,9 +15,9 @@
 # `full` and excluded from the recall denominator (honest, not inflated).
 #
 # Read-only. No writes except stdout. Zero deps: git + bash 3.2+.
-# Usage: scripts/replay-plan.sh [--limit N] [--json]
+# Usage: scripts/dev/replay-plan.sh [--limit N] [--json]
 set -uo pipefail
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$ROOT" || exit 2
 
 limit=0
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --limit) limit="${2:-0}"; shift 2 ;;
     --json) json=1; shift ;;
-    *) echo "usage: scripts/replay-plan.sh [--limit N] [--json]" >&2; exit 2 ;;
+    *) echo "usage: scripts/dev/replay-plan.sh [--limit N] [--json]" >&2; exit 2 ;;
   esac
 done
 
