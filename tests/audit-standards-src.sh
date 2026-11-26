@@ -2474,9 +2474,9 @@ report "A77 audit-standards-src defines single-pass awk run_audit_rules engine (
   "$([[ $(grep -c '^run_audit_rules()' "$ROOT/tests/audit-standards-src.sh") -ge 1 ]] && echo 1 || echo 0)"
 
 # --- A78 (v4.14.0, CHG-160): 批D scripts/dev 边界、归档迁出与分发边界 ---
-# agent-gate, session-gate.sh, stamp-provenance.sh are untracked local wrappers (sync-local-wrappers): optional here.
-_a78_root_set=$(cd "$ROOT/scripts" && LC_ALL=C ls | LC_ALL=C sort | grep -vxE 'agent-gate|session-gate[.]sh|stamp-provenance[.]sh' | tr -s '[:space:]' ' ')
-_a78_dev_set=$(cd "$ROOT/scripts/dev" 2>/dev/null && LC_ALL=C ls | LC_ALL=C sort | tr -s '[:space:]' ' ' || true)
+# Tracked set (git ls-files), not the working-tree listing: untracked local wrappers (agent-gate, session-gate.sh, stamp-provenance.sh) never count, and a stray file cannot hide.
+_a78_root_set=$(git -C "$ROOT" ls-files scripts | awk -F/ '{print $2}' | LC_ALL=C sort -u | tr '\n' ' ')
+_a78_dev_set=$(git -C "$ROOT" ls-files scripts/dev | awk -F/ '{print $3}' | LC_ALL=C sort -u | tr '\n' ' ')
 report "A78 scripts/ root holds exactly the 12 expected entries (11 files plus dev/) (CHG-160)" "bootstrap.sh dev eval-cases eval-rescore evidence-round.sh friction-report.sh install.sh lib-suite-lock.sh lib-suite-tree-fingerprint.sh mcp-governance-server.sh release.sh shard-sum.sh " "$_a78_root_set"
 report "A78 scripts/dev holds exactly the 14 source-only scripts (CHG-160)" "batch-metrics.sh ci-summary.sh facts.sh lib-source-facts.sh mutation-check.sh pre-review-check.sh pre-round-check.sh replay-plan.sh selfcheck.sh setup-branch-protection.sh shard-plan.sh sync-local-wrappers.sh update-assertion-count.sh verify-all.sh " "$_a78_dev_set"
 _a78_src_ok=0
@@ -2485,8 +2485,16 @@ for _a78_s in $(grep -oE 'install_file - "[$]SCRIPTS_DIR/[^"]+" scripts/[A-Za-z0
 done
 report "A78 every scripts/-sourced bootstrap install_file stays in the scripts/ root (CHG-160)" 4 "$_a78_src_ok"
 _a78_single=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]"' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
-_a78_double=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]/[.][.]' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
-report "A78 scripts/dev scripts compute ROOT two levels up, none one level (CHG-160)" "0/10" "${_a78_single}/${_a78_double}"
+_a78_double=$(grep -lE '^ROOT=.*dirname "[^"]+"[)]/[.][.]/[.][.]"' "$ROOT/scripts/dev/"*.sh 2>/dev/null | wc -l | tr -d '[:space:]')
+# Dynamic proof: evaluate each script own ROOT= line with $0 set to that script; it must land on the repo root.
+_a78_rt=0
+for _a78_f in "$ROOT/scripts/dev/"*.sh; do
+  _a78_l=$(grep -m1 '^ROOT=' "$_a78_f" | sed 's/\${BASH_SOURCE\[0\]}/$0/')
+  [[ "$_a78_l" == *'dirname "$0"'* ]] || continue
+  _a78_r=$(bash -c "$_a78_l; printf '%s' \"\$ROOT\"" "$_a78_f" 2>/dev/null)
+  [[ "$_a78_r" == "$ROOT" ]] && _a78_rt=$(( _a78_rt + 1 ))
+done
+report "A78 scripts/dev scripts compute ROOT two levels up, none one level (CHG-160)" "0/10/10" "${_a78_single}/${_a78_double}/${_a78_rt}"
 _a78_old=$(grep -rIlE 'scripts/(batch-metrics|ci-summary|facts|lib-source-facts|mutation-check|pre-review-check|pre-round-check|replay-plan|selfcheck|setup-branch-protection|shard-plan|sync-local-wrappers|update-assertion-count|verify-all)([.]sh)?([^A-Za-z0-9_-]|$)' --exclude-dir=.git --exclude-dir=docs --exclude-dir=archive --exclude-dir=graphify-out --exclude-dir=.agent-state --exclude-dir=screenshots --exclude-dir=cover-image --exclude-dir=.opencode --exclude-dir=.workbuddy --exclude-dir=.workbuddy-ai --exclude=STANDARDS_CHANGELOG.md --exclude=audit-standards-src.sh "$ROOT" 2>/dev/null | wc -l | tr -d '[:space:]')
 report "A78 no non-history file still names a migrated script at its old scripts/ path (CHG-160)" 0 "$_a78_old"
 report "A78 changelog archive lives under archive/, not resources/ (CHG-160)" "1/0" "$([[ -f "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && echo 1 || echo 0)/$([[ -e "$ROOT/resources/STANDARDS_CHANGELOG_ARCHIVE.md" ]] && echo 1 || echo 0)"

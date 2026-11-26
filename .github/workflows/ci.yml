@@ -133,7 +133,7 @@ jobs:
           ( cd "$tgt" && git init -q && git config user.email ci@local && git config user.name ci )
           bash scripts/bootstrap.sh --all --dry-run "$tgt"
           bash scripts/bootstrap.sh --all "$tgt"
-          ( cd "$tgt" && bash scripts/agent-gate doctor --json || true )
+          ( cd "$tgt" && bash scripts/agent-gate doctor --json )
           ( cd "$tgt" && bash tests/governance-smoke.sh --repo "$tgt" --skip-docs --json )
           rm -rf "$tgt"
       - name: Core golden-case subset (T14, T15, T26)
