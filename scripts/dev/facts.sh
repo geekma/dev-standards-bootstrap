@@ -28,6 +28,8 @@ while [ $# -gt 0 ]; do
 done
 [ -d "$ROOT" ] || { echo "facts: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
+[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ] \
+  || { echo "facts: scripts/dev/lib-source-facts.sh is required under $ROOT (pre-v4.14 layout?)" >&2; exit 2; }
 source "$ROOT/scripts/dev/lib-source-facts.sh"
 OUT=$(sf_emit_facts "$ROOT") || { echo "facts: failed to collect facts" >&2; exit 2; }
 if [ "$WRITE" -eq 1 ]; then

@@ -59,6 +59,8 @@ done
 ROOT=$(cd "$ROOT" && pwd)
 case "$JOBS" in ''|*[!0-9]*) JOBS=4 ;; esac
 [ "$JOBS" -ge 1 ] || JOBS=4
+[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ] \
+  || { echo "verify-all: scripts/dev/lib-source-facts.sh is required under $ROOT (pre-v4.14 layout?)" >&2; exit 2; }
 source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)

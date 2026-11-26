@@ -3935,7 +3935,7 @@ plan_decision_value() { # <d> <key>
 # 判定与证据分离：本文件只**验证据**，不执行测试（执行归 tests/fresh-clone-check.sh）。
 # 被测核心路径可由 AGENT_GUARD_CORE_PATHS 覆盖（目标仓可声明自己的核心面）。
 gate_core_paths() {
-  printf '%s' "${AGENT_GUARD_CORE_PATHS:-^(tests/run-tests\.sh|tests/audit-standards-src\.sh|scripts/bootstrap\.sh|scripts/dev/update-assertion-count\.sh|resources/templates/agent-gate\.sh)$}"
+  printf '%s' "${AGENT_GUARD_CORE_PATHS:-^(tests/run-tests\.sh|tests/audit-standards-src\.sh|scripts/bootstrap\.sh|scripts/(dev/)?update-assertion-count\.sh|resources/templates/agent-gate\.sh)$}"
 }
 core_changed_files() { # -> newline list of core files in worktree/index/last commit
   { git -C "$repo_root" diff --name-only 2>/dev/null

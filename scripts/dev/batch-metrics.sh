@@ -41,6 +41,8 @@ done
 case "$LIMIT" in ''|*[!0-9]*) LIMIT=0 ;; esac
 [ -d "$ROOT" ] || { echo "batch-metrics: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
+[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ] \
+  || { echo "batch-metrics: scripts/dev/lib-source-facts.sh is required under $ROOT (pre-v4.14 layout?)" >&2; exit 2; }
 source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 JSON_PATH="${AGENT_GUARD_BATCH_METRICS_PATH:-$ROOT/.agent-state/batch-metrics.json}"

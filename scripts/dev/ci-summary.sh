@@ -37,6 +37,8 @@ while [ $# -gt 0 ]; do
 done
 [ -d "$ROOT" ] || { echo "ci-summary: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
+[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ] \
+  || { echo "ci-summary: scripts/dev/lib-source-facts.sh is required under $ROOT (pre-v4.14 layout?)" >&2; exit 2; }
 source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 RECEIPT=$(sf_suite_receipt_path "$ROOT")

@@ -822,5 +822,20 @@ else
   echo "SKIP T37: agent-gate absent — 跳过 L0 最小集 golden cases"
 fi
 
+# CHG-160 FU-1606 (TC-1472c): the three is_code_path copies classify the split test files identically.
+# agent-gate / session-gate are evaluated for real (function bodies extracted); the audit copy is a grep
+# pipeline, so its exclusion list is pinned by literal.
+_t1472_ag=$(sed -n '/^is_code_path() {/,/^}/p' "$ROOT/resources/templates/agent-gate.sh")
+_t1472_sg=$(sed -n '/^sg_is_code_path() {/,/^}/p' "$ROOT/resources/templates/session-gate.sh")
+for _t1472_p in tests/suites/suite-03-session.sh tests/lib/test-harness.sh tests/suites/suite-08-infra.sh; do
+  _t1472_a=$( docs_re=docs scripts_re=scripts tests_re=tests githooks_re='\.githooks'; eval "$_t1472_ag"; is_code_path "$_t1472_p" && echo 0 || echo 1 )
+  _t1472_s=$( DOCS_RE=docs SCRIPTS_RE=scripts TESTS_RE=tests GITHOOKS_RE='\.githooks'; eval "$_t1472_sg"; sg_is_code_path "$_t1472_p" && echo 0 || echo 1 )
+  report "T37 TC-1472c is_code_path agrees on $_t1472_p (agent-gate vs session-gate, both non-code)" "1 1" "$_t1472_a $_t1472_s"
+done
+_t1472_ac=$( docs_re=docs scripts_re=scripts tests_re=tests githooks_re='\.githooks'; eval "$_t1472_ag"; is_code_path tests/suites/zzz-new.sh && echo 0 || echo 1 )
+_t1472_sc=$( DOCS_RE=docs SCRIPTS_RE=scripts TESTS_RE=tests GITHOOKS_RE='\.githooks'; eval "$_t1472_sg"; sg_is_code_path tests/suites/zzz-new.sh && echo 0 || echo 1 )
+report "T37 TC-1472c control: an unlisted tests/suites file is code in both copies" "0 0" "$_t1472_ac $_t1472_sc"
+report "T37 TC-1472c audit-docs-consistency G16 copy lists suite-03-session.sh and lib/test-harness.sh" "1 1" "$(grep -cF 'suites/suite-03-session\.sh$' "$ROOT/resources/templates/audit-docs-consistency.sh" | tr -d ' ') $(grep -cF 'lib/test-harness\.sh$' "$ROOT/resources/templates/audit-docs-consistency.sh" | tr -d ' ')"
+
 }
 

@@ -422,6 +422,42 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T15 install into a non-derived directory still works" 0 $?
   rm -rf "$SKROOT"
 
+  # --- CHG-160 FU-1601 (TC-1484a): bootstrap --all ships the 4 scripts/-sourced files, never scripts/dev or archive/ ---
+  _d1=$(mktemp -d)
+  ( cd "$_d1" && git init -q && git config user.email t@t && git config user.name t )
+  bash "$BOOT_SRC" --all "$_d1" >/dev/null 2>&1
+  report "T15 TC-1484a bootstrap --all exits 0 on a fresh repo" 0 $?
+  _d1_n=0
+  for _f in lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh; do
+    [[ -f "$_d1/scripts/$_f" ]] && _d1_n=$(( _d1_n + 1 ))
+  done
+  report "T15 TC-1484a bootstrap --all ships the 4 scripts/-sourced files" 4 "$_d1_n"
+  report "T15 TC-1484a bootstrap --all does not ship scripts/dev" 0 "$([[ -e "$_d1/scripts/dev" ]] && echo 1 || echo 0)"
+  report "T15 TC-1484a bootstrap --all does not ship archive/" 0 "$([[ -e "$_d1/archive" ]] && echo 1 || echo 0)"
+  # CHG-160 FU-1606 (TC-1472a): on the real installed repo the smoke passes, and fails once lib-gate-staged is gone
+  bash "$_d1/tests/governance-smoke.sh" --repo "$_d1" --skip-docs --json >/dev/null 2>&1
+  report "T15 TC-1472a governance-smoke passes on a bootstrap --all repo" 0 $?
+  rm -f "$_d1/scripts/lib-gate-staged.sh"
+  _d1_out=$(bash "$_d1/tests/governance-smoke.sh" --repo "$_d1" --skip-docs 2>&1); _d1_rc=$?
+  report "T15 TC-1472a governance-smoke fails when lib-gate-staged is missing" 1 "$_d1_rc"
+  check_output "T15 TC-1472a the failure names lib-gate-staged" "FAIL governance-smoke: scripts/lib-gate-staged.sh present and parses" "$_d1_out"
+  rm -rf "$_d1"
+
+  # --- CHG-160 FU-1601 (TC-1483b): divergence_guard degrades when archive/ is missing, and honors it when present ---
+  _dg_fn=$(sed -n '/^divergence_guard() {/,/^}/p' "$BOOT_SRC")
+  _dg=$(mktemp -d)
+  mkdir -p "$_dg/skill"
+  printf '| v1.0.0 | a |\n' > "$_dg/src.md"
+  printf '| v1.0.0 | a |\n| v0.9.0 | old |\n' > "$_dg/dest.md"
+  _dg_rc=0; _dg_out=$( SKILL_ROOT="$_dg/skill"; eval "$_dg_fn"; divergence_guard "$_dg/src.md" "$_dg/dest.md" ) || _dg_rc=$?
+  report "T15 TC-1483b divergence_guard without archive/ still reports the extra row (rc 0)" 0 "$_dg_rc"
+  check_output "T15 TC-1483b divergence_guard without archive/ names the extra version" "v0.9.0" "$_dg_out"
+  mkdir -p "$_dg/skill/archive"
+  printf '| v0.9.0 | old |\n' > "$_dg/skill/archive/STANDARDS_CHANGELOG_ARCHIVE.md"
+  _dg_rc=0; ( SKILL_ROOT="$_dg/skill"; eval "$_dg_fn"; divergence_guard "$_dg/src.md" "$_dg/dest.md" ) >/dev/null 2>&1 || _dg_rc=$?
+  report "T15 TC-1483b divergence_guard with archive/ treats the archived row as known (rc 1)" 1 "$_dg_rc"
+  rm -rf "$_dg"
+
   # --- D4：--upgrade 保留显式层选择（此前会静默扩为全量 5 层）---
   D4=$(mktemp -d)
   ( cd "$D4" && git init -q && git config user.email t@t && git config user.name t )

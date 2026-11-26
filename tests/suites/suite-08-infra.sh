@@ -4,6 +4,8 @@
 section_T79() {
 # ------------------------------------------------ T79 audit G16 三态（v3.89.0，CHG-117，REQ-1201，DES-1959）
 if [[ ! -f "$AUDIT_SRC" ]]; then echo "SKIP T79: audit-docs-consistency absent"; return 0; fi
+# CHG-160 FU-1606 (TC-1471a): this section never calls new_repo, so no escape hatch may leak in from another section
+report "T79 TC-1471a no AGENT_GUARD_ALLOW_INDEPENDENT leaked into a section that never calls new_repo" "unset" "${AGENT_GUARD_ALLOW_INDEPENDENT-unset}"
 # clean + non-git: explicit VACUOUS SKIP line (G9 anti-false-green family)
 t79_fx=$(mktemp -d); audit_fixture "$t79_fx"
 t79_out=$(bash "$AUDIT_SRC" "$t79_fx" 2>&1); t79_rc=$?

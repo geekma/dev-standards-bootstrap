@@ -42,6 +42,8 @@ while [ $# -gt 0 ]; do
 done
 [ -d "$ROOT" ] || { echo "pre-review-check: root not found: $ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
+[ -f "$ROOT/scripts/dev/lib-source-facts.sh" ] \
+  || { echo "pre-review-check: scripts/dev/lib-source-facts.sh is required under $ROOT (pre-v4.14 layout?)" >&2; exit 2; }
 source "$ROOT/scripts/dev/lib-source-facts.sh"
 
 # v3.93.0 (CHG-130, REQ-1298): the change root is configurable. Resolution order:

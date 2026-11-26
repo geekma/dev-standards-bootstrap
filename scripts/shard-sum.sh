@@ -92,6 +92,8 @@ echo "total: $total_p passed, $total_f failed"
 [[ "$total_f" -eq 0 ]] || exit 1
 if [[ "$do_write" -eq 1 ]]; then
   gen="$root/scripts/dev/update-assertion-count.sh"
+  # FU-1605: a target repo may still wire the generator at the pre-v4.14 path.
+  [[ -f "$gen" ]] || { [[ -f "$root/scripts/update-assertion-count.sh" ]] && gen="$root/scripts/update-assertion-count.sh"; } # a78-legacy-ok
   if [[ ! -f "$gen" ]]; then
     echo "shard-sum: --write needs $gen (source-layer only; target installs are sum-only)" >&2
     exit 2
