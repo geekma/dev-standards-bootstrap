@@ -292,8 +292,8 @@ if [[ -f "$BOOT_SRC" ]]; then
   # TC-10078 (CHG-156, REQ-1452): CAPABILITY-COMPARISON en/zh updated with 162 GATE-E & v4.5-v4.10 evolution note
   if [[ -f "$ROOT/CAPABILITY-COMPARISON.md" && -f "$ROOT/能力对比分析.md" ]]; then
     _cc_en=0; _cc_zh=0
-    grep -qF '162 `GATE-E`' "$ROOT/CAPABILITY-COMPARISON.md" && grep -qF 'Evolution Note (v4.5–v4.10)' "$ROOT/CAPABILITY-COMPARISON.md" && _cc_en=1
-    grep -qF '162 个 `GATE-E`' "$ROOT/能力对比分析.md" && grep -qF '演进说明（v4.5–v4.10）' "$ROOT/能力对比分析.md" && _cc_zh=1
+    grep -qF '162 `GATE-E`' "$ROOT/CAPABILITY-COMPARISON.md" && grep -qF 'Evolution Note (v4.5–v4.14)' "$ROOT/CAPABILITY-COMPARISON.md" && _cc_en=1
+    grep -qF '162 个 `GATE-E`' "$ROOT/能力对比分析.md" && grep -qF '演进说明（v4.5–v4.14）' "$ROOT/能力对比分析.md" && _cc_zh=1
     report "T14 TC-10078 CAPABILITY-COMPARISON.md carries v4.10 snapshot and evolution note" 1 "$_cc_en"
     report "T14 TC-10078 能力对比分析.md carries v4.10 snapshot and evolution note" 1 "$_cc_zh"
   fi

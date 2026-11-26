@@ -2439,8 +2439,8 @@ done
 report "A75 SKILL, READMEs and DS document v4.7..v4.10 capabilities (CHG-156)" 1 "$_a75_docs_ok"
 report "A75 READMEs no longer claim no checksums published (CHG-156)" 0 "$(( $(grep_count_f "$RM_EN" 'publishes **no** checksums') + $(grep_count_f "$RM_ZH" '不发布**校验和') ))"
 _a75_cc_en=0; _a75_cc_zh=0
-[[ -f "$ROOT/CAPABILITY-COMPARISON.md" ]] && grep -qF 'Evolution Note (v4.5–v4.10)' "$ROOT/CAPABILITY-COMPARISON.md" && _a75_cc_en=1
-[[ -f "$ROOT/能力对比分析.md" ]] && grep -qF '演进说明（v4.5–v4.10）' "$ROOT/能力对比分析.md" && _a75_cc_zh=1
+[[ -f "$ROOT/CAPABILITY-COMPARISON.md" ]] && grep -qF 'Evolution Note (v4.5–v4.14)' "$ROOT/CAPABILITY-COMPARISON.md" && _a75_cc_en=1
+[[ -f "$ROOT/能力对比分析.md" ]] && grep -qF '演进说明（v4.5–v4.14）' "$ROOT/能力对比分析.md" && _a75_cc_zh=1
 report "A75 CAPABILITY-COMPARISON en/zh include v4.5-v4.10 evolution note (CHG-156)" 2 "$(( _a75_cc_en + _a75_cc_zh ))"
 at_least_f "A75 sync-local-wrappers manages tests/audit-docs-consistency.sh (CHG-156)" 1 "$ROOT/scripts/dev/sync-local-wrappers.sh" 'tests/audit-docs-consistency.sh:resources/templates/audit-docs-consistency.sh'
 report "A75 release/update-assertion-count/shard-sum enforce 0644 on generated files (CHG-156)" 3 "$(( $(grep -cF 'chmod 0644' "$ROOT/scripts/release.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/dev/update-assertion-count.sh" >/dev/null && echo 1 || echo 0) + $(grep -cF 'chmod 0644' "$ROOT/scripts/shard-sum.sh" >/dev/null && echo 1 || echo 0) ))"
