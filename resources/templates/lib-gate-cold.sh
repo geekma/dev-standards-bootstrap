@@ -1580,6 +1580,274 @@ mutation_spot_cmd() { # --file <path> --cmd "<cmd>" [--json]
   exit 0
 }
 
+_cold_ui_friction() { # <tag> <id> <risk> <msg>
+  local tag="$1" id="$2" risk="$3" msg="$4"
+  local rr="${repo_root:-.}"
+  echo "agent-gate: WARN ui-baseline ($tag): $msg" >&2
+  mkdir -p "$rr/.agent-state" 2>/dev/null || true
+  printf '%s\t%s\t%s\t%s\t%s\n' "$tag" "$id" "$risk" "$msg" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" \
+    >> "$rr/.agent-state/gate-friction.tsv" 2>/dev/null || true
+}
+
+_cold_ui_probe_json_check() { # <change-dir> <probe-json> <declared-vps-space-sep>
+  local d="$1" pf="$2" vps="$3" rr="${repo_root:-.}"
+  local nb="" ui_mtime=0 f mt
+  nb=$(command -v node 2>/dev/null || true)
+  [[ -n "$nb" ]] || { printf 'node executable not found to verify ui-probe.json'; return 1; }
+  while IFS= read -r f; do
+    [[ -n "$f" && -f "$rr/$f" ]] || continue
+    mt=$(gate_mtime "$rr/$f")
+    [[ "$mt" =~ ^[0-9]+$ && "$mt" -gt "$ui_mtime" ]] && ui_mtime="$mt"
+  done < <(git -C "$rr" status --porcelain -uall 2>/dev/null | cut -c4- | sed -E 's/.* -> //; s/^"//; s/"$//' | grep -E '\.(tsx?|jsx?|vue|html|css|scss|svelte)$' || true)
+  local err=""
+  err=$("$nb" - "$d" "$pf" "$vps" "$rr" "$ui_mtime" <<'NODEV'
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const [,, chgDir, probePath, vpsStr, repoRoot, uiMtimeStr] = process.argv;
+function fail(m) { process.stdout.write(m); process.exit(1); }
+let data;
+try { data = JSON.parse(fs.readFileSync(probePath, "utf8")); }
+catch (e) { fail("invalid ui-probe.json: " + e.message); }
+if (!data || data.schema !== 1 || data.tool !== "ui-probe") {
+  fail("ui-probe.json must declare schema:1 and tool:'ui-probe'");
+}
+const genMs = Date.parse(data.generated_at || "");
+if (!data.generated_at || Number.isNaN(genMs)) {
+  fail("ui-probe.json missing valid ISO generated_at");
+}
+const uiMtime = Number(uiMtimeStr || "0");
+if (uiMtime > 0 && Math.floor(genMs / 1000) + 5 < uiMtime) {
+  fail("ui-probe.json generated_at is older than modified UI source file(s) — re-run ui-probe");
+}
+const results = Array.isArray(data.results) ? data.results : [];
+if (results.length === 0) fail("ui-probe.json contains empty results");
+const declared = vpsStr.split(/\s+/).filter(Boolean).map(Number);
+const seenVps = new Set(results.map(r => Number(r.viewport)));
+for (const vp of declared) {
+  if (!seenVps.has(vp)) fail(`ui-probe.json missing declared viewport ${vp}`);
+}
+for (const r of results) {
+  if (!r.screenshot) fail(`ui-probe.json viewport ${r.viewport} missing screenshot path`);
+  const cand = [path.resolve(chgDir, r.screenshot), path.resolve(repoRoot, r.screenshot), path.resolve(r.screenshot)];
+  const hit = cand.find(p => fs.existsSync(p) && fs.statSync(p).isFile() && fs.statSync(p).size > 0);
+  if (!hit) fail(`ui-probe.json screenshot not found or empty: ${r.screenshot}`);
+  const actualSha = crypto.createHash("sha256").update(fs.readFileSync(hit)).digest("hex");
+  if (!r.screenshot_sha256 || r.screenshot_sha256 !== actualSha) {
+    fail(`ui-probe.json screenshot_sha256 mismatch for ${r.screenshot}`);
+  }
+}
+const today = new Date().toISOString().slice(0, 10);
+const waivers = Array.isArray(data.waivers) ? data.waivers : [];
+const validWaivers = waivers.filter(w =>
+  w && typeof w.kind === "string" && w.kind.trim() !== "" &&
+  typeof w.owner === "string" && w.owner.trim() !== "" &&
+  typeof w.expires === "string" && /^\d{4}-\d{2}-\d{2}$/.test(w.expires) &&
+  w.expires >= today
+);
+let unwaived = 0;
+let countedViol = 0;
+for (const r of results) {
+  const vs = Array.isArray(r.violations) ? r.violations : [];
+  for (const v of vs) {
+    if (v && v.confidence === "low") continue;
+    countedViol++;
+    const matched = validWaivers.some(w => w.kind === v.kind && (!w.selector || w.selector === v.selector));
+    if (!matched) unwaived++;
+  }
+}
+if (unwaived > 0) {
+  fail(`ui-probe.json has ${unwaived} unwaived/expired violation(s)`);
+}
+if (Number(data.violations_total || 0) > 0 && countedViol === 0 && validWaivers.length === 0) {
+  fail(`ui-probe.json reports violations_total=${data.violations_total} without valid unexpired waivers`);
+}
+NODEV
+  )
+  local rc=$?
+  printf '%s' "$err"
+  return $rc
+}
+
+_cold_ui_baseline_verify() { # <d> <id> <risk> <active_416> <res05> <res07>
+  local d="$1" id="$2" risk="$3" active="$4" res05="$5" res07="$6"
+  local rr="${repo_root:-.}"
+  local ratchet=0
+  [[ "$risk" == "L3" ]] && ratchet=1
+  [[ "$risk" == "L2" && "${AGENT_GUARD_UI_BASELINE:-}" == "ratchet" ]] && ratchet=1
+
+  local ui36="$d/03.6-ui-spec.md" res04="$d/04-test-scripts.md" declared_vps="360 390 768 1280 1920"
+
+  if [[ "$active" -eq 1 ]]; then
+    # F-7: 03.6 viewport matrix
+    local vp_sec="" vp_parse="" vp_err=""
+    vp_sec=$(awk '/^##+ .*多端适配/{f=1;next} f && /^## /{exit} f{print}' "$ui36" 2>/dev/null || true)
+    vp_parse=$(printf '%s\n' "$vp_sec" | awk '
+      BEGIN { req="360 390 768 1280 1920"; seen=""; decl=""; err="" }
+      /^\|/ {
+        n = split($0, c, "|")
+        if (n >= 4) {
+          w = c[3]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", w)
+          app = c[4]; gsub(/^[[:space:]]+|[[:space:]]+$/, "", app)
+          rsn = (n >= 5 ? c[5] : ""); gsub(/^[[:space:]]+|[[:space:]]+$/, "", rsn)
+          gsub(/<!--[^>]*-->/, "", rsn); gsub(/^[[:space:]]+|[[:space:]]+$/, "", rsn)
+          if (w ~ /^(360|390|768|1280|1920)$/) {
+            seen = seen " " w
+            if (app == "" || app ~ /是\/否/) {
+              err = "viewport " w " 适用 column cannot be blank or placeholder"
+            } else if (app ~ /^否/) {
+              if (rsn == "" || rsn ~ /^(-|无|未测|N\/A|NA|TBD|FILL)$/) {
+                err = "viewport " w " declared 否 requires concrete reason (not blank/未测)"
+              }
+            } else if (app ~ /^是/) {
+              decl = (decl == "" ? w : decl " " w)
+            } else {
+              err = "viewport " w " 适用 column must be 是 or 否"
+            }
+          }
+        }
+      }
+      END {
+        if (err == "") {
+          split(req, arr, " ")
+          for (i in arr) {
+            if (seen !~ ("(^| )" arr[i] "($| )")) {
+              err = "03.6 多端适配 viewport matrix missing width " arr[i]; break
+            }
+          }
+        }
+        print err "\t" decl
+      }
+    ')
+    vp_err="${vp_parse%%	*}"
+    local _dv="${vp_parse#*	}"
+    [[ -n "$_dv" ]] && declared_vps="$_dv"
+    if [[ -n "$vp_err" ]]; then
+      if [[ "$risk" == "L0" ]]; then
+        echo "agent-gate: NOTE ui-baseline (L0 hint): $vp_err" >&2
+      elif [[ "$ratchet" -eq 1 ]]; then
+        die_e104 "$vp_err (standards §2.5 / F-7)"
+      else
+        _cold_ui_friction "UI_VIEWPORT_MATRIX" "$id" "$risk" "$vp_err"
+      fi
+    fi
+
+    # F-3 (UIX-01..09) & F-4 (extreme data fixtures) in 04-test-scripts.md
+    local c04="" chk_err="" uix_i uix_line uix_rhs
+    c04=$(sed 's/<!--[^>]*-->//g' "$res04" 2>/dev/null || true)
+    for uix_i in 01 02 03 04 05 06 07 08 09; do
+      uix_line=$(printf '%s\n' "$c04" | grep -E "UIX-${uix_i}\b" | head -n 1 || true)
+      if [[ -z "$uix_line" ]]; then
+        chk_err="04-test-scripts.md lacks UIX-${uix_i} entry (standards F-3)"
+        break
+      fi
+      uix_rhs="${uix_line#*：}"; [[ "$uix_rhs" == "$uix_line" ]] && uix_rhs="${uix_line#*:}"
+      uix_rhs=$(printf '%s' "$uix_rhs" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      if [[ -z "$uix_rhs" ]] || ! grep -qE '(适用|不适用|已测)' <<< "$uix_rhs"; then
+        chk_err="04-test-scripts.md UIX-${uix_i} must declare 适用 / 不适用（理由） / 已测（证据）, cannot be blank (standards F-3)"
+        break
+      fi
+    done
+    if [[ -z "$chk_err" ]]; then
+      local ext_sec="" ext_pat ext_line ext_rhs
+      ext_sec=$(printf '%s\n' "$c04" | awk '/^##+ .*极端数据/{f=1;next} f && /^## /{exit} f{print}' || true)
+      if [[ -z "$ext_sec" ]]; then
+        chk_err="04-test-scripts.md lacks 「极端数据夹具声明」 section (standards F-4)"
+      else
+        for ext_pat in '200' '(^|[^0-9])0[[:space:]]*条' '(^|[^0-9])1[[:space:]]*条' '1000' '30%'; do
+          ext_line=$(printf '%s\n' "$ext_sec" | grep -E "$ext_pat" | head -n 1 || true)
+          if [[ -z "$ext_line" ]]; then
+            chk_err="04-test-scripts.md 「极端数据夹具声明」 must cover 200-char, 0, 1, 1000-row, and 30% text expansion (standards F-4)"
+            break
+          fi
+          ext_rhs="${ext_line#*：}"; [[ "$ext_rhs" == "$ext_line" ]] && ext_rhs="${ext_line#*:}"
+          ext_rhs=$(printf '%s' "$ext_rhs" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          if [[ -z "$ext_rhs" || "$ext_rhs" =~ ^(TBD|FILL|-)$ ]]; then
+            chk_err="04-test-scripts.md extreme data fixture row (${ext_pat}) must not be blank (standards F-4)"
+            break
+          fi
+        done
+      fi
+    fi
+    if [[ -n "$chk_err" ]]; then
+      if [[ "$risk" == "L0" ]]; then
+        echo "agent-gate: NOTE ui-baseline (L0 hint): $chk_err" >&2
+      elif [[ "$ratchet" -eq 1 ]]; then
+        die_e104 "$chk_err"
+      else
+        _cold_ui_friction "UI_CHECKLIST_GAP" "$id" "$risk" "$chk_err"
+      fi
+    fi
+  fi
+
+  # F-2 probe JSON OR F-5 degraded=manual
+  local probe_file="$d/evidence/ui-probe.json" is_manual=0
+  if grep -qE 'degraded[[:space:]]*[:=][[:space:]]*manual' "$res05" "$res07" "$d"/*.md 2>/dev/null \
+     || [[ -f "$rr/.agent-state/ui-degraded-${id}" ]]; then
+    is_manual=1
+  fi
+
+  if [[ -f "$probe_file" ]]; then
+    local p_err=""
+    if ! p_err=$(_cold_ui_probe_json_check "$d" "$probe_file" "$declared_vps"); then
+      if [[ "$risk" == "L0" ]]; then
+        echo "agent-gate: NOTE ui-baseline (L0 hint): $p_err" >&2
+      elif [[ "$risk" == "L1" ]]; then
+        _cold_ui_friction "UI_PROBE_INVALID" "$id" "$risk" "$p_err"
+      else
+        die_e104 "$p_err (standards F-2)"
+      fi
+    fi
+  elif [[ "$is_manual" -eq 1 ]]; then
+    local _up_bin="${scripts_dir:-scripts}/ui-probe.sh"
+    [[ -f "$_up_bin" ]] || _up_bin="$rr/${scripts_dir:-scripts}/ui-probe.sh"
+    if [[ "${AGENT_GUARD_UI_PROBE_MOCK:-}" == "available" ]] \
+       || { [[ -f "$_up_bin" && "${AGENT_GUARD_UI_PROBE_MOCK:-}" != "unavailable" ]] && bash "$_up_bin" --check >/dev/null 2>&1; }; then
+      _cold_ui_friction "UI_MANUAL_WHEN_PROBE_AVAILABLE" "$id" "$risk" "ui-probe is available on host but degraded=manual fallback was claimed"
+    fi
+    local _shot_refs="" _shot_ok=0 _shot_bad=0 _sp=""
+    _shot_refs=$(grep -oE '[A-Za-z0-9_./-]+\.(png|jpg|jpeg|webp)' "$res05" "$res07" 2>/dev/null | sed 's/^[^:]*://' | sort -u || true)
+    while IFS= read -r _sp; do
+      [[ -n "$_sp" ]] || continue
+      if [[ -s "$d/$_sp" || -s "$rr/$_sp" || -s "$_sp" ]]; then
+        _shot_ok=$(( _shot_ok + 1 ))
+      else
+        _shot_bad=$(( _shot_bad + 1 ))
+      fi
+    done <<< "$_shot_refs"
+    if [[ "$_shot_ok" -eq 0 ]]; then
+      while IFS= read -r _sp; do
+        [[ -s "$_sp" ]] && _shot_ok=$(( _shot_ok + 1 ))
+      done < <(ls -1 "$d/evidence/"*.png "$d/evidence/"*.jpg "$d/evidence/"*.jpeg "$d/evidence/"*.webp 2>/dev/null || true)
+    fi
+    if [[ "$_shot_ok" -eq 0 || "$_shot_bad" -gt 0 ]]; then
+      if [[ "$risk" == "L0" ]]; then
+        echo "agent-gate: NOTE ui-baseline (L0 hint): degraded=manual lacks real screenshot file on disk" >&2
+      elif [[ "$risk" == "L1" ]]; then
+        _cold_ui_friction "UI_MANUAL_NO_SCREENSHOT" "$id" "$risk" "degraded=manual missing on-disk screenshot file"
+      else
+        die_e104 "degraded=manual declared for $id without existing screenshot file(s) on disk — text-only claims fall to C-layer reject (standards F-5)"
+      fi
+    fi
+    if [[ "$risk" == "L3" ]]; then
+      local c09="$d/09-changelog.md" _ctx09=""
+      _ctx09=$(awk '/^#+ .*重要上下文/{f=1;next} f && /^#+ /{exit} f{print}' "$c09" 2>/dev/null | sed 's/<!--[^>]*-->//g' || true)
+      if [[ ! -s "$c09" ]] || [[ -z "$_ctx09" ]] || ! { grep -q '确认' <<< "$_ctx09" && grep -qE '(降级|manual|ui-probe|B层)' <<< "$_ctx09"; }; then
+        die_e104 "L3 degraded=manual requires explicit user confirmation (mentioning 确认 + 降级/manual/ui-probe) inside 09-changelog.md 「重要上下文」 (standards F-5)"
+      fi
+    fi
+    _cold_ui_friction "UI_DEGRADED_MANUAL" "$id" "$risk" "accepted B-layer degraded=manual with on-disk screenshot evidence"
+  else
+    if [[ "$risk" == "L0" ]]; then
+      echo "agent-gate: NOTE ui-baseline (L0 hint): consider running scripts/agent-gate ui-probe for $id" >&2
+    elif [[ "$ratchet" -eq 1 ]]; then
+      die_e104 "05/evidence lacks docs/changes/$id/evidence/ui-probe.json (run scripts/agent-gate ui-probe) and no F-5 degraded=manual screenshot fallback (standards F-2/F-5)"
+    else
+      _cold_ui_friction "UI_PROBE_MISSING" "$id" "$risk" "no evidence/ui-probe.json or degraded=manual found (advisory)"
+    fi
+  fi
+}
+
 print_help_cmd() {
   cat <<'EOF'
 Usage:
@@ -1600,6 +1868,7 @@ Usage:
   scripts/agent-gate record-green <change-id> -- <cmd>       # v4.15.0: record matching green receipt after tree change
   scripts/agent-gate escape <BUG-id> --should-catch <layer>  # v4.15.0: register post-claim defect escape + eval case
   scripts/agent-gate mutation-spot --file <path> --cmd "<cmd>" [--json] # v4.15.1: 3-mutant spot check for target repos
+  scripts/agent-gate ui-probe [--check|--eval-fixture <json>|--url <url>] # v4.16.0: optional Playwright DOM geometry probe (exit 3 when unavailable)
   scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)

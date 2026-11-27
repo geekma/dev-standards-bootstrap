@@ -1840,7 +1840,7 @@ report "A56 the generator delegates receipt trust to the single implementation (
 # in one gate and governance in another (fresh-clone-check.sh was absent twice).
 # CHG-159 REQ-1472: + lib-gate-staged.sh, test-harness.sh and suite-01..08 (the CHG-157/158 splits
 # were added to agent-gate.sh only; session-gate/audit-docs copies had silently drifted).
-a59_required='agent-gate session-gate.sh install-hook-adapter install-ci-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh lib-gate-staged.sh test-harness.sh suite-01-core.sh suite-02-install.sh suite-03-session.sh suite-04-gates.sh suite-05-adapter.sh suite-06-runner.sh suite-07-adapt.sh suite-08-infra.sh'
+a59_required='agent-gate session-gate.sh install-hook-adapter install-ci-adapter check-standards-compliance.sh stamp-provenance.sh generate-reading-pack.sh behavior-extract.sh ui-probe.sh lib-suite-tree-fingerprint.sh lib-suite-lock.sh shard-sum.sh evidence-round.sh run-tests.sh audit-docs-consistency.sh fresh-clone-check.sh lib-gate-staged.sh test-harness.sh suite-01-core.sh suite-02-install.sh suite-03-session.sh suite-04-gates.sh suite-05-adapter.sh suite-06-runner.sh suite-07-adapt.sh suite-08-infra.sh'
 a59_missing=0; a59_seen=0; a59_mutants=0
 for a59_f in "$ROOT/resources/templates/agent-gate.sh" "$ROOT/resources/templates/session-gate.sh" "$ROOT/resources/templates/audit-docs-consistency.sh"; do
   [[ -f "$a59_f" ]] || continue

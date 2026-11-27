@@ -47,11 +47,13 @@ copy_gate_to() { # <dest_dir> [bin_name]
   mkdir -p "$dest"
   cp "$GATE_SRC" "$dest/$bin"
   chmod +x "$dest/$bin"
-  for d in lib-json.sh lib-gate-staged.sh lib-gate-cold.sh; do
+  for d in lib-json.sh lib-gate-staged.sh lib-gate-cold.sh ui-probe.sh; do
     if [[ -f "$ROOT/resources/templates/$d" ]]; then
       cp "$ROOT/resources/templates/$d" "$dest/$d"
+      [[ -x "$ROOT/resources/templates/$d" ]] && chmod +x "$dest/$d"
     elif [[ -f "$ROOT/scripts/$d" ]]; then
       cp "$ROOT/scripts/$d" "$dest/$d"
+      [[ -x "$ROOT/scripts/$d" ]] && chmod +x "$dest/$d"
     fi
   done
 }

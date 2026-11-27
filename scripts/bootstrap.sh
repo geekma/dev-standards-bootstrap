@@ -970,6 +970,7 @@ run_layer() {
       install_file - "$SCRIPTS_DIR/lib-gate-cold.sh" resources/templates/lib-gate-cold.sh 644
       install_file - "$TESTS_DIR/governance-smoke.sh" resources/templates/governance-smoke.sh 755
       install_file - "$SCRIPTS_DIR/behavior-extract.sh" resources/templates/behavior-extract.sh 755
+      install_file - "$SCRIPTS_DIR/ui-probe.sh" resources/templates/ui-probe.sh 755
       install_file - "$SCRIPTS_DIR/stamp-provenance.sh" resources/templates/stamp-provenance.sh 755
       install_file - "$SCRIPTS_DIR/new-change" resources/templates/new-change.sh 755
       install_file - "$SCRIPTS_DIR/eval-cases" resources/templates/eval-cases.sh 755

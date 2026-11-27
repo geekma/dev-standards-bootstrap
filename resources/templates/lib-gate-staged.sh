@@ -429,7 +429,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     00-governance.json)
       local _sv=""
       [[ -s "$docs_dir/DEVELOPMENT_STANDARDS.md" ]] && _sv=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$docs_dir/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1)
-      [[ -n "$_sv" ]] || _sv="4.15.1"
+      [[ -n "$_sv" ]] || _sv="4.16.0"
       printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "standards_version_at_begin": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": "", "dispatch_contract": "v2"}\n' "$id" "$cuid" "$risk" "$_sv" ;;
     01-spec.md)
       printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
@@ -1226,6 +1226,32 @@ shift_gate_check() { # <change-id> — E112 single die site
   die "GATE-E112: change $id was delivered earlier in this session but has neither handoff.md nor a 09 「换挡声明」 line — shift the session (write handoff), record the declaration, or set AGENT_GUARD_ALLOW_NO_SHIFT=1 with the justification in 09 (standards §2.9.6, v3.71.0)"
 }
 
+die_e104() { # <message> — single GATE-E104 die literal for T41/A39 uniqueness
+  die "GATE-E104: $1"
+}
+
+ui_baseline_gate_check() { # <change-dir> <spec> <res05> <res07> (Batch F: F-2/F-3/F-4/F-5/F-7)
+  local d="$1" spec="$2" res05="$3" res07="$4"
+  local id rec risk sv _sv_maj _sv_min _active=0 _has_explicit=0
+  id=$(active_change_quiet)
+  [[ -n "$id" ]] || id=$(basename "$d")
+  rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+  risk=$(json_field "$rec" risk_level 2>/dev/null || echo L1)
+  sv=$(json_field "$rec" standards_version_at_begin 2>/dev/null || true)
+  if [[ "$sv" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
+    _sv_maj="${BASH_REMATCH[1]}"; _sv_min="${BASH_REMATCH[2]}"
+    if [[ "$_sv_maj" -gt 4 ]] || [[ "$_sv_maj" -eq 4 && "$_sv_min" -ge 16 ]]; then
+      _active=1
+    fi
+  fi
+  if [[ -f "$d/evidence/ui-probe.json" ]] || grep -qE 'degraded[[:space:]]*[:=][[:space:]]*manual' "$res05" "$res07" "$d"/*.md 2>/dev/null; then
+    _has_explicit=1
+  fi
+  [[ "$_active" -eq 1 || "$_has_explicit" -eq 1 ]] || return 0
+  load_gate_cold
+  _cold_ui_baseline_verify "$d" "$id" "${risk:-L1}" "$_active" "$res05" "$res07"
+}
+
 validate_dimensional_stop() { # <change-dir>
   local d="$1" spec="$1/01-spec.md" oa cc inv ids cov orph uj res05 res07 led row jsec="" bhv="" n_bhv="" n_wv=""
   [[ -s "$spec" ]] || return 0
@@ -1282,7 +1308,7 @@ validate_dimensional_stop() { # <change-dir>
         # (DB/响应体/快照/点击链路/截图/几何断言) or an explicit numeric latency/timeout measure.
         e104_msg="05 runtime evidence for $uj relies on bare HTTP without body/DOM/click-chain/screenshot or latency measure — HTTP 200 alone cannot prove availability (standards §0.6/§2.5 stage 7, v4.5.0)"
       fi
-      [[ -z "$e104_msg" ]] || die "GATE-E104: $e104_msg"
+      [[ -z "$e104_msg" ]] || die_e104 "$e104_msg"
     done <<EOF
 $ujs
 EOF
@@ -1388,6 +1414,7 @@ EOF
     fi
     [[ -z "$e110" ]] \
       || die "GATE-E110: $e110 (standards §2.5 stage 7, v3.71.0)"
+    ui_baseline_gate_check "$d" "$spec" "$res05" "$res07"
   fi
   # v3.71.0 (CHG-046, REQ-1090): stop-lane shift enforcement — extracted to
   # shift_gate_check so `--stage shift` (pre-push) shares the same E112 die site.
@@ -5776,6 +5803,13 @@ gate_staged_dispatch() {
     ;;
   mutation-spot)
     shift; load_gate_cold; mutation_spot_cmd "$@"
+    ;;
+  ui-probe)
+    shift
+    local _up_bin="$scripts_dir/ui-probe.sh"
+    [[ -f "$_up_bin" ]] || _up_bin="$repo_root/$scripts_dir/ui-probe.sh"
+    [[ -f "$_up_bin" ]] || die_e104 "ui-probe.sh not found at $_up_bin"
+    bash "$_up_bin" "$@"
     ;;
     --stage)
       [[ $# -ge 2 && -n "${2:-}" ]] || unknown_stage "${2:-}"

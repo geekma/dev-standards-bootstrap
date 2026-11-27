@@ -359,11 +359,13 @@ _new_repo_prewarm() {
     seed_project_masters
     cp "$GATE_SRC" scripts/agent-gate
     chmod +x scripts/agent-gate
-    for _nr_lib in lib-json.sh lib-gate-staged.sh lib-gate-cold.sh; do
+    for _nr_lib in lib-json.sh lib-gate-staged.sh lib-gate-cold.sh ui-probe.sh; do
       if [[ -f "$ROOT/resources/templates/$_nr_lib" ]]; then
         cp "$ROOT/resources/templates/$_nr_lib" "scripts/$_nr_lib"
+        [[ -x "$ROOT/resources/templates/$_nr_lib" ]] && chmod +x "scripts/$_nr_lib"
       elif [[ -f "$ROOT/scripts/$_nr_lib" ]]; then
         cp "$ROOT/scripts/$_nr_lib" "scripts/$_nr_lib"
+        [[ -x "$ROOT/scripts/$_nr_lib" ]] && chmod +x "scripts/$_nr_lib"
       fi
     done
     cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" scripts/

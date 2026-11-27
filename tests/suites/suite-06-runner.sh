@@ -1733,6 +1733,349 @@ _orig_tab_sha=$(cksum src/tabbed.sh | awk '{print $1}')
 scripts/agent-gate mutation-spot --file src/tabbed.sh --cmd "bash tests/test_tabbed.sh" >/dev/null 2>&1
 report "T53 TC-1651c mutation-spot preserves leading Tabs and backslashes (rc0)" 0 $?
 check_output "T53 TC-1651c src/tabbed.sh restored byte-for-byte" "^${_orig_tab_sha}$" "$(cksum src/tabbed.sh | awk '{print $1}')"
+
+# === Batch F (v4.16.0, CHG-166): UI baseline templates, ui-probe, F-2 & F-5 ===
+_t53_write_png_and_probe() { # <chg> <viewport> <tamper_sha> <viol_count> <waiver_expires>
+  local _c="$1" _vp="${2:-1280}" _bad_sha="${3:-0}" _vcount="${4:-0}" _wexp="${5:-}"
+  local _ed="docs/changes/${_c}/evidence" _png="evidence/ui-${_vp}.png"
+  mkdir -p "$_ed"
+  printf 'PNGDATA-%s-%s\n' "$_c" "$_vp" > "docs/changes/${_c}/${_png}"
+  local _sha
+  if [[ "$_bad_sha" == "1" ]]; then
+    _sha="0000000000000000000000000000000000000000000000000000000000000000"
+  elif command -v shasum >/dev/null 2>&1; then
+    _sha=$(shasum -a 256 "docs/changes/${_c}/${_png}" | awk '{print $1}')
+  else
+    _sha=$(sha256sum "docs/changes/${_c}/${_png}" | awk '{print $1}')
+  fi
+  local _vjson="[]" _wjson="[]"
+  if [[ "$_vcount" -gt 0 ]]; then
+    _vjson='[{"kind":"overflow-x","selector":"#hero","rect":[0,0,500,40],"confidence":"high"}]'
+  fi
+  if [[ -n "$_wexp" ]]; then
+    _wjson="[{\"kind\":\"overflow-x\",\"selector\":\"#hero\",\"owner\":\"ui-owner\",\"expires\":\"${_wexp}\",\"reason\":\"legacy widget\"}]"
+  fi
+  local _vlist="[360,390,768,1280,1920]" _rjson="" _vp_item
+  for _vp_item in 360 390 768 1280 1920; do
+    if [[ "$_vp_item" == "$_vp" ]]; then
+      [[ -n "$_rjson" ]] && _rjson="${_rjson},"
+      _rjson="${_rjson}{\"viewport\":${_vp_item},\"violations\":${_vjson},\"screenshot\":\"${_png}\",\"screenshot_sha256\":\"${_sha}\"}"
+    elif [[ "$_bad_sha" != "2" ]]; then
+      printf 'PNGDATA-%s-%s\n' "$_c" "$_vp_item" > "docs/changes/${_c}/evidence/ui-${_vp_item}.png"
+      local _sh2
+      if command -v shasum >/dev/null 2>&1; then
+        _sh2=$(shasum -a 256 "docs/changes/${_c}/evidence/ui-${_vp_item}.png" | awk '{print $1}')
+      else
+        _sh2=$(sha256sum "docs/changes/${_c}/evidence/ui-${_vp_item}.png" | awk '{print $1}')
+      fi
+      [[ -n "$_rjson" ]] && _rjson="${_rjson},"
+      _rjson="${_rjson}{\"viewport\":${_vp_item},\"violations\":[],\"screenshot\":\"evidence/ui-${_vp_item}.png\",\"screenshot_sha256\":\"${_sh2}\"}"
+    fi
+  done
+  cat > "${_ed}/ui-probe.json" <<EOF
+{"schema":1,"tool":"ui-probe","tool_version":"1.0.0","generated_at":"2099-01-01T00:00:00Z","target":"http://localhost:3000","viewports":${_vlist},"results":[${_rjson}],"violations_total":${_vcount},"waivers":${_wjson}}
+EOF
+}
+
+_t53_seed_ui() { # <chg> <risk> [standards_version_at_begin]
+  local _c="$1" _r="$2" _sv="${3:-4.16.0}"
+  new_repo
+  mkdir -p tests src
+  printf 'console.log(1)\n' > src/app.js
+  git add src/app.js
+  seed_artifacts "$_c" "$_r" claude/s-1 claude/s-2 claude/s-3
+  local _svf="" _authf=""
+  [[ "$_sv" != "none" ]] && _svf=",\"standards_version_at_begin\":\"${_sv}\""
+  [[ "$_r" == "L3" ]] && _authf=',"release_authorized_by":"lead/u-1","release_authorized_at":"2026-11-27T12:00:00Z","release_authorization_evidence":"ticket#166"'
+  printf '{"change_id":"%s","risk_level":"%s"%s%s,"spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","verification_owner":"verifier/v-1"}\n' \
+    "$_c" "$_r" "$_svf" "$_authf" > "docs/changes/${_c}/00-governance.json"
+  cat >> "docs/changes/${_c}/00.5-communication.md" <<'EOF'
+
+## 套件范围判定卡（三选一裁定）
+- suite_scope_decision: FULL
+- 判定卡（三选一裁定）：FULL
+EOF
+  cat > "docs/changes/${_c}/01-spec.md" <<EOF
+# ${_c} Spec
+- REQ-001: 演示页可用性收口
+- **挂靠 UJ**：UJ-001
+- **origin_artifact**: 未命中（无原型页）
+- **chain_change**: 未命中（无数据链变更）
+- **ui_change**: true
+## 动作全集矩阵
+- 对象=演示页；入口维度：桌面命中/移动未命中；改命中、其余格既有
+## 出站出口清单
+- outbound_exits: UJ-001
+EOF
+  cat > "docs/changes/${_c}/03.6-ui-spec.md" <<'EOF'
+# ui spec
+## 逐屏字段与控件
+- 列表选择（带出主键）
+## 多端适配
+| 视口 | 宽 | 适用 | 不适用理由 |
+|---|---|---|---|
+| 小屏手机 | 360 | 是 | |
+| 手机 | 390 | 是 | |
+| 平板 | 768 | 是 | |
+| 桌面 | 1280 | 是 | |
+| 大屏 | 1920 | 是 | |
+## 显示名↔主键映射
+- 记录显示名 -> record_id
+## 参照界面对照表
+- 仓内同类既有界面：未命中（首次 ui_change，P12 UI 范式卡已沉淀）
+- UI 范式卡：引用 P12
+EOF
+  cat > "docs/changes/${_c}/03.5-tasks.md" <<'EOF'
+# tasks
+| 任务 | 类型 | 依赖 | 里程碑 | 说明 |
+|---|---|---|---|---|
+| T-001 | UX | 无 | M1 | UI 设计实现 |
+## 里程碑
+- M1：完成
+- 评审输入: 变更文件清单 + 待核对产物 + 行号锚点
+EOF
+  cat > tests/test_ui_app.sh <<'EOF'
+#!/usr/bin/env bash
+assert() { return 0; }
+assert
+EOF
+  chmod +x tests/test_ui_app.sh
+  cat > "docs/changes/${_c}/04-test-scripts.md" <<'EOF'
+# tests
+- TC-001 用户旅程 E2E（UJ-001）：bash tests/test_ui_app.sh
+- TC-002 用户旅程 E2E：bash tests/test_ui_app.sh
+- TC-003 用户旅程 E2E：bash tests/test_ui_app.sh
+覆盖维度: 正常流 / 边界 / 异常
+- SC-001: 演示页主流程（覆盖: TC-001，REQ-001）
+## TC 落点清单
+- TC-001: tests/test_ui_app.sh（类型：自动化）
+- TC-002: tests/test_ui_app.sh（类型：自动化）
+- TC-003: tests/test_ui_app.sh（类型：自动化）
+## UI 通用常识 TC 清单
+- UIX-01: 已测（evidence/ui-probe.json）
+- UIX-02: 已测（evidence/ui-probe.json）
+- UIX-03: 已测（evidence/ui-probe.json）
+- UIX-04: 已测（evidence/ui-probe.json）
+- UIX-05: 已测（evidence/ui-probe.json）
+- UIX-06: 已测（evidence/ui-probe.json）
+- UIX-07: 已测（evidence/ui-probe.json）
+- UIX-08: 已测（evidence/ui-probe.json）
+- UIX-09: 已测（evidence/ui-probe.json）
+## 极端数据夹具声明
+- 超长文本（无空格200字符）：已声明 tests/test_ui_app.sh
+- 0条空态：已声明 tests/test_ui_app.sh
+- 1条单条：已声明 tests/test_ui_app.sh
+- 1000条列表：已声明 tests/test_ui_app.sh
+- 文案膨胀30%：已声明 tests/test_ui_app.sh
+EOF
+  scripts/agent-gate begin "$_c" >/dev/null 2>&1
+  seed_t53_delivery "$_c"
+  printf '# coding record\n- file: src/app.sh\n' > "docs/changes/${_c}/04.5-coding-record.md"
+  printf '# 05\n- UJ-001 运行时证据：HTTP 响应体 200，截图 snap-t53u，20ms\n- **还原度断言**：tests/test_ui_app.sh\n' > "docs/changes/${_c}/05-test-results.md"
+  cat > "docs/changes/${_c}/07-review-report.md" <<'EOF'
+# review
+## 用户可用性验收
+- 结论：通过（依据 03.6 与 UJ-001）
+- **建议人类走查（非阻塞）**：建议交付前真人走查一次
+## 业务合理性终审
+- 逐 UJ 质询结论：UJ-001 通过（业务现实依据）
+- **业务终审主体**：claude / model / ses-r2
+- **发现处置**：未命中，不适用（T53 夹具）
+- **超限处置**：未超限
+## 评审结论
+通过
+## 运行时走查
+- 评审主体：claude / model / ses-r1
+- 截图：evidence/ui-360.png 浏览器自产核查
+EOF
+  if [[ "$_r" == "L3" ]]; then
+    printf '# 06-bugs\n未命中，不适用（T53 夹具）\n' > "docs/changes/${_c}/06-bugs.md"
+    printf '# 06.5-bug-tasks\n未命中，不适用（T53 夹具）\n' > "docs/changes/${_c}/06.5-bug-tasks.md"
+    mkdir -p "docs/changes/${_c}/reviews"
+    printf '# R1\nPASS\n' > "docs/changes/${_c}/reviews/r1.review.md"
+    printf '# R2\nPASS\n' > "docs/changes/${_c}/reviews/r2.review.md"
+    printf '\n- decision-gap: soft cross-model — T53 夹具\n- decision-gap: soft reviews:0<2 — T53 夹具\n' >> "docs/changes/${_c}/09-changelog.md"
+  fi
+  printf '\n- [dogfood] verified %s\n- [dogfood-next] next\n' "$_c" >> "docs/changes/${_c}/09-changelog.md"
+  _t53_write_png_and_probe "$_c" 1280 0 0 ""
+  stamp_all "docs/changes/${_c}"
+  _t53_refresh_rc
+}
+
+# TC-1660d: shipped templates carry viewport matrix, UIX-01..09, and extreme data declarations
+_ui_t036=$(cat "$ROOT/resources/templates/entry/03.6-ui-spec.md")
+_ui_t04=$(cat "$ROOT/resources/templates/entry/04-test-scripts.md")
+check_output "T53 TC-1660d 03.6 template defines 5 viewports (360..1920)" "360.*[\n\r|]*.*390.*1280.*1920|1920" "$_ui_t036"
+report "T53 TC-1660d 03.6 template contains all 5 viewport widths" 5 "$(printf '%s' "$_ui_t036" | grep -oE '\b(360|390|768|1280|1920)\b' | sort -u | wc -l | tr -d '[:space:]')"
+report "T53 TC-1660d 04 template defines UIX-01 through UIX-09" 9 "$(printf '%s' "$_ui_t04" | grep -oE 'UIX-0[1-9]' | sort -u | wc -l | tr -d '[:space:]')"
+check_output "T53 TC-1660d 04 template declares 200-char & 1000-row & 30% extreme fixtures" "200.*1000.*30%|1000" "$_ui_t04"
+
+# TC-1660a: ui_change:false and legacy <4.16.0 changes skip Batch F gate
+_t53_seed_ui CHG-1660A L3 none
+rm -f docs/changes/CHG-1660A/evidence/ui-probe.json
+cat > docs/changes/CHG-1660A/03.6-ui-spec.md <<'EOF'
+# ui spec legacy
+## 逐屏字段与控件
+- 列表选择（带出主键）
+## 多端适配
+- 仅写文字，无视口矩阵
+## 显示名↔主键映射
+- 记录显示名 -> record_id
+## 参照界面对照表
+- 仓内同类既有界面：未命中
+- UI 范式卡：引用 P12
+EOF
+stamp_all docs/changes/CHG-1660A; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1660a legacy change without 4.16 anchor passes without Batch F block (rc0)" 0 "$rc"
+
+# TC-1660b: missing viewport matrix / blank reason / '未测' -> L1 WARN, L2 ratchet rc2, L3 rc2
+_t53_seed_ui CHG-1660B L3 4.16.0
+cat > docs/changes/CHG-1660B/03.6-ui-spec.md <<'EOF'
+# ui spec bad matrix
+## 逐屏字段与控件
+- 列表选择
+## 多端适配
+| 视口 | 宽 | 适用 | 不适用理由 |
+|---|---|---|---|
+| 小屏手机 | 360 | 否 | 未测 |
+| 手机 | 390 | 是 | |
+| 平板 | 768 | 是 | |
+| 桌面 | 1280 | 是 | |
+| 大屏 | 1920 | 是 | |
+## 显示名↔主键映射
+- 记录显示名 -> record_id
+## 参照界面对照表
+- 仓内同类既有界面：未命中
+- UI 范式卡：引用 P12
+EOF
+stamp_all docs/changes/CHG-1660B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1660b L3 rejects '未测' viewport reason (rc2)" 2 "$rc"
+check_output "T53 TC-1660b names GATE-E104" "GATE-E104" "$out"
+
+_t53_seed_ui CHG-1660B2 L2 4.16.0
+sed -i.bak 's/| 小屏手机 | 360 | 是 | |/| 小屏手机 | 360 | 否 | |/' docs/changes/CHG-1660B2/03.6-ui-spec.md 2>/dev/null || sed -i '' 's/| 小屏手机 | 360 | 是 | |/| 小屏手机 | 360 | 否 | |/' docs/changes/CHG-1660B2/03.6-ui-spec.md
+rm -f docs/changes/CHG-1660B2/03.6-ui-spec.md.bak
+stamp_all docs/changes/CHG-1660B2; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1660b L2 advisory defaults to WARN+pass on empty 不适用 reason (rc0)" 0 "$rc"
+check_output "T53 TC-1660b L2 advisory emits WARN" "WARN" "$out"
+out=$(AGENT_GUARD_UI_BASELINE=ratchet scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1660b L2 ratchet rejects empty 不适用 reason (rc2)" 2 "$rc"
+
+# TC-1660c: blank UIX- row or missing extreme data -> L3 rc2 GATE-E104
+_t53_seed_ui CHG-1660C L3 4.16.0
+sed -i.bak 's/- UIX-05: 已测（evidence\/ui-probe.json）/- UIX-05: /' docs/changes/CHG-1660C/04-test-scripts.md 2>/dev/null || sed -i '' 's/- UIX-05: 已测（evidence\/ui-probe.json）/- UIX-05: /' docs/changes/CHG-1660C/04-test-scripts.md
+rm -f docs/changes/CHG-1660C/04-test-scripts.md.bak
+stamp_all docs/changes/CHG-1660C; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1660c L3 rejects blank UIX-05 row (rc2)" 2 "$rc"
+check_output "T53 TC-1660c blank UIX mentions GATE-E104" "GATE-E104" "$out"
+
+# F-166-2 regression: unfilled F-4 extreme data section (only label left of ':') must still reject
+_t53_seed_ui CHG-1660C2 L3 4.16.0
+sed -i.bak 's/：已声明 tests\/test_ui_app.sh/：<!-- empty -->/g' docs/changes/CHG-1660C2/04-test-scripts.md 2>/dev/null || sed -i '' 's/：已声明 tests\/test_ui_app.sh/：<!-- empty -->/g' docs/changes/CHG-1660C2/04-test-scripts.md
+rm -f docs/changes/CHG-1660C2/04-test-scripts.md.bak
+stamp_all docs/changes/CHG-1660C2; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1660c2 F-4 unfilled extreme data fixtures reject even with label numbers intact (rc2)" 2 "$rc"
+check_output "T53 TC-1660c2 names GATE-E104" "GATE-E104" "$out"
+
+# TC-1661a: ui-probe.sh unavailable exits 3, geometry fixture evaluator detects faults & clean passes
+AGENT_GUARD_UI_PROBE_MOCK=unavailable scripts/ui-probe.sh --check >/dev/null 2>&1
+report "T53 TC-1661a ui-probe.sh --check returns exit 3 when unavailable" 3 $?
+cat > .agent-state/ui-fixture-bad.json <<'EOF'
+{
+  "viewport": 390,
+  "docScrollWidth": 450,
+  "innerWidth": 390,
+  "elements": [
+    {"selector": "#btn-occ", "interactive": true, "rect": [10, 10, 80, 48], "occluded": true, "fontSize": 14},
+    {"selector": "#btn-tiny", "interactive": true, "rect": [10, 90, 30, 30], "occluded": false, "fontSize": 14}
+  ],
+  "consoleErrors": 0
+}
+EOF
+out=$(scripts/agent-gate ui-probe --eval-fixture .agent-state/ui-fixture-bad.json --fail-on-violation 2>&1); rc=$?
+report "T53 TC-1661a ui-probe fixture fails with rc2 on violations" 2 "$rc"
+check_output "T53 TC-1661a detects overflow-x" "overflow-x" "$out"
+check_output "T53 TC-1661a detects occluded" "occluded" "$out"
+check_output "T53 TC-1661a detects touch-target-small" "touch-target-small" "$out"
+cat > .agent-state/ui-fixture-clean.json <<'EOF'
+{
+  "viewport": 390,
+  "docScrollWidth": 390,
+  "innerWidth": 390,
+  "elements": [
+    {"selector": "#btn-ok", "interactive": true, "rect": [16, 20, 120, 48], "occluded": false, "fontSize": 16}
+  ],
+  "consoleErrors": 0
+}
+EOF
+out=$(scripts/agent-gate ui-probe --eval-fixture .agent-state/ui-fixture-clean.json --fail-on-violation 2>&1); rc=$?
+report "T53 TC-1661a clean fixture returns rc0 and zero violations" 0 "$rc"
+check_output "T53 TC-1661a clean fixture reports violations_total 0" '"violations_total":0' "$out"
+
+# TC-1661c: F-2 rejects tampered sha256, unwaived violation, expired waiver, missing viewport, missing probe at L3
+_t53_seed_ui CHG-1661C L3 4.16.0
+_t53_write_png_and_probe CHG-1661C 1280 1 0 ""
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661c rejects tampered screenshot_sha256 (rc2)" 2 "$rc"
+
+_t53_write_png_and_probe CHG-1661C 1280 0 1 ""
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661c rejects unwaived violation violations_total>0 (rc2)" 2 "$rc"
+
+_t53_write_png_and_probe CHG-1661C 1280 0 1 "2020-01-01"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661c rejects expired waiver (rc2)" 2 "$rc"
+
+_t53_write_png_and_probe CHG-1661C 1280 2 0 ""
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661c rejects missing declared viewport in probe JSON (rc2)" 2 "$rc"
+
+rm -f docs/changes/CHG-1661C/evidence/ui-probe.json
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661c L3 rejects missing ui-probe.json without degraded=manual (rc2)" 2 "$rc"
+
+# TC-1661d: F-2 passes L3 with valid probe JSON + valid unexpired waiver
+_t53_write_png_and_probe CHG-1661C 1280 0 1 "2099-12-31"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661d L3 passes with matching sha256 and unexpired waiver (rc0)" 0 "$rc"
+
+# TC-1661e: F-5 rejects degraded=manual without real screenshot file & L3 without 09 confirmation
+_t53_seed_ui CHG-1661E L2 4.16.0
+rm -rf docs/changes/CHG-1661E/evidence
+printf '# 05\n- UJ-001: 响应体+截图 20ms\n- degraded=manual\n- **还原度断言**：tests/test_ui_app.sh\n' > docs/changes/CHG-1661E/05-test-results.md
+stamp_all docs/changes/CHG-1661E; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661e rejects degraded=manual when screenshot file does not exist on disk (rc2)" 2 "$rc"
+
+_t53_seed_ui CHG-1661E3 L3 4.16.0
+rm -f docs/changes/CHG-1661E3/evidence/ui-probe.json
+printf 'REALPNG\n' > docs/changes/CHG-1661E3/evidence/manual-360.png
+printf '# 05\n- UJ-001: 响应体+截图 20ms (evidence/manual-360.png)\n- degraded=manual\n- **还原度断言**：tests/test_ui_app.sh\n' > docs/changes/CHG-1661E3/05-test-results.md
+# F-166-1 regression: boilerplate 重要上下文 + 需求确认 in 09-changelog must NOT false-pass L3 degraded=manual
+printf '\n#### 重要上下文\n- 需求确认：正常需求\n' >> docs/changes/CHG-1661E3/09-changelog.md
+stamp_all docs/changes/CHG-1661E3; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661e L3 rejects degraded=manual when 09 lacks explicit degradation confirmation (rc2)" 2 "$rc"
+printf '\n- 用户确认 ui-probe 降级走人工 B 层截图\n' >> docs/changes/CHG-1661E3/09-changelog.md
+stamp_all docs/changes/CHG-1661E3; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661e L3 passes degraded=manual once explicit confirmation added in 重要上下文 (rc0)" 0 "$rc"
+
+# TC-1661f: F-5 compliant degraded=manual passes L2 with WARN + friction; logs when probe available
+_t53_seed_ui CHG-1661F L2 4.16.0
+rm -f docs/changes/CHG-1661F/evidence/ui-probe.json
+printf 'REALPNG\n' > docs/changes/CHG-1661F/evidence/manual-360.png
+printf '# 05\n- UJ-001: 响应体+截图 20ms (evidence/manual-360.png)\n- degraded=manual\n- **还原度断言**：tests/test_ui_app.sh\n' > docs/changes/CHG-1661F/05-test-results.md
+stamp_all docs/changes/CHG-1661F; _t53_refresh_rc
+out=$(AGENT_GUARD_UI_PROBE_MOCK=available scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1661f L2 passes compliant degraded=manual with WARN (rc0)" 0 "$rc"
+report "T53 TC-1661f logs UI_DEGRADED_MANUAL to gate-friction.tsv" 1 "$(grep -c '^UI_DEGRADED_MANUAL	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
+report "T53 TC-1661f logs UI_MANUAL_WHEN_PROBE_AVAILABLE when probe mock available" 1 "$(grep -c '^UI_MANUAL_WHEN_PROBE_AVAILABLE	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
 }
 
 section_T54() {

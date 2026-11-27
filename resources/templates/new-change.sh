@@ -107,7 +107,7 @@ fill() { # <src> -> stdout with placeholders replaced
   if [[ -s "$docs_dir/DEVELOPMENT_STANDARDS.md" ]]; then
     sver=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$docs_dir/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1)
   fi
-  [[ -n "$sver" ]] || sver="4.15.1"
+  [[ -n "$sver" ]] || sver="4.16.0"
   sed -e "s/__CHANGE_ID__/$id/g" -e "s/__CHANGE_UID__/$cuid/g" \
       -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" \
       -e "s/__STANDARDS_VERSION__/$sver/g" \
