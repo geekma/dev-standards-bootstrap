@@ -348,6 +348,8 @@ adapter_claude() {
 import copy, datetime, json, os, re, shutil, sys
 path = sys.argv[1]
 prefix = sys.argv[2]
+# CHG-162（REQ-1620，DES-1620）：命令锚定到项目根，不依赖会话 cwd；变量缺失回退 '.'（等价旧行为）
+ANCHOR = '"${CLAUDE_PROJECT_DIR:-.}"/'
 existed = os.path.exists(path)
 d = {}
 if existed:
@@ -362,8 +364,10 @@ def norm(cmd):
         c = c[len(prefix):]  # 已知前缀直接剥离（含带空格的 bash 路径）
     else:
         # 其它机器写入的前缀：非贪婪吃到 scripts/ 为止，bash 路径允许带空格
-        c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/)', '', c)
+        c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/|' + re.escape(ANCHOR) + r'scripts/)', '', c)
     c = re.sub(r'^bash\s+', '', c)
+    if c.startswith(ANCHOR):
+        c = c[len(ANCHOR):]
     return re.sub(r'^\./', '', c)
 
 # (事件, matcher；None=条目不带 matcher 字段, 规范命令)
@@ -398,8 +402,8 @@ for stage in list(hooks.keys()):
                     if k in seen:
                         continue
                     seen.add(k)
-                    if hk.get("command") != prefix + k[2]:
-                        hk["command"] = prefix + k[2]
+                    if hk.get("command") != prefix + ANCHOR + k[2]:
+                        hk["command"] = prefix + ANCHOR + k[2]
             nh.append(hk)
         if not nh:
             continue
@@ -410,7 +414,7 @@ for stage in list(hooks.keys()):
 for stage, matcher, want in WIRINGS:
     if (stage, matcher or "", want) in seen:
         continue
-    entry = {"hooks": [{"type": "command", "command": prefix + want}]}
+    entry = {"hooks": [{"type": "command", "command": prefix + ANCHOR + want}]}
     if matcher is not None:
         entry = {"matcher": matcher, **entry}
     hooks.setdefault(stage, []).append(entry)

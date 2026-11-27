@@ -194,8 +194,11 @@ d = json.load(open(sys.argv[1]))
 want = ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop",
         "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -", "scripts/session-gate.sh check")
 def norm(c):
-    c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/)', '', c)
+    c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/|"\$\{CLAUDE_PROJECT_DIR:-\.\}"/scripts/)', '', c)
     c = re.sub(r'^bash\s+', '', c)
+    a = '"${CLAUDE_PROJECT_DIR:-.}"/'  # CHG-162: independent literal of the anchor prefix
+    if c.startswith(a):
+        c = c[len(a):]
     return re.sub(r'^\./', '', c)
 cnt = {w: 0 for w in want}
 for ev, lst in d.get("hooks", {}).items():
@@ -222,7 +225,7 @@ report "TC-1610c second run adds no new backup" "$_c161_bak1" "$(ls .claude/sett
 # TC-1611c: 去重后 count turn 对 UserPromptSubmit 事件恰好 +1
 rm -f .agent-state/session-tool-stats.json
 _c161_cmds=$(python3 -c 'import json;d=json.load(open(".claude/settings.json"));[print(hk["command"]) for e in d["hooks"]["UserPromptSubmit"] for hk in e["hooks"]]')
-while IFS= read -r _c161_c; do _c161_c="${_c161_c#bash }"; [[ -n "$_c161_c" ]] && bash $_c161_c >/dev/null 2>&1; done <<< "$_c161_cmds"
+while IFS= read -r _c161_c; do [[ -n "$_c161_c" ]] && CLAUDE_PROJECT_DIR="$PWD" bash -c "$_c161_c" >/dev/null 2>&1; done <<< "$_c161_cmds"
 report "TC-1611c one UserPromptSubmit event counts exactly one turn" 1 "$(python3 -c 'import json;print(json.load(open(".agent-state/session-tool-stats.json")).get("turns",0))' 2>/dev/null || echo 0)"
 
 # TC-1611a：空 {} 补齐 6 条各 1 条；TC-1611b：规范单份夹具升级后字节不变
@@ -263,6 +266,123 @@ out=$(bash scripts/install-hook-adapter --client claude 2>&1); rc=$?
 report "TC-1610g unparseable settings.json makes the adapter fail non-zero" 1 "$([[ $rc -ne 0 ]] && echo 1 || echo 0)"
 report "TC-1610g no false 'merged + verified' line on failure" 0 "$(printf '%s' "$out" | grep -c 'merged + verified')"
 report "TC-1610g the unparseable file is left untouched" 1 "$(grep -c 'bad json' .claude/settings.json)"
+
+# ---- CHG-162 (REQ-1620~1623, DES-1620~1622): hook 命令锚定项目根，不依赖会话 cwd ----
+_c162_all_cmds() { # 打印 settings.json 里全部 hook 命令，一行一条
+  python3 - "$1" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+for lst in d.get("hooks", {}).values():
+    for e in lst:
+        for hk in e.get("hooks", []):
+            print(hk.get("command", ""))
+PY
+}
+_c162_anchor_n() { # 含锚定前缀的命令条数
+  _c162_all_cmds "$1" | grep -cF '"${CLAUDE_PROJECT_DIR:-.}"/scripts/'
+}
+_c162_stub_scripts() { # <dir>：放两个只会 exit 0 的可执行桩，命令能否被找到一目了然
+  mkdir -p "$1/scripts"
+  printf '#!/bin/sh\nexit 0\n' > "$1/scripts/session-gate.sh"
+  printf '#!/bin/sh\nexit 0\n' > "$1/scripts/agent-gate"
+  chmod +x "$1/scripts/session-gate.sh" "$1/scripts/agent-gate"
+}
+_c162_run_all() { # <settings> <cwd> [CLAUDE_PROJECT_DIR]：在 cwd 下逐条执行，输出 失败数:总数（总数防空转）
+  local f="$1" cwd="$2" root="${3-}" bad=0 total=0 c
+  while IFS= read -r c; do
+    [[ -n "$c" ]] || continue
+    total=$((total+1))
+    if [[ -n "$root" ]]; then
+      ( cd "$cwd" && CLAUDE_PROJECT_DIR="$root" bash -c "$c" >/dev/null 2>&1 ) || bad=$((bad+1))
+    else
+      ( cd "$cwd" && env -u CLAUDE_PROJECT_DIR bash -c "$c" >/dev/null 2>&1 ) || bad=$((bad+1))
+    fi
+  done < <(_c162_all_cmds "$f" 2>/dev/null)
+  echo "$bad:$total"
+}
+_c162_fixture_rel6() { # CHG-161 规范单份相对形态
+  mkdir -p .claude
+  cat > .claude/settings.json <<'JSON'
+{"hooks":{
+ "SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh start"}]}],
+ "UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh count turn"}]}],
+ "PostToolUse":[{"matcher":"Bash|Grep|Glob|Read|Task","hooks":[{"type":"command","command":"scripts/session-gate.sh count tool -"}]}],
+ "PreToolUse":[{"matcher":"Bash|Edit|Write|Task|Grep|Glob|Read","hooks":[{"type":"command","command":"scripts/session-gate.sh check"}]},{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]}],
+ "Stop":[{"hooks":[{"type":"command","command":"scripts/agent-gate --stage stop"}]}]
+}}
+JSON
+}
+
+# TC-1620a/b/c：空 {} 安装 → 6 条全部锚定；子目录可执行；旧相对形态是控制组
+_t49_setup_stub
+mkdir -p .claude && printf '{}\n' > .claude/settings.json
+out=$(bash scripts/install-hook-adapter --client claude 2>&1); rc=$?
+report "TC-1620a install rc0" 0 "$rc"
+report "TC-1620a all six commands are anchored to the project root" 6 "$(_c162_anchor_n .claude/settings.json)"
+report "TC-1623b claude self-proof line still printed" 1 "$(printf '%s' "$out" | grep -c 'self-proof: claude wiring verified')"
+_c162_root="$PWD"
+mkdir -p "$_c162_root/sub/deep"
+_c162_stub_scripts "$_c162_root"
+report "TC-1620b anchored commands run from a subdirectory (0 failures of 6)" "0:6" "$(_c162_run_all "$_c162_root/.claude/settings.json" "$_c162_root/sub/deep" "$_c162_root")"
+report "TC-1620c anchored commands run from the root with the variable unset (fallback, 0 failures of 6)" "0:6" "$(_c162_run_all "$_c162_root/.claude/settings.json" "$_c162_root")"
+( cd "$_c162_root/sub/deep" && bash -c 'scripts/session-gate.sh start' >/dev/null 2>&1 ); _c162_ctl=$?
+report "TC-1620b control: the old relative form fails from a subdirectory (rc 127)" 127 "$_c162_ctl"
+
+# TC-1622a：项目根路径含空格
+_c162_sp=$(mktemp -d "${TMPDIR:-/tmp}/c162 sp.XXXXXX")
+_c162_stub_scripts "$_c162_sp"; mkdir -p "$_c162_sp/sub"
+report "TC-1622a project root with spaces: commands run from a subdirectory (0 failures of 6)" "0:6" "$(_c162_run_all "$_c162_root/.claude/settings.json" "$_c162_sp/sub" "$_c162_sp")"
+rm -rf "$_c162_sp"
+
+# TC-1621a/d/c：旧版双份相对形态升级 → 每键 1 条且全部锚定；用户 hook 保留；二次运行字节不变
+_t49_setup_stub
+_c161_fixture_dup
+bash scripts/install-hook-adapter --client claude >/dev/null 2>&1; rc=$?
+report "TC-1621a dup fixture upgrade rc0" 0 "$rc"
+report "TC-1621a each project wiring exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+report "TC-1621a all six migrated to the anchored form" 6 "$(_c162_anchor_n .claude/settings.json)"
+report "TC-1621a no relative project command left" 0 "$(_c162_all_cmds .claude/settings.json | grep -cE '^(bash )?(\./)?scripts/')"
+report "TC-1621d user-own Stop hook preserved" 1 "$(grep -c 'user-own-stop-hook' .claude/settings.json)"
+_c162_sum1=$(cksum < .claude/settings.json); _c162_bak1=$(ls .claude/settings.json.bak-* 2>/dev/null | wc -l | tr -d ' ')
+bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1621c second run byte-identical" "$_c162_sum1" "$(cksum < .claude/settings.json)"
+report "TC-1621c second run adds no new backup" "$_c162_bak1" "$(ls .claude/settings.json.bak-* 2>/dev/null | wc -l | tr -d ' ')"
+
+# TC-1621b：CHG-161 规范单份相对形态 → 迁到锚定形态，每键 1 条
+_t49_setup_stub
+_c162_fixture_rel6
+bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1621b relative single-copy: each wiring exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+report "TC-1621b relative single-copy migrated to the anchored form" 6 "$(_c162_anchor_n .claude/settings.json)"
+
+# TC-1621e：锚定与相对并存 → 去重为每键 1 条
+_t49_setup_stub
+mkdir -p .claude
+cat > .claude/settings.json <<'JSON'
+{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"\"${CLAUDE_PROJECT_DIR:-.}\"/scripts/session-gate.sh count turn"}]},{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh count turn"}]}]}}
+JSON
+bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1621e anchored + relative coexisting dedupe to exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+report "TC-1621e result is all anchored" 6 "$(_c162_anchor_n .claude/settings.json)"
+
+# TC-1622b：Windows 前缀 + 裸形态 → 前缀在前、锚定在后，去重且二次运行字节不变
+_t49_setup_stub
+mkdir -p .claude
+cat > .claude/settings.json <<'JSON'
+{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"MSYS_NO_PATHCONV=1 /usr/bin/bash scripts/session-gate.sh count turn"}]},{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh count turn"}]}]}}
+JSON
+AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1622b windows form: each wiring exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+report "TC-1622b windows form: all six carry the prefix then the anchor" 6 "$(_c162_all_cmds .claude/settings.json | grep -cE '^MSYS_NO_PATHCONV=1 .* "\$\{CLAUDE_PROJECT_DIR:-\.\}"/scripts/')"
+_c162_sum2=$(cksum < .claude/settings.json)
+AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1622b windows form: second run byte-identical" "$_c162_sum2" "$(cksum < .claude/settings.json)"
+
+# TC-1623a：cursor 接线不被锚定改动波及
+_t49_setup_stub
+bash scripts/install-hook-adapter --client cursor >/dev/null 2>&1
+report "TC-1623a cursor hooks file written" 1 "$([[ -s .cursor/hooks.json ]] && echo 1 || echo 0)"
+report "TC-1623a cursor wiring carries no CLAUDE_PROJECT_DIR" 0 "$(grep -c CLAUDE_PROJECT_DIR .cursor/hooks.json 2>/dev/null || true)"
 }
 
 section_T49c() {
