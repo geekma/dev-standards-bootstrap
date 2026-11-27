@@ -99,13 +99,18 @@ write_fail() { # <path> — stop on a failed write (no partial state reported as
 [[ -d "$change_root" ]] || mkdir -p "$change_root" 2>/dev/null || write_fail "$change_root"
 
 fill() { # <src> -> stdout with placeholders replaced
-  local cuid
+  local cuid sver=""
   case "$id" in
     CHG-[0-9]*) cuid="CHG-$(date -u +%Y%m%d)-${id#CHG-}" ;;
     *) cuid="$id-$(date -u +%Y%m%d)" ;;
   esac
+  if [[ -s "$docs_dir/DEVELOPMENT_STANDARDS.md" ]]; then
+    sver=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$docs_dir/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1)
+  fi
+  [[ -n "$sver" ]] || sver="4.15.1"
   sed -e "s/__CHANGE_ID__/$id/g" -e "s/__CHANGE_UID__/$cuid/g" \
       -e "s/__RISK__/$risk/g" -e "s/__DATE__/$(date -u +%Y-%m-%d)/g" \
+      -e "s/__STANDARDS_VERSION__/$sver/g" \
       -e "s/__DISPATCH_CONTRACT__/v2/g" "$1"
 }
 

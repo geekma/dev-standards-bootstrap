@@ -1519,6 +1519,220 @@ report "T53 TC-1644a escape is idempotent on repeat run" 1 "$(grep -c '^EC-BUG-1
 _m164=$(scripts/agent-gate metrics --summary --json 2>/dev/null || true)
 check_output "T53 TC-1644b metrics summary json includes numeric escape_rate" '"escape_rate":0\.' "$_m164"
 check_output "T53 TC-1644b metrics summary json includes numeric same_fp_reopen_rate" '"same_fp_reopen_rate":1\.00' "$_m164"
+
+# ---- CHG-165 (REQ-1650~1652, DES-1650~1652): E-3 F2P worktree replay + E-9 mutation-spot ----
+new_repo
+mkdir -p src tests docs/bugs/BUG-1650 resources/templates
+cat > docs/bugs/BUG-1650/01-diagnosis.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-01T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# BUG-1650
+| 字段 | 内容 |
+|---|---|
+| defect_fp | fp-e3-1650 |
+| 诊断人 / 处置主体 | Claude / s1 |
+| 状态 | 诊断中 |
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+for _bf in 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+  printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# %s\n' "$_bf" > "docs/bugs/BUG-1650/$_bf"
+done
+printf 'BUG-1650\n' > docs/bugs/.gate-allowlist
+printf 'status="bad"\n' > src/app.sh
+printf '# core marker\n' > resources/templates/agent-gate.sh
+cat > tests/test_bug.sh <<'EOF'
+#!/usr/bin/env bash
+. src/app.sh
+if [[ "${status:-}" == "ok" ]]; then
+  echo "1 passed"; exit 0
+fi
+echo "AssertionError: expected ok got ${status:-empty}" >&2; exit 1
+EOF
+chmod +x tests/test_bug.sh
+git add src/app.sh tests/test_bug.sh resources/templates/agent-gate.sh && git commit -qm "chore: base repo for f2p"
+
+# Helper to populate valid L2 delivery docs for CHG-165x fixtures
+_t53_refresh_rc() {
+  printf '{"audit_rc":0,"suite_rc":0,"head":"%s","tree_sha":"%s"}\n' \
+    "$(git rev-parse HEAD)" \
+    "$(git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}')" > .agent-state/fresh-clone-receipt.json
+}
+_t53_seed_e3() {
+  local cid="$1" risk="$2" sv="$3" cmd="$4" extra09="${5:-}"
+  seed_artifacts "$cid" "$risk" claude/s-1 claude/s-2 claude/s-3
+  if [[ -n "$sv" ]]; then
+    printf '{"change_id":"%s","risk_level":"%s","standards_version_at_begin":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","verification_owner":"verifier/v-1","bug_ref":"BUG-1650"}\n' "$cid" "$risk" "$sv" > "docs/changes/$cid/00-governance.json"
+  else
+    printf '{"change_id":"%s","risk_level":"%s","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","verification_owner":"verifier/v-1","bug_ref":"BUG-1650"}\n' "$cid" "$risk" > "docs/changes/$cid/00-governance.json"
+  fi
+  scripts/agent-gate end >/dev/null 2>&1 || true
+  rm -f .agent-state/last-delivery.json
+  scripts/agent-gate begin "$cid" >/dev/null 2>&1
+  seed_t53_delivery "$cid"
+  printf '\n## 专业质询三件\n- 未命中，不适用（T53 夹具）\n\n## 套件范围判定卡（三选一裁定）\n- suite_scope_decision: FULL\n- 判定卡（三选一裁定）：FULL\n' >> "docs/changes/$cid/00.5-communication.md"
+  printf '# coding record\n- file: src/app.sh\n' > "docs/changes/$cid/04.5-coding-record.md"
+  printf '\n- [dogfood] verified %s\n- [dogfood-next] next\n' "$cid" >> "docs/changes/$cid/09-changelog.md"
+  [[ -n "$extra09" ]] && printf '%s\n' "$extra09" >> "docs/changes/$cid/09-changelog.md"
+  printf '# 05\nred_repro: %s -> FAIL rc=1\ngreen_after: %s -> rc0\n' "$cmd" "$cmd" > "docs/changes/$cid/05-test-results.md"
+  printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具）\n- 评审主体：claude / model / ses-r1\n' > "docs/changes/$cid/07-review-report.md"
+  stamp_all "docs/changes/$cid"
+  _t53_refresh_rc
+}
+
+# TC-1650a: fake red_repro (baseline+test already passes) -> L2 refused GATE-E150, L1 WARN rc0
+printf 'status="ok"\n' > src/app.sh
+echo '# core edit' >> resources/templates/agent-gate.sh
+git add src/app.sh resources/templates/agent-gate.sh && git commit -qm "fix: app already ok"
+_t53_seed_e3 CHG-1650A L2 4.15.1 "bash tests/test_bug.sh"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650a fake red_repro (baseline+test already passes) refuses at L2 (rc2)" 2 "$rc"
+check_output "T53 TC-1650a names GATE-E150" "GATE-E150" "$out"
+
+_t53_seed_e3 CHG-1650A1 L1 4.15.1 "bash tests/test_bug.sh"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650a fake red_repro at L1 is advisory WARN (rc0)" 0 "$rc"
+check_output "T53 TC-1650a L1 warns about F2P replay" "WARN.*F2P" "$out"
+
+# TC-1650b: genuine F2P (base_sha=bad -> fixed=ok) verifies and writes cache
+printf 'status="bad"\n' > src/app.sh
+git add src/app.sh && git commit -qm "chore: reset to buggy state"
+_t53_seed_e3 CHG-1650B L2 4.15.1 "bash tests/test_bug.sh"
+printf 'status="ok"\n' > src/app.sh
+echo '# core edit 2' >> resources/templates/agent-gate.sh
+git add src/app.sh resources/templates/agent-gate.sh
+_t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650b genuine F2P replay passes at L2 (rc0)" 0 "$rc"
+report "T53 TC-1650b writes .agent-state/f2p-CHG-1650B.json" 0 "$(test -s .agent-state/f2p-CHG-1650B.json; echo $?)"
+check_output "T53 TC-1650b status is verified" '"status":"verified"' "$(cat .agent-state/f2p-CHG-1650B.json 2>/dev/null || true)"
+out2=$(scripts/agent-gate --stage stop 2>&1); rc2=$?
+report "T53 TC-1650b cache hit on unchanged tree passes (rc0)" 0 "$rc2"
+check_output "T53 TC-1650b prints cache reuse note" "cached" "$out2"
+
+# TC-1650c: HEAD/fixed still fails -> replay-failed (rc2)
+printf 'status="still_bad"\n' > src/app.sh
+git add src/app.sh
+_t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650c fixed tree still failing refuses at L2 (rc2)" 2 "$rc"
+check_output "T53 TC-1650c names GATE-E150" "GATE-E150" "$out"
+
+# TC-1650d: ModuleNotFoundError -> unverifiable; skip requires 09 reason and logs F2P_SKIP
+rm -f .agent-state/f2p-history.tsv .agent-state/gate-friction.tsv
+_t53_seed_e3 CHG-1650D L2 4.15.1 "echo ModuleNotFoundError >&2; exit 1"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650d unverifiable environment error refuses at L2 (rc2)" 2 "$rc"
+check_output "T53 TC-1650d reports unverifiable status" "unverifiable" "$out"
+_f2p_skip_var="AGENT_GUARD_ALLOW_F2P_SKIP"
+out=$(env "${_f2p_skip_var}=1" scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650d F2P skip without 09 reason still refuses (rc2)" 2 "$rc"
+printf '\n#### 重要上下文\n- F2P skip: 夹具依赖缺失验证豁免通道\n' >> docs/changes/CHG-1650D/09-changelog.md
+stamp_all docs/changes/CHG-1650D
+out=$(env "${_f2p_skip_var}=1" scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650d F2P skip with 09 reason passes (rc0)" 0 "$rc"
+report "T53 TC-1650d logs F2P_SKIP to gate-friction.tsv" 1 "$(grep -c '^F2P_SKIP	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
+
+# TC-1650e: hanging command times out cleanly via AGENT_GUARD_F2P_TIMEOUT=2
+rm -f .agent-state/f2p-history.tsv .agent-state/gate-friction.tsv
+_t53_seed_e3 CHG-1650E L2 4.15.1 "sleep 10"
+out=$(AGENT_GUARD_F2P_TIMEOUT=2 scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650e hanging replay command times out and refuses (rc2)" 2 "$rc"
+check_output "T53 TC-1650e marks timeout as unverifiable" "unverifiable" "$out"
+
+# TC-1650f: legacy change lacking standards_version_at_begin is exempt
+_t53_seed_e3 CHG-1650F L2 "" "false"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650f legacy change without standards_version_at_begin exempts F2P (rc0)" 0 "$rc"
+
+# TC-1650g: >30% unverifiable fallback valve (>=5 samples in f2p-history.tsv) downgrades L2
+mkdir -p .agent-state
+rm -f .agent-state/gate-friction.tsv
+printf '2026-11-27T00:00:00Z\tCHG-X1\tverified\t0\n2026-11-27T00:00:01Z\tCHG-X2\tverified\t0\n2026-11-27T00:00:02Z\tCHG-X3\tverified\t0\n2026-11-27T00:00:03Z\tCHG-X4\tunverifiable\t0\n2026-11-27T00:00:04Z\tCHG-X5\tunverifiable\t0\n' > .agent-state/f2p-history.tsv
+_t53_seed_e3 CHG-1650G L2 4.15.1 "echo ModuleNotFoundError >&2; exit 1"
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650g >30% unverifiable valve downgrades L2 to WARN (rc0)" 0 "$rc"
+check_output "T53 TC-1650g mentions rollback valve" "valve|30%|F2P_VALVE_DOWNGRADE" "$out"
+report "T53 TC-1650g logs F2P_VALVE_DOWNGRADE to gate-friction.tsv" 1 "$(grep -c '^F2P_VALVE_DOWNGRADE	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
+
+# TC-1651a~b: E-9 mutation-spot kills real test, rejects weak test, preserves file
+cat > src/calc.sh <<'EOF'
+#!/usr/bin/env bash
+check_pos() {
+  local x="$1"
+  if [[ "$x" == "1" ]]; then
+    return 0
+  fi
+  return 1
+}
+EOF
+cat > tests/test_calc.sh <<'EOF'
+#!/usr/bin/env bash
+. src/calc.sh
+check_pos 1 || exit 1
+! check_pos 2 || exit 1
+exit 0
+EOF
+cat > tests/test_calc_weak.sh <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x tests/test_calc.sh tests/test_calc_weak.sh
+_orig_calc_sha=$(cksum src/calc.sh | awk '{print $1}')
+scripts/agent-gate mutation-spot --file src/calc.sh --cmd "bash tests/test_calc.sh" >/dev/null 2>&1
+report "T53 TC-1651a mutation-spot kills mutant on real test (rc0)" 0 $?
+check_output "T53 TC-1651a src/calc.sh preserved byte-for-byte" "^${_orig_calc_sha}$" "$(cksum src/calc.sh | awk '{print $1}')"
+check_output "T53 TC-1651a writes .agent-state/mutation-spot.json" '"killed":[1-9]' "$(cat .agent-state/mutation-spot.json 2>/dev/null || true)"
+scripts/agent-gate mutation-spot --file src/calc.sh --cmd "bash tests/test_calc_weak.sh" >/dev/null 2>&1
+report "T53 TC-1651b mutation-spot refuses weak test killing 0 mutants (rc2)" 2 $?
+check_output "T53 TC-1651b src/calc.sh restored byte-for-byte" "^${_orig_calc_sha}$" "$(cksum src/calc.sh | awk '{print $1}')"
+
+# TC-1650h (F-165-1): array bug_ref ["BUG-1650"] still triggers E-3 F2P replay
+seed_artifacts CHG-1650H L2 claude/s-1 claude/s-2 claude/s-3
+printf '{"change_id":"CHG-1650H","risk_level":"L2","standards_version_at_begin":"4.15.1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","verification_owner":"verifier/v-1","bug_ref":["BUG-1650"]}\n' > docs/changes/CHG-1650H/00-governance.json
+scripts/agent-gate end >/dev/null 2>&1 || true
+rm -f .agent-state/last-delivery.json .agent-state/f2p-history.tsv .agent-state/gate-friction.tsv
+scripts/agent-gate begin CHG-1650H >/dev/null 2>&1
+seed_t53_delivery CHG-1650H
+printf '\n## 专业质询三件\n- 未命中，不适用（T53 夹具）\n\n## 套件范围判定卡（三选一裁定）\n- suite_scope_decision: FULL\n- 判定卡（三选一裁定）：FULL\n' >> docs/changes/CHG-1650H/00.5-communication.md
+printf '# coding record\n- file: src/app.sh\n' > docs/changes/CHG-1650H/04.5-coding-record.md
+printf '\n- [dogfood] verified CHG-1650H\n- [dogfood-next] next\n' >> docs/changes/CHG-1650H/09-changelog.md
+printf '# 05\nred_repro: bash tests/test_bug.sh -> FAIL rc=1\ngreen_after: bash tests/test_bug.sh -> rc0\n' > docs/changes/CHG-1650H/05-test-results.md
+printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具）\n- 评审主体：claude / model / ses-r1\n' > docs/changes/CHG-1650H/07-review-report.md
+stamp_all docs/changes/CHG-1650H
+_t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1650h array bug_ref triggers E-3 F2P replay and catches failure (rc2)" 2 "$rc"
+check_output "T53 TC-1650h names GATE-E150" "GATE-E150" "$out"
+
+# TC-1651c (F-165-2): Tab-indented + backslash-escaped source preserves Tab and escapes cleanly
+cat > src/tabbed.sh <<'EOF'
+#!/usr/bin/env bash
+tab_check() {
+	local x="$1" msg="a\nb\tc"
+	if [[ "$x" == "1" ]]; then
+		printf '%s\n' "$msg" >/dev/null
+		return 0
+	fi
+	return 1
+}
+EOF
+cat > tests/test_tabbed.sh <<'EOF'
+#!/usr/bin/env bash
+. src/tabbed.sh
+tab_check 1 || exit 1
+! tab_check 2 || exit 1
+exit 0
+EOF
+chmod +x tests/test_tabbed.sh
+_orig_tab_sha=$(cksum src/tabbed.sh | awk '{print $1}')
+scripts/agent-gate mutation-spot --file src/tabbed.sh --cmd "bash tests/test_tabbed.sh" >/dev/null 2>&1
+report "T53 TC-1651c mutation-spot preserves leading Tabs and backslashes (rc0)" 0 $?
+check_output "T53 TC-1651c src/tabbed.sh restored byte-for-byte" "^${_orig_tab_sha}$" "$(cksum src/tabbed.sh | awk '{print $1}')"
 }
 
 section_T54() {

@@ -427,7 +427,10 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     00.5-communication.md)
       printf '# %s Communication（00.5）\n\n> 交付触发点：Round-1 沟通完成、用户整体确认前；下游输入：01-spec 起的全部产物正文\n> 背景输入：待填（00-intent + 目标功能目录既有文档 + P01/P12）\n\n### 影响范围\n\n<!-- FILL: 文件 × 层 × 影响 -->\n\n### 风险\n\n<!-- FILL: 行为/回归风险 + 回滚一句话 -->\n\n### 候选方案与取舍\n\n- 方案 A（采纳）：<!-- FILL: 方案与代价 -->\n- 方案 B（否）：<!-- FILL: 为何否 -->\n\n### 测试思路\n\n- <!-- FILL: TC 清单与期望 -->\n\n### 用户整体确认记录\n\n- <!-- FILL: 日期 + 用户整体确认原文/方式 -->\n- 确认状态：待确认\n' "$id" ;;
     00-governance.json)
-      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": "", "dispatch_contract": "v2"}\n' "$id" "$cuid" "$risk" ;;
+      local _sv=""
+      [[ -s "$docs_dir/DEVELOPMENT_STANDARDS.md" ]] && _sv=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$docs_dir/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1)
+      [[ -n "$_sv" ]] || _sv="4.15.1"
+      printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "standards_version_at_begin": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": "", "dispatch_contract": "v2"}\n' "$id" "$cuid" "$risk" "$_sv" ;;
     01-spec.md)
       printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
     02-code-impact-analysis.md)
@@ -2493,6 +2496,77 @@ bug_fingerprint_check() { # <change-id>
   done
 }
 
+# E-3 (CHG-165): F2P worktree replay gate (ratchet L2+, advisory L0/L1, 30% rollback valve)
+f2p_replay_check() { # <change-id> [base-sha]
+  local id="$1" base_override="${2:-}" d rec bref sv risk has_chg=0 br_f base_sha="" f
+  [[ -n "$id" ]] || return 0
+  is_change_card "$id" && return 0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" && -s "$d/00-governance.json" ]] || return 0
+  rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+  [[ -n "$rec" ]] || return 0
+  bref=$(json_field_values "$rec" bug_ref 2>/dev/null | head -n 1 || true)
+  sv=$(json_field "$rec" standards_version_at_begin)
+  risk=$(json_field "$rec" risk_level)
+  [[ -n "$bref" && -n "$sv" ]] || return 0
+
+  br_f=$(git -C "$repo_root" rev-parse --git-path "agent-governance/begin-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$br_f" && "$br_f" != /* ]] && br_f="$repo_root/$br_f"
+  [[ -s "$br_f" ]] && base_sha=$(sed -n 's/.*"begin_sha":"\([^"]*\)".*/\1/p' "$br_f" 2>/dev/null | head -1 || true)
+  [[ -n "$base_sha" ]] || base_sha="$base_override"
+  if [[ -n "$(core_changed_files)" ]]; then
+    has_chg=1
+  else
+    while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      if is_code_path "$f"; then has_chg=1; break; fi
+    done <<< "$(cd "$repo_root" && { git diff --name-only 2>/dev/null; git diff --name-only --cached 2>/dev/null; [[ -n "$base_sha" ]] && git diff --name-only "$base_sha"..HEAD 2>/dev/null; } | awk 'NF' | sort -u)"
+  fi
+  [[ "$has_chg" -eq 1 ]] || return 0
+
+  load_gate_cold
+  if f2p_replay_run "$id" "$d" "$risk" "$base_override"; then
+    return 0
+  fi
+
+  local skip_env="${AGENT_GUARD_ALLOW_F2P_SKIP:-0}"
+  if [[ "$skip_env" == "1" ]]; then
+    local ctx=""
+    [[ -s "$d/09-changelog.md" ]] && ctx=$(awk '/重要上下文/{f=1;next} f && /^#/{exit} f{print}' "$d/09-changelog.md" 2>/dev/null | sed '/^[[:space:]]*$/d')
+    if [[ -n "$ctx" ]] && ! grep -qE '<.*>|FILL|待填' <<< "$ctx"; then
+      friction_append F2P_SKIP EXEMPT "$id: $_F2P_STATUS ($_F2P_DETAIL)"
+      local streak=0
+      if [[ -s "$repo_root/.agent-state/gate-friction.tsv" ]]; then
+        streak=$(tail -n 3 "$repo_root/.agent-state/gate-friction.tsv" 2>/dev/null | awk -F'\t' '$1=="F2P_SKIP"{c++} END{print c+0}' || echo 0)
+      fi
+      if [[ "${streak:-0}" -ge 3 ]]; then
+        echo "agent-gate: WARN — F2P_SKIP used $streak consecutive times (anti-pattern §5; fix replay environment or replay_setup_command)" >&2
+      else
+        echo "agent-gate: WARN — F2P replay bypassed via AGENT_GUARD_ALLOW_F2P_SKIP=1 ($id; logged F2P_SKIP)" >&2
+      fi
+      return 0
+    fi
+  fi
+
+  local hist_f="$repo_root/.agent-state/f2p-history.tsv" tot=0 unv=0
+  if [[ "$_F2P_STATUS" == "unverifiable" && -s "$hist_f" ]]; then
+    read -r tot unv <<< "$(awk -F'\t' '{t++; if($3=="unverifiable") u++} END{printf "%d %d\n", t+0, u+0}' "$hist_f" 2>/dev/null || echo "0 0")"
+    if [[ "${tot:-0}" -ge 5 ]] && [[ $(( ${unv:-0} * 100 )) -gt $(( tot * 30 )) ]]; then
+      friction_append F2P_VALVE_DOWNGRADE ADVISORY "$id: unverifiable ${unv}/${tot} (>30%)"
+      echo "agent-gate: WARN — F2P rollback valve active (F2P_VALVE_DOWNGRADE: ${unv}/${tot} unverifiable > 30% threshold); downgrading $id to advisory WARN" >&2
+      return 0
+    fi
+  fi
+
+  if [[ "$risk" == "L0" || "$risk" == "L1" ]]; then
+    friction_append F2P_ADVISORY "$risk" "$id: $_F2P_STATUS ($_F2P_DETAIL)"
+    echo "agent-gate: WARN — F2P replay ($risk advisory): status=$_F2P_STATUS — $_F2P_DETAIL" >&2
+    return 0
+  fi
+
+  die_e150 "$id F2P replay failed (status=$_F2P_STATUS): $_F2P_DETAIL — expected: baseline+test=red-assertion and fixed=rc0; allowed: AGENT_GUARD_ALLOW_F2P_SKIP=1 with reason in 09「重要上下文」; ref: CHG-165 REQ-1651"
+}
+
 # v3.28.0 (CHG-071 / BUG-040~055 复盘): defect doc groups are enforced by
 # EXISTENCE of <bugs_root>/<BUG-id>/, not only through a change's bug_ref —
 # 16 groups shipped with only 01-diagnosis.md (and self-checked "[x] done" in
@@ -4103,6 +4177,7 @@ core_changed_files() { # -> newline list of core files in worktree/index/last co
     git -C "$repo_root" diff --name-only HEAD~1 2>/dev/null; } \
     | awk 'NF' | sort -u | grep -E "$(gate_core_paths)" 2>/dev/null || true
 }
+die_e150() { die "GATE-E150: $*"; }
 tracked_tree_sha() { # -> content hash of the tracked working tree (receipt freshness)
   ( cd "$repo_root" && git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}' )
 }
@@ -4174,7 +4249,7 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
   elif grep -qE '^[[:space:]]*(red_repro|green_after):.*(FILL|待填|<)' "$f" 2>/dev/null; then
     e150="red→green lines are placeholders"
   fi
-  [[ -z "$e150" ]] || die "GATE-E150: $id $e150 in $f — expected: a 'red_repro: <cmd> -> <FAIL/rc>' line AND a 'green_after: <cmd> -> <rc0>' line with real values; allowed: AGENT_GUARD_CORE_PATHS narrowing only if the change truly has no core edit; fix: reproduce the red before fixing and record both lines; ref: CHG-128 REQ-1279"
+  [[ -z "$e150" ]] || die_e150 "$id $e150 in $f — expected: a 'red_repro: <cmd> -> <FAIL/rc>' line AND a 'green_after: <cmd> -> <rc0>' line with real values; allowed: AGENT_GUARD_CORE_PATHS narrowing only if the change truly has no core edit; fix: reproduce the red before fixing and record both lines; ref: CHG-128 REQ-1279"
 
   # E151: verification owner must differ from the implementer (core changes only).
   local vo io
@@ -4997,6 +5072,7 @@ validate_diff() {
     for id in $seen_ids; do
       validate_delivery "$id"
       bug_fingerprint_check "$id"
+      f2p_replay_check "$id" "$base"
     done
   fi
 
@@ -5326,6 +5402,18 @@ gate_staged_dispatch() {
     mkdir -p "$(dirname "$active_file")"
     printf '%s\n' "$id" > "$active_file"
     record_stage_receipt "$id" begin
+    local _br_dir _br_sha _br_sv _br_rec
+    _br_dir=$(git -C "$repo_root" rev-parse --git-path "agent-governance/begin-receipts" 2>/dev/null || true)
+    [[ -n "$_br_dir" && "$_br_dir" != /* ]] && _br_dir="$repo_root/$_br_dir"
+    if [[ -n "$_br_dir" && ! -s "$_br_dir/${id}.json" ]]; then
+      mkdir -p "$_br_dir" 2>/dev/null || true
+      _br_sha=$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || echo none)
+      _br_rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+      _br_sv=$(json_field "${_br_rec:-}" standards_version_at_begin)
+      printf '{"change_id":"%s","begin_sha":"%s","standards_version_at_begin":"%s","recorded_at":"%s"}\n' \
+        "$(json_escape "$id")" "$(json_escape "$_br_sha")" "$(json_escape "${_br_sv:-}")" \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$_br_dir/${id}.json" 2>/dev/null || true
+    fi
     echo "agent-gate: active change is $id"
     # v3.90.2 (CHG-124, P1-1): decision is generated by default at begin (the
     # mandatory waypoint) so it is actually read instead of being an opt-in
@@ -5686,6 +5774,9 @@ gate_staged_dispatch() {
     [[ -n "$resid" ]] || die "GATE-E149: usage: scripts/agent-gate resume <change-id> — expected an existing change; fix: pass the active change id; ref: CHG-127 G17"
     resume_change "$resid"
     ;;
+  mutation-spot)
+    shift; load_gate_cold; mutation_spot_cmd "$@"
+    ;;
     --stage)
       [[ $# -ge 2 && -n "${2:-}" ]] || unknown_stage "${2:-}"
       local stage="$2"; shift 2
@@ -5698,6 +5789,7 @@ gate_staged_dispatch() {
         # evidence / independence gates (E150/E151/E153) for the active change.
         cc_id=$(active_change); [[ -n "$cc_id" ]] || exit 0
         core_gate_check "$cc_id"
+        f2p_replay_check "$cc_id"
         echo "agent-gate: core gate green ($cc_id)" ;;
       scope)
         # v3.92.2 (CHG-128): stateless explicit validation of the scope budget (E152).
@@ -5721,6 +5813,7 @@ gate_staged_dispatch() {
           echo "agent-gate: shift gate skipped (no delivered change)"
         else
           shift_gate_check "$sh_id"
+          f2p_replay_check "$sh_id"
           echo "agent-gate: shift gate green ($sh_id)"
         fi ;;
       close)
@@ -5735,7 +5828,7 @@ gate_staged_dispatch() {
           stage_close_check "$_cl_arg"
         fi ;;
       staged) validate_secret_scan; validate_test_weakening staged; validate_causal_dag staged; rc_cid=$(active_change_quiet); if [[ -n "$rc_cid" ]]; then review_consent_check "$rc_cid"; core_gate_check "$rc_cid"; scope_overrun_check "$rc_cid"; unverified_req_check "$rc_cid"; fi; validate_confirmed_work staged; validate_unaccounted_changes staged; validate_diff staged; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; warn_ai_laziness; check_prewrite_heartbeat "${rc_cid:-}"; record_stage_receipt "${rc_cid:-}" staged; record_delivery staged ;;
-      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; record_stage_receipt "$cost_cid" stop; fi; record_delivery stop ;;
+      stop) validate_unaccounted_changes worktree; validate_stop; validate_ux_conditions; validate_dimensional_active; warn_ux_soft; cost_cid=$(active_change_quiet); if [[ -n "$cost_cid" ]]; then core_gate_check "$cost_cid"; f2p_replay_check "$cost_cid"; scope_overrun_check "$cost_cid"; unverified_req_check "$cost_cid"; record_cost_line "$cost_cid" stop; record_suite_suggestion "$cost_cid"; e131_dogfood_check "$(change_dir "$cost_cid")"; plan_consume_check "$cost_cid"; record_stage_receipt "$cost_cid" stop; fi; record_delivery stop ;;
       ci)
         base=""
         if [[ "${1:-}" == "--base" ]]; then base="${2:-}"; fi

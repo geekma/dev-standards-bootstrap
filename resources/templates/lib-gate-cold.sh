@@ -1283,6 +1283,303 @@ doctor_cmd() { # [--json] — ITEM-47 read-only diagnostics
   [[ "$fail" -eq 0 ]]
 }
 
+_cold_run_with_timeout() { # <secs> <dir> <outfile> <cmd> -> rc (124 on timeout)
+  local secs="${1:-300}" dir="$2" outf="$3" cmd="$4" pid wpid rc=0 to_flag="${3}.to"
+  rm -f "$to_flag"
+  ( cd "$dir" && eval "$cmd" ) >"$outf" 2>&1 &
+  pid=$!
+  (
+    sleep "$secs" 2>/dev/null || exit 0
+    if kill -0 "$pid" 2>/dev/null; then
+      : > "$to_flag"
+      pkill -TERM -P "$pid" 2>/dev/null || true
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 1 2>/dev/null || true
+      pkill -KILL -P "$pid" 2>/dev/null || true
+      kill -KILL "$pid" 2>/dev/null || true
+    fi
+  ) >/dev/null 2>&1 &
+  wpid=$!
+  wait "$pid" 2>/dev/null || rc=$?
+  pkill -KILL -P "$wpid" 2>/dev/null || true
+  kill -KILL "$wpid" 2>/dev/null || true
+  wait "$wpid" 2>/dev/null || true
+  if [[ -f "$to_flag" ]]; then
+    rm -f "$to_flag"
+    return 124
+  fi
+  return "$rc"
+}
+
+_cold_is_test_path() { # <relpath> -> 0 if test file
+  local p="$1" tdir=""
+  if [[ -f "$repo_root/.agent-governance.yml" ]]; then
+    tdir=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+tests:[[:space:]]*([^#]*).*$/\1/p' "$repo_root/.agent-governance.yml" 2>/dev/null | head -1 | tr -d "[:space:]\"'" || true)
+  fi
+  [[ -n "$tdir" ]] || tdir="tests"
+  case "$p" in
+    "${tdir}/"*|*/"${tdir}/"*) return 0 ;;
+  esac
+  [[ "$p" =~ (^|/)(tests?|spec|__tests__|e2e)/|(\.|_)(test|spec)\.|_test\.|(^|/)test_ ]] && return 0
+  return 1
+}
+
+f2p_replay_run() { # <id> <dir> <risk> [base-override] -> sets _F2P_STATUS, _F2P_DETAIL, _F2P_ELAPSED
+  local id="$1" d="$2" risk="$3" base_override="${4:-}" f05="$2/05-test-results.md"
+  local raw_cmd="" cmd="" base_sha="" br_file="" setup_cmd="" tmo="${AGENT_GUARD_F2P_TIMEOUT:-300}"
+  local norm_cmd cmd_sha tree_fp test_sig cache_key receipt_f hist_f t0 t1
+  local tmpd="" wt1="" wt2="" out1 out2 out_s1 out_s2 rc1=0 rc2=0 rcls="" rcls2=""
+  local tf f_list="" t_files=""
+  _F2P_STATUS="replay-failed"; _F2P_DETAIL=""; _F2P_ELAPSED=0
+  [[ "$tmo" =~ ^[0-9]+$ && "$tmo" -gt 0 ]] || tmo=300
+  receipt_f="$repo_root/.agent-state/f2p-${id}.json"
+  hist_f="$repo_root/.agent-state/f2p-history.tsv"
+  mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
+
+  if [[ ! -s "$f05" ]]; then
+    _F2P_DETAIL="missing 05-test-results.md"; return 2
+  fi
+  raw_cmd=$(sed -nE 's/^[[:space:]]*red_repro:[[:space:]]*//p' "$f05" 2>/dev/null | head -1 || true)
+  cmd=$(printf '%s' "$raw_cmd" | sed -E 's/[[:space:]]+->[[:space:]]+.*$//; s/^[[:space:]]+//; s/[[:space:]]+$//; s/^`+//; s/`+$//')
+  if [[ -z "$cmd" ]] || grep -qE 'FILL|待填|<' <<< "$cmd"; then
+    _F2P_DETAIL="missing or placeholder red_repro command in $f05"; return 2
+  fi
+
+  br_file=$(git -C "$repo_root" rev-parse --git-path "agent-governance/begin-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$br_file" && "$br_file" != /* ]] && br_file="$repo_root/$br_file"
+  if [[ -s "$br_file" ]]; then
+    base_sha=$(sed -n 's/.*"begin_sha":"\([^"]*\)".*/\1/p' "$br_file" 2>/dev/null | head -1 || true)
+  fi
+  if [[ -z "$base_sha" && -n "$base_override" ]] && git -C "$repo_root" cat-file -e "${base_override}^{commit}" 2>/dev/null; then
+    base_sha="$base_override"
+  fi
+  if [[ -z "$base_sha" ]] || ! git -C "$repo_root" cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+    base_sha=$(git -C "$repo_root" rev-parse HEAD~1 2>/dev/null || git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)
+  fi
+  if [[ -z "$base_sha" ]] || ! git -C "$repo_root" cat-file -e "${base_sha}^{commit}" 2>/dev/null; then
+    _F2P_STATUS="unverifiable"; _F2P_DETAIL="cannot resolve valid baseline commit"; return 2
+  fi
+
+  norm_cmd=$(_cold_norm_cmd "$cmd")
+  cmd_sha=$(_cold_str_sha256 "$norm_cmd")
+  local _ign_re="^(\\.agent-state/|${docs_dir}/|${change_root}/|${bugs_root}/)"
+  tree_fp=$(cd "$repo_root" && { git diff --name-only "$base_sha" 2>/dev/null; git diff --name-only --cached 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; git ls-files 2>/dev/null | head -n 50; } | awk 'NF' | { grep -vE "$_ign_re" || true; } | sort -u | while IFS= read -r _p; do [[ -f "$repo_root/$_p" ]] && cksum "$repo_root/$_p" 2>/dev/null || printf 'D %s\n' "$_p"; done | cksum | awk '{print $1}')
+  cache_key="${base_sha}:${tree_fp}:${cmd_sha}"
+  if [[ -s "$receipt_f" ]] && grep -qF "\"cache_key\":\"$cache_key\"" "$receipt_f" 2>/dev/null && grep -qF '"status":"verified"' "$receipt_f" 2>/dev/null; then
+    _F2P_STATUS="verified"; _F2P_DETAIL="cached (${cache_key})"
+    echo "agent-gate: f2p replay cached (status=verified, cache_key=$cache_key)" >&2
+    return 0
+  fi
+
+  if [[ -f "$repo_root/.agent-governance.yml" ]]; then
+    setup_cmd=$(sed -nE 's/^[[:space:]]*replay_setup_command:[[:space:]]*//p' "$repo_root/.agent-governance.yml" 2>/dev/null | head -1 | sed -E 's/[[:space:]]*#.*$//;s/^[[:space:]]+//;s/[[:space:]]+$//;s/^["'\'']//;s/["'\'']$//' || true)
+  fi
+
+  t_files=$(cd "$repo_root" && { git diff --name-only "$base_sha" 2>/dev/null; git diff --name-only --cached 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | awk 'NF' | sort -u)
+  tmpd=$(mktemp -d "${TMPDIR:-/tmp}/ag-f2p.XXXXXX")
+  wt1="$tmpd/wt1"; wt2="$tmpd/wt2"
+  out1="$tmpd/out1.txt"; out2="$tmpd/out2.txt"; out_s1="$tmpd/s1.txt"; out_s2="$tmpd/s2.txt"
+  _f2p_cleanup() {
+    git -C "$repo_root" worktree remove --force "$wt1" >/dev/null 2>&1 || true
+    git -C "$repo_root" worktree remove --force "$wt2" >/dev/null 2>&1 || true
+    [[ -n "$tmpd" ]] && rm -rf "$tmpd" 2>/dev/null || true
+  }
+
+  t0=$(date +%s 2>/dev/null || echo 0)
+  if ! git -C "$repo_root" worktree add --detach "$wt1" "$base_sha" >/dev/null 2>&1; then
+    _f2p_cleanup
+    _F2P_STATUS="unverifiable"; _F2P_DETAIL="git worktree add failed for base_sha $base_sha"; return 2
+  fi
+  while IFS= read -r tf; do
+    [[ -n "$tf" && -f "$repo_root/$tf" ]] || continue
+    _cold_is_test_path "$tf" || continue
+    mkdir -p "$wt1/$(dirname "$tf")" 2>/dev/null || true
+    cp -p "$repo_root/$tf" "$wt1/$tf" 2>/dev/null || true
+  done <<< "$t_files"
+  if [[ -n "$setup_cmd" ]]; then
+    if ! _cold_run_with_timeout "$tmo" "$wt1" "$out_s1" "$setup_cmd"; then
+      _F2P_STATUS="unverifiable"; _F2P_DETAIL="replay_setup_command failed on baseline worktree"
+    fi
+  fi
+  if [[ "$_F2P_STATUS" != "unverifiable" ]]; then
+    rc1=0; _cold_run_with_timeout "$tmo" "$wt1" "$out1" "$cmd" || rc1=$?
+    if [[ "$rc1" -eq 124 ]]; then
+      _F2P_STATUS="unverifiable"; _F2P_DETAIL="baseline+test replay timed out after ${tmo}s"
+    elif [[ "$rc1" -eq 0 ]]; then
+      _F2P_STATUS="replay-failed"; _F2P_DETAIL="baseline+test unexpectedly passed rc=0 (test does not reproduce bug)"
+    else
+      rcls=$(classify_red_output "$rc1" "$out1")
+      if [[ "$rcls" == "red-error" ]]; then
+        _F2P_STATUS="unverifiable"; _F2P_DETAIL="baseline+test hit red-error (rc=$rc1)"
+      elif [[ "$rcls" != "red-assertion" ]]; then
+        _F2P_STATUS="replay-failed"; _F2P_DETAIL="baseline+test produced $rcls output (requires red-assertion)"
+      else
+        if ! git -C "$repo_root" worktree add --detach "$wt2" HEAD >/dev/null 2>&1; then
+          _F2P_STATUS="unverifiable"; _F2P_DETAIL="git worktree add failed for fixed HEAD"
+        else
+          local _wf
+          while IFS= read -r _wf; do
+            [[ -n "$_wf" && "$_wf" != .git/* ]] || continue
+            if [[ -f "$repo_root/$_wf" ]]; then
+              mkdir -p "$wt2/$(dirname "$_wf")" 2>/dev/null || true
+              cp -p "$repo_root/$_wf" "$wt2/$_wf" 2>/dev/null || true
+            else
+              rm -f "$wt2/$_wf" 2>/dev/null || true
+            fi
+          done <<< "$(cd "$repo_root" && { git diff --name-only 2>/dev/null; git diff --name-only --cached 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | awk 'NF' | sort -u)"
+          if [[ -n "$setup_cmd" ]] && ! _cold_run_with_timeout "$tmo" "$wt2" "$out_s2" "$setup_cmd"; then
+            _F2P_STATUS="unverifiable"; _F2P_DETAIL="replay_setup_command failed on fixed worktree"
+          else
+            rc2=0; _cold_run_with_timeout "$tmo" "$wt2" "$out2" "$cmd" || rc2=$?
+            if [[ "$rc2" -eq 124 ]]; then
+              _F2P_STATUS="unverifiable"; _F2P_DETAIL="fixed tree replay timed out after ${tmo}s"
+            elif [[ "$rc2" -eq 0 ]]; then
+              _F2P_STATUS="verified"; _F2P_DETAIL="baseline red-assertion (rc=$rc1) -> fixed rc=0"
+            else
+              rcls2=$(classify_red_output "$rc2" "$out2")
+              if [[ "$rcls2" == "red-error" ]]; then
+                _F2P_STATUS="unverifiable"; _F2P_DETAIL="fixed tree hit red-error (rc=$rc2)"
+              else
+                _F2P_STATUS="replay-failed"; _F2P_DETAIL="fixed tree test still fails (rc=$rc2, class=$rcls2)"
+              fi
+            fi
+          fi
+        fi
+      fi
+    fi
+  fi
+  t1=$(date +%s 2>/dev/null || echo 0)
+  _F2P_ELAPSED=$(( t1 - t0 ))
+  [[ "$_F2P_ELAPSED" -ge 0 ]] 2>/dev/null || _F2P_ELAPSED=0
+  local sha_r="" sha_g="" ts_now
+  [[ -s "$out1" ]] && sha_r=$(_cold_sha256 "$out1")
+  [[ -s "$out2" ]] && sha_g=$(_cold_sha256 "$out2")
+  ts_now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  printf '{"change_id":"%s","status":"%s","base_sha":"%s","cache_key":"%s","red_class":"%s","red_sha":"%s","green_sha":"%s","elapsed_s":%d,"detail":"%s","recorded_at":"%s"}\n' \
+    "$(json_escape "$id")" "$(json_escape "$_F2P_STATUS")" "$(json_escape "$base_sha")" "$(json_escape "$cache_key")" \
+    "$(json_escape "${rcls:-none}")" "$(json_escape "${sha_r:-}")" "$(json_escape "${sha_g:-}")" \
+    "$_F2P_ELAPSED" "$(json_escape "$_F2P_DETAIL")" "$(json_escape "$ts_now")" > "$receipt_f"
+  printf '%s\t%s\t%s\t%s\n' "$ts_now" "$id" "$_F2P_STATUS" "$_F2P_ELAPSED" >> "$hist_f"
+  _f2p_cleanup
+  [[ "$_F2P_STATUS" == "verified" ]]
+}
+
+mutation_spot_cmd() { # --file <path> --cmd "<cmd>" [--json]
+  local file="" cmd="" jmode=0 bak="" outf="" rc0=0 tested=0 killed=0 survived=0 lno kind mut_line
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --file) file="${2:-}"; shift 2 ;;
+      --cmd)  cmd="${2:-}"; shift 2 ;;
+      --json) jmode=1; shift ;;
+      *) echo "agent-gate: mutation-spot unknown argument '$1'" >&2; exit 2 ;;
+    esac
+  done
+  [[ -n "$file" && -f "$file" && -n "$cmd" ]] || { echo "agent-gate: usage: scripts/agent-gate mutation-spot --file <path> --cmd \"<cmd>\" [--json]" >&2; exit 2; }
+  outf=$(mktemp "${TMPDIR:-/tmp}/ag-mut-out.XXXXXX")
+  _cold_run_with_timeout 60 "$repo_root" "$outf" "$cmd" || rc0=$?
+  if [[ "$rc0" -ne 0 ]]; then
+    rm -f "$outf"
+    echo "agent-gate: mutation-spot baseline command failed (rc=$rc0)" >&2
+    exit 2
+  fi
+  bak=$(mktemp "${TMPDIR:-/tmp}/ag-mut-bak.XXXXXX")
+  cp -p "$file" "$bak"
+  _mut_restore() {
+    [[ -n "${bak:-}" && -f "$bak" ]] && cp "$bak" "$file" 2>/dev/null || true
+    rm -f "${bak:-}" "${outf:-}" 2>/dev/null || true
+  }
+  trap '_mut_restore' EXIT INT TERM
+
+  local cands tmp_new
+  cands=$(awk '
+    /^[[:space:]]*(#|\/\/|\/\*|\*|$)/ { next }
+    {
+      mkind = ""
+      if (!seen["cmp"] && $0 ~ /==/) {
+        mkind = "cmp_eq"
+      } else if (!seen["cmp"] && $0 ~ /!=/) {
+        mkind = "cmp_ne"
+      } else if (!seen["cmp"] && $0 ~ / -eq /) {
+        mkind = "cmp_dash_eq"
+      } else if (!seen["ret"] && $0 ~ /(^|[^A-Za-z0-9_])return 0([^0-9]|$)/) {
+        mkind = "ret_0"
+      } else if (!seen["ret"] && $0 ~ /(^|[^A-Za-z0-9_])exit 0([^0-9]|$)/) {
+        mkind = "ret_exit0"
+      } else if (!seen["ret"] && $0 ~ /(^|[^A-Za-z0-9_])return true([^A-Za-z0-9_]|$)/) {
+        mkind = "ret_true"
+      } else if (!seen["ret"] && $0 ~ /(^|[^A-Za-z0-9_])return True([^A-Za-z0-9_]|$)/) {
+        mkind = "ret_True"
+      } else if (!seen["bra"] && $0 ~ /(^|[^A-Za-z0-9_])return 1([^0-9]|$)/) {
+        mkind = "br_ret1"
+      } else if (!seen["bra"] && $0 ~ / -gt /) {
+        mkind = "br_gt"
+      } else if (!seen["bra"] && $0 ~ / -lt /) {
+        mkind = "br_lt"
+      }
+      if (mkind != "") {
+        if (substr(mkind, 1, 2) == "br") seen["bra"] = 1
+        else seen[substr(mkind, 1, 3)] = 1
+        printf "%d\t%s\n", NR, mkind
+        cnt++
+        if (cnt >= 3) exit
+      }
+    }
+  ' "$bak" 2>/dev/null || true)
+
+  if [[ -n "$cands" ]]; then
+    tmp_new=$(mktemp "${TMPDIR:-/tmp}/ag-mut-new.XXXXXX")
+    while IFS=$'\t' read -r lno kind; do
+      [[ -n "$lno" && -n "$kind" ]] || continue
+      awk -v target="$lno" -v mkind="$kind" '
+        NR == target {
+          if (mkind == "cmp_eq") sub(/==/, "!=")
+          else if (mkind == "cmp_ne") sub(/!=/, "==")
+          else if (mkind == "cmp_dash_eq") sub(/ -eq /, " -ne ")
+          else if (mkind == "ret_0") sub(/return 0/, "return 1")
+          else if (mkind == "ret_exit0") sub(/exit 0/, "exit 1")
+          else if (mkind == "ret_true") sub(/return true/, "return false")
+          else if (mkind == "ret_True") sub(/return True/, "return False")
+          else if (mkind == "br_ret1") sub(/return 1/, "return 0")
+          else if (mkind == "br_gt") sub(/ -gt /, " -le ")
+          else if (mkind == "br_lt") sub(/ -lt /, " -ge ")
+        }
+        { print }
+      ' "$bak" > "$tmp_new"
+      cp "$tmp_new" "$file"
+      tested=$(( tested + 1 ))
+      local mrc=0
+      _cold_run_with_timeout 60 "$repo_root" "$outf" "$cmd" || mrc=$?
+      cp "$bak" "$file"
+      if [[ "$mrc" -ne 0 ]]; then
+        killed=$(( killed + 1 ))
+      else
+        survived=$(( survived + 1 ))
+      fi
+    done <<< "$cands"
+    rm -f "$tmp_new" 2>/dev/null || true
+  fi
+
+  _mut_restore
+  trap - EXIT INT TERM
+  local status="killed" cmd_sha
+  if [[ "$tested" -eq 0 ]]; then status="no_applicable_mutants"
+  elif [[ "$killed" -eq 0 ]]; then status="survived"; fi
+  cmd_sha=$(_cold_str_sha256 "$cmd")
+  mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
+  printf '{"file":"%s","cmd_sha":"%s","mutants_tested":%d,"killed":%d,"survived":%d,"status":"%s"}\n' \
+    "$(json_escape "$file")" "$(json_escape "$cmd_sha")" "$tested" "$killed" "$survived" "$status" > "$repo_root/.agent-state/mutation-spot.json"
+  if [[ "$jmode" -eq 1 ]]; then
+    cat "$repo_root/.agent-state/mutation-spot.json"
+  else
+    printf 'agent-gate: mutation-spot %s: tested=%d killed=%d survived=%d status=%s\n' "$file" "$tested" "$killed" "$survived" "$status"
+  fi
+  if [[ "$tested" -gt 0 && "$killed" -eq 0 ]]; then
+    echo "agent-gate: mutation-spot failed — 0 of $tested injected mutants killed (weak/tautological test)" >&2
+    exit 2
+  fi
+  exit 0
+}
+
 print_help_cmd() {
   cat <<'EOF'
 Usage:
@@ -1302,6 +1599,7 @@ Usage:
   scripts/agent-gate record-red <change-id> [--layer unit|api|e2e|manual] [--target-tests <spec>] [--accept-unclassified <reason>] -- <cmd> # v4.8.0/v4.15.0: record classified red-first receipt
   scripts/agent-gate record-green <change-id> -- <cmd>       # v4.15.0: record matching green receipt after tree change
   scripts/agent-gate escape <BUG-id> --should-catch <layer>  # v4.15.0: register post-claim defect escape + eval case
+  scripts/agent-gate mutation-spot --file <path> --cmd "<cmd>" [--json] # v4.15.1: 3-mutant spot check for target repos
   scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)

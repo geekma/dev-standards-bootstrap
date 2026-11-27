@@ -128,3 +128,7 @@ provenance:
 # enforcement:
 #   mode: strict
 #   ratchet_since: ""
+
+# ── F2P 临时 worktree 重放环境准备（v4.15.1，CHG-165，E-3）─────────────────────────
+# 若目标仓测试命令在临时 worktree 中需要额外构建/链接步骤（如 `npm ci --offline`），可声明一行命令：
+# replay_setup_command: ""
