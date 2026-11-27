@@ -194,7 +194,7 @@ d = json.load(open(sys.argv[1]))
 want = ("scripts/session-gate.sh start", "scripts/agent-gate --stage pre-write", "scripts/agent-gate --stage stop",
         "scripts/session-gate.sh count turn", "scripts/session-gate.sh count tool -", "scripts/session-gate.sh check")
 def norm(c):
-    c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/|"\$\{CLAUDE_PROJECT_DIR:-\.\}"/scripts/)', '', c)
+    c = re.sub(r'^MSYS_NO_PATHCONV=1\s+(?:"[^"]*?bash(?:\.exe)?"|(?:[^\n]*[/\\\s])?bash(?:\.exe)?)\s+(?=(?:\./)?scripts/|"\$\{CLAUDE_PROJECT_DIR:-\.\}"/scripts/)', '', c)
     c = re.sub(r'^bash\s+', '', c)
     a = '"${CLAUDE_PROJECT_DIR:-.}"/'  # CHG-162: independent literal of the anchor prefix
     if c.startswith(a):
@@ -383,6 +383,41 @@ _t49_setup_stub
 bash scripts/install-hook-adapter --client cursor >/dev/null 2>&1
 report "TC-1623a cursor hooks file written" 1 "$([[ -s .cursor/hooks.json ]] && echo 1 || echo 0)"
 report "TC-1623a cursor wiring carries no CLAUDE_PROJECT_DIR" 0 "$(grep -c CLAUDE_PROJECT_DIR .cursor/hooks.json 2>/dev/null || true)"
+
+# ---- CHG-163 (REQ-1630~1631, DES-1630~1631): norm 含 scripts/ 目录名防误剥 & Windows 带空格 bash 加引号 ----
+# TC-1630a（L1）：目录名含空格且含 scripts/ 片段时，norm() 必须消费到 bash 才停，不能误剥重加
+_t49_setup_stub
+mkdir -p .claude
+cat > .claude/settings.json <<'JSON'
+{"hooks":{"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"MSYS_NO_PATHCONV=1 /opt/my scripts/bin/bash scripts/session-gate.sh count turn"}]}]}}
+JSON
+AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1; rc=$?
+report "TC-1630a spaced dir with scripts/ segment upgrades rc0" 0 "$rc"
+report "TC-1630a dedupes to exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+report "TC-1630a all six migrated to anchored form" 6 "$(_c162_anchor_n .claude/settings.json)"
+report "TC-1630a no leftover scripts/bin/bash fragment" 0 "$(grep -c 'scripts/bin/bash' .claude/settings.json 2>/dev/null || true)"
+
+# TC-1630b（L2）：Windows 带空格 bash.exe 路径加双引号且幂等去重
+_t49_setup_stub
+_c163_sp=$(mktemp -d "${TMPDIR:-/tmp}/c163 sp.XXXXXX")
+mkdir -p "$_c163_sp/My Git/bin"
+printf '#!/bin/sh\nexit 0\n' > "$_c163_sp/My Git/bin/bash.exe"
+chmod +x "$_c163_sp/My Git/bin/bash.exe"
+mkdir -p .claude && printf '{}\n' > .claude/settings.json
+DEV_STANDARDS_HOOK_BASH="$_c163_sp/My Git/bin/bash.exe" AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1; rc=$?
+report "TC-1630b claude spaced bash.exe install rc0" 0 "$rc"
+report "TC-1630b all six quote spaced bash.exe before anchor" 6 "$(_c162_all_cmds .claude/settings.json | grep -cE '^MSYS_NO_PATHCONV=1 "[^"]*My Git/bin/bash\.exe" "\$\{CLAUDE_PROJECT_DIR:-\.\}"/scripts/')"
+report "TC-1630b each project wiring exactly once" "1:1" "$(_c161_counts .claude/settings.json)"
+_c163_sum=$(cksum < .claude/settings.json)
+DEV_STANDARDS_HOOK_BASH="$_c163_sp/My Git/bin/bash.exe" AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client claude >/dev/null 2>&1
+report "TC-1630b second run byte-identical" "$_c163_sum" "$(cksum < .claude/settings.json)"
+
+# TC-1630c（L2）：cursor 静态 schema 带空格 bash.exe 路径加双引号且 JSON 合法
+_t49_setup_stub
+DEV_STANDARDS_HOOK_BASH="$_c163_sp/My Git/bin/bash.exe" AGENT_GUARD_FORCE_OS=MINGW64 bash scripts/install-hook-adapter --client cursor >/dev/null 2>&1; rc=$?
+report "TC-1630c cursor spaced bash.exe install rc0" 0 "$rc"
+report "TC-1630c cursor commands quote spaced bash.exe" 6 "$(python3 -c 'import json;d=json.load(open(".cursor/hooks.json"));print(sum(1 for l in d["hooks"].values() for e in l if e.get("command","").startswith("MSYS_NO_PATHCONV=1 \"") and "My Git/bin/bash.exe\" scripts/" in e.get("command","")))')"
+rm -rf "$_c163_sp"
 }
 
 section_T49c() {

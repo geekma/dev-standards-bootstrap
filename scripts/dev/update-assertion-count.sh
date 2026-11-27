@@ -279,7 +279,7 @@ if [[ -f "$AUDIT_NAMES_LAST" ]]; then
   # name in both environments (the audit echoes SKIP separately), so the set
   # comparison is environment-invariant and needs no normalization here.
   tmp_names=$(mktemp)
-  sort -u "$AUDIT_NAMES_LAST" > "$tmp_names" 2>/dev/null || true
+  LC_ALL=C sort -u "$AUDIT_NAMES_LAST" > "$tmp_names" 2>/dev/null || true
   if [[ -f "$AUDIT_ASSERTIONS" ]] && diff -q "$tmp_names" "$AUDIT_ASSERTIONS" >/dev/null 2>&1; then
     rm -f "$tmp_names"
   elif [[ "$check" -eq 1 ]]; then

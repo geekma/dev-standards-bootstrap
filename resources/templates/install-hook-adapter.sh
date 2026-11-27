@@ -55,6 +55,10 @@ resolve_hook_bash() {
     printf 'bash'
     return 0
   fi
+  if [[ -n "${DEV_STANDARDS_HOOK_BASH:-}" && -x "${DEV_STANDARDS_HOOK_BASH}" ]]; then
+    printf '%s' "$DEV_STANDARDS_HOOK_BASH"
+    return 0
+  fi
   if [[ -x /usr/bin/bash ]]; then
     printf '/usr/bin/bash'
     return 0
@@ -74,6 +78,17 @@ resolve_hook_bash() {
     done
   done
   printf 'bash'
+}
+
+resolve_hook_cmd_prefix() {
+  is_windows_shell || return 0
+  local hook_bash
+  hook_bash="$(resolve_hook_bash)"
+  if [[ "$hook_bash" == *" "* ]]; then
+    printf 'MSYS_NO_PATHCONV=1 "%s" ' "$hook_bash"
+  else
+    printf 'MSYS_NO_PATHCONV=1 %s ' "$hook_bash"
+  fi
 }
 
 usage() {
@@ -338,9 +353,7 @@ need_gate() {
 adapter_claude() {
   has_real_python3 || die "ADAPTER-E05: python3 required to merge .claude/settings.json (or use --print-contract for zero-dep dynamic wiring)"
   local f=".claude/settings.json" cmd_prefix=""
-  if is_windows_shell; then
-    cmd_prefix="MSYS_NO_PATHCONV=1 $(resolve_hook_bash) "
-  fi
+  cmd_prefix="$(resolve_hook_cmd_prefix)"
   # CHG-161（REQ-1610/1611，DES-1610）语义去重：键 =（事件, matcher, 归一化命令），只处理本项目写入的 6 条；
   # 同键保留首个并迁到规范形态，其余删除；用户自有 hook 原样保留；内容无变化不写盘（幂等），有变化先备份；
   # 写后从磁盘重读，断言每键恰好 1 条。
@@ -363,8 +376,8 @@ def norm(cmd):
     if prefix and c.startswith(prefix):
         c = c[len(prefix):]  # 已知前缀直接剥离（含带空格的 bash 路径）
     else:
-        # 其它机器写入的前缀：非贪婪吃到 scripts/ 为止，bash 路径允许带空格
-        c = re.sub(r'^MSYS_NO_PATHCONV=1\s+.*?\s(?=(?:\./)?scripts/|' + re.escape(ANCHOR) + r'scripts/)', '', c)
+        # 其它机器写入的前缀：必须消费到 bash/bash.exe（含带引号与旧版未加引号路径），防目录名含空格+scripts/ 时误剥
+        c = re.sub(r'^MSYS_NO_PATHCONV=1\s+(?:"[^"]*?bash(?:\.exe)?"|(?:[^\n]*[/\\\s])?bash(?:\.exe)?)\s+(?=(?:\./)?scripts/|' + re.escape(ANCHOR) + r'scripts/)', '', c)
     c = re.sub(r'^bash\s+', '', c)
     if c.startswith(ANCHOR):
         c = c[len(ANCHOR):]
@@ -1145,29 +1158,29 @@ MD
 
 # ---------- cursor / gemini：静态 schema（保守保留 v3.17 行为，diff + --force） ----------
 static_schema() { # name path
-  local tool="$1" path="$2" content="" cmd_prefix=""
-  if is_windows_shell; then
-    cmd_prefix="MSYS_NO_PATHCONV=1 $(resolve_hook_bash) "
-  fi
+  local tool="$1" path="$2" content="" cmd_prefix="" cmd_prefix_json=""
+  cmd_prefix="$(resolve_hook_cmd_prefix)"
+  cmd_prefix_json="${cmd_prefix//\\/\\\\}"
+  cmd_prefix_json="${cmd_prefix_json//\"/\\\"}"
   case "$tool" in
     cursor) content="{
   \"version\": 1,
   \"hooks\": {
     \"sessionStart\": [
-      { \"command\": \"${cmd_prefix}scripts/session-gate.sh start\" }
+      { \"command\": \"${cmd_prefix_json}scripts/session-gate.sh start\" }
     ],
     \"beforeSubmitPrompt\": [
-      { \"command\": \"${cmd_prefix}scripts/session-gate.sh count turn\" }
+      { \"command\": \"${cmd_prefix_json}scripts/session-gate.sh count turn\" }
     ],
     \"postToolUse\": [
-      { \"matcher\": \"Shell|Read|Grep|Task\", \"command\": \"${cmd_prefix}scripts/session-gate.sh count tool -\" }
+      { \"matcher\": \"Shell|Read|Grep|Task\", \"command\": \"${cmd_prefix_json}scripts/session-gate.sh count tool -\" }
     ],
     \"preToolUse\": [
-      { \"matcher\": \"Write\", \"command\": \"${cmd_prefix}scripts/agent-gate --stage pre-write\" },
-      { \"matcher\": \"Shell|Write|Task|Grep|Read\", \"command\": \"${cmd_prefix}scripts/session-gate.sh check\" }
+      { \"matcher\": \"Write\", \"command\": \"${cmd_prefix_json}scripts/agent-gate --stage pre-write\" },
+      { \"matcher\": \"Shell|Write|Task|Grep|Read\", \"command\": \"${cmd_prefix_json}scripts/session-gate.sh check\" }
     ],
     \"stop\": [
-      { \"command\": \"${cmd_prefix}scripts/agent-gate --stage stop\" }
+      { \"command\": \"${cmd_prefix_json}scripts/agent-gate --stage stop\" }
     ]
   }
 }"

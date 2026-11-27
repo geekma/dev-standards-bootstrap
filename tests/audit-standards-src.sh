@@ -218,7 +218,7 @@ at_least_f_files() { # name min literal file...
 
 run_audit_rules() {
   local _rf _res _op _exp _name _cnt _suites_spec
-  _rf="${TMPDIR:-/tmp}/audit-rules.$$"
+  _rf=$(mktemp "${TMPDIR:-/tmp}/audit-rules.XXXXXX")
   cat > "$_rf"
   _suites_spec=$(printf '%s|' "${SUITE_FILES[@]}")
   _res=$(awk -F'\t' \
@@ -2546,9 +2546,9 @@ if [[ -f "$AUDIT_ASSERTIONS_BASELINE" ]]; then
   # v3.91.9 (CHG-127): docs/private-dependent assertions keep ONE stable name in
   # both environments (the SKIP fact is echoed as its own line), so this set
   # comparison needs no environment-specific normalization.
-  a10b_cur=$(grep -vE '^A10b? ' "$AUDIT_NAMES_RUN" 2>/dev/null | sort -u || true)
-  a10b_exp=$(grep -vE '^A10b? ' "$AUDIT_ASSERTIONS_BASELINE" 2>/dev/null | sort -u || true)
-  a10b_d=$(comm -3 <(printf '%s\n' "$a10b_cur") <(printf '%s\n' "$a10b_exp") 2>/dev/null | wc -l | tr -d ' ')
+  a10b_cur=$(grep -vE '^A10b? ' "$AUDIT_NAMES_RUN" 2>/dev/null | LC_ALL=C sort -u || true)
+  a10b_exp=$(grep -vE '^A10b? ' "$AUDIT_ASSERTIONS_BASELINE" 2>/dev/null | LC_ALL=C sort -u || true)
+  a10b_d=$(LC_ALL=C comm -3 <(printf '%s\n' "$a10b_cur") <(printf '%s\n' "$a10b_exp") 2>/dev/null | wc -l | tr -d ' ')
   report "A10b audit assertion-name set matches baseline (CHG-121)" 0 "$a10b_d"
 else
   report "A10b audit assertion-name baseline exists (CHG-121; run update-assertion-count.sh)" 1 0
@@ -2573,9 +2573,9 @@ fi
 # FU-937 (CHG-045): written AFTER the A10 report so the synced number equals the
 # runtime executed total (the old pre-report write recorded N-1 → 静态基线恒比
 # 运行时少一，正是 audit-baseline 差一的根因).
-printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST"
+printf '%s\n' "$(( pass + fail - soft_pass ))" > "$AUDIT_LAST.$$" 2>/dev/null && mv "$AUDIT_LAST.$$" "$AUDIT_LAST" 2>/dev/null || true
 # Only a COMPLETED run replaces the name set the generator compares against.
-sort -u "$AUDIT_NAMES_RUN" > "$AUDIT_NAMES_LAST.$$" 2>/dev/null && mv "$AUDIT_NAMES_LAST.$$" "$AUDIT_NAMES_LAST" 2>/dev/null || true
+LC_ALL=C sort -u "$AUDIT_NAMES_RUN" > "$AUDIT_NAMES_LAST.$$" 2>/dev/null && mv "$AUDIT_NAMES_LAST.$$" "$AUDIT_NAMES_LAST" 2>/dev/null || true
 rm -f "$AUDIT_NAMES_RUN" 2>/dev/null || true
 
 echo
