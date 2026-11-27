@@ -1123,7 +1123,9 @@ scripts/agent-gate begin CHG-1063 >/dev/null 2>&1
 scripts/agent-gate record-red CHG-1063 -- "exit 0" >/dev/null 2>&1
 report "T53 TC-10053 record-red refuses passing command (rc2)" 2 $?
 scripts/agent-gate record-red CHG-1063 -- "false" >/dev/null 2>&1
-report "T53 TC-10053 record-red succeeds on failing command" 0 $?
+report "T53 TC-10053 record-red refuses unclassified bare false (rc2)" 2 $?
+scripts/agent-gate record-red CHG-1063 -- "echo 'AssertionError: expected 1 got 2'; exit 1" >/dev/null 2>&1
+report "T53 TC-10053 record-red succeeds on assertion failure command" 0 $?
 mkdir -p resources/templates && echo '# edited core' >> resources/templates/agent-gate.sh
 git add resources/templates/agent-gate.sh
 mkdir -p docs/changes/CHG-1063
@@ -1271,6 +1273,252 @@ out=$(AGENT_GUARD_ENFORCEMENT_MODE=ratchet AGENT_GUARD_RATCHET_SINCE=2026-11-01 
 report "T53 TC-10069 ratchet mode enforces strict on post-since change" 2 "$rc"
 cd "$ROOT"
 rm -rf "$_t53_ef"
+
+# ---- CHG-164 (REQ-1640~1644, DES-1640~1644): E-1/E-2/E-4/E-5/E-6 ----
+# TC-1640a~d & TC-1641a~d: record-red output classification + record-green
+new_repo
+seed_artifacts CHG-1640 L1 claude/s-1
+mkdir -p src tests
+printf 'bad\n' > src/app.sh
+cat > tests/test_app.sh <<'EOF'
+#!/usr/bin/env bash
+if [[ "${PASS_OVERRIDE:-0}" == "1" ]] || grep -q '^ok$' src/app.sh; then
+  echo "1 passed"; exit 0
+fi
+echo "AssertionError: expected ok in src/app.sh" >&2; exit 1
+EOF
+chmod +x tests/test_app.sh
+printf '# 05\n' > docs/changes/CHG-1640/05-test-results.md
+git add src/app.sh tests/test_app.sh && git commit -qm "chore: add test fixture"
+scripts/agent-gate begin CHG-1640 >/dev/null 2>&1
+
+scripts/agent-gate record-red CHG-1640 -- "nonexistent_cmd_xyz_1640" >/dev/null 2>&1
+report "T53 TC-1640a record-red refuses exit 127 command-not-found (rc2)" 2 $?
+
+scripts/agent-gate record-red CHG-1640 -- "echo 'ModuleNotFoundError: No module named x' >&2; exit 1" >/dev/null 2>&1
+report "T53 TC-1640b record-red refuses red-error ModuleNotFoundError (rc2)" 2 $?
+
+scripts/agent-gate record-red CHG-1640 -- "false" >/dev/null 2>&1
+report "T53 TC-1640c record-red refuses unclassified empty false without flag (rc2)" 2 $?
+
+scripts/agent-gate record-red CHG-1640 --accept-unclassified "legacy fixture" -- "false" >/dev/null 2>&1
+report "T53 TC-1640c record-red accepts unclassified with --accept-unclassified" 0 $?
+report "T53 TC-1640c --accept-unclassified logs RED_UNCLASSIFIED to friction" 1 "$(grep -c '^RED_UNCLASSIFIED	' .agent-state/gate-friction.tsv 2>/dev/null || echo 0)"
+
+scripts/agent-gate record-red CHG-1640 --layer api --target-tests "TC-1640" -- "bash tests/test_app.sh" >/dev/null 2>&1
+report "T53 TC-1640d record-red accepts red-assertion command" 0 $?
+_rr1640=$(cat .git/agent-governance/red-receipts/CHG-1640.json 2>/dev/null || true)
+check_output "T53 TC-1640d red receipt records class red-assertion" '"class":"red-assertion"' "$_rr1640"
+check_output "T53 TC-1640d red receipt records layer api" '"layer":"api"' "$_rr1640"
+check_output "T53 TC-1640d red receipt records output_sha" '"output_sha":"[0-9a-f-]+' "$_rr1640"
+
+scripts/agent-gate record-green CHG-1640 -- "echo different" >/dev/null 2>&1
+report "T53 TC-1641a record-green refuses mismatched command (rc2)" 2 $?
+
+PASS_OVERRIDE=1 scripts/agent-gate record-green CHG-1640 -- "bash tests/test_app.sh" >/dev/null 2>&1
+report "T53 TC-1641b record-green refuses unchanged tracked_tree_sha (rc2)" 2 $?
+
+printf 'still_bad\n' > src/app.sh
+scripts/agent-gate record-green CHG-1640 -- "bash tests/test_app.sh" >/dev/null 2>&1
+report "T53 TC-1641c record-green refuses failing command after tree change (rc2)" 2 $?
+
+printf 'ok\n' > src/app.sh
+scripts/agent-gate record-green CHG-1640 -- "bash tests/test_app.sh" >/dev/null 2>&1
+report "T53 TC-1641d record-green succeeds on same cmd with changed tree and rc0" 0 $?
+report "T53 TC-1641d green receipt file created" 0 "$([[ -s .git/agent-governance/green-receipts/CHG-1640.json ]]; echo $?)"
+check_output "T53 TC-1641d 05-test-results gets green_after line" '^green_after:' "$(cat docs/changes/CHG-1640/05-test-results.md)"
+
+# TC-1641e (F-03): command containing double quotes matches across record-red and record-green
+printf 'bad\n' > src/app.sh
+scripts/agent-gate record-red CHG-1640 -- 'bash -c "bash tests/test_app.sh"' >/dev/null 2>&1
+report "T53 TC-1641e record-red succeeds on quoted command" 0 $?
+printf 'ok\n' > src/app.sh
+scripts/agent-gate record-green CHG-1640 -- 'bash -c "bash tests/test_app.sh"' >/dev/null 2>&1
+report "T53 TC-1641e record-green matches quoted command via norm_cmd_sha" 0 $?
+
+# TC-1642a: E-4 discovery layer alignment
+new_repo
+seed_artifacts CHG-1642 L1 claude/s-1
+mkdir -p docs/bugs/BUG-1642
+cat > docs/bugs/BUG-1642/01-diagnosis.md <<'EOF'
+# BUG-1642
+| 字段 | 内容 |
+|---|---|
+| 发现层 | e2e |
+| 诊断人 / 处置主体 | Claude / s1 |
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+for _bf in 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+  printf '# %s\n' "$_bf" > "docs/bugs/BUG-1642/$_bf"
+done
+printf '{"change_id":"CHG-1642","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-t","review_owner":"claude/s-r","bug_ref":"BUG-1642"}\n' > docs/changes/CHG-1642/00-governance.json
+scripts/agent-gate begin CHG-1642 >/dev/null 2>&1
+scripts/agent-gate record-red CHG-1642 --layer unit -- "echo 'AssertionError: fail'; exit 1" >/dev/null 2>&1
+report "T53 TC-1642a record-red refuses --layer unit below discovery layer e2e (rc2)" 2 $?
+scripts/agent-gate record-red CHG-1642 --layer e2e -- "echo 'AssertionError: fail'; exit 1" >/dev/null 2>&1
+report "T53 TC-1642a record-red accepts --layer e2e matching discovery layer" 0 $?
+
+# TC-1643a~b & TC-1644a~b: E-5 defect_fp escalation + E-6 escape & metrics
+new_repo
+mkdir -p docs/bugs/BUG-1643A docs/bugs/BUG-1643B docs/bugs/BUG-1643C
+for _bg in BUG-1643A BUG-1643B BUG-1643C; do
+  for _bf in 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+    printf '# %s\n' "$_bf" > "docs/bugs/$_bg/$_bf"
+  done
+  for _bf in 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+    { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-01T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n'; cat "docs/bugs/$_bg/$_bf"; } > "docs/bugs/$_bg/$_bf.tmp" && mv "docs/bugs/$_bg/$_bf.tmp" "docs/bugs/$_bg/$_bf"
+  done
+done
+cat > docs/bugs/BUG-1643A/01-diagnosis.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-01T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# BUG-1643A
+| 字段 | 内容 |
+|---|---|
+| defect_fp | fp-alpha |
+| 诊断人 / 处置主体 | Claude / s1 |
+| 状态 | 已闭环 |
+| 应捕获层 | 测试 |
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+cat > docs/bugs/BUG-1643B/01-diagnosis.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-02T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# BUG-1643B
+| 字段 | 内容 |
+|---|---|
+| defect_fp | fp-alpha |
+| 诊断人 / 处置主体 | Claude / s1 |
+| 状态 | 诊断中 |
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+cat > docs/bugs/BUG-1643C/01-diagnosis.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-03T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# BUG-1643C
+| 字段 | 内容 |
+|---|---|
+| defect_fp | fp-alpha |
+| 诊断人 / 处置主体 | Antigravity / s3 |
+| 状态 | 诊断中 |
+## 升级节
+- 观测先行：加调试日志
+- 上次为何未修好：未处理边界
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+printf 'BUG-1643A\nBUG-1643B\nBUG-1643C\n' > docs/bugs/.gate-allowlist
+mkdir -p src && printf 'x=1\n' > src/work.js && git add src/work.js
+seed_artifacts CHG-1643 L2 claude/s-1 claude/s-2 claude/s-3
+printf '{"change_id":"CHG-1643","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","bug_ref":"BUG-1643B"}\n' > docs/changes/CHG-1643/00-governance.json
+scripts/agent-gate begin CHG-1643 >/dev/null 2>&1
+seed_t53_delivery CHG-1643
+printf '\n- [dogfood] verified CHG-1643\n- [dogfood-next] next item\n' >> docs/changes/CHG-1643/09-changelog.md
+printf '# coding record\n- file: src/work.js\n' > docs/changes/CHG-1643/04.5-coding-record.md
+printf '# test results\n- TC-001: pass\n' > docs/changes/CHG-1643/05-test-results.md
+printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具）\n- 评审主体：claude / model / ses-r1\n' > docs/changes/CHG-1643/07-review-report.md
+stamp_all docs/changes/CHG-1643
+
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1643a 2nd fix with same diagnosis owner refuses at L2 (rc2)" 2 "$rc"
+check_output "T53 TC-1643a names GATE-E81" "GATE-E81" "$out"
+
+# L1 advisory only warns
+printf '{"change_id":"CHG-1643","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","bug_ref":"BUG-1643B"}\n' > docs/changes/CHG-1643/00-governance.json
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1643a 2nd fix at L1 is advisory WARN (rc0)" 0 "$rc"
+check_output "T53 TC-1643a L1 prints WARN for defect_fp" "WARN.*defect_fp" "$out"
+
+# Back to L2, fix owner + escalation section -> passes
+printf '{"change_id":"CHG-1643","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","bug_ref":"BUG-1643B"}\n' > docs/changes/CHG-1643/00-governance.json
+cat > docs/bugs/BUG-1643B/01-diagnosis.md <<'EOF'
+<!-- provenance
+author: fixture
+email: f@t
+generated_at: 2026-01-02T00:00:00Z
+generated_by: stamp-provenance.sh
+-->
+# BUG-1643B
+| 字段 | 内容 |
+|---|---|
+| defect_fp | fp-alpha |
+| 诊断人 / 处置主体 | Antigravity / s2 |
+| 状态 | 已闭环 |
+## 升级节
+- 观测先行：日志探针
+- 上次为何未修好：漏边界
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1643a 2nd fix with new owner and escalation section passes" 0 $?
+
+# TC-1643b: 3rd occurrence requires >=2 candidates in 03 and architecture signature in 07
+seed_artifacts CHG-1644 L2 claude/s-1 claude/s-2 claude/s-3
+printf '{"change_id":"CHG-1644","risk_level":"L2","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","bug_ref":"BUG-1643C"}\n' > docs/changes/CHG-1644/00-governance.json
+scripts/agent-gate begin CHG-1644 >/dev/null 2>&1
+seed_t53_delivery CHG-1644
+printf '\n- [dogfood] verified CHG-1644\n- [dogfood-next] next item\n' >> docs/changes/CHG-1644/09-changelog.md
+printf '# coding record\n- file: src/work.js\n' > docs/changes/CHG-1644/04.5-coding-record.md
+printf '# test results\n- TC-001: pass\n' > docs/changes/CHG-1644/05-test-results.md
+printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具）\n- 评审主体：claude / model / ses-r2（架构）\n' > docs/changes/CHG-1644/07-review-report.md
+printf '# plan\n- DES-001: patch\n## 技术选型\n单方案说明\n## 既有范式关系\n- **既有范式关系**：未命中（x）\n' > docs/changes/CHG-1644/03-modification-plan.md
+stamp_all docs/changes/CHG-1644
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1643b 3rd fix single-factor: arch review present but 03 lacks >=2 options refuses (rc2)" 2 "$rc"
+check_output "T53 TC-1643b names GATE-E81" "GATE-E81" "$out"
+
+printf '# plan\n- DES-001: redesign\n## 技术选型\n| 方案 | 说明 |\n|---|---|\n| 方案 A | 局部补丁 |\n| 方案 B | 架构重构 |\n## 既有范式关系\n- **既有范式关系**：未命中（x）\n' > docs/changes/CHG-1644/03-modification-plan.md
+stamp_all docs/changes/CHG-1644
+scripts/agent-gate --stage stop >/dev/null 2>&1
+report "T53 TC-1643b 3rd fix with >=2 options and architecture signature passes" 0 $?
+
+# TC-1643c (F-02): missing defect_fp with >=50% affected files overlap emits advisory WARN
+printf '| 字段 | 内容 |\n|---|---|\n| 影响文件 | src/work.js |\n' >> docs/bugs/BUG-1643A/01-diagnosis.md
+mkdir -p docs/bugs/BUG-1643D
+for _bf in 02-impact.md 03-test-plan.md 04-matrix.md 05-config.md 06-tasks.md; do
+  { printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-04T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# %s\n' "$_bf"; } > "docs/bugs/BUG-1643D/$_bf"
+done
+printf '<!-- provenance\nauthor: fixture\nemail: f@t\ngenerated_at: 2026-01-04T00:00:00Z\ngenerated_by: stamp-provenance.sh\n-->\n# BUG-1643D\n| 字段 | 内容 |\n|---|---|\n| defect_fp | <待填> |\n延伸发现：未发现\n历史相似检索：未命中（x）\n' > docs/bugs/BUG-1643D/01-diagnosis.md
+printf 'BUG-1643D\n' >> docs/bugs/.gate-allowlist
+seed_artifacts CHG-1645 L1 claude/s-1 claude/s-2 claude/s-3
+printf '{"change_id":"CHG-1645","risk_level":"L1","spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","bug_ref":"BUG-1643D"}\n' > docs/changes/CHG-1645/00-governance.json
+scripts/agent-gate begin CHG-1645 >/dev/null 2>&1
+seed_t53_delivery CHG-1645
+printf '\n- [dogfood] verified CHG-1645\n- [dogfood-next] next item\n' >> docs/changes/CHG-1645/09-changelog.md
+printf '# coding record\n- file: src/work.js\n' > docs/changes/CHG-1645/04.5-coding-record.md
+printf '# test results\n- TC-001: pass\n' > docs/changes/CHG-1645/05-test-results.md
+printf '# review\n## 评审结论\n通过\n- **发现处置**：未命中，不适用（T53 夹具）\n- 评审主体：claude / model / ses-r3\n' > docs/changes/CHG-1645/07-review-report.md
+stamp_all docs/changes/CHG-1645
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1643c missing defect_fp with >=50% file overlap passes with WARN (rc0)" 0 "$rc"
+check_output "T53 TC-1643c warns about >=50% affected file overlap" "overlap" "$out"
+
+# TC-1644a~b: escape command + metrics --summary
+scripts/agent-gate escape BUG-1643A --should-catch 测试 >/dev/null 2>&1
+report "T53 TC-1644a escape records defect into diagnosis and eval-cases.tsv" 0 $?
+check_output "T53 TC-1644a diagnosis marked escaped_after_claim" 'escaped_after_claim:[[:space:]]*yes' "$(cat docs/bugs/BUG-1643A/01-diagnosis.md)"
+report "T53 TC-1644a eval-cases.tsv holds EC-BUG-1643A" 1 "$(grep -c '^EC-BUG-1643A	escape	BUG-1643A	测试	' .agent-state/eval-cases.tsv 2>/dev/null || echo 0)"
+scripts/agent-gate escape BUG-1643A --should-catch 测试 >/dev/null 2>&1
+report "T53 TC-1644a escape is idempotent on repeat run" 1 "$(grep -c '^EC-BUG-1643A	' .agent-state/eval-cases.tsv 2>/dev/null || echo 0)"
+_m164=$(scripts/agent-gate metrics --summary --json 2>/dev/null || true)
+check_output "T53 TC-1644b metrics summary json includes numeric escape_rate" '"escape_rate":0\.' "$_m164"
+check_output "T53 TC-1644b metrics summary json includes numeric same_fp_reopen_rate" '"same_fp_reopen_rate":1\.00' "$_m164"
 }
 
 section_T54() {

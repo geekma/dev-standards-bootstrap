@@ -2033,7 +2033,7 @@ validate_governance_state() {
       # v3.54.0 (CHG-067): same family covers 历史相似检索 (E84 semantics, BUG track)
       require_section_or_decl "$bug_gdir/01-diagnosis.md" "延伸发现" 2>/dev/null \
         && require_section_or_decl "$bug_gdir/01-diagnosis.md" "历史相似检索" '未命中（[^）]+）' 2>/dev/null \
-        || die "GATE-E81: $file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现/历史相似检索 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060; 历史相似检索 added v3.54.0 CHG-067)"
+        || die_e81 "$file bug_ref '$bug_ref': 01-diagnosis missing 延伸发现/历史相似检索 section (BUG track, standards §2.5 stage 6, v3.48.0; renumbered from E16 in v3.48.1, CHG-060; 历史相似检索 added v3.54.0 CHG-067)"
     done
   fi
 }
@@ -2331,6 +2331,166 @@ bug_p3_lightweight() { # <group-or-batch-dir> [<BUG-id>] -> 0 if channel applies
   else
     head -20 "$dir/01-diagnosis.md" 2>/dev/null | grep -qE '^severity:[[:space:]]*P3[[:space:]]*$'
   fi
+}
+
+die_e81() { die "GATE-E81: $*"; }
+
+# E-5 (CHG-164):同缺陷指纹计数与第 2/3 次升级门槛
+bug_fingerprint_check() { # <change-id>
+  local id="$1" d rec risk brefs bref bgdir diagf sec_txt fp diag_owner
+  local prev_cnt last_owner f_list df d_dir is_b prev_fp prev_stat prev_owner
+  local has_esc=0 e5_msg="" c_opts=0
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" && -s "$d/00-governance.json" ]] || return 0
+  rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+  [[ -n "$rec" ]] || return 0
+  grep -q '"bug_ref"' <<< "$rec" || return 0
+  brefs=$(json_field_values "$rec" bug_ref 2>/dev/null || true)
+  [[ -n "${brefs// /}" ]] || return 0
+  risk=$(json_field "$rec" risk_level 2>/dev/null || echo L1)
+  [[ -d "$bugs_root" ]] || return 0
+
+  f_list=()
+  while IFS= read -r df; do
+    [[ -s "$df" ]] && f_list+=("$df")
+  done < <(find "$bugs_root" -name '01-diagnosis.md' -type f 2>/dev/null | LC_ALL=C sort)
+
+  for bref in $brefs; do
+    bgdir=$(bug_group_dir "$bref" 2>/dev/null || true)
+    [[ -n "$bgdir" && -s "$bgdir/01-diagnosis.md" ]] || continue
+    diagf="$bgdir/01-diagnosis.md"
+    local re_bref
+    re_bref=$(printf '%s' "$bref" | sed 's/[.[\*^$()+?{}|]/\\&/g')
+    if [[ "$(basename "$bgdir")" =~ ^BATCH- ]] && grep -qE "^##[[:space:]]+${re_bref}([[:space:]]|\$)" "$diagf" 2>/dev/null; then
+      sec_txt=$(awk -v re="^##[[:space:]]+${re_bref}([[:space:]]|$)" '$0 ~ re {on=1;print;next} on && /^##[[:space:]]/ {exit} on {print}' "$diagf" 2>/dev/null)
+    else
+      sec_txt=$(cat "$diagf" 2>/dev/null || true)
+    fi
+    fp=$(printf '%s\n' "$sec_txt" | awk -F'|' '
+      /^[[:space:]]*\|[[:space:]]*defect_fp[[:space:]]*\|/ {
+        v=$3; gsub(/<!--[^>]*-->/,"",v); gsub(/^[[:space:]]+|[[:space:]]+$/,"",v); print v; exit
+      }' 2>/dev/null || true)
+    if [[ -z "$fp" || "$fp" == "<"* || "$fp" == "无" || "$fp" == "未命中" ]]; then
+      # F-02 / DES-1643: defect_fp undeclared -> advisory if >=50% affected files overlap with an existing bug
+      if [[ ${#f_list[@]} -gt 0 ]]; then
+        local cur_files="" ov_hit=""
+        cur_files=$( { git -C "$repo_root" diff --name-only HEAD 2>/dev/null || true; git -C "$repo_root" diff --cached --name-only 2>/dev/null || true; } | awk 'NF' | LC_ALL=C sort -u )
+        if [[ -z "$cur_files" && -s "$bgdir/02-impact.md" ]]; then
+          cur_files=$(grep -oE '[A-Za-z0-9_./-]+\.[A-Za-z0-9]+' "$bgdir/02-impact.md" 2>/dev/null | LC_ALL=C sort -u || true)
+        fi
+        if [[ -n "$cur_files" ]]; then
+          ov_hit=$(awk -v target_id="$bref" -v cfiles="$cur_files" '
+            BEGIN {
+              nc = split(cfiles, arr, "\n")
+              for (i = 1; i <= nc; i++) if (arr[i] != "") cur[arr[i]] = 1
+              total = 0; for (k in cur) total++
+            }
+            function flush_ov(   k, m, pct) {
+              if (cid == "" || cid == target_id || total == 0) return
+              m = 0
+              for (k in cur) if (k in bfiles) m++
+              pct = int((m * 100) / total)
+              if (pct >= 50 && hit == "") hit = cid ":" pct
+            }
+            FNR == 1 {
+              flush_ov()
+              cid = ""; delete bfiles
+              np = split(FILENAME, _p, "/")
+              is_b = (np >= 2 && _p[np - 1] ~ /^BATCH-/)
+              if (!is_b && np >= 2) cid = _p[np - 1]
+            }
+            is_b && /^##[[:space:]]+BUG-[A-Za-z0-9._-]+/ {
+              flush_ov()
+              cid = $2; sub(/[[:space:]].*$/, "", cid); delete bfiles; next
+            }
+            cid != "" && /影响文件|impact/ {
+              s = $0
+              while (match(s, "[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+\\.[A-Za-z0-9]+")) {
+                bfiles[substr(s, RSTART, RLENGTH)] = 1
+                s = substr(s, RSTART + RLENGTH)
+              }
+            }
+            END { flush_ov(); if (hit != "") print hit }
+          ' "${f_list[@]}" 2>/dev/null || true)
+          if [[ -n "$ov_hit" ]]; then
+            echo "agent-gate: WARN — defect_fp missing for $bref, but >=50% affected files overlap with ${ov_hit%%:*} (${ov_hit##*:}%); consider declaring defect_fp" >&2
+          fi
+        fi
+      fi
+      continue
+    fi
+    diag_owner=$(printf '%s\n' "$sec_txt" | awk -F'|' '
+      /^[[:space:]]*\|[[:space:]]*诊断人 \/ 处置主体[[:space:]]*\|/ {
+        v=$3; gsub(/<!--[^>]*-->/,"",v); gsub(/^[[:space:]]+|[[:space:]]+$/,"",v); print v; exit
+      }' 2>/dev/null || true)
+
+    prev_cnt=0; last_owner=""
+    if [[ ${#f_list[@]} -gt 0 ]]; then
+      read -r prev_cnt last_owner <<< "$(awk -v target_id="$bref" -v target_fp="$fp" '
+        function flush_b() {
+          if (cid != "" && cid != target_id && cfp == target_fp && cstat ~ /已闭环/) {
+            cnt++
+            if (cown != "") last = cown
+          }
+        }
+        FNR == 1 {
+          flush_b()
+          cid=""; cfp=""; cstat=""; cown=""
+          np = split(FILENAME, _p, "/")
+          is_b = (np >= 2 && _p[np - 1] ~ /^BATCH-/)
+          if (!is_b) {
+            cid = (np >= 2 ? _p[np - 1] : "")
+          }
+        }
+        is_b && /^##[[:space:]]+BUG-[A-Za-z0-9._-]+/ {
+          flush_b()
+          cid = $2; sub(/[[:space:]].*$/, "", cid)
+          cfp=""; cstat=""; cown=""
+          next
+        }
+        cid != "" && /^[[:space:]]*\|/ {
+          split($0, c, "|")
+          k=c[2]; v=c[3]
+          gsub(/<!--[^>]*-->/,"",k); gsub(/^[[:space:]]+|[[:space:]]+$/,"",k)
+          gsub(/<!--[^>]*-->/,"",v); gsub(/^[[:space:]]+|[[:space:]]+$/,"",v)
+          if (k == "defect_fp") cfp = v
+          else if (k == "状态") cstat = v
+          else if (k == "诊断人 / 处置主体") cown = v
+        }
+        END {
+          flush_b()
+          printf "%d\t%s\n", cnt+0, last
+        }' "${f_list[@]}" 2>/dev/null || echo "0	")"
+    fi
+
+    e5_msg=""
+    if [[ "${prev_cnt:-0}" -ge 1 ]]; then
+      has_esc=0
+      if grep -qE '升级节|观测先行' <<< "$sec_txt" 2>/dev/null && grep -qE '上次为何未修好|上次为什么没修好' <<< "$sec_txt" 2>/dev/null; then
+        has_esc=1
+      fi
+      if [[ "$has_esc" -ne 1 ]]; then
+        e5_msg="$id bug_ref '$bref' (defect_fp=$fp, occurrence=$((prev_cnt + 1))): 01-diagnosis missing escalation section (观测先行 + 上次为何未修好)"
+      elif [[ -n "$last_owner" && ( -z "$diag_owner" || "$diag_owner" == "$last_owner" ) ]]; then
+        e5_msg="$id bug_ref '$bref' (defect_fp=$fp, occurrence=$((prev_cnt + 1))): diagnosis owner '${diag_owner:-<empty>}' must differ from previous closed fix owner '$last_owner'"
+      fi
+    fi
+    if [[ -z "$e5_msg" && "${prev_cnt:-0}" -ge 2 ]]; then
+      c_opts=$(grep -cE '方案[[:space:]]*[A-Z0-9一二三]|候选[[:space:]]*[A-Z0-9一二三]|备选[[:space:]]*[A-Z0-9一二三]' "$d/03-modification-plan.md" 2>/dev/null || true)
+      [[ "$c_opts" =~ ^[0-9]+$ ]] || c_opts=0
+      if [[ "$c_opts" -lt 2 ]]; then
+        e5_msg="$id bug_ref '$bref' (defect_fp=$fp, occurrence=$((prev_cnt + 1))): 3rd+ fix forbids patch-only repair — 03-modification-plan must compare >=2 candidate options"
+      elif [[ ! -s "$d/07-review-report.md" ]] || ! grep -qE '架构' "$d/07-review-report.md" 2>/dev/null; then
+        e5_msg="$id bug_ref '$bref' (defect_fp=$fp, occurrence=$((prev_cnt + 1))): 3rd+ fix requires architecture-role signature in 07-review-report.md"
+      fi
+    fi
+    if [[ -n "$e5_msg" ]]; then
+      case "$risk" in
+        L2|L3) die_e81 "$e5_msg" ;;
+        *) echo "agent-gate: WARN — defect_fp advisory ($e5_msg)" >&2 ;;
+      esac
+    fi
+  done
 }
 
 # v3.28.0 (CHG-071 / BUG-040~055 复盘): defect doc groups are enforced by
@@ -4006,7 +4166,7 @@ core_gate_check() { # <change-id> — E149 receipt / E150 red→green / E151 ind
   local e150="" have_red=0 have_green=0 _rrf=""
   _rrf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/red-receipts/${id}.json" 2>/dev/null || true)
   [[ -n "$_rrf" && "$_rrf" != /* ]] && _rrf="$repo_root/$_rrf"
-  [[ -n "$_rrf" && -s "$_rrf" ]] && grep -qE '"exit_code":[1-9]' "$_rrf" 2>/dev/null && have_red=1
+  [[ -n "$_rrf" && -s "$_rrf" ]] && grep -qE '"exit_code":[1-9]' "$_rrf" 2>/dev/null && ! grep -qF '"class":"red-error"' "$_rrf" 2>/dev/null && have_red=1
   grep -qE '^[[:space:]]*red_repro:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_red=1
   grep -qE '^[[:space:]]*green_after:[[:space:]]*[^[:space:]]' "$f" 2>/dev/null && have_green=1
   if [[ "$have_red" -eq 0 || "$have_green" -eq 0 ]]; then
@@ -4371,6 +4531,7 @@ validate_stop() {
   # defect groups (stamp-provenance.sh --bug).
   validate_bug_groups
   validate_bug_ref_provenance
+  bug_fingerprint_check "$id"
   # v3.71.0 (CHG-046, REQ-1088): stop-lane smoke gate over the staged + last
   # commit face (the commit lane is covered in validate_diff).
   check_smoke_gate "$( { changed_files staged 2>/dev/null; git show --name-only --format= HEAD 2>/dev/null; } | sort -u )"
@@ -4835,6 +4996,7 @@ validate_diff() {
   if [[ "$mode" == branch ]]; then
     for id in $seen_ids; do
       validate_delivery "$id"
+      bug_fingerprint_check "$id"
     done
   fi
 

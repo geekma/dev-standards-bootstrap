@@ -19,6 +19,8 @@
 | 关联变更 | `CHG-xxx`（修复所在 CHG，必填，链接 `docs/<feature>/09-changelog.md`） |
 | 关联需求 / 设计 | `REQ-xxx` / `DES-xxx`；无关联时写"无（缺陷类）"，根因为设计遗漏时必须回补 DES |
 | 关联缺陷 | 无 / 旧组 `BUG-xxx`（同族/衍生缺陷引用既有缺陷文档组，本次新起一组，v3.6.0） |
+| class | false-green / stale-snapshot / state-trigger / layout / boundary-data / contract-drift / concurrency / config-drift / other(<名>) |
+| 类级对策 | <同类在 30 天窗口内再次出现时必填；否则填「首次出现，不适用」> |
 | 历史相似 | 历史检索命中的 BUG/CHG 号 + 沿用/推翻裁决（检索 bugfix-log/docs/bugs/docs/changes，根因关键词/涉改文件路径）；无命中写"未命中（检索词）"（v3.48.0） |
 | 现象摘要 | ≤3 行：谁在什么场景观察到什么异常（完整复现步骤见 CHG「现象」节） |
 | 根因摘要 | ≤2 行：代码行列级结论 + 同族推演处置（已同批修复/登记 FU-xxx/确认无同族；完整根因表与同族推演见 CHG「根因」节） |

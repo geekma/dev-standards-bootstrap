@@ -419,6 +419,8 @@ case "$command" in
   help|--help|-h) load_gate_cold --bare; print_help_cmd ;;
   review-models) shift; load_gate_cold; review_models_cmd "$@" ;;
   record-red)    shift; load_gate_cold; record_red_cmd "$@" ;;
+  record-green)  shift; load_gate_cold; record_green_cmd "$@" ;;
+  escape)        shift; load_gate_cold; escape_cmd "$@" ;;
   start)         shift; load_gate_cold; start_cmd "$@" ;;
   advance)       shift; load_gate_cold; advance_cmd "$@" ;;
   next)          shift; load_gate_cold; next_cmd "$@" ;;

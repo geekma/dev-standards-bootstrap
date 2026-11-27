@@ -853,7 +853,91 @@ report "audit passes once the out-of-table reviews/ is removed" 0 $?
 SKIPD=$(mktemp -d)
 bash "$AUDIT_SRC" "$SKIPD" >/dev/null 2>&1
 report "audit skips repo without standards" 0 $?
-rm -rf "$FX" "$FX2" "$SKIPD"
+
+# TC-1645a~c (CHG-164, REQ-1645): assert G4 bugfix-log structure, reverse-chronological order, and same-class countermeasure
+FX3=$(mktemp -d)
+_t10_fx3_prep() {
+  audit_fixture "$FX3"
+  sed -i '' 's/`BUG-001`（索引见 docs\/bugfix-log.md）/`BUG-001`、`BUG-002`（索引见 docs\/bugfix-log.md）/' "$FX3/docs/feata/09-changelog.md" 2>/dev/null \
+    || sed -i 's/`BUG-001`（索引见 docs\/bugfix-log.md）/`BUG-001`、`BUG-002`（索引见 docs\/bugfix-log.md）/' "$FX3/docs/feata/09-changelog.md"
+}
+_t10_fx3_prep
+cat > "$FX3/docs/bugfix-log.md" <<'EOF'
+# Bug Fix Log
+### BUG-002：第二条（严重度 P2）
+
+| 字段 | 内容 |
+|---|---|
+### BUG-001：第一条（严重度 P1）
+
+| 字段 | 内容 |
+|---|---|
+| 日期 / 发现来源 | 2026-09-14 / 人工 |
+| 关联变更 | CHG-001 |
+| 历史相似 | 未命中（x） |
+EOF
+bash "$AUDIT_SRC" "$FX3" >/dev/null 2>&1
+report "T10 TC-1645a audit rejects bugfix-log entry with truncated table (G4)" 1 $?
+
+_t10_fx3_prep
+cat > "$FX3/docs/bugfix-log.md" <<'EOF'
+# Bug Fix Log
+### BUG-001：旧条目排前面（严重度 P1）
+
+| 字段 | 内容 |
+|---|---|
+| 日期 / 发现来源 | 2026-09-14 / 人工 |
+| 关联变更 | CHG-001 |
+| 历史相似 | 未命中（x） |
+
+### BUG-002：新条目排后面（严重度 P1）
+
+| 字段 | 内容 |
+|---|---|
+| 日期 / 发现来源 | 2026-09-20 / 人工 |
+| 关联变更 | CHG-001 |
+| 历史相似 | 未命中（x） |
+EOF
+bash "$AUDIT_SRC" "$FX3" >/dev/null 2>&1
+report "T10 TC-1645b audit rejects bugfix-log entries not in reverse-chronological order (G4)" 1 $?
+
+_t10_fx3_prep
+cat > "$FX3/docs/bugfix-log.md" <<'EOF'
+# Bug Fix Log
+### BUG-002：同类再犯缺对策（严重度 P1）
+
+| 字段 | 内容 |
+|---|---|
+| 日期 / 发现来源 | 2026-09-20 / 人工 |
+| class | false-green |
+| 类级对策 | |
+| 关联变更 | CHG-001 |
+| 历史相似 | 未命中（x） |
+
+### BUG-001：首例（严重度 P1）
+
+| 字段 | 内容 |
+|---|---|
+| 日期 / 发现来源 | 2026-09-18 / 人工 |
+| class | false-green |
+| 类级对策 | 首次出现，不适用 |
+| 关联变更 | CHG-001 |
+| 历史相似 | 未命中（x） |
+EOF
+bash "$AUDIT_SRC" "$FX3" >/dev/null 2>&1
+report "T10 TC-1645c audit rejects repeat class within 30d without countermeasure (G4)" 1 $?
+
+sed -i '' 's/| 类级对策 | |/| 类级对策 | 首次出现，不适用 |/' "$FX3/docs/bugfix-log.md" 2>/dev/null \
+  || sed -i 's/| 类级对策 | |/| 类级对策 | 首次出现，不适用 |/' "$FX3/docs/bugfix-log.md"
+bash "$AUDIT_SRC" "$FX3" >/dev/null 2>&1
+report "T10 TC-1645c audit rejects repeat class copying default 首次出现 (G4)" 1 $?
+
+sed -i '' 's/| 类级对策 | 首次出现，不适用 |/| 类级对策 | 收紧正则并补负例 |/' "$FX3/docs/bugfix-log.md" 2>/dev/null \
+  || sed -i 's/| 类级对策 | 首次出现，不适用 |/| 类级对策 | 收紧正则并补负例 |/' "$FX3/docs/bugfix-log.md"
+bash "$AUDIT_SRC" "$FX3" >/dev/null 2>&1
+report "T10 TC-1645c audit passes once same-class countermeasure is filled (G4)" 0 $?
+
+rm -rf "$FX" "$FX2" "$FX3" "$SKIPD"
 
 else
   echo "SKIP T10: audit-docs-consistency.sh absent (bootstrap --core 未安装) — 跳过通用审计 golden cases"

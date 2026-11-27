@@ -30,37 +30,308 @@ process_honesty_summary() { # <chg> -> P3 honesty summary line (ITEM-23)
     "$ac_ok" "$docs_ok" "$pw_ok" "$red_ok" "$retries"
 }
 
-record_red_cmd() { # <chg> -- <cmd...> — ITEM-21
-  local id="${1:-}" cmd="" rc=0 rf d ts sha f05
-  shift || true
-  [[ "${1:-}" == "--" ]] && shift
+_cold_sha256() { # <file>
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else cksum "$1" | awk '{print $1"-"$2}'
+  fi
+}
+
+_cold_str_sha256() { # <string>
+  if command -v shasum >/dev/null 2>&1; then printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum | awk '{print $1}'
+  else printf '%s' "$1" | cksum | awk '{print $1"-"$2}'
+  fi
+}
+
+_cold_norm_cmd() { # <cmd> -> trimmed single-spaced command
+  printf '%s' "$1" | sed -E 's/^[[:space:]]+//;s/[[:space:]]+$//;s/[[:space:]]+/ /g'
+}
+
+_cold_layer_rank() { # <unit|api|e2e|manual> -> 1|2|3|0
+  case "$1" in
+    unit) echo 1 ;;
+    api)  echo 2 ;;
+    e2e|manual) echo 3 ;;
+    *) echo 0 ;;
+  esac
+}
+
+_cold_diag_section() { # <01-diagnosis.md> <bug-id> -> prints relevant section
+  local f="$1" bid="$2" re_bid
+  [[ -s "$f" ]] || return 0
+  re_bid=$(printf '%s' "$bid" | sed 's/[.[\*^$]/\\&/g')
+  if [[ "$(basename "$(dirname "$f")")" =~ ^BATCH- ]] && grep -qE "^##[[:space:]]+${re_bid}([[:space:]]|\$)" "$f" 2>/dev/null; then
+    awk -v re="^##[[:space:]]+${re_bid}([[:space:]]|$)" '
+      $0 ~ re { on=1; print; next }
+      on && /^##[[:space:]]/ { exit }
+      on { print }
+    ' "$f" 2>/dev/null
+  else
+    cat "$f"
+  fi
+}
+
+_cold_diag_field() { # <text> <label> -> trimmed cell value
+  local txt="$1" lbl="$2"
+  printf '%s\n' "$txt" | awk -F'|' -v k="$lbl" '
+    /^[[:space:]]*\|/ {
+      c2=$2; gsub(/<!--[^>]*-->/,"",c2); gsub(/^[[:space:]]+|[[:space:]]+$/,"",c2)
+      if (c2 == k) {
+        c3=$3; gsub(/<!--[^>]*-->/,"",c3); gsub(/^[[:space:]]+|[[:space:]]+$/,"",c3)
+        print c3; exit
+      }
+    }' 2>/dev/null || true
+}
+
+classify_red_output() { # <rc> <outfile> -> red-assertion | red-error | unclassified
+  local rc="$1" outf="$2" custom_re=""
+  if [[ -f "$repo_root/.agent-governance.yml" ]]; then
+    custom_re=$(sed -nE 's/^[[:space:]]*red_classifier:[[:space:]]*//p' "$repo_root/.agent-governance.yml" 2>/dev/null | head -1 | sed -E 's/[[:space:]]*#.*$//;s/^[[:space:]]+//;s/[[:space:]]+$//;s/^["'\'']//;s/["'\'']$//' || true)
+  fi
+  if [[ "$rc" -eq 126 || "$rc" -eq 127 ]]; then
+    echo "red-error"; return 0
+  fi
+  if grep -qiE 'command not found|No such file|ModuleNotFoundError|ImportError|SyntaxError|Cannot find module|collected 0 items|no tests ran' "$outf" 2>/dev/null; then
+    echo "red-error"; return 0
+  fi
+  if [[ -n "$custom_re" ]] && grep -qE "$custom_re" "$outf" 2>/dev/null; then
+    echo "red-assertion"; return 0
+  fi
+  if grep -qE 'FAIL|FAILED|AssertionError|expected|not ok|Failures:[[:space:]]*[1-9]|[1-9][0-9]*[[:space:]]+failed' "$outf" 2>/dev/null; then
+    echo "red-assertion"; return 0
+  fi
+  echo "unclassified"
+}
+
+record_red_cmd() { # <chg> [--layer L] [--target-tests T] [--accept-unclassified R] -- <cmd...> — ITEM-21 / E-1 / E-4
+  local id="" layer="unit" target_tests="" accept_reason="" cmd="" rc=0 rf d ts sha f05
+  local tmpout out_sha out_tail cls
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --) shift; break ;;
+      --layer)
+        [[ -n "${2:-}" ]] || { echo "agent-gate: record-red --layer requires unit|api|e2e|manual" >&2; exit 2; }
+        layer="$2"; shift 2 ;;
+      --target-tests)
+        [[ -n "${2:-}" ]] || { echo "agent-gate: record-red --target-tests requires a value" >&2; exit 2; }
+        target_tests="$2"; shift 2 ;;
+      --accept-unclassified)
+        [[ -n "${2:-}" ]] || { echo "agent-gate: record-red --accept-unclassified requires a reason" >&2; exit 2; }
+        accept_reason="$2"; shift 2 ;;
+      -*) echo "agent-gate: record-red unknown option '$1'" >&2; exit 2 ;;
+      *)
+        if [[ -z "$id" ]]; then id="$1"; shift
+        else break; fi ;;
+    esac
+  done
+  case "$layer" in unit|api|e2e|manual) ;; *) echo "agent-gate: record-red invalid --layer '$layer' (expected unit|api|e2e|manual)" >&2; exit 2 ;; esac
   cmd="$*"
   if [[ -z "$id" || -z "$cmd" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
-    echo "agent-gate: usage: scripts/agent-gate record-red <change-id> -- <failing-test-cmd>" >&2; exit 2
+    echo "agent-gate: usage: scripts/agent-gate record-red <change-id> [--layer unit|api|e2e|manual] [--target-tests <spec>] [--accept-unclassified <reason>] -- <failing-test-cmd>" >&2; exit 2
   fi
   d=$(change_dir "$id" 2>/dev/null || true)
   [[ -d "$d" ]] || is_change_card "$id" || { echo "agent-gate: record-red unknown change: $id" >&2; exit 2; }
-  if [[ $# -eq 1 ]]; then
-    bash -lc "$1" >/dev/null 2>&1 || rc=$?
-  else
-    "$@" >/dev/null 2>&1 || rc=$?
+
+  # E-4: verify red layer >= bug_ref discovery layer when declared in 01-diagnosis.md
+  if [[ -d "$d" && -s "$d/00-governance.json" ]]; then
+    local rec brefs bref bgdir diag_txt d_layer_raw d_layer l_rank d_rank
+    rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+    if [[ -n "$rec" ]] && grep -q '"bug_ref"' <<< "$rec"; then
+      brefs=$(json_field_values "$rec" bug_ref 2>/dev/null || true)
+      l_rank=$(_cold_layer_rank "$layer")
+      for bref in $brefs; do
+        bgdir=$(bug_group_dir "$bref" 2>/dev/null || true)
+        [[ -n "$bgdir" && -s "$bgdir/01-diagnosis.md" ]] || continue
+        diag_txt=$(_cold_diag_section "$bgdir/01-diagnosis.md" "$bref")
+        d_layer_raw=$(_cold_diag_field "$diag_txt" "发现层")
+        d_layer=$(printf '%s' "$d_layer_raw" | tr -d '`' | sed -E 's/^[[:space:]]*([A-Za-z0-9_-]+).*/\1/' | tr '[:upper:]' '[:lower:]')
+        d_rank=$(_cold_layer_rank "$d_layer")
+        if [[ "$d_rank" -gt 0 && "$l_rank" -lt "$d_rank" ]]; then
+          echo "agent-gate: record-red refused (E-4) — --layer '$layer' (rank $l_rank) is lower than discovery layer '$d_layer' (rank $d_rank) in $bref" >&2
+          exit 2
+        fi
+      done
+    fi
   fi
+
+  tmpout=$(mktemp "${TMPDIR:-/tmp}/ag-red.XXXXXX")
+  if [[ $# -eq 1 ]]; then
+    bash -lc "$1" >"$tmpout" 2>&1 || rc=$?
+  else
+    "$@" >"$tmpout" 2>&1 || rc=$?
+  fi
+  out_sha=$(_cold_sha256 "$tmpout")
+  out_tail=$(tail -n 20 "$tmpout" 2>/dev/null | tr '\t\r\n' '   ' | cut -c1-400 || true)
+  cls=$(classify_red_output "$rc" "$tmpout")
+  rm -f "$tmpout"
+
   if [[ "$rc" -eq 0 ]]; then
     echo "agent-gate: record-red refused — command exited 0 (a red-first receipt requires a failing test): $cmd" >&2; exit 2
   fi
+  if [[ "$cls" == "red-error" ]]; then
+    echo "agent-gate: record-red refused (class=red-error, rc=$rc) — infrastructure/syntax/command error is not a test failure: ${out_tail:-$cmd}" >&2; exit 2
+  fi
+  if [[ "$cls" == "unclassified" && -z "$accept_reason" ]]; then
+    echo "agent-gate: record-red refused (class=unclassified, rc=$rc) — output matched no assertion signature; fix test output or pass --accept-unclassified <reason>" >&2; exit 2
+  fi
+  if [[ "$cls" == "unclassified" ]]; then
+    mkdir -p "$repo_root/.agent-state" 2>/dev/null || true
+    friction_append RED_UNCLASSIFIED ADVISORY "$id: $accept_reason ($cmd)"
+  fi
+
   rf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/red-receipts/${id}.json" 2>/dev/null || true)
   [[ -n "$rf" ]] || rf="$repo_root/.git/agent-governance/red-receipts/${id}.json"
   [[ "$rf" != /* ]] && rf="$repo_root/$rf"
   mkdir -p "$(dirname "$rf")" 2>/dev/null || { echo "agent-gate: record-red cannot create receipt dir" >&2; exit 2; }
   ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
   sha=$(tracked_tree_sha 2>/dev/null || echo unknown)
-  printf '{"change_id":"%s","cmd":"%s","exit_code":%s,"recorded_at":"%s","tree_sha":"%s"}\n' \
-    "$(json_escape "$id")" "$(json_escape "$cmd")" "$rc" "$ts" "${sha:-unknown}" > "$rf"
+  local ncmd ncmd_sha
+  ncmd=$(_cold_norm_cmd "$cmd")
+  ncmd_sha=$(_cold_str_sha256 "$ncmd")
+  printf '{"change_id":"%s","cmd":"%s","norm_cmd":"%s","norm_cmd_sha":"%s","exit_code":%s,"class":"%s","layer":"%s","target_tests":"%s","output_sha":"%s","output_tail":"%s","unclassified_reason":"%s","recorded_at":"%s","tree_sha":"%s"}\n' \
+    "$(json_escape "$id")" "$(json_escape "$cmd")" "$(json_escape "$ncmd")" "$(json_escape "$ncmd_sha")" "$rc" \
+    "$(json_escape "$cls")" "$(json_escape "$layer")" "$(json_escape "$target_tests")" \
+    "$(json_escape "$out_sha")" "$(json_escape "$out_tail")" "$(json_escape "$accept_reason")" \
+    "$ts" "${sha:-unknown}" > "$rf"
   f05="$d/05-test-results.md"
   if [[ -d "$d" && -f "$f05" ]] && ! grep -qE '^[[:space:]]*red_repro:' "$f05" 2>/dev/null; then
-    printf '\nred_repro: %s -> FAIL rc=%s @ %s\n' "$cmd" "$rc" "$ts" >> "$f05"
+    printf '\nred_repro: %s -> FAIL rc=%s (%s/%s) @ %s\n' "$cmd" "$rc" "$cls" "$layer" "$ts" >> "$f05"
   fi
-  echo "agent-gate: red receipt recorded ($id rc=$rc -> $rf)"
+  echo "agent-gate: red receipt recorded ($id rc=$rc class=$cls layer=$layer -> $rf)"
+}
+
+record_green_cmd() { # <chg> -- <cmd...> — E-2 green receipt verification
+  local id="${1:-}" cmd="" rc=0 rf gf d ts sha f05 red_rec red_cmd red_tree red_cls
+  local ncmd red_ncmd red_ncmd_sha ncmd_sha tmpout out_sha
+  shift || true
+  [[ "${1:-}" == "--" ]] && shift
+  cmd="$*"
+  if [[ -z "$id" || -z "$cmd" ]] || [[ ! "$id" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+    echo "agent-gate: usage: scripts/agent-gate record-green <change-id> -- <passing-test-cmd>" >&2; exit 2
+  fi
+  d=$(change_dir "$id" 2>/dev/null || true)
+  [[ -d "$d" ]] || is_change_card "$id" || { echo "agent-gate: record-green unknown change: $id" >&2; exit 2; }
+  rf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/red-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$rf" ]] || rf="$repo_root/.git/agent-governance/red-receipts/${id}.json"
+  [[ "$rf" != /* ]] && rf="$repo_root/$rf"
+  [[ -s "$rf" ]] || { echo "agent-gate: record-green refused — no red receipt found for $id (run record-red first)" >&2; exit 2; }
+
+  red_rec=$(cat "$rf" 2>/dev/null || true)
+  red_cmd=$(json_field "$red_rec" cmd)
+  red_ncmd_sha=$(json_field "$red_rec" norm_cmd_sha)
+  red_tree=$(json_field "$red_rec" tree_sha)
+  red_cls=$(json_field "$red_rec" class)
+  if [[ "$red_cls" == "red-error" ]]; then
+    echo "agent-gate: record-green refused — red receipt class is red-error" >&2; exit 2
+  fi
+  ncmd=$(_cold_norm_cmd "$cmd")
+  ncmd_sha=$(_cold_str_sha256 "$ncmd")
+  if [[ -n "$red_ncmd_sha" ]]; then
+    if [[ "$ncmd_sha" != "$red_ncmd_sha" ]]; then
+      echo "agent-gate: record-green refused — command mismatch (red_sha='$red_ncmd_sha', green_sha='$ncmd_sha')" >&2; exit 2
+    fi
+  else
+    red_ncmd=$(_cold_norm_cmd "$red_cmd")
+    if [[ "$ncmd" != "$red_ncmd" ]]; then
+      echo "agent-gate: record-green refused — command mismatch (red='$red_ncmd', green='$ncmd')" >&2; exit 2
+    fi
+  fi
+
+  sha=$(tracked_tree_sha 2>/dev/null || echo unknown)
+  if [[ -n "$red_tree" && "$red_tree" != "unknown" && "$sha" == "$red_tree" ]]; then
+    echo "agent-gate: record-green refused — tracked_tree_sha ($sha) is unchanged since red receipt (cannot claim green without code/test change)" >&2; exit 2
+  fi
+
+  tmpout=$(mktemp "${TMPDIR:-/tmp}/ag-green.XXXXXX")
+  if [[ $# -eq 1 ]]; then
+    bash -lc "$1" >"$tmpout" 2>&1 || rc=$?
+  else
+    "$@" >"$tmpout" 2>&1 || rc=$?
+  fi
+  out_sha=$(_cold_sha256 "$tmpout")
+  rm -f "$tmpout"
+  if [[ "$rc" -ne 0 ]]; then
+    echo "agent-gate: record-green refused — command exited $rc (green receipt requires rc=0): $cmd" >&2; exit 2
+  fi
+
+  gf=$(git -C "$repo_root" rev-parse --git-path "agent-governance/green-receipts/${id}.json" 2>/dev/null || true)
+  [[ -n "$gf" ]] || gf="$repo_root/.git/agent-governance/green-receipts/${id}.json"
+  [[ "$gf" != /* ]] && gf="$repo_root/$gf"
+  mkdir -p "$(dirname "$gf")" 2>/dev/null || { echo "agent-gate: record-green cannot create receipt dir" >&2; exit 2; }
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  printf '{"change_id":"%s","cmd":"%s","norm_cmd":"%s","exit_code":0,"recorded_at":"%s","tree_sha":"%s","red_tree_sha":"%s","output_sha":"%s"}\n' \
+    "$(json_escape "$id")" "$(json_escape "$cmd")" "$(json_escape "$ncmd")" "$ts" \
+    "${sha:-unknown}" "${red_tree:-unknown}" "$(json_escape "$out_sha")" > "$gf"
+  f05="$d/05-test-results.md"
+  if [[ -d "$d" && -f "$f05" ]] && ! grep -qE '^[[:space:]]*green_after:' "$f05" 2>/dev/null; then
+    printf '\ngreen_after: %s -> PASS rc=0 @ %s\n' "$cmd" "$ts" >> "$f05"
+  fi
+  echo "agent-gate: green receipt recorded ($id rc=0 -> $gf)"
+}
+
+escape_cmd() { # <BUG-id> --should-catch <layer> — E-6 post-claim defect escape registration
+  local bug_id="" should_catch="" bgdir diagf sec_txt rel_land reg_ref="" evalf tmpf
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --should-catch)
+        [[ -n "${2:-}" ]] || { echo "agent-gate: escape --should-catch requires a layer" >&2; exit 2; }
+        should_catch="$2"; shift 2 ;;
+      -*) echo "agent-gate: escape unknown option '$1'" >&2; exit 2 ;;
+      *)
+        [[ -z "$bug_id" ]] || { echo "agent-gate: escape unexpected argument '$1'" >&2; exit 2; }
+        bug_id="$1"; shift ;;
+    esac
+  done
+  case "$should_catch" in
+    需求|设计|编码前置|测试|门禁|运行监控|无) ;;
+    *) echo "agent-gate: usage: scripts/agent-gate escape <BUG-id> --should-catch <需求|设计|编码前置|测试|门禁|运行监控|无>" >&2; exit 2 ;;
+  esac
+  if [[ -z "$bug_id" ]] || [[ ! "$bug_id" =~ ^BUG-[A-Za-z0-9._-]+$ ]]; then
+    echo "agent-gate: escape invalid BUG-id '$bug_id'" >&2; exit 2
+  fi
+  bgdir=$(bug_group_dir "$bug_id" 2>/dev/null || true)
+  [[ -n "$bgdir" && -s "$bgdir/01-diagnosis.md" ]] || { echo "agent-gate: escape defect group not found for $bug_id" >&2; exit 2; }
+  diagf="$bgdir/01-diagnosis.md"
+  sec_txt=$(_cold_diag_section "$diagf" "$bug_id")
+  if ! grep -qE 'escaped_after_claim:[[:space:]]*yes' <<< "$sec_txt" 2>/dev/null; then
+    local re_bugid
+    re_bugid=$(printf '%s' "$bug_id" | sed 's/[.[\*^$()+?{}|]/\\&/g')
+    if [[ "$(basename "$bgdir")" =~ ^BATCH- ]] && grep -qE "^##[[:space:]]+${re_bugid}([[:space:]]|\$)" "$diagf" 2>/dev/null; then
+      tmpf=$(mktemp "${TMPDIR:-/tmp}/ag-esc.XXXXXX")
+      awk -v bid="$re_bugid" -v sc="$should_catch" '
+        $0 ~ ("^##[[:space:]]+" bid "([[:space:]]|$)") { in_sec=1 }
+        in_sec && /^##[[:space:]]/ && $0 !~ ("^##[[:space:]]+" bid "([[:space:]]|$)") && !done {
+          print "- escaped_after_claim: yes"
+          print "- **应捕获层（escape）**：" sc
+          done=1; in_sec=0
+        }
+        { print }
+        END {
+          if (!done) {
+            print "- escaped_after_claim: yes"
+            print "- **应捕获层（escape）**：" sc
+          }
+        }' "$diagf" > "$tmpf" && mv "$tmpf" "$diagf"
+    else
+      printf '\n- escaped_after_claim: yes\n- **应捕获层（escape）**：%s\n' "$should_catch" >> "$diagf"
+    fi
+  fi
+  if [[ -s "$bgdir/04-matrix.md" ]]; then
+    reg_ref=$(_cold_diag_section "$bgdir/04-matrix.md" "$bug_id" | grep -oE 'TC-[A-Za-z0-9_-]+' | head -1 || true)
+  fi
+  rel_land="${bgdir#"$repo_root"/}"
+  evalf="$repo_root/.agent-state/eval-cases.tsv"
+  mkdir -p "$(dirname "$evalf")" 2>/dev/null || true
+  [[ -s "$evalf" ]] || printf 'case_id\tsource\tbug_id\tcaptured_layer\tlanding\tregression_ref\n' > "$evalf"
+  tmpf=$(mktemp "${TMPDIR:-/tmp}/ag-eval.XXXXXX")
+  awk -F'\t' -v OFS='\t' -v cid="EC-${bug_id}" -v bid="$bug_id" -v layer="$should_catch" -v land="$rel_land" -v ref="$reg_ref" '
+    NR==1 { print; next }
+    $1==cid { print cid, "escape", bid, layer, land, ref; seen=1; next }
+    { print }
+    END { if (!seen) print cid, "escape", bid, layer, land, ref }
+  ' "$evalf" > "$tmpf" && mv "$tmpf" "$evalf"
+  echo "agent-gate: escape recorded ($bug_id -> should_catch=$should_catch, $evalf)"
 }
 
 start_cmd() { # <chg> [--risk L0|L1|L2|L3] — ITEM-25
@@ -648,6 +919,74 @@ baseline_write() {
   echo "agent-gate: baseline recorded at $f"
 }
 
+_cold_defect_metrics() { # -> "<bugs> <escaped> <erate> <fps> <reopened> <rrate>"
+  local df b_tot=0 b_esc=0 fp_tot=0 fp_re=0 erate="null" rrate="null"
+  local _f_list=() _evalf="$repo_root/.agent-state/eval-cases.tsv"
+  if [[ -d "$bugs_root" ]]; then
+    while IFS= read -r df; do
+      [[ -s "$df" ]] && _f_list+=("$df")
+    done < <(find "$bugs_root" -name '01-diagnosis.md' -type f 2>/dev/null | LC_ALL=C sort)
+  fi
+  if [[ ${#_f_list[@]} -gt 0 ]]; then
+    read -r b_tot b_esc fp_tot fp_re <<< "$(awk -v evalf="$_evalf" '
+      BEGIN {
+        if (evalf != "") {
+          while ((getline line < evalf) > 0) {
+            n = split(line, cols, "\t")
+            if (n >= 3 && cols[2] == "escape") esc_id[cols[3]] = 1
+          }
+          close(evalf)
+        }
+      }
+      function flush_bug(   k) {
+        if (cur_id == "") return
+        if (!(cur_id in seen_bug)) {
+          seen_bug[cur_id] = 1
+          bugs++
+          if (cur_esc == 1 || (cur_id in esc_id)) escaped++
+          if (cur_fp != "" && cur_fp !~ /^</ && cur_fp != "无" && cur_fp != "未命中") {
+            fp_cnt[cur_fp]++
+          }
+        }
+      }
+      FNR == 1 {
+        flush_bug()
+        cur_id = ""; cur_esc = 0; cur_fp = ""
+        np = split(FILENAME, _p, "/")
+        is_batch = (np >= 2 && _p[np - 1] ~ /^BATCH-/)
+        if (!is_batch && np >= 2) {
+          cur_id = _p[np - 1]
+        }
+      }
+      is_batch && /^##[[:space:]]+BUG-[A-Za-z0-9._-]+/ {
+        flush_bug()
+        cur_id = $2; sub(/[[:space:]].*$/, "", cur_id)
+        cur_esc = 0; cur_fp = ""
+        next
+      }
+      cur_id != "" {
+        if ($0 ~ /escaped_after_claim:[[:space:]]*yes/) cur_esc = 1
+        if ($0 ~ /^[[:space:]]*\|[[:space:]]*defect_fp[[:space:]]*\|/) {
+          split($0, c, "|")
+          v = c[3]; gsub(/<!--[^>]*-->/, "", v); gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+          if (v != "") cur_fp = v
+        }
+      }
+      END {
+        flush_bug()
+        for (k in fp_cnt) {
+          fps++
+          if (fp_cnt[k] >= 2) reop++
+        }
+        printf "%d %d %d %d\n", bugs+0, escaped+0, fps+0, reop+0
+      }
+    ' "${_f_list[@]}" 2>/dev/null || echo "0 0 0 0")"
+  fi
+  [[ "$b_tot" -gt 0 ]] && erate=$(awk -v e="$b_esc" -v t="$b_tot" 'BEGIN{printf "%.2f", e/t}')
+  [[ "$fp_tot" -gt 0 ]] && rrate=$(awk -v r="$fp_re" -v t="$fp_tot" 'BEGIN{printf "%.2f", r/t}')
+  printf '%s %s %s %s %s %s' "$b_tot" "$b_esc" "$erate" "$fp_tot" "$fp_re" "$rrate"
+}
+
 emit_metrics() {
   local sum=0 jmode=0
   while [[ $# -gt 0 ]]; do
@@ -662,9 +1001,10 @@ emit_metrics() {
     echo "agent-gate: metrics --json requires --summary" >&2; exit 2
   fi
   if [[ "$sum" -eq 1 ]]; then
-    local _raw
+    local _raw _dm_bugs _dm_esc _dm_erate _dm_fps _dm_reop _dm_rrate
     _raw=$(_emit_metrics_jsonl)
-    awk -v jmode="$jmode" '
+    read -r _dm_bugs _dm_esc _dm_erate _dm_fps _dm_reop _dm_rrate <<< "$(_cold_defect_metrics)"
+    awk -v jmode="$jmode" -v dbugs="$_dm_bugs" -v desc="$_dm_esc" -v derate="$_dm_erate" -v dfps="$_dm_fps" -v dreop="$_dm_reop" -v drrate="$_dm_rrate" '
       function jesc(s) {
         gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/[\t\r\n]/, " ", s)
         return s
@@ -697,12 +1037,14 @@ emit_metrics() {
         top_code = "none"; top_n = 0
         for (k in frc) { if (frc[k] > top_n || (frc[k] == top_n && k < top_code)) { top_n = frc[k]; top_code = k } }
         if (jmode == 1) {
-          printf "{\"changes\":%d,\"by_risk\":{\"L0\":%d,\"L1\":%d,\"L2\":%d,\"L3\":%d},\"delivery_ready\":%d,\"review_rounds\":%d,\"findings_total\":%d,\"findings_introduced\":%d,\"findings_pre_existing\":%d,\"friction_events\":%d,\"top_friction\":\"%s\"}\n",
-            c, l0, l1, l2, l3, ready, rr, ftot, fint, fpre, fr_tot, jesc(top_code)
+          printf "{\"changes\":%d,\"by_risk\":{\"L0\":%d,\"L1\":%d,\"L2\":%d,\"L3\":%d},\"delivery_ready\":%d,\"review_rounds\":%d,\"findings_total\":%d,\"findings_introduced\":%d,\"findings_pre_existing\":%d,\"friction_events\":%d,\"top_friction\":\"%s\",\"bugs_total\":%d,\"escaped_bugs\":%d,\"escape_rate\":%s,\"fingerprints_total\":%d,\"reopened_fingerprints\":%d,\"same_fp_reopen_rate\":%s}\n",
+            c, l0, l1, l2, l3, ready, rr, ftot, fint, fpre, fr_tot, jesc(top_code),
+            dbugs+0, desc+0, derate, dfps+0, dreop+0, drrate
         } else {
           printf "metrics summary: changes=%d (L0=%d L1=%d L2=%d L3=%d) delivery_ready=%d\n", c, l0, l1, l2, l3, ready
           printf "metrics reviews: rounds=%d findings_total=%d introduced=%d pre_existing=%d\n", rr, ftot, fint, fpre
           printf "metrics friction: events=%d top=%s (%d)\n", fr_tot, top_code, top_n
+          printf "metrics defects: bugs=%d escaped=%d escape_rate=%s fingerprints=%d reopened=%d same_fp_reopen_rate=%s\n", dbugs+0, desc+0, derate, dfps+0, dreop+0, drrate
         }
       }
     ' <<< "$_raw"
@@ -957,7 +1299,9 @@ Usage:
   scripts/agent-gate advance [change-id]                     # v4.8.0: auto-advance next unpassed stage gate (ITEM-26)
   scripts/agent-gate next [change-id] [--json]               # v4.8.0: read-only state-machine wizard (ITEM-27)
   scripts/agent-gate fix [change-id]                         # v4.8.0: mechanical P00-P12 / RTVM / provenance fix (ITEM-28)
-  scripts/agent-gate record-red <change-id> -- <cmd>         # v4.8.0: record real non-zero red-first receipt (ITEM-21)
+  scripts/agent-gate record-red <change-id> [--layer unit|api|e2e|manual] [--target-tests <spec>] [--accept-unclassified <reason>] -- <cmd> # v4.8.0/v4.15.0: record classified red-first receipt
+  scripts/agent-gate record-green <change-id> -- <cmd>       # v4.15.0: record matching green receipt after tree change
+  scripts/agent-gate escape <BUG-id> --should-catch <layer>  # v4.15.0: register post-claim defect escape + eval case
   scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)

@@ -704,6 +704,77 @@ if [[ -f "$BFLOG" ]]; then
     rm -f "$g4_tmp"
   fi
   report "G4 newest BUG entry carries history-similarity field (incremental)" 1 "$g4_hist"
+  # E-7 / E-8 (v4.15.0, CHG-164): bugfix-log structure, reverse-chronological order, and 30d repeat-class countermeasure
+  g4_struct_bad=0; g4_order_bad=0; g4_class_bad=0
+  if grep -q '^### BUG-[0-9]' "$BFLOG" 2>/dev/null; then
+    read -r g4_struct_bad g4_order_bad g4_class_bad <<< "$(awk '
+      function daynum(ds,   a, y, m, d) {
+        if (split(ds, a, "-") != 3) return -1
+        y=a[1]+0; m=a[2]+0; d=a[3]+0
+        if (m <= 2) { y--; m += 12 }
+        return 365*y + int(y/4) - int(y/100) + int(y/400) + int((153*(m-3)+2)/5) + d
+      }
+      function flush_entry(   dn) {
+        if (cur_id == "") return
+        if (!has_tbl_sep || tbl_rows < 1) struct_bad++
+        if (cur_date != "") {
+          if (prev_date != "" && cur_date > prev_date) order_bad++
+          prev_date = cur_date
+          if (cur_cls != "" && cur_cls !~ /^</ && cur_cls !~ /false-green.*stale-snapshot/) {
+            dn = daynum(cur_date)
+            if (dn >= 0) {
+              n_cls++
+              c_cls[n_cls] = cur_cls
+              c_dn[n_cls] = dn
+              c_cm[n_cls] = cur_cm
+            }
+          }
+        }
+      }
+      /^### BUG-[0-9]/ {
+        flush_entry()
+        cur_id=$2; cur_date=""; cur_cls=""; cur_cm=""; has_tbl_sep=0; tbl_phase=0; tbl_rows=0
+        if (match($0, /20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) cur_date=substr($0, RSTART, RLENGTH)
+        next
+      }
+      cur_id != "" {
+        if ($0 ~ /^[[:space:]]*$/) next
+        if (tbl_phase == 0) {
+          if ($0 ~ /^[[:space:]]*\|/) { tbl_phase = 1 }
+          else { tbl_phase = -1 }
+        }
+        if (tbl_phase == 1) {
+          if ($0 ~ /^[[:space:]]*\|[[:space:]:-]+(\|[[:space:]:-]+)*\|?[[:space:]]*$/) { has_tbl_sep = 1 }
+          else if ($0 ~ /^[[:space:]]*\|/) {
+            if (has_tbl_sep == 1) tbl_rows++
+            split($0, c, "|")
+            k=c[2]; v=c[3]
+            gsub(/<!--[^>]*-->/,"",k); gsub(/^[[:space:]]+|[[:space:]]+$/,"",k)
+            gsub(/<!--[^>]*-->/,"",v); gsub(/^[[:space:]]+|[[:space:]]+$/,"",v)
+            if (k == "class") cur_cls = v
+            else if (k == "类级对策") cur_cm = v
+          } else {
+            tbl_phase = 2
+          }
+        }
+        if (cur_date == "" && match($0, /20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) cur_date=substr($0, RSTART, RLENGTH)
+      }
+      END {
+        flush_entry()
+        for (i = 1; i <= n_cls; i++) {
+          for (j = i + 1; j <= n_cls; j++) {
+            if (c_cls[i] == c_cls[j] && (c_dn[i] - c_dn[j] <= 30 && c_dn[j] - c_dn[i] <= 30)) {
+              if (c_cm[i] == "" || c_cm[i] ~ /^</ || c_cm[i] ~ /^首次出现/) { class_bad++; break }
+            }
+          }
+        }
+        printf "%d %d %d\n", struct_bad+0, order_bad+0, class_bad+0
+      }
+    ' "$BFLOG" 2>/dev/null || echo "0 0 0")"
+  fi
+  report "G4 bugfix-log entries have intact heading+table structure" 0 "$g4_struct_bad"
+  report "G4 bugfix-log entries are in reverse-chronological order" 0 "$g4_order_bad"
+  report "G4 bugfix-log repeat class within 30d carries class countermeasure" 0 "$g4_class_bad"
   # 两个方向都必须遍历**全树** changelog，而不只是功能目录：变更轨的 09-changelog
   # 落在 <change_root>/<变更号>/（深度 2），而旧实现只看 <docs>/ 下一层的
   # `$c/09-changelog.md`。**同一根因**造成一对不对称的假判定：
