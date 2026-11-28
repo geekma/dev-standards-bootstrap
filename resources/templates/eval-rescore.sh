@@ -60,6 +60,8 @@ receipt="$root/.agent-state/eval-score-receipt.json"
 face="$root"
 dry=0
 update=0
+recall_dir=""
+recall_min="${AGENT_GUARD_EVAL_MIN_CASES:-10}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,6 +75,14 @@ while [[ $# -gt 0 ]]; do
         --face) face=$1 ;;
       esac ;;
     --update-baseline) update=1 ;;
+    --recall-eval)
+      shift
+      [[ $# -gt 0 ]] || { echo "eval-rescore: --recall-eval requires a reviews dir" >&2; exit 2; }
+      recall_dir=$1 ;;
+    --min-cases)
+      shift
+      [[ $# -gt 0 && "$1" =~ ^[0-9]+$ ]] || { echo "eval-rescore: --min-cases requires an integer" >&2; exit 2; }
+      recall_min=$1 ;;
     --dry-run) dry=1 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "eval-rescore: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -109,6 +119,28 @@ if [[ -z "$docs_dir" && -f "$face/.agent-governance.yml" ]]; then
   docs_dir=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+docs:[[:space:]]*([^#]*).*$/\1/p' "$face/.agent-governance.yml" 2>/dev/null | head -n 1 | tr -d "[:space:]\"'" || true)
 fi
 [[ -n "$docs_dir" ]] || docs_dir=docs
+
+# ---- G-8 (v4.17.0, CHG-167): offline deterministic reviewer recall -----------------
+# Corpus = docs/bugs/BUG-*/01-diagnosis.md carrying an `anchor: <token>` line. A bug is
+# recalled when ANY review file under <dir> mentions its anchor (multi-reviewer hits on one
+# bug count once). cases_total < --min-cases is reported `insufficient` and never a verdict.
+if [[ -n "$recall_dir" ]]; then
+  [[ -d "$recall_dir" ]] || { echo "eval-rescore: reviews dir not found: $recall_dir" >&2; exit 2; }
+  r_total=0; r_hit=0
+  for _bf in "$root/$docs_dir"/bugs/*/01-diagnosis.md; do
+    [[ -f "$_bf" ]] || continue
+    _anc=$(sed -n 's/^[-*[:space:]]*anchor:[[:space:]]*\([^[:space:]]*\).*/\1/p' "$_bf" | head -1)
+    [[ -n "$_anc" ]] || continue
+    r_total=$((r_total + 1))
+    if grep -rqF -- "$_anc" "$recall_dir" 2>/dev/null; then r_hit=$((r_hit + 1)); fi
+  done
+  r_miss=$((r_total - r_hit))
+  r_status=ok
+  [[ "$r_total" -lt "$recall_min" ]] && r_status=insufficient
+  if [[ "$r_total" -eq 0 ]]; then r_rate=null; else r_rate=$(awk -v h="$r_hit" -v t="$r_total" 'BEGIN { printf "%.4f", h / t }'); fi
+  printf '{"status":"%s","cases_total":%d,"recalled":%d,"missed":%d,"recall":%s,"min_cases":%d}\n' "$r_status" "$r_total" "$r_hit" "$r_miss" "$r_rate" "$recall_min"
+  exit 0
+fi
 
 face_list=""
 face_add() { # <installed-relative> [<source-relative>]
@@ -158,8 +190,12 @@ if [[ -s "$baseline" ]]; then
   fi
 fi
 
+sample_min="${AGENT_GUARD_EVAL_MIN_CASES:-10}"
+[[ "$sample_min" =~ ^[0-9]+$ ]] || sample_min=10
+sample_status=sufficient
+[[ "$cases_total" -lt "$sample_min" ]] && sample_status=insufficient
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
-line="{\"cases_total\":$cases_total,\"covered\":$covered,\"missed\":$missed,\"score\":$score,\"config_sha\":\"$config_sha\",\"member_cksum\":\"$member_cksum\",\"commit_sha\":\"$commit_sha\",\"baseline_present\":$baseline_present,\"stale\":$stale,\"generated_at\":\"$now\"}"
+line="{\"cases_total\":$cases_total,\"covered\":$covered,\"missed\":$missed,\"score\":$score,\"config_sha\":\"$config_sha\",\"member_cksum\":\"$member_cksum\",\"commit_sha\":\"$commit_sha\",\"baseline_present\":$baseline_present,\"stale\":$stale,\"generated_at\":\"$now\",\"sample_status\":\"$sample_status\"}"
 
 if [[ "$dry" = 1 ]]; then
   printf '%s\n' "$line"

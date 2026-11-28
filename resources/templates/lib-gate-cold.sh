@@ -1003,8 +1003,13 @@ emit_metrics() {
   if [[ "$sum" -eq 1 ]]; then
     local _raw _dm_bugs _dm_esc _dm_erate _dm_fps _dm_reop _dm_rrate
     _raw=$(_emit_metrics_jsonl)
+    _rv_recall=null
+    if [[ -s "${repo_root:-.}/.agent-state/eval-score-receipt.json" ]] && ! grep -q '"sample_status":"insufficient"' "${repo_root:-.}/.agent-state/eval-score-receipt.json" 2>/dev/null; then
+      _rv_recall=$(sed -n 's/.*"score":\([0-9.]*\),.*/\1/p' "${repo_root:-.}/.agent-state/eval-score-receipt.json" | head -1)
+      [[ -n "$_rv_recall" ]] || _rv_recall=null
+    fi
     read -r _dm_bugs _dm_esc _dm_erate _dm_fps _dm_reop _dm_rrate <<< "$(_cold_defect_metrics)"
-    awk -v jmode="$jmode" -v dbugs="$_dm_bugs" -v desc="$_dm_esc" -v derate="$_dm_erate" -v dfps="$_dm_fps" -v dreop="$_dm_reop" -v drrate="$_dm_rrate" '
+    awk -v jmode="$jmode" -v rrecall="$_rv_recall" -v dbugs="$_dm_bugs" -v desc="$_dm_esc" -v derate="$_dm_erate" -v dfps="$_dm_fps" -v dreop="$_dm_reop" -v drrate="$_dm_rrate" '
       function jesc(s) {
         gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/[\t\r\n]/, " ", s)
         return s
@@ -1019,7 +1024,7 @@ emit_metrics() {
         else if ($0 ~ /"risk_level":"L2"/) l2++
         else if ($0 ~ /"risk_level":"L3"/) l3++
         if ($0 ~ /"delivery_ready":true/) ready++
-        if (match($0, /"review_rounds":[0-9]+/)) { rr += substr($0, RSTART+16, RLENGTH-16)+0 }
+        if (match($0, /"review_rounds":[0-9]+/)) { rv = substr($0, RSTART+16, RLENGTH-16)+0; rr += rv; if (rv <= 1) fpc++ }
         if (match($0, /"findings_total":[0-9]+/)) { ftot += substr($0, RSTART+17, RLENGTH-17)+0 }
         if (match($0, /"findings_introduced":[0-9]+/)) { fint += substr($0, RSTART+22, RLENGTH-22)+0 }
         if (match($0, /"findings_pre_existing":[0-9]+/)) { fpre += substr($0, RSTART+24, RLENGTH-24)+0 }
@@ -1035,15 +1040,17 @@ emit_metrics() {
       }
       END {
         top_code = "none"; top_n = 0
+        if (c > 0) { ravg = sprintf("%.2f", rr / c); fprate = sprintf("%.4f", fpc / c) } else { ravg = "null"; fprate = "null" }
         for (k in frc) { if (frc[k] > top_n || (frc[k] == top_n && k < top_code)) { top_n = frc[k]; top_code = k } }
         if (jmode == 1) {
-          printf "{\"changes\":%d,\"by_risk\":{\"L0\":%d,\"L1\":%d,\"L2\":%d,\"L3\":%d},\"delivery_ready\":%d,\"review_rounds\":%d,\"findings_total\":%d,\"findings_introduced\":%d,\"findings_pre_existing\":%d,\"friction_events\":%d,\"top_friction\":\"%s\",\"bugs_total\":%d,\"escaped_bugs\":%d,\"escape_rate\":%s,\"fingerprints_total\":%d,\"reopened_fingerprints\":%d,\"same_fp_reopen_rate\":%s}\n",
+          printf "{\"changes\":%d,\"by_risk\":{\"L0\":%d,\"L1\":%d,\"L2\":%d,\"L3\":%d},\"delivery_ready\":%d,\"review_rounds\":%d,\"findings_total\":%d,\"findings_introduced\":%d,\"findings_pre_existing\":%d,\"friction_events\":%d,\"top_friction\":\"%s\",\"bugs_total\":%d,\"escaped_bugs\":%d,\"escape_rate\":%s,\"fingerprints_total\":%d,\"reopened_fingerprints\":%d,\"same_fp_reopen_rate\":%s,\"rework_rounds_avg\":%s,\"first_pass_rate\":%s,\"review_recall\":%s}\n",
             c, l0, l1, l2, l3, ready, rr, ftot, fint, fpre, fr_tot, jesc(top_code),
-            dbugs+0, desc+0, derate, dfps+0, dreop+0, drrate
+            dbugs+0, desc+0, derate, dfps+0, dreop+0, drrate, ravg, fprate, rrecall
         } else {
           printf "metrics summary: changes=%d (L0=%d L1=%d L2=%d L3=%d) delivery_ready=%d\n", c, l0, l1, l2, l3, ready
           printf "metrics reviews: rounds=%d findings_total=%d introduced=%d pre_existing=%d\n", rr, ftot, fint, fpre
           printf "metrics friction: events=%d top=%s (%d)\n", fr_tot, top_code, top_n
+          printf "metrics review: rework_rounds_avg=%s first_pass_rate=%s review_recall=%s\n", ravg, fprate, rrecall
           printf "metrics defects: bugs=%d escaped=%d escape_rate=%s fingerprints=%d reopened=%d same_fp_reopen_rate=%s\n", dbugs+0, desc+0, derate, dfps+0, dreop+0, drrate
         }
       }
@@ -1848,6 +1855,392 @@ _cold_ui_baseline_verify() { # <d> <id> <risk> <active_416> <res05> <res07>
   fi
 }
 
+# ---- Batch G (v4.17.0, CHG-167): holistic view, handoff brief, context pack -----------
+# Mechanical cross-reference checks only (hash / set difference / path existence / field
+# non-empty). Whether the content is GOOD stays with the independent review (G-9 scorecard).
+_cold_sha_stdin() {
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print $1}'
+  else cksum | awk '{print $1"-"$2}'; fi
+}
+
+_cold_hol_enforce() { # <tag> <id> <risk> <msg> <kind: stage|e85|e137|e152>
+  local tag="$1" id="$2" risk="$3" msg="$4" kind="$5" ratchet=0
+  if [[ "$risk" == "L0" ]]; then echo "agent-gate: NOTE holistic ($tag): $msg" >&2; return 0; fi
+  [[ "$risk" == "L3" ]] && ratchet=1
+  [[ "$risk" == "L2" && "${AGENT_GUARD_HOLISTIC_BASELINE:-}" == "ratchet" ]] && ratchet=1
+  # G-3 is a deterministic set difference: direct ratchet from L2 (design §G-3 tiering).
+  [[ "$kind" == "e152" && "$risk" == "L2" ]] && ratchet=1
+  if [[ "$ratchet" -eq 1 ]]; then
+    case "$kind" in
+      e85)  die_e85 "$msg (holistic $tag; standards G-6/G-9)" ;;
+      e137) die_e137 "$msg (holistic $tag; standards G-13)" ;;
+      e152) die_e152 "$msg (holistic $tag; standards G-3; fix: list the file in 02 affected_files or in 03 「追加影响」 with 02-revisited: yes)" ;;
+      *)    stage_gate_fail "holistic/$tag" "$msg" "the named 00/03/04/07 section" ;;
+    esac
+  fi
+  _cold_ui_friction "HOLISTIC_${tag}" "$id" "$risk" "$msg"
+}
+
+_cold_strip_comments() { # <file> -> stdout with HTML comments stripped (supports cold unit calls too)
+  [[ -f "$1" ]] || return 0
+  awk '{ l=$0; while(1){ if(c){p=index(l,"-->"); if(!p){l="";break}; l=substr(l,p+3); c=0} p=index(l,"<!--"); if(!p) break; q=index(substr(l,p+4),"-->"); if(q) l=substr(l,1,p-1) substr(l,p+4+q+2); else {l=substr(l,1,p-1); c=1; break} } print l }' "$1" 2>/dev/null
+}
+
+# section body under a heading containing <keyword>, HTML comments (also multi-line) stripped
+_cold_sec() { # <file> <keyword>
+  [[ -f "$1" ]] || return 0
+  _cold_strip_comments "$1" | awk -v k="$2" '
+    { if ($0 ~ /^##+ / && index($0, k)) { f = 1; next }
+      if (f && $0 ~ /^## /) exit
+      if (f) print $0
+    }' 2>/dev/null
+}
+
+_cold_tc_exists() { # <04-file> <TC-id>
+  grep -qE "$2([^0-9A-Za-z]|\$)" "$1" 2>/dev/null
+}
+
+_cold_hol_g1() { # <d> <id> <risk> <act>
+  local d="$1" id="$2" risk="$3" act="$4" sec msg="" inv inv_n=0 line t refd tok p01 p12
+  sec=$(_cold_sec "$d/00-intent.md" "变更定位卡")
+  if [[ -z "$(printf '%s' "$sec" | tr -d '[:space:]')" ]]; then
+    [[ "$act" -eq 1 ]] && _cold_hol_enforce G1 "$id" "$risk" "00-intent.md lacks 「变更定位卡」 (G-1: goal chain / position / up-downstream / invariants<=5 / non-goals / rollback)" stage
+    return 0
+  fi
+  p01="${docs_dir:-docs}/project/P01-requirements-master.md"; p12="${docs_dir:-docs}/project/P12-product-context.md"
+  if [[ -s "$p01" || -s "$p12" ]]; then
+    for tok in $(printf '%s\n' "$sec" | grep -E '目标链' | grep -oE '(REQ|OBJ)-[A-Za-z0-9]+' || true); do
+      grep -qF -- "$tok" "$p01" "$p12" 2>/dev/null || msg="${msg}goal-chain anchor $tok not found in P01/P12; "
+    done
+  fi
+  inv=$(printf '%s\n' "$sec" | awk '/不变量/{f=1;next} f && /^[-*][[:space:]]/{exit} f && /^[[:space:]]+[-*][[:space:]]/{print}')
+  inv_n=$(printf '%s\n' "$inv" | grep -c . || true)
+  [[ "$inv_n" -le 5 ]] || msg="${msg}${inv_n} invariants declared (max 5); "
+  while IFS= read -r line; do
+    [[ -n "$line" ]] || continue
+    refd=0
+    for t in $(printf '%s\n' "$line" | grep -oE 'TC-[0-9A-Za-z]+|INV-[0-9A-Za-z]+' || true); do
+      _cold_tc_exists "$d/04-test-scripts.md" "$t" && refd=1
+    done
+    [[ "$refd" -eq 1 ]] || msg="${msg}invariant not referenced by any TC in 04 (${line# }); "
+  done <<< "$inv"
+  [[ -z "$msg" ]] || _cold_hol_enforce G1 "$id" "$risk" "00-intent 「变更定位卡」: ${msg%; }" stage
+}
+
+_cold_hol_g2() { # <d> <id> <risk> <act>
+  local d="$1" id="$2" risk="$3" act="$4" sec items n msg="" seen=" " item key
+  sec=$(_cold_sec "$d/03-modification-plan.md" "Pre-Mortem")
+  if [[ -z "$(printf '%s' "$sec" | tr -d '[:space:]')" ]]; then
+    [[ "$act" -eq 1 ]] && _cold_hol_enforce G2 "$id" "$risk" "03-modification-plan.md lacks 「设计 Pre-Mortem」 (G-2: 3 failure hypotheses, each mapped to a distinct TC or monitor id)" stage
+    return 0
+  fi
+  items=$(printf '%s\n' "$sec" | grep -E '^[[:space:]]*([0-9]+[.)]|[-*])[[:space:]]+' || true)
+  n=$(printf '%s\n' "$items" | grep -c . || true)
+  [[ "$n" -ge 3 ]] || msg="only $n pre-mortem item(s) (need 3); "
+  while IFS= read -r item; do
+    [[ -n "$item" ]] || continue
+    key=$(printf '%s\n' "$item" | grep -oE 'TC-[0-9A-Za-z]+|MON-[A-Za-z0-9-]+' | head -1 || true)
+    if [[ -z "$key" ]]; then msg="${msg}item without TC/MON mapping; "; continue; fi
+    case "$key" in
+      TC-*) _cold_tc_exists "$d/04-test-scripts.md" "$key" || msg="${msg}mapped $key does not exist in 04; " ;;
+      *)    { local _mf _mhit=0
+              for _mf in "$d"/*.md "${docs_dir:-docs}/project/"*.md; do
+                [[ -f "$_mf" ]] || continue
+                case "$_mf" in */03-modification-plan.md|*/03.5-tasks.md) continue ;; esac
+                if grep -qF -- "$key" "$_mf" 2>/dev/null; then _mhit=1; break; fi
+              done
+              [[ "$_mhit" -eq 1 ]]
+            } || msg="${msg}mapped $key not found in 04/deploy/project docs; " ;;
+    esac
+    case "$seen" in *" $key "*) msg="${msg}$key used by more than one item; " ;; esac
+    seen="${seen}${key} "
+  done <<< "$items"
+  [[ -z "$msg" ]] || _cold_hol_enforce G2 "$id" "$risk" "03 「设计 Pre-Mortem」: ${msg%; }" stage
+}
+
+_cold_hol_g3() { # <d> <id> <risk>
+  local d="$1" id="$2" risk="$3" f02="$1/02-code-impact-analysis.md" rr="${repo_root:-.}" decl tok f hit undecl="" add miss=""
+  [[ -f "$f02" ]] || return 0
+  decl=$( { _cold_sec "$f02" "受影响文件清单"; { _cold_strip_comments "$f02" | grep -E 'affected_files:' | sed 's/.*affected_files://'; } || true; } | tr ',;' '  ' | sed 's/^[[:space:]]*[-*][[:space:]]*//' )
+  decl=$(printf '%s\n' "$decl" | tr -s '[:space:]' '\n' | grep -vE '^$|<|^-$|^affected_files:?$' | grep -E '[/.]' || true)
+  [[ -n "$decl" ]] || return 0
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    is_code_path "$f" || continue
+    case "$f" in tests/*|test/*|*.lock|SHA256SUMS) continue ;; esac
+    hit=0
+    for tok in $decl; do
+      if [[ "$f" == "$tok" || "$f" == "${tok%/}/"* ]]; then hit=1; break; fi
+    done
+    [[ "$hit" -eq 1 ]] || undecl="${undecl}${f} "
+  done < <( { git -C "$rr" diff --name-only HEAD 2>/dev/null; git -C "$rr" ls-files --others --exclude-standard 2>/dev/null; } | LC_ALL=C sort -u )
+  [[ -n "$undecl" ]] || return 0
+  add=$(_cold_sec "$d/03-modification-plan.md" "追加影响")
+  for f in $undecl; do grep -qF -- "$f" <<< "$add" || miss="${miss}${f} "; done
+  grep -qE '02-revisited:[[:space:]]*yes' <<< "$add" || miss="${miss}(02-revisited: yes) "
+  [[ -z "$miss" ]] || _cold_hol_enforce G3 "$id" "$risk" "changed source file(s) not in 02 affected_files: ${undecl% } — 03 「追加影响」 must name them and carry '02-revisited: yes' (missing: ${miss% })" e152
+}
+
+_cold_brief_sha() { # <d> <stage>
+  local f
+  for f in $(dispatch_needs "$2"); do cat "$1/$f" 2>/dev/null || true; done | _cold_sha_stdin
+}
+
+_cold_hol_g5() { # <d> <id> <risk>
+  local d="$1" id="$2" risk="$3" bf stage tgt bsha cur f ack asha claims c row a s note rows=0 acc=0 anchors=" " msg
+  for bf in "$d"/handoffs/stage-*.brief.md; do
+    [[ -f "$bf" ]] || continue
+    stage=$(basename "$bf" .brief.md); stage=${stage#stage-}
+    case "$stage" in code) tgt=04.5-coding-record.md ;; test) tgt=05-test-results.md ;; review) tgt=07-review-report.md ;; delivery) tgt=09-changelog.md ;; *) continue ;; esac
+    msg=""
+    bsha=$(sed -n 's/^- brief_sha:[[:space:]]*\([a-f0-9-]*\).*/\1/p' "$bf" | head -1)
+    cur=$(_cold_brief_sha "$d" "$stage")
+    f="$d/$tgt"
+    ack=$(grep -oE "<!-- ack stage=${stage} brief_sha=[a-f0-9-]+ -->" "$f" 2>/dev/null | head -1 || true)
+    if [[ -z "$ack" ]]; then
+      msg="$tgt lacks '<!-- ack stage=$stage brief_sha=<sha> -->' for handoffs/stage-$stage.brief.md"
+    else
+      asha=${ack##*brief_sha=}; asha=${asha%% *}
+      if [[ "$asha" != "$cur" || "$bsha" != "$cur" ]]; then
+        msg="stage-$stage brief/ack hash is stale — upstream artifacts changed after the brief; re-run 'agent-gate brief $stage $id' and re-acknowledge"
+      else
+        claims=$(sed -n 's/^- claim:[[:space:]]*\(.*\)$/\1/p' "$bf")
+        rows=0; acc=0; anchors=" "
+        for c in $claims; do
+          row=$(grep -E "^\|[[:space:]]*${c}[[:space:]]*\|" "$f" 2>/dev/null | head -1 || true)
+          if [[ -z "$row" ]]; then msg="${msg}claim $c has no ack row; "; continue; fi
+          a=$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3}')
+          s=$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}')
+          note=$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5}')
+          case "$s" in 接受|质疑|无法验证) ;; *) msg="${msg}claim $c stance must be 接受/质疑/无法验证; " ;; esac
+          [[ -n "$a" ]] || msg="${msg}claim $c has empty anchor; "
+          case "$a" in */*|*.*)
+            local _ap="${a%%:*}"; _ap="${_ap%%#*}"
+            [[ -e "$d/$_ap" || -e "${repo_root:-.}/$_ap" ]] || msg="${msg}claim $c anchor $a does not exist; " ;;
+          esac
+          if [[ "$s" == "质疑" || "$s" == "无法验证" ]]; then [[ -n "$note" ]] || msg="${msg}claim $c ($s) needs evidence/gap note; "; fi
+          rows=$((rows + 1)); [[ "$s" == "接受" ]] && acc=$((acc + 1))
+          case "$anchors" in *" $a "*) ;; *) anchors="${anchors}${a} " ;; esac
+        done
+        if [[ -z "$msg" && "$rows" -ge 2 && "$acc" -eq "$rows" && "$(printf '%s' "$anchors" | wc -w | tr -d '[:space:]')" -eq 1 ]]; then
+          _cold_ui_friction "HOLISTIC_G5_RUBBERSTAMP" "$id" "$risk" "stage-$stage ack: every claim 接受 on the same anchor — possible rubber stamp"
+        fi
+      fi
+    fi
+    [[ -z "$msg" ]] || _cold_hol_enforce G5 "$id" "$risk" "handoff stage-$stage: ${msg%; }" stage
+  done
+}
+
+_cold_hol_g6() { # <d> <id> <risk>
+  local d="$1" id="$2" risk="$3" raw did ledger="${repo_root:-.}/.agent-state/dispatch-ledger.tsv"
+  raw=$(_cold_strip_comments "$d/07-review-report.md" | grep -oE 'dispatch_id(:|：)[[:space:]]*[A-Za-z0-9._-]+' | head -1 || true)
+  if [[ -z "$raw" ]]; then
+    if [[ -s "$ledger" ]] && awk -F'\t' -v c="$id" 'NR>1 && $2 == c {f = 1; exit} END {exit f ? 0 : 1}' "$ledger" 2>/dev/null; then
+      _cold_hol_enforce G6 "$id" "$risk" "dispatch-ledger.tsv has a --pack dispatch for $id, but 07-review-report.md omits 'dispatch_id: <id>'" e85
+    fi
+    return 0
+  fi
+  did=$(printf '%s' "$raw" | grep -oE '[A-Za-z0-9._-]+$')
+  if ! awk -F'\t' -v i="$did" -v c="$id" '$5 == i && $2 == c {f = 1} END {exit f ? 0 : 1}' "$ledger" 2>/dev/null; then
+    _cold_hol_enforce G6 "$id" "$risk" "07 cites dispatch_id $did which is absent from .agent-state/dispatch-ledger.tsv or belongs to another change" e85
+  fi
+}
+
+_cold_hol_g9() { # <d> <id> <risk>
+  local d="$1" id="$2" risk="$3" sec row dim score evid tok msg="" rr="${repo_root:-.}" min=1 scored=0
+  sec=$(_cold_sec "$d/07-review-report.md" "锚定评分卡")
+  [[ -n "$(printf '%s' "$sec" | tr -d '[:space:]')" ]] || return 0
+  [[ "$risk" == "L3" ]] && min=2
+  while IFS= read -r row; do
+    dim=$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2}')
+    score=$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $3); print $3}')
+    evid=$(printf '%s' "$row" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}')
+    [[ "$dim" == "维度" || "$dim" == *"维度"* ]] && continue
+    if ! [[ "$score" =~ ^[0-9]+$ ]]; then
+      msg="${msg}${dim:-row}: missing or invalid score '${score}' (expected 0..3); "
+      continue
+    fi
+    scored=$((scored + 1))
+    if [[ "$score" -gt 3 ]]; then msg="${msg}${dim}: score $score outside 0..3; "; continue; fi
+    if [[ "$score" -gt 0 ]]; then
+      tok=$(printf '%s' "$evid" | grep -oE '[A-Za-z0-9_./-]+' | head -1 || true); tok=${tok%%:*}
+      if [[ -z "$tok" ]]; then msg="${msg}${dim}: non-zero score without evidence; "
+      elif [[ ! -e "$rr/$tok" && ! -e "$d/$tok" ]] && ! { [[ "$tok" == TC-* ]] && _cold_tc_exists "$d/04-test-scripts.md" "$tok"; }; then
+        msg="${msg}${dim}: evidence ref '$tok' does not resolve; "
+      fi
+    fi
+    [[ "$score" -ge "$min" ]] || msg="${msg}${dim}: score $score below the ${risk} threshold $min; "
+  done < <(printf '%s\n' "$sec" | grep -E '^\|' | grep -v -- '---' || true)
+  [[ "$scored" -gt 0 ]] || msg="${msg}empty scorecard (at least 1 scored row required); "
+  [[ -z "$msg" ]] || _cold_hol_enforce G9 "$id" "$risk" "07 「锚定评分卡」: ${msg%; }" e85
+}
+
+_cold_model_of() { # <07> <label-regex> -> model field of 'label：platform / model / id'
+  local line v
+  line=$(_cold_strip_comments "$1" | grep -E "${2}(\*\*)?[[:space:]]*(:|：)" | head -1 || true)
+  [[ -n "$line" ]] || { printf ''; return 0; }
+  v="${line#*：}"; [[ "$v" == "$line" ]] && v="${line#*:}"
+  printf '%s' "$v" | awk -F'/' '{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2}'
+}
+
+_cold_model_family() { # <model-id> -> canonical vendor/family token (or "")
+  local lm; lm=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+  case "$lm" in
+    gpt-*|o[1345]|o[1345]-*|4o*|chatgpt*) printf 'openai' ;;
+    *claude*|*sonnet*|*opus*|*haiku*)     printf 'anthropic' ;;
+    *gemini*|*palm*|*-pro|*pro-*|*flash*|*ultra*) printf 'google' ;;
+    *deepseek*)                           printf 'deepseek' ;;
+    *qwen*)                               printf 'qwen' ;;
+    *llama*)                              printf 'meta' ;;
+    *mistral*|*codestral*|*mixtral*)      printf 'mistral' ;;
+    *grok*)                               printf 'xai' ;;
+    *) printf '%s' "$lm" | sed 's/^[^a-z]*//; s/[^a-z].*$//' ;;
+  esac
+}
+
+_cold_hol_models() { # <d> <id> <risk>
+  local d="$1" id="$2" risk="$3" f="$1/07-review-report.md" am rm fa fr
+  [[ -f "$f" ]] || return 0
+  am=$(_cold_model_of "$f" "生产(模型|主体)"); rm=$(_cold_model_of "$f" "评审(模型|主体)")
+  if [[ -z "$am" || "$am" == "unknown" || -z "$rm" || "$rm" == "unknown" ]]; then
+    [[ "$risk" == "L2" || "$risk" == "L3" ]] && _cold_ui_friction "HOLISTIC_MODEL_UNKNOWN" "$id" "$risk" "07 does not record a known producer/reviewer model_id (G-10); cross-family check (G-13) degraded to a hint"
+    return 0
+  fi
+  fa=$(_cold_model_family "$am"); fr=$(_cold_model_family "$rm")
+  if [[ "$risk" == "L3" && ( "$am" == "$rm" || ( -n "$fa" && "$fa" == "$fr" ) ) ]]; then
+    _cold_hol_enforce MODEL "$id" "$risk" "L3 review uses the same model family as the author (producer '$am' vs reviewer '$rm'); L3 requires a different family (G-13)" e137
+  fi
+}
+
+_cold_holistic_verify() { # <d> <id> <risk> <armed-by-version>
+  local d="$1" id="$2" risk="$3" act="$4"
+  [[ "$risk" == "L0" ]] && return 0
+  _cold_hol_g1 "$d" "$id" "$risk" "$act"
+  _cold_hol_g2 "$d" "$id" "$risk" "$act"
+  _cold_hol_g3 "$d" "$id" "$risk"
+  _cold_hol_g5 "$d" "$id" "$risk"
+  _cold_hol_g6 "$d" "$id" "$risk"
+  _cold_hol_g9 "$d" "$id" "$risk"
+  _cold_hol_models "$d" "$id" "$risk"
+}
+
+seed_context_cmd() {
+  cat <<'EOF'
+agent-gate seed-context — task sheet for the CURRENT session's AI (this command calls no model).
+1. Read: README*, AGENTS.md, dependency manifests (package.json / go.mod / pyproject.toml / pom.xml ...),
+   the directory tree (2 levels), existing ADRs.
+2. Draft with evidence (every module/interface entry MUST carry `(src: <existing repo path>)`):
+   - P12 product context  — who uses it, for what, business goals (OBJ-xxx ids)
+   - P02 architecture     — modules / layers / dependency direction
+   - P03 interface registry — public interfaces, callers
+3. Put `<!-- ai-drafted-unconfirmed -->` on top of each drafted file.
+4. The USER reviews, then runs: scripts/agent-gate confirm-context <user>
+   (rejects entries whose src: path does not exist; stamps confirmed-by + context_sha256).
+EOF
+}
+
+confirm_context_cmd() { # <user>
+  local user="${1:-}" rr="${repo_root:-.}" pd="${docs_dir:-docs}/project" f p bad=0 tmp sha ts
+  [[ -n "$user" ]] || { echo "agent-gate: usage: confirm-context <user>" >&2; exit 2; }
+  for f in P02-architecture-master.md P03-interface-registry.md; do
+    [[ -s "$pd/$f" ]] || continue
+    for p in $(grep -oE 'src:[[:space:]]*[^)[:space:]]+' "$pd/$f" | sed 's/^src:[[:space:]]*//'); do
+      [[ -e "$rr/$p" ]] || { echo "agent-gate: confirm-context: $f cites src: $p which does not exist — invalid entry (G-7)" >&2; bad=1; }
+    done
+  done
+  [[ "$bad" -eq 0 ]] || exit 2
+  ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  for f in P12-product-context.md P02-architecture-master.md P03-interface-registry.md; do
+    [[ -s "$pd/$f" ]] || continue
+    tmp="$pd/$f.tmp.$$"
+    sed '/<!-- ai-drafted-unconfirmed -->/d; /<!-- confirmed-by:/d' "$pd/$f" > "$tmp"
+    sha=$(_cold_sha_stdin < "$tmp")
+    printf '<!-- confirmed-by: %s@%s context_sha256=%s -->\n' "$user" "$ts" "$sha" >> "$tmp"
+    mv -f "$tmp" "$pd/$f"
+  done
+  echo "agent-gate: confirm-context: stamped by $user at $ts"
+}
+
+brief_cmd() { # <stage> [CHG]
+  local stage="${1:-}" cid="${2:-}" d needs sha reqs des c
+  needs=$(dispatch_needs "$stage")
+  [[ -n "$needs" ]] || { echo "agent-gate: usage: brief <exploration|intent|spec|impact|design|testplan|code|test|review|delivery> [CHG]" >&2; exit 2; }
+  [[ -n "$cid" ]] || cid=$(active_change_quiet)
+  d=$(change_dir "$cid")
+  [[ -n "$cid" && -d "$d" ]] || { echo "agent-gate: brief: change '${cid:-<none>}' has no directory" >&2; exit 2; }
+  sha=$(_cold_brief_sha "$d" "$stage")
+  reqs=$(grep -oE 'REQ-[0-9]+' "$d/01-spec.md" 2>/dev/null | LC_ALL=C sort -u || true)
+  des=$(grep -oE 'DES-[0-9]+' "$d/03-modification-plan.md" 2>/dev/null | LC_ALL=C sort -u || true)
+  mkdir -p "$d/handoffs"
+  {
+    printf '# stage-%s brief (%s)\n\n' "$stage" "$cid"
+    printf -- '- brief_sha: %s\n- stage: %s\n- upstream: %s\n\n## claims\n' "$sha" "$stage" "$needs"
+    for c in $reqs $des; do printf -- '- claim: %s\n' "$c"; done
+  } > "$d/handoffs/stage-$stage.brief.md"
+  echo "agent-gate: brief written -> $d/handoffs/stage-$stage.brief.md (downstream artifact must carry: <!-- ack stage=$stage brief_sha=$sha --> + one row per claim)"
+}
+
+_cold_ctx_confirmed() { # -> 0 when P12/P02/P03 that exist all carry a matching confirmed-by marker
+  local pd="${docs_dir:-docs}/project" f mk want got any=0
+  for f in P12-product-context.md P02-architecture-master.md P03-interface-registry.md; do
+    [[ -s "$pd/$f" ]] || continue
+    any=1
+    mk=$(grep -m1 '<!-- confirmed-by:' "$pd/$f" 2>/dev/null || true)
+    [[ -n "$mk" ]] || return 1
+    want=${mk##*context_sha256=}; want=${want%% *}
+    got=$(sed '/<!-- ai-drafted-unconfirmed -->/d; /<!-- confirmed-by:/d' "$pd/$f" | _cold_sha_stdin)
+    [[ "$want" == "$got" ]] || return 1
+  done
+  [[ "$any" -eq 1 ]]
+}
+
+dispatch_pack_run() { # <stage> <id> — writes the pack + ledger row (plain dispatch stays print-only)
+  local stage="$1" id="$2" d rec risk out gtxt gaps_n psha did conf rr="${repo_root:-.}" dir ledger ts
+  d=$(change_dir "$id")
+  rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+  risk=$(json_field "$rec" risk_level 2>/dev/null || true)
+  out=$(dispatch_run "$stage" "$id" text)
+  gtxt=$(printf '%s\n' "$out" | grep -E '^- \[gap\]' || true)
+  gaps_n=$(printf '%s\n' "$gtxt" | grep -c . || true)
+  if [[ "$gaps_n" -gt 0 ]]; then
+    printf '%s\n' "$gtxt" >&2
+    if [[ "$risk" == "L2" || "$risk" == "L3" ]]; then
+      echo "agent-gate: dispatch --pack refused — $gaps_n context gap(s) at $risk; establish context first: scripts/agent-gate seed-context (G-6/G-7)" >&2
+      exit 2
+    fi
+    echo "agent-gate: WARN dispatch --pack: $gaps_n context gap(s) at ${risk:-unknown} (advisory below L2)" >&2
+  fi
+  conf=false; _cold_ctx_confirmed && conf=true
+  psha=$(printf '%s' "$out" | _cold_sha_stdin | cut -c1-16)
+  ts=$(date -u +%Y%m%d%H%M%S 2>/dev/null || echo 0)
+  did="DISP-${ts}-${psha:0:8}"
+  dir="$rr/.agent-state/dispatch"; ledger="$rr/.agent-state/dispatch-ledger.tsv"
+  mkdir -p "$dir"
+  {
+    printf '<!-- dispatch_id: %s prompt_sha: %s -->\n' "$did" "$psha"
+    [[ "$conf" == true ]] || printf '> 项目背景总册未经确认（ai-drafted-unconfirmed 或确认后被改动）——评审者须据此降低对背景的信任。\n\n'
+    printf '%s\n' "$out"
+  } > "$dir/$did.md"
+  [[ -s "$ledger" ]] || printf 'ts\tchange\tstage\trole\tdispatch_id\tprompt_sha\tgaps\tconfirmed_context\truntime\tmodel_id\n' > "$ledger"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$id" "$stage" "$(dispatch_role "$stage")" "$did" "$psha" "$gaps_n" "$conf" "${AGENT_GUARD_RUNTIME:-unknown}" "${AGENT_GUARD_MODEL:-unknown}" >> "$ledger"
+  printf '%s\n' "$out"
+  printf '\ndispatch_id: %s\nprompt_sha: %s  (the reviewer must echo prompt_sha as the FIRST line of its receipt; cite dispatch_id in 07)\n' "$did" "$psha"
+}
+
+docs_snapshot_cmd() { # [CHG] — local archive only, never tracked
+  local rr="${repo_root:-.}" ts out sha p10
+  ts=$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo 0)
+  out="$rr/.agent-state/snapshots/docs-$ts.tar.gz"
+  mkdir -p "$rr/.agent-state/snapshots"
+  tar -czf "$out" -C "$rr" "${docs_dir:-docs}" 2>/dev/null || { echo "agent-gate: docs-snapshot: tar failed" >&2; exit 2; }
+  sha=$(_cold_sha_stdin < "$out")
+  printf '%s  %s\n' "$sha" "$(basename "$out")" > "$out.sha256"
+  p10="${docs_dir:-docs}/project/P10-change-ledger.md"
+  [[ -f "$p10" ]] && printf -- '- docs-snapshot %s sha256=%s at %s\n' "$(basename "$out")" "$sha" "$ts" >> "$p10"
+  echo "agent-gate: docs-snapshot $out sha256=$sha (local archive; not tracked, not distributed)"
+}
+
 print_help_cmd() {
   cat <<'EOF'
 Usage:
@@ -1869,6 +2262,10 @@ Usage:
   scripts/agent-gate escape <BUG-id> --should-catch <layer>  # v4.15.0: register post-claim defect escape + eval case
   scripts/agent-gate mutation-spot --file <path> --cmd "<cmd>" [--json] # v4.15.1: 3-mutant spot check for target repos
   scripts/agent-gate ui-probe [--check|--eval-fixture <json>|--url <url>] # v4.16.0: optional Playwright DOM geometry probe (exit 3 when unavailable)
+  scripts/agent-gate seed-context | confirm-context <user>   # v4.17.0: draft / confirm P12-P02-P03 project context (src: paths must exist)
+  scripts/agent-gate brief <stage> [CHG]                     # v4.17.0: stage handoff brief with brief_sha (downstream must ack)
+  scripts/agent-gate dispatch --pack <stage> [CHG]           # v4.17.0: write the pack + dispatch-ledger row (L2+ refuses on gaps)
+  scripts/agent-gate docs-snapshot [CHG]                     # v4.17.0: local sha256 archive of docs/ (not tracked)
   scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)

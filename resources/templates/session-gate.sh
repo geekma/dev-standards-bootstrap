@@ -851,6 +851,10 @@ if [[ "$mode" == "start" ]]; then
   [[ "$SG_WINDOW_SOURCE" != "assumed" ]] \
     || emit "session-gate: WARN — context window unverified for model '${SG_MODEL_ID}' (assumed 128000); declare with AGENT_GUARD_MODEL / AGENT_GUARD_CONTEXT_WINDOW${SG_RT_KEY:+ (or AGENT_GUARD_MODEL_${SG_RT_KEY} / AGENT_GUARD_CONTEXT_WINDOW_${SG_RT_KEY} for this runtime)} (P0-15)"
   reset_state
+  # X-4 (v4.17.0, CHG-167): one-screen self-check of the most common refusals, so the AI sees
+  # them BEFORE the gate does. Top codes come from this repo's own gate-friction ledger.
+  sg_top=$(awk -F'\t' '$1 ~ /^GATE-E[0-9]+$/ {c[$1]++} END {for (k in c) printf "%s:%d\n", k, c[k]}' .agent-state/gate-friction.tsv 2>/dev/null | LC_ALL=C sort -t: -k2,2nr -k1,1 | head -3 | tr '\n' ' ' || true)
+  emit "session-gate: 高频拦截自检 — ${sg_top:+本仓高频 ${sg_top}｜}E83 沟通稿需用户整体确认｜E63 十三册总册非空｜E104/E110 UI 证据要真产出｜E150 红绿证据需真重放｜动手前先 begin（standards §2.17）"
   if [[ ! -f "$AUDIT" ]]; then
     emit "session-gate: $AUDIT not found — cross-doc audit skipped (install --core first)"
     report_add "- $AUDIT 缺失，审计未跑（先接 --core 层）"

@@ -429,7 +429,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     00-governance.json)
       local _sv=""
       [[ -s "$docs_dir/DEVELOPMENT_STANDARDS.md" ]] && _sv=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$docs_dir/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1)
-      [[ -n "$_sv" ]] || _sv="4.16.0"
+      [[ -n "$_sv" ]] || _sv="4.17.0"
       printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "standards_version_at_begin": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": "", "dispatch_contract": "v2"}\n' "$id" "$cuid" "$risk" "$_sv" ;;
     01-spec.md)
       printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;
@@ -1047,6 +1047,9 @@ stage_gates_enabled() { [[ "${AGENT_GUARD_STAGE_GATES:-1}" != "0" ]]; }
 stage_gate_fail() { # <gate-name> <missing-what> <backfill-what> — single E126 die site (T41)
   die "GATE-E126: stage gate $1 not satisfied: $2 — backfill $3, then re-run (stateless/idempotent; standards §2.16.2, §2.17; v3.89.0 CHG-117; AGENT_GUARD_STAGE_GATES=0 restores the legacy full begin check)"
 }
+die_e85() { die "GATE-E85: $1"; }    # single E85 die site (T41); CHG-167 reuses it for G-6/G-9
+die_e137() { die "GATE-E137: $1"; }  # single E137 die site (T41); CHG-167 reuses it for G-13
+die_e152() { die "GATE-E152: $1"; }  # single E152 die site (T41); CHG-167 reuses it for G-3
 
 unknown_stage() { # <stage> — single E78 die site (T41)
   local s="${1:-}" extra=""
@@ -1228,6 +1231,30 @@ shift_gate_check() { # <change-id> — E112 single die site
 
 die_e104() { # <message> — single GATE-E104 die literal for T41/A39 uniqueness
   die "GATE-E104: $1"
+}
+
+_hol_no_comments() { # <file> -> stdout without HTML comments (single/multi-line)
+  [[ -f "$1" ]] || return 0
+  awk '{ l=$0; while(1){ if(c){p=index(l,"-->"); if(!p){l="";break}; l=substr(l,p+3); c=0} p=index(l,"<!--"); if(!p) break; q=index(substr(l,p+4),"-->"); if(q) l=substr(l,1,p-1) substr(l,p+4+q+2); else {l=substr(l,1,p-1); c=1; break} } print l }' "$1" 2>/dev/null
+}
+
+holistic_gate_check() { # <id> — Batch G (v4.17.0): arm the cold verifier only for >=4.17.0 changes or explicit G-blocks
+  local id="$1" d rec risk sv _act=0 _explicit=0
+  d=$(change_dir "$id")
+  rec=$(gov_record "$d/00-governance.json" "$id" 2>/dev/null || true)
+  risk=$(json_field "$rec" risk_level 2>/dev/null || echo L1)
+  sv=$(json_field "$rec" standards_version_at_begin 2>/dev/null || true)
+  if [[ "$sv" =~ ^([0-9]+)\.([0-9]+)\. ]]; then
+    if [[ "${BASH_REMATCH[1]}" -gt 4 ]] || [[ "${BASH_REMATCH[1]}" -eq 4 && "${BASH_REMATCH[2]}" -ge 17 ]]; then _act=1; fi
+  fi
+  if ls "$d"/handoffs/stage-*.brief.md >/dev/null 2>&1 \
+     || _hol_no_comments "$d/07-review-report.md" | grep -E '锚定评分卡|dispatch_id[:：][[:space:]]*[A-Za-z0-9._-]+' >/dev/null 2>&1 \
+     || _hol_no_comments "$d/02-code-impact-analysis.md" | grep -E 'affected_files:' >/dev/null 2>&1; then
+    _explicit=1
+  fi
+  [[ "$_act" -eq 1 || "$_explicit" -eq 1 ]] || return 0
+  load_gate_cold
+  _cold_holistic_verify "$d" "$id" "${risk:-L1}" "$_act"
 }
 
 ui_baseline_gate_check() { # <change-dir> <spec> <res05> <res07> (Batch F: F-2/F-3/F-4/F-5/F-7)
@@ -2222,7 +2249,7 @@ validate_delivery_shape_front() { # change-id — probe-safe face 1 (no side eff
     # quote-citation false-positive surface is accepted at the E82 precedent
     # (low risk; B-layer 评审结论 + provenance backstop).
     grep -Eq "${sig_head}(task[-_][A-Za-z0-9_-]+|ses[-_][A-Za-z0-9_-]+)" "$d/07-review-report.md" \
-      || die "GATE-E85: $d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
+      || die_e85 "$d/07-review-report.md lacks an independent-review signature with a traceable subtask/session id (§2.1.7 'platform / model / task-… or ses-…') — self-reviews posing as reviews are a gate-5 violation (standards §2.5 stage 8, v3.56.0 CHG-069)"
   fi
 }
 
@@ -3103,7 +3130,7 @@ review_roles_for() { # <change-dir> <id> -> space-separated role names
   risk=$(json_field "$rec" risk_level)
   case "$risk" in L2|L3) roles="$roles architecture business" ;; esac
   review_ui_change "$d" && roles="$roles ui business"
-  bug_ref=$(json_field "$rec" bug_ref)
+  bug_ref=$(json_field_values "$rec" bug_ref 2>/dev/null | head -n 1 || true)
   [[ -n "$bug_ref" ]] && roles="$roles bug"
   printf '%s' "$(printf '%s\n' $roles | awk '!seen[$0]++' | tr '\n' ' ' | sed 's/ $//')"
 }
@@ -3177,13 +3204,15 @@ out = {
     'effective_layers': layers, 'scheme': scheme, 'roles': roles, 'models': models,
     'selected': selected, 'tier': tier, 'approval_required': approval_required,
     'approved': False, 'approved_by': '', 'approved_at': '',
+    'role_evidence': {r: {'code': 'git diff + 05 test evidence', 'handoff': 'handoffs/stage-*.brief.md ack', 'architecture': '02 affected_files + 03 pre-mortem', 'business': '01-spec + P12 context', 'ui': 'evidence/ui-probe.json', 'bug': 'record-red/record-green receipts'}.get(r, '') for r in roles},
 }
 print(json.dumps(out, ensure_ascii=False, separators=(',', ':')))
 PY
   else
-    printf '{"change":"%s","created_at":"%s","runtime":"%s","runtime_family":"%s","runtime_clients":[],"effective_layers":"","scheme":"blocked-no-independent-executor","roles":%s,"models":[],"selected":{},"tier":"economy","approval_required":false,"approved":false,"approved_by":"","approved_at":""}\n' \
+    printf '{"change":"%s","created_at":"%s","runtime":"%s","runtime_family":"%s","runtime_clients":[],"effective_layers":"","scheme":"blocked-no-independent-executor","roles":%s,"models":[],"selected":{},"tier":"economy","approval_required":false,"approved":false,"approved_by":"","approved_at":"","role_evidence":%s}\n' \
       "$id" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$rt" "$fam" \
-      "$(printf '%s' "$roles" | awk '{printf "["; for(i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i; printf "]"}')"
+      "$(printf '%s' "$roles" | awk '{printf "["; for(i=1;i<=NF;i++) printf "%s\"%s\"", (i>1?",":""), $i; printf "]"}')" \
+      "$(printf '%s' "$roles" | awk 'BEGIN{m["code"]="git diff + 05 test evidence";m["handoff"]="handoffs/stage-*.brief.md ack";m["architecture"]="02 affected_files + 03 pre-mortem";m["business"]="01-spec + P12 context";m["ui"]="evidence/ui-probe.json";m["bug"]="record-red/record-green receipts"} {printf "{"; for(i=1;i<=NF;i++) printf "%s\"%s\":\"%s\"", (i>1?",":""), $i, (m[$i]?m[$i]:""); printf "}"}')"
   fi
 }
 
@@ -3221,7 +3250,7 @@ review_consent_check() { # <id> — E137: a deep/approval model needs user conse
   [[ -z "$ch" || "$ch" == "$id" ]] || return 0
   grep -q '"approval_required":true' <<< "$line" || return 0
   grep -q '"approved":true' <<< "$line" && return 0
-  die "GATE-E137: $id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
+  die_e137 "$id review plan requires a high-cost model but has no user consent — expected: scripts/agent-gate review-plan $id (list candidates + cost tiers), then the USER sets AGENT_REVIEW_USER_APPROVED=1 and runs review-plan $id --approve <model>; allowed: economy/standard tiers need no consent; fix: obtain user consent (AI must not self-approve), then re-run; ref: standards §2.1 rule 11 / v3.90.4"
 }
 
 djson_arr() { # one argument per element -> JSON string array
@@ -4356,7 +4385,7 @@ scope_overrun_check() { # <id> — E152 (over-budget scope without the user's re
     echo "agent-gate: WARN — $id is over the change-scope budget and has no user-confirmed scope (AGENT_GUARD_SCOPE_OVERRUN=0; record the reason in 09「重要上下文」)" >&2
     return 0
   fi
-  die "GATE-E152: $id is over the change-scope budget (see scope_overrun in 00-governance.json) and has no user-confirmed scope — expected: the user's recorded choice (AGENT_GUARD_SCOPE_CONFIRM='<user>@<ISO>') or a split change; allowed: AGENT_GUARD_SCOPE_OVERRUN=0 (WARN only, recorded in 09); fix: ask the user to confirm or split, then re-run plan; ref: CHG-128 REQ-1281"
+  die_e152 "$id is over the change-scope budget (see scope_overrun in 00-governance.json) and has no user-confirmed scope — expected: the user's recorded choice (AGENT_GUARD_SCOPE_CONFIRM='<user>@<ISO>') or a split change; allowed: AGENT_GUARD_SCOPE_OVERRUN=0 (WARN only, recorded in 09); fix: ask the user to confirm or split, then re-run plan; ref: CHG-128 REQ-1281"
 }
 
 plan_gap_declared() { # <09> <prefix>
@@ -4623,6 +4652,7 @@ validate_stop() {
     # v3.99.1 (CHG-141): 沟通期锚点执法 (E157) — before the dimensional lane so
     # the check survives the spec-missing early return (00.5 is begin-required).
     validate_mechanism_stop "$(change_dir "$id")"
+    holistic_gate_check "$id"
     # v3.68.0 (CHG-043): G13/G14 stop lane — three-way reconciliation, replay,
     # per-UJ runtime evidence, review journey, waiver transitivity (E101–E108).
     validate_dimensional_stop "$(change_dir "$id")"
@@ -5773,6 +5803,7 @@ gate_staged_dispatch() {
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --json) dmode="--json" ;;
+        --pack) dmode="--pack" ;;
         -*) dispatch_usage "unknown option '$1'" ;;
         *)
           if [[ -z "$dstage" ]]; then dstage="$1"
@@ -5794,8 +5825,16 @@ gate_staged_dispatch() {
       dispatch_usage "change '$dcid' has no directory ($(change_dir "$dcid"))"
     fi
     load_gate_cold
-    dispatch_run "$dstage" "$dcid" "$dmode"
+    if [[ "$dmode" == "--pack" ]]; then
+      dispatch_pack_run "$dstage" "$dcid"
+    else
+      dispatch_run "$dstage" "$dcid" "$dmode"
+    fi
     ;;
+  seed-context) shift; load_gate_cold; seed_context_cmd "$@" ;;
+  confirm-context) shift; load_gate_cold; confirm_context_cmd "$@" ;;
+  brief) shift; load_gate_cold; brief_cmd "$@" ;;
+  docs-snapshot) shift; load_gate_cold; docs_snapshot_cmd "$@" ;;
   resume)
     resid="${2:-}"
     [[ -n "$resid" ]] || die "GATE-E149: usage: scripts/agent-gate resume <change-id> — expected an existing change; fix: pass the active change id; ref: CHG-127 G17"

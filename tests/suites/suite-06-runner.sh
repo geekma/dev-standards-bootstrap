@@ -2076,6 +2076,415 @@ out=$(AGENT_GUARD_UI_PROBE_MOCK=available scripts/agent-gate --stage stop 2>&1);
 report "T53 TC-1661f L2 passes compliant degraded=manual with WARN (rc0)" 0 "$rc"
 report "T53 TC-1661f logs UI_DEGRADED_MANUAL to gate-friction.tsv" 1 "$(grep -c '^UI_DEGRADED_MANUAL	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
 report "T53 TC-1661f logs UI_MANUAL_WHEN_PROBE_AVAILABLE when probe mock available" 1 "$(grep -c '^UI_MANUAL_WHEN_PROBE_AVAILABLE	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
+
+# === Batch G (v4.17.0, CHG-167): Holistic View, Handoff Brief, Context Pack & Review Metrics ===
+_t53_seed_holistic() { # <chg> <risk> [standards_version_at_begin]
+  local _c="$1" _r="$2" _sv="${3:-4.17.0}"
+  new_repo
+  mkdir -p tests src
+  printf 'console.log(1)\n' > src/app.js
+  git add src/app.js && git commit -qm base_app
+  printf 'console.log(2)\n' > src/app.js
+  cat > docs/project/P01-requirements-master.md <<'EOF'
+# P01 Requirements
+- REQ-001: sample requirement
+EOF
+  cat > docs/project/P12-product-context.md <<'EOF'
+# P12 Product Context
+- OBJ-MAIN: core user goal
+EOF
+  cat > docs/project/P02-architecture-master.md <<'EOF'
+# P02 Architecture
+- core-app (src: src/app.js)
+EOF
+  cat > docs/project/P03-interface-registry.md <<'EOF'
+# P03 Interfaces
+- api-main (src: src/app.js)
+EOF
+  seed_artifacts "$_c" "$_r" claude/s-1 claude/s-2 claude/s-3
+  printf '# bugfix-log\n' > docs/bugfix-log.md
+  local _svf="" _authf=""
+  [[ "$_sv" != "none" ]] && _svf=",\"standards_version_at_begin\":\"${_sv}\""
+  [[ "$_r" == "L3" ]] && _authf=',"release_authorized_by":"lead/u-1","release_authorized_at":"2026-11-27T13:00:00Z","release_authorization_evidence":"ticket#167"'
+  printf '{"change_id":"%s","risk_level":"%s"%s%s,"spec_author":"author/a-1","implementation_owner":"claude/s-1","test_owner":"claude/s-2","review_owner":"claude/s-3","verification_owner":"verifier/v-1"}\n' \
+    "$_c" "$_r" "$_svf" "$_authf" > "docs/changes/${_c}/00-governance.json"
+  cat > "docs/changes/${_c}/00-intent.md" <<'EOF'
+# 00-intent.md
+## 问题
+problem: x
+## 预期结果
+expected: y
+## 目录落位
+- **目录落位**：独立目录（L2/L3 holistic fixture）
+## 变更定位卡
+- 目标链：REQ-001 / OBJ-MAIN
+- 系统位置：core-app
+- 上下游：src/app.js
+- 不变量：
+  - INV-1: 保持向后兼容 (TC-001)
+- 非目标：不改后端存储
+- 回滚：git revert
+## 开放问题
+open: none
+EOF
+  cat >> "docs/changes/${_c}/00.5-communication.md" <<'EOF'
+
+## 套件范围判定卡（三选一裁定）
+- suite_scope_decision: FULL
+- 判定卡（三选一裁定）：FULL
+EOF
+  cat > "docs/changes/${_c}/02-code-impact-analysis.md" <<'EOF'
+# impact
+## 现状事实
+- app at src/app.js
+## 业务影响
+business: b
+## 技术影响
+call chain: c
+## 受影响文件清单
+- affected_files: src/app.js
+## 风险
+risk: r
+## 回滚策略
+rollback: ok
+延伸发现：未发现
+历史相似检索：未命中（x）
+EOF
+  cat > "docs/changes/${_c}/03-modification-plan.md" <<'EOF'
+# plan
+- DES-001: sample design
+## 技术选型
+备选方案对比: A vs B
+## 既有范式关系
+- **既有范式关系**：未命中（纯新增）
+## 设计 Pre-Mortem
+1. 半年后失败情景一：协议字段冲突 -> TC-001
+2. 半年后失败情景二：性能回退 -> TC-002
+3. 半年后失败情景三：边界输入异常 -> TC-003
+EOF
+  cat > tests/test_app.sh <<'EOF'
+#!/usr/bin/env bash
+assert() { return 0; }
+assert
+EOF
+  chmod +x tests/test_app.sh
+  cat > "docs/changes/${_c}/04-test-scripts.md" <<'EOF'
+# tests
+- TC-001: invariant check (REQ-001)
+- TC-002: perf check (REQ-001)
+- TC-003: boundary check (REQ-001)
+覆盖维度: 正常流 / 边界 / 异常
+- SC-001: sample scenario（覆盖: TC-001, TC-002, TC-003）
+## TC 落点清单
+- TC-001: tests/test_app.sh（类型：自动化）
+- TC-002: tests/test_app.sh（类型：自动化）
+- TC-003: tests/test_app.sh（类型：自动化）
+EOF
+  scripts/agent-gate begin "$_c" >/dev/null 2>&1
+  seed_t53_delivery "$_c"
+  printf '# coding record\n- file: src/app.js\n' > "docs/changes/${_c}/04.5-coding-record.md"
+  printf '# 05\n- TC-001/002/003: pass\n' > "docs/changes/${_c}/05-test-results.md"
+  cat > "docs/changes/${_c}/07-review-report.md" <<'EOF'
+# review
+## 评审结论
+通过
+- **发现处置**：未命中，不适用（T53 夹具）
+- 生产模型：openai / gpt-5 / ses-a1
+- 评审模型：anthropic / claude-opus / ses-r1
+- 评审主体：anthropic / claude-opus / ses-r1
+## 锚定评分卡
+| 维度 | 分数 | 证据 |
+|---|---|---|
+| 全局观 | 2 | src/app.js:1 |
+| 边界与失效 | 2 | 04-test-scripts.md |
+| 实证闭环 | 2 | tests/test_app.sh |
+EOF
+  if [[ "$_r" == "L3" ]]; then
+    printf '# 06-bugs\n未命中，不适用（T53 夹具）\n' > "docs/changes/${_c}/06-bugs.md"
+    printf '# 06.5-bug-tasks\n未命中，不适用（T53 夹具）\n' > "docs/changes/${_c}/06.5-bug-tasks.md"
+    mkdir -p "docs/changes/${_c}/reviews"
+    printf '# R1\nPASS\n' > "docs/changes/${_c}/reviews/r1.review.md"
+    printf '# R2\nPASS\n' > "docs/changes/${_c}/reviews/r2.review.md"
+    printf '\n- decision-gap: soft cross-model — T53 夹具\n- decision-gap: soft reviews:0<2 — T53 夹具\n' >> "docs/changes/${_c}/09-changelog.md"
+  fi
+  stamp_all "docs/changes/${_c}"
+  _t53_refresh_rc
+}
+
+# TC-1670a: G-1 变更定位卡 (>5 invariants / unreferenced invariant / broken anchor / L0 skip / L2 advisory vs ratchet)
+_t53_seed_holistic CHG-1670A L3 4.17.0
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670a valid L3 holistic baseline passes (rc0)" 0 "$rc"
+
+cat > docs/changes/CHG-1670A/00-intent.md <<'EOF'
+# 00-intent.md
+## 问题
+problem: x
+## 预期结果
+expected: y
+## 目录落位
+- **目录落位**：独立目录
+## 变更定位卡
+- 目标链：REQ-001 / OBJ-MISSING
+- 系统位置：core-app
+- 上下游：src/app.js
+- 不变量：
+  - INV-1: check (TC-001)
+- 非目标：none
+- 回滚：revert
+## 开放问题
+open: none
+EOF
+stamp_all docs/changes/CHG-1670A; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670a G-1 rejects broken P12 anchor OBJ-MISSING at L3 (rc2)" 2 "$rc"
+
+cat > docs/changes/CHG-1670A/00-intent.md <<'EOF'
+# 00-intent.md
+## 问题
+problem: x
+## 预期结果
+expected: y
+## 目录落位
+- **目录落位**：独立目录
+## 变更定位卡
+- 目标链：REQ-001 / OBJ-MAIN
+- 系统位置：core-app
+- 上下游：src/app.js
+- 不变量：
+  - INV-1: orphan invariant without tc
+- 非目标：none
+- 回滚：revert
+## 开放问题
+open: none
+EOF
+stamp_all docs/changes/CHG-1670A; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670a G-1 rejects invariant unreferenced by 04 TC (rc2)" 2 "$rc"
+
+_t53_seed_holistic CHG-1670L2 L2 4.17.0
+sed -i.bak 's/- INV-1: 保持向后兼容 (TC-001)/- INV-1: no tc reference/' docs/changes/CHG-1670L2/00-intent.md 2>/dev/null || sed -i '' 's/- INV-1: 保持向后兼容 (TC-001)/- INV-1: no tc reference/' docs/changes/CHG-1670L2/00-intent.md
+rm -f docs/changes/CHG-1670L2/00-intent.md.bak
+stamp_all docs/changes/CHG-1670L2; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670a G-1 L2 defaults advisory WARN+pass on unreferenced invariant (rc0)" 0 "$rc"
+check_output "T53 TC-1670a G-1 L2 advisory prints WARN" "WARN" "$out"
+out=$(AGENT_GUARD_HOLISTIC_BASELINE=ratchet scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670a G-1 L2 ratchet rejects unreferenced invariant (rc2)" 2 "$rc"
+
+# TC-1670b: G-2 Pre-Mortem (<3 items / nonexistent TC / duplicate TC)
+_t53_seed_holistic CHG-1670B L3 4.17.0
+cat > docs/changes/CHG-1670B/03-modification-plan.md <<'EOF'
+# plan
+- DES-001: d
+## 技术选型
+备选: A vs B
+## 既有范式关系
+- **既有范式关系**：未命中（x）
+## 设计 Pre-Mortem
+1. 失效1 -> TC-001
+2. 失效2 -> TC-001
+3. 失效3 -> TC-001
+EOF
+stamp_all docs/changes/CHG-1670B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670b G-2 rejects duplicate TC mapping across Pre-Mortem items (rc2)" 2 "$rc"
+
+sed -i.bak 's/3. 失效3 -> TC-001/3. 失效3 -> TC-9999/; s/2. 失效2 -> TC-001/2. 失效2 -> TC-002/' docs/changes/CHG-1670B/03-modification-plan.md 2>/dev/null || sed -i '' 's/3. 失效3 -> TC-001/3. 失效3 -> TC-9999/; s/2. 失效2 -> TC-001/2. 失效2 -> TC-002/' docs/changes/CHG-1670B/03-modification-plan.md
+rm -f docs/changes/CHG-1670B/03-modification-plan.md.bak
+stamp_all docs/changes/CHG-1670B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670b G-2 rejects nonexistent mapped TC-9999 (rc2)" 2 "$rc"
+
+# F-167-3 regression: self-referential MON-* in 03 absent from 04/deploy docs must fail, real MON in 06.5 passes
+sed -i.bak 's/3. 失效3 -> TC-9999/3. 失效3 -> MON-FAKE-9/' docs/changes/CHG-1670B/03-modification-plan.md 2>/dev/null || sed -i '' 's/3. 失效3 -> TC-9999/3. 失效3 -> MON-FAKE-9/' docs/changes/CHG-1670B/03-modification-plan.md
+rm -f docs/changes/CHG-1670B/03-modification-plan.md.bak
+stamp_all docs/changes/CHG-1670B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670b F-167-3 G-2 rejects self-referential MON-FAKE-9 absent from 04/deploy docs (rc2)" 2 "$rc"
+printf '\n- monitor: MON-FAKE-9 alarm\n' >> docs/changes/CHG-1670B/06.5-deployment-config.md
+stamp_all docs/changes/CHG-1670B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670b F-167-3 G-2 passes once MON-FAKE-9 declared in 06.5-deployment-config (rc0)" 0 "$rc"
+
+# TC-1670c: G-3 Blast Radius Reconciliation (direct ratchet L2/L3)
+_t53_seed_holistic CHG-1670C L2 4.17.0
+printf 'extra\n' > src/undeclared.js
+git add src/undeclared.js
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670c G-3 L2 ratchet rejects undeclared modified source file src/undeclared.js (rc2)" 2 "$rc"
+check_output "T53 TC-1670c G-3 names GATE-E152" "GATE-E152" "$out"
+
+printf '\n## 追加影响\n- src/undeclared.js: helper\n- 02-revisited: yes\n' >> docs/changes/CHG-1670C/03-modification-plan.md
+stamp_all docs/changes/CHG-1670C; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670c G-3 passes once 追加影响 + 02-revisited: yes added (rc0)" 0 "$rc"
+
+# F-167-2 & F-167-8 regression: retain required 02 sections, keep no uncommented affected_files: (only commented placeholder), assert GATE-E152 (no pipefail rc1)
+_t53_seed_holistic CHG-1670F8 L2 4.17.0
+sed -i.bak '/^affected_files:/d' docs/changes/CHG-1670F8/02-code-impact-analysis.md 2>/dev/null || sed -i '' '/^affected_files:/d' docs/changes/CHG-1670F8/02-code-impact-analysis.md
+rm -f docs/changes/CHG-1670F8/02-code-impact-analysis.md.bak
+printf '\n<!-- affected_files: <待填，例如 src/foo.ts, scripts/bar.sh> -->\n' >> docs/changes/CHG-1670F8/02-code-impact-analysis.md
+mkdir -p src && printf 'foo\n' > src/foo.ts && git add src/foo.ts
+stamp_all docs/changes/CHG-1670F8; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670c F-167-2/F-167-8 G-3 rejects src/foo.ts with GATE-E152 (rc2, no pipefail rc1)" 2 "$rc"
+check_output "T53 TC-1670c F-167-2/F-167-8 names GATE-E152" "GATE-E152" "$out"
+git rm -qf src/foo.ts
+
+_t53_seed_holistic CHG-1670LEG L2 4.16.0
+sed -i.bak '/## 受影响文件清单/,/^## /{/affected_files:/d; /src\/app\.js/d;}' docs/changes/CHG-1670LEG/02-code-impact-analysis.md 2>/dev/null || sed -i '' '/## 受影响文件清单/,/^## /{/affected_files:/d; /src\/app\.js/d;}' docs/changes/CHG-1670LEG/02-code-impact-analysis.md
+rm -f docs/changes/CHG-1670LEG/02-code-impact-analysis.md.bak
+printf '\n<!-- affected_files: <待填，例如 src/foo.ts, scripts/bar.sh> -->\n' >> docs/changes/CHG-1670LEG/02-code-impact-analysis.md
+sed -i.bak '/## 锚定评分卡/,$d' docs/changes/CHG-1670LEG/07-review-report.md 2>/dev/null || sed -i '' '/## 锚定评分卡/,$d' docs/changes/CHG-1670LEG/07-review-report.md
+rm -f docs/changes/CHG-1670LEG/07-review-report.md.bak
+printf 'legacy\n' > src/other.js && git add src/other.js
+stamp_all docs/changes/CHG-1670LEG; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670c F-167-2 legacy 4.16.0 change with template affected_files comment does not false-arm G-3 (rc0)" 0 "$rc"
+
+_t53_seed_holistic CHG-1670LEGA L2 4.16.0
+sed -i.bak '/## 受影响文件清单/,/^## /{/affected_files:/d; /src\/app\.js/d;}' docs/changes/CHG-1670LEGA/02-code-impact-analysis.md 2>/dev/null || sed -i '' '/## 受影响文件清单/,/^## /{/affected_files:/d; /src\/app\.js/d;}' docs/changes/CHG-1670LEGA/02-code-impact-analysis.md
+rm -f docs/changes/CHG-1670LEGA/02-code-impact-analysis.md.bak
+printf '\n<!-- affected_files: <待填，例如 src/foo.ts, scripts/bar.sh> -->\n' >> docs/changes/CHG-1670LEGA/02-code-impact-analysis.md
+stamp_all docs/changes/CHG-1670LEGA; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1670c F-167-8 4.16.0 armed via 07 scorecard with no uncommented affected_files does not crash (rc0)" 0 "$rc"
+
+# TC-1671a: G-7 seed-context & confirm-context
+out=$(scripts/agent-gate seed-context 2>&1); rc=$?
+report "T53 TC-1671a seed-context prints guidance (rc0)" 0 "$rc"
+check_output "T53 TC-1671a seed-context mentions P12 and P02" "P12.*P02|P02" "$out"
+printf -- '- ghost-module (src: src/does-not-exist.js)\n' >> docs/project/P02-architecture-master.md
+out=$(scripts/agent-gate confirm-context tester 2>&1); rc=$?
+report "T53 TC-1671a confirm-context rejects missing src path in P02 (rc2)" 2 "$rc"
+sed -i.bak '/ghost-module/d' docs/project/P02-architecture-master.md 2>/dev/null || sed -i '' '/ghost-module/d' docs/project/P02-architecture-master.md
+rm -f docs/project/P02-architecture-master.md.bak
+out=$(scripts/agent-gate confirm-context tester 2>&1); rc=$?
+report "T53 TC-1671a confirm-context stamps P02/P03/P12 when src paths exist (rc0)" 0 "$rc"
+check_output "T53 TC-1671a P02 carries confirmed-by marker" "confirmed-by: tester@" "$(cat docs/project/P02-architecture-master.md)"
+
+# TC-1672a: G-5 brief & handoff ack verification
+_t53_seed_holistic CHG-1672A L3 4.17.0
+out=$(scripts/agent-gate brief review CHG-1672A 2>&1); rc=$?
+report "T53 TC-1672a brief review generates handoff brief (rc0)" 0 "$rc"
+_br_f="docs/changes/CHG-1672A/handoffs/stage-review.brief.md"
+report "T53 TC-1672a handoff brief file exists" 0 "$([[ -s "$_br_f" ]] && echo 0 || echo 1)"
+_br_sha=$(sed -n 's/.*brief_sha:[[:space:]]*\([a-f0-9]*\).*/\1/p' "$_br_f" | head -1)
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1672a L3 rejects missing ack in 07 when brief exists (rc2)" 2 "$rc"
+{
+  printf '<!-- ack stage=review brief_sha=%s -->\n' "$_br_sha"
+  cat docs/changes/CHG-1672A/07-review-report.md
+  printf '\n## 交接声明\n| 上游声明 | 锚点引用 | 表态 | 说明 |\n|---|---|---|---|\n| REQ-001 | 05-test-results.md:1 | 接受 | checked |\n| DES-001 | 03-modification-plan.md | 接受 | checked |\n'
+} > docs/changes/CHG-1672A/07-review-report.md.tmp && mv docs/changes/CHG-1672A/07-review-report.md.tmp docs/changes/CHG-1672A/07-review-report.md
+stamp_all docs/changes/CHG-1672A; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1672a L3 passes once valid ack + brief_sha + file:line anchor present (rc0)" 0 "$rc"
+
+# F-167-6 regression: ack anchor with nonexistent file:line must fail
+sed -i.bak 's/| REQ-001 | 05-test-results.md:1 |/| REQ-001 | 05-nonexistent.md:42 |/' docs/changes/CHG-1672A/07-review-report.md 2>/dev/null || sed -i '' 's/| REQ-001 | 05-test-results.md:1 |/| REQ-001 | 05-nonexistent.md:42 |/' docs/changes/CHG-1672A/07-review-report.md
+rm -f docs/changes/CHG-1672A/07-review-report.md.bak
+stamp_all docs/changes/CHG-1672A; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1672a F-167-6 rejects nonexistent anchor 05-nonexistent.md:42 in handoff ack (rc2)" 2 "$rc"
+
+# TC-1673a: G-6 dispatch --pack & 07 binding & plain dispatch unchanged
+_t53_seed_holistic CHG-1673A L2 4.17.0
+rm -f docs/project/P12-product-context.md
+out=$(scripts/agent-gate dispatch --pack review CHG-1673A 2>&1); rc=$?
+report "T53 TC-1673a dispatch --pack fails rc2 at L2 when gaps non-empty" 2 "$rc"
+out=$(scripts/agent-gate dispatch review CHG-1673A 2>&1); rc=$?
+report "T53 TC-1673a plain dispatch stays print-only rc0 even with gaps" 0 "$rc"
+printf '# P12 Product\n- OBJ-MAIN: goal\n' > docs/project/P12-product-context.md
+out=$(scripts/agent-gate dispatch --pack review CHG-1673A 2>&1); rc=$?
+report "T53 TC-1673a dispatch --pack succeeds rc0 when masters present (unconfirmed annotated)" 0 "$rc"
+_did=$(awk -F'\t' 'NR>1{id=$5} END{print id}' .agent-state/dispatch-ledger.tsv 2>/dev/null || true)
+report "T53 TC-1673a dispatch-ledger.tsv records dispatch_id" 0 "$([[ -n "$_did" && -s ".agent-state/dispatch/${_did}.md" ]] && echo 0 || echo 1)"
+# F-167-4 regression: omitting dispatch_id when ledger has pack row must fail ratchet
+out=$(AGENT_GUARD_HOLISTIC_BASELINE=ratchet scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1673a F-167-4 rejects 07 omitting dispatch_id when ledger records --pack (rc2)" 2 "$rc"
+printf '\n- dispatch_id: DISP-FAKE-999\n' >> docs/changes/CHG-1673A/07-review-report.md
+stamp_all docs/changes/CHG-1673A; _t53_refresh_rc
+out=$(AGENT_GUARD_HOLISTIC_BASELINE=ratchet scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1673a rejects 07 referencing nonexistent dispatch_id (rc2)" 2 "$rc"
+sed -i.bak "s/DISP-FAKE-999/${_did}/" docs/changes/CHG-1673A/07-review-report.md 2>/dev/null || sed -i '' "s/DISP-FAKE-999/${_did}/" docs/changes/CHG-1673A/07-review-report.md
+rm -f docs/changes/CHG-1673A/07-review-report.md.bak
+stamp_all docs/changes/CHG-1673A; _t53_refresh_rc
+out=$(AGENT_GUARD_HOLISTIC_BASELINE=ratchet scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1673a passes when 07 cites matching ledger dispatch_id (rc0)" 0 "$rc"
+
+# TC-1674a: G-8 eval-rescore insufficient sample & --recall-eval + X-1 metrics --summary
+cat > .agent-state/eval-cases.tsv <<'EOF'
+case_id	source	bug_id	captured_layer	landing	regression_ref
+EC-1	manual	BUG-1	review	TC-1	TC-1
+EOF
+out=$(bash "$ROOT/resources/templates/eval-rescore.sh" --cases .agent-state/eval-cases.tsv --face "$REPO" --dry-run 2>&1)
+check_output "T53 TC-1674a G-8 eval-rescore marks <10 cases insufficient" '"sample_status":"insufficient"' "$out"
+mkdir -p .agent-state/recall-rev docs/bugs/BUG-R1 docs/bugs/BUG-R2
+printf '# BUG-R1\n- anchor: FN-ALPHA\n' > docs/bugs/BUG-R1/01-diagnosis.md
+printf '# BUG-R2\n- anchor: FN-BETA\n' > docs/bugs/BUG-R2/01-diagnosis.md
+printf '# rev1\n- caught FN-ALPHA\n' > .agent-state/recall-rev/r1.md
+printf '# rev2\n- also FN-ALPHA\n' > .agent-state/recall-rev/r2.md
+out=$(bash "$ROOT/resources/templates/eval-rescore.sh" --cases .agent-state/eval-cases.tsv --recall-eval .agent-state/recall-rev --min-cases 10 2>&1)
+check_output "T53 TC-1674a G-8 recall-eval flags insufficient status when cases<10" '"status":"insufficient"' "$out"
+check_output "T53 TC-1674a G-8 recall-eval deduplicates BUG-R1 and counts miss BUG-R2" '"recalled":1,"missed":1' "$out"
+out=$(scripts/agent-gate metrics --summary --json 2>&1)
+check_output "T53 TC-1674a X-1 metrics summary includes rework_rounds_avg & first_pass_rate & review_recall" 'rework_rounds_avg.*first_pass_rate.*review_recall' "$out"
+
+# TC-1675a & TC-1675b: G-9 scorecard & G-10/13/14 model binding & roles
+_t53_seed_holistic CHG-1675 L3 4.17.0
+sed -i.bak 's/| 全局观 | 2 |/| 全局观 | 4 |/' docs/changes/CHG-1675/07-review-report.md 2>/dev/null || sed -i '' 's/| 全局观 | 2 |/| 全局观 | 4 |/' docs/changes/CHG-1675/07-review-report.md
+rm -f docs/changes/CHG-1675/07-review-report.md.bak
+stamp_all docs/changes/CHG-1675; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1675a G-9 rejects out-of-range score 4 (rc2)" 2 "$rc"
+
+# F-167-1 regression: unfilled template scorecard rows (<!-- 0|1|2|3 -->) must fail L3 G-9
+sed -i.bak 's/| 全局观 | 4 |/| 全局观 | <!-- 0|1|2|3 --> |/' docs/changes/CHG-1675/07-review-report.md 2>/dev/null || sed -i '' 's/| 全局观 | 4 |/| 全局观 | <!-- 0|1|2|3 --> |/' docs/changes/CHG-1675/07-review-report.md
+rm -f docs/changes/CHG-1675/07-review-report.md.bak
+stamp_all docs/changes/CHG-1675; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1675a F-167-1 G-9 rejects unfilled template scorecard row at L3 (rc2)" 2 "$rc"
+
+sed -i.bak 's/| 全局观 | <!-- 0|1|2|3 --> |/| 全局观 | 2 |/; s/claude-opus/gpt-5/g' docs/changes/CHG-1675/07-review-report.md 2>/dev/null || sed -i '' 's/| 全局观 | <!-- 0|1|2|3 --> |/| 全局观 | 2 |/; s/claude-opus/gpt-5/g' docs/changes/CHG-1675/07-review-report.md
+rm -f docs/changes/CHG-1675/07-review-report.md.bak
+stamp_all docs/changes/CHG-1675; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1675b G-13 L3 rejects same known model family gpt-5 for author and reviewer (rc2)" 2 "$rc"
+
+# F-167-5 regression: digit-prefixed distinct vendor models (4o vs 2.5-pro) must pass L3, while 4o vs gpt-5 fails
+_t53_seed_holistic CHG-1675B L3 4.17.0
+sed -i.bak 's/生产模型：openai \/ gpt-5 \/ ses-a1/生产模型：openai \/ 4o \/ ses-a1/; s/评审模型：anthropic \/ claude-opus \/ ses-r1/评审模型：google \/ 2.5-pro \/ ses-r1/' docs/changes/CHG-1675B/07-review-report.md 2>/dev/null || sed -i '' 's/生产模型：openai \/ gpt-5 \/ ses-a1/生产模型：openai \/ 4o \/ ses-a1/; s/评审模型：anthropic \/ claude-opus \/ ses-r1/评审模型：google \/ 2.5-pro \/ ses-r1/' docs/changes/CHG-1675B/07-review-report.md
+rm -f docs/changes/CHG-1675B/07-review-report.md.bak
+stamp_all docs/changes/CHG-1675B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1675b F-167-5 G-13 allows digit-prefixed distinct families 4o vs 2.5-pro at L3 (rc0)" 0 "$rc"
+
+sed -i.bak 's/google \/ 2.5-pro/openai \/ gpt-5/' docs/changes/CHG-1675B/07-review-report.md 2>/dev/null || sed -i '' 's/google \/ 2.5-pro/openai \/ gpt-5/' docs/changes/CHG-1675B/07-review-report.md
+rm -f docs/changes/CHG-1675B/07-review-report.md.bak
+stamp_all docs/changes/CHG-1675B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1675b F-167-5 G-13 rejects same family 4o vs gpt-5 at L3 (rc2)" 2 "$rc"
+
+sed -i.bak 's/4o/unknown/g; s/gpt-5/unknown/g' docs/changes/CHG-1675B/07-review-report.md 2>/dev/null || sed -i '' 's/4o/unknown/g; s/gpt-5/unknown/g' docs/changes/CHG-1675B/07-review-report.md
+rm -f docs/changes/CHG-1675B/07-review-report.md.bak
+stamp_all docs/changes/CHG-1675B; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1675b G-13 L3 downgrades unknown model to WARN (no reject, rc0)" 0 "$rc"
+check_output "T53 TC-1675b G-10/13 unknown prints WARN" "WARN" "$out"
+
+out=$(scripts/agent-gate review-plan CHG-1675B --json 2>&1)
+check_output "T53 TC-1675b G-14 review-plan declares role_evidence" '"role_evidence":' "$out"
+
+# TC-1676a: X-3 docs-snapshot & X-4 session-gate start self-check
+out=$(scripts/agent-gate docs-snapshot CHG-1675 2>&1); rc=$?
+report "T53 TC-1676a X-3 docs-snapshot creates local tarball + sha256 (rc0)" 0 "$rc"
+report "T53 TC-1676a X-3 P10 records snapshot sha256" 1 "$(grep -c 'docs-snapshot' docs/project/P10-change-ledger.md 2>/dev/null || true)"
+t_install_session_gate
+printf 'GATE-E150\tCHG-1\tL2\trepro\t2026-11-27T00:00:00Z\n' >> .agent-state/gate-friction.tsv
+out=$(bash scripts/session-gate.sh start 2>&1)
+check_output "T53 TC-1676a X-4 session-gate start surfaces top-refusal self-check" "高频拦截自检|GATE-E150" "$out"
 }
 
 section_T54() {
