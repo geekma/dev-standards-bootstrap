@@ -429,7 +429,7 @@ scaffold_body() { # <doc> <id> <risk> <placement>
     00-governance.json)
       local _sv=""
       [[ -s "$docs_dir/DEVELOPMENT_STANDARDS.md" ]] && _sv=$(sed -nE 's/.*规范版本：v([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$docs_dir/DEVELOPMENT_STANDARDS.md" 2>/dev/null | head -1)
-      [[ -n "$_sv" ]] || _sv="4.18.0"
+      [[ -n "$_sv" ]] || _sv="4.18.1"
       printf '{"change_id": "%s", "change_uid": "%s", "risk_level": "%s", "standards_version_at_begin": "%s", "change_type": "feature", "spec_author": "FILL-spec-author（人/代理，须≠review_owner）", "implementation_owner": "FILL-implementation-owner", "test_owner": "FILL-test-owner", "review_owner": "FILL-review-owner（须独立，≠spec_author）", "bug_ref": "", "release_authorized_by": "", "release_authorized_at": "", "release_authorization_evidence": "", "dispatch_contract": "v2"}\n' "$id" "$cuid" "$risk" "$_sv" ;;
     01-spec.md)
       printf '# %s Spec\n\n> 交付触发点：spec 阶段交付；下游输入：design（02/03）与 testplan（04）\n> 背景输入：待填（已读 P01 需求册 / P12 业务上下文，写结论与依据）\n\n## %s <标题：一句话>\n\n- **DES**：%s\n- **规则**：<!-- FILL -->\n- **理由**：<!-- FILL -->\n- **验收**：<!-- FILL: TC 绑定，编号顺延 -->\n' "$id" "$nxt_req" "$nxt_des" ;;

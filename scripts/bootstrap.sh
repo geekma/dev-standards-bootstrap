@@ -54,7 +54,7 @@ Flags (layers; default --core when none given):
   --claude     CLAUDE.md 一行导入
   --ci         工程化兜底: PULL_REQUEST_TEMPLATE.md, <scripts>/check-standards-compliance.sh
   --guard      强制执行包: <scripts>/agent-gate (+ lib-json.sh + lib-gate-staged.sh + lib-gate-cold.sh, v4.13.0), <scripts>/stamp-provenance.sh (文件溯源盖章, v3.17.0),
-               <scripts>/behavior-extract.sh (HTML/JS 原型行为抽取器, v3.68.0),
+               <scripts>/behavior-extract.sh (HTML/JS 原型行为抽取器, v3.68.0), <scripts>/ui-probe.sh (可选 UI 几何探针, v4.16.0),
                <scripts>/new-change (变更入口骨架脚手架, v3.38.0),
                <scripts>/eval-cases + <scripts>/eval-rescore (评测资产派生与重打分, v3.75.0),
                <github>/workflows/github-reviewer-rescore.yml (评测集重打分回路, v3.75.0),
@@ -64,7 +64,7 @@ Flags (layers; default --core when none given):
                <githooks>/ (pre-commit/pre-push/commit-msg),
                <scripts>/uninstall-standards (一键卸载: 三层分类+标记核验+共享资产备份移动, v3.41.0),
                <github>/workflows/agent-governance.yml (按目标仓默认分支动态适配),
-               .agent-governance.yml, <tests>/run-tests.sh (治理自测试随强制包, §2.17.4),
+               .agent-governance.yml, <tests>/run-tests.sh + <tests>/lib/test-harness.sh + <tests>/suites/suite-01..08 (治理自测试随强制包, §2.17.4 / v4.13.0),
                <tests>/governance-smoke.sh (目标仓轻量冒烟自检, v4.9.0),
                <tests>/fresh-clone-check.sh (G-ENV 环境等价检查, 随强制包, v3.92.3),
                <scripts>/lib-suite-tree-fingerprint.sh (收据树指纹 lib, 随 run-tests.sh 同包, v3.79.0),
@@ -643,38 +643,25 @@ transform_src() { # src -> stdout
       "$1"
     return 0
   fi
+  local _br_expr=""
   if [[ "$TARGET_DEFAULT_BRANCH" != "main" ]]; then
     case "${1##*/}" in
       github-agent-governance.yml|github-artifact-pipeline.yml)
-        sed -e "s|branches: \[main\]|branches: [${e_branch}]|g" "$1" \
-          | sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
-                -e "s|scripts/install-ci-adapter|$e_scripts/install-ci-adapter|g" \
-                -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
-                -e "s|scripts/check-standards-compliance\.sh|$e_scripts/check-standards-compliance.sh|g" \
-                -e "s|scripts/stamp-provenance\.sh|$e_scripts/stamp-provenance.sh|g" \
-                -e "s|scripts/agent-gate|$e_scripts/agent-gate|g" \
-                -e "s|tests/run-tests\.sh|$e_tests/run-tests.sh|g" \
-                -e "s|tests/audit-docs-consistency\.sh|$e_tests/audit-docs-consistency.sh|g" \
-                -e "s|\.githooks/|$e_gh/|g" \
-                -e "s|\$(cfg_path docs docs)|\$(cfg_path docs $e_docs_q)|g" \
-                -e "s|\$(cfg_path scripts scripts)|\$(cfg_path scripts $e_scripts_q)|g" \
-                -e "s|\$(cfg_path tests tests)|\$(cfg_path tests $e_tests_q)|g" \
-                -e "s|\$(cfg_path githooks \.githooks)|\$(cfg_path githooks $e_gh_q)|g" \
-                -e "s|\$(sg_cfg_path docs docs)|\$(sg_cfg_path docs $e_docs_q)|g" \
-                -e "s|\$(sg_cfg_path scripts scripts)|\$(sg_cfg_path scripts $e_scripts_q)|g" \
-                -e "s|\$(sg_cfg_path tests tests)|\$(sg_cfg_path tests $e_tests_q)|g" \
-                -e "s|\$(sg_cfg_path githooks \.githooks)|\$(sg_cfg_path githooks $e_gh_q)|g" \
-                -e "s|docs/|$e_docs/|g"
-        return 0 ;;
+        _br_expr="s|branches: \\[main\\]|branches: [${e_branch}]|g" ;;
     esac
   fi
-  sed -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
+  sed ${_br_expr:+-e "$_br_expr"} \
+      -e "s|scripts/install-hook-adapter|$e_scripts/install-hook-adapter|g" \
       -e "s|scripts/install-ci-adapter|$e_scripts/install-ci-adapter|g" \
       -e "s|scripts/session-gate\.sh|$e_scripts/session-gate.sh|g" \
       -e "s|scripts/check-standards-compliance\.sh|$e_scripts/check-standards-compliance.sh|g" \
       -e "s|scripts/stamp-provenance\.sh|$e_scripts/stamp-provenance.sh|g" \
       -e "s|scripts/agent-gate|$e_scripts/agent-gate|g" \
+      -e "s|scripts/bug-autointent|$e_scripts/bug-autointent|g" \
+      -e "s|scripts/eval-cases|$e_scripts/eval-cases|g" \
+      -e "s|scripts/eval-rescore|$e_scripts/eval-rescore|g" \
       -e "s|tests/run-tests\.sh|$e_tests/run-tests.sh|g" \
+      -e "s|tests/fresh-clone-check\.sh|$e_tests/fresh-clone-check.sh|g" \
       -e "s|tests/audit-docs-consistency\.sh|$e_tests/audit-docs-consistency.sh|g" \
       -e "s|\.githooks/|$e_gh/|g" \
       -e "s|\$(cfg_path docs docs)|\$(cfg_path docs $e_docs_q)|g" \
@@ -761,15 +748,31 @@ merge_managed() { # src dest -> stdout merged; rc 2 = dest lacks markers
 manifest_path() { printf '%s/.dev-standards-manifest' "$target"; }
 file_cksum() { cksum "$1" | awk '{print $1}'; }
 manifest_get() { awk -v k="$1" '$2==k{print $1; exit}' "$(manifest_path)" 2>/dev/null; }
-manifest_record() { # dest_rel dest — upsert（载荷写入成功后调用；manifest 自身不入账）
-  local c; c=$(file_cksum "$2")
-  [[ -f $(manifest_path) ]] || : > "$(manifest_path)"
-  if ! awk -v k="$1" -v c="$c" 'BEGIN{d=0} $2==k{print c" "k; d=1; next} {print} END{if(!d)print c" "k}' \
-    "$(manifest_path)" > "$(manifest_path).tmp" || ! mv "$(manifest_path).tmp" "$(manifest_path)"; then
-    rm -f "$(manifest_path).tmp"
-    echo "WARNING     manifest record failed for $1 (baseline entry may be stale — next upgrade will treat as user-modified)" >&2
-    return 1
+_MANIFEST_BUF=""
+_manifest_flush() {
+  [[ -n "$_MANIFEST_BUF" ]] || return 0
+  local mtmp qtmp
+  mtmp="$(manifest_path)"
+  [[ -d "$target" ]] || { _MANIFEST_BUF=""; return 0; }
+  [[ -f "$mtmp" ]] || : > "$mtmp"
+  qtmp=$(mktemp "${TMPDIR:-/tmp}/bs-mf.XXXXXX" 2>/dev/null || printf '%s.q.%s' "$mtmp" "$$")
+  printf '%s' "$_MANIFEST_BUF" > "$qtmp"
+  if awk 'NR==FNR{ if (!($2 in seen)) { ord[++n]=$2 } upd[$2]=$1; seen[$2]=1; next }
+          { if ($2 in upd) { print upd[$2]" "$2; done[$2]=1 } else { print } }
+          END { for (i=1; i<=n; i++) { k=ord[i]; if (!(k in done)) print upd[k]" "k } }' \
+       "$qtmp" "$mtmp" > "$mtmp.tmp" && mv "$mtmp.tmp" "$mtmp"; then
+    _MANIFEST_BUF=""
+    rm -f "$qtmp"
+    return 0
   fi
+  rm -f "$qtmp" "$mtmp.tmp"
+  echo "WARNING     manifest batch flush failed (baseline entries may be stale — next upgrade will treat as user-modified)" >&2
+  return 1
+}
+trap '_manifest_flush || true' EXIT
+manifest_record() { # dest_rel dest — buffer upsert; flushed once via _manifest_flush
+  local c; c=$(file_cksum "$2")
+  _MANIFEST_BUF="${_MANIFEST_BUF}${c} ${1}"$'\n'
 }
 manifest_user_modified() { # dest_rel dest -> 0 = entry 存在且 hash 异（用户改过）
   local e f
@@ -1608,6 +1611,7 @@ auto_wire_guard() {
     fi
   fi
 }
+_manifest_flush || true
 case " $layers " in
   *" guard "*) auto_wire_guard ;;
 esac

@@ -1403,6 +1403,9 @@ doctor_cmd() { # [--json] [--live [--arm|--verify]] — ITEM-47 + H-1/H-3 diagno
   if [[ "$arm" -eq 1 && "$verify" -eq 1 ]]; then
     echo "agent-gate: doctor --arm and --verify are mutually exclusive" >&2; exit 2
   fi
+  if [[ "$live" -eq 1 && "$arm" -eq 0 && "$verify" -eq 0 ]]; then
+    echo "agent-gate: doctor --live requires --arm or --verify (Usage: scripts/agent-gate doctor [--json] [--live [--arm|--verify]])" >&2; exit 2
+  fi
   if [[ "$arm" -eq 1 ]]; then
     local bt bn
     bt=$(_cold_stat_num "$_sf" turns); bn=$(_cold_stat_num "$_sf" total)
@@ -1464,18 +1467,18 @@ doctor_cmd() { # [--json] [--live [--arm|--verify]] — ITEM-47 + H-1/H-3 diagno
   fi
   local _cs_ok=1 _cs_bad="" _cs_f _cs_dir="$repo_root/$scripts_dir"
   [[ -f "$_cs_dir/lib-gate-cold.sh" ]] || _cs_dir="$repo_root/resources/templates"
-  for _cs_f in lib-json.sh lib-gate-cold.sh; do
-    if [[ ! -f "$_cs_dir/$_cs_f" ]] || ! /bin/bash -n "$_cs_dir/$_cs_f" >/dev/null 2>&1; then
+  for _cs_f in lib-json.sh lib-gate-staged.sh lib-gate-cold.sh; do
+    if [[ ! -f "$_cs_dir/$_cs_f" ]] || ! bash -n "$_cs_dir/$_cs_f" >/dev/null 2>&1; then
       _cs_ok=0; _cs_bad="${_cs_bad:+$_cs_bad }$_cs_f"
     fi
   done
   local _ag_f="$repo_root/$scripts_dir/agent-gate"
   [[ -f "$_ag_f" ]] || _ag_f="$repo_root/resources/templates/agent-gate.sh"
-  if [[ ! -f "$_ag_f" ]] || ! /bin/bash -n "$_ag_f" >/dev/null 2>&1; then
+  if [[ ! -f "$_ag_f" ]] || ! bash -n "$_ag_f" >/dev/null 2>&1; then
     _cs_ok=0; _cs_bad="${_cs_bad:+$_cs_bad }agent-gate"
   fi
   if [[ "$_cs_ok" -eq 1 ]]; then
-    _doc_add "core_scripts" "ok" "agent-gate + lib-json + lib-gate-cold present & valid" ""
+    _doc_add "core_scripts" "ok" "agent-gate + lib-json + lib-gate-staged + lib-gate-cold present & valid" ""
   else
     _doc_add "core_scripts" "fail" "missing or invalid bash syntax: $_cs_bad" "bash scripts/bootstrap.sh --guard ."
   fi
@@ -1692,7 +1695,8 @@ f2p_replay_run() { # <id> <dir> <risk> [base-override] -> sets _F2P_STATUS, _F2P
 
   norm_cmd=$(_cold_norm_cmd "$cmd")
   cmd_sha=$(_cold_str_sha256 "$norm_cmd")
-  local _ign_re="^(\\.agent-state/|${docs_dir}/|${change_root}/|${bugs_root}/)"
+  local _bugs_re; _bugs_re=$(re_escape "$bugs_root")
+  local _ign_re="^(\\.agent-state/|${docs_re}/|${change_root_re}/|${_bugs_re}/)"
   tree_fp=$(cd "$repo_root" && { git diff --name-only "$base_sha" 2>/dev/null; git diff --name-only --cached 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; git ls-files 2>/dev/null | head -n 50; } | awk 'NF' | { grep -vE "$_ign_re" || true; } | sort -u | while IFS= read -r _p; do [[ -f "$repo_root/$_p" ]] && cksum "$repo_root/$_p" 2>/dev/null || printf 'D %s\n' "$_p"; done | cksum | awk '{print $1}')
   cache_key="${base_sha}:${tree_fp}:${cmd_sha}"
   if [[ -s "$receipt_f" ]] && grep -qF "\"cache_key\":\"$cache_key\"" "$receipt_f" 2>/dev/null && grep -qF '"status":"verified"' "$receipt_f" 2>/dev/null; then
@@ -1714,6 +1718,7 @@ f2p_replay_run() { # <id> <dir> <risk> [base-override] -> sets _F2P_STATUS, _F2P
     git -C "$repo_root" worktree remove --force "$wt2" >/dev/null 2>&1 || true
     [[ -n "$tmpd" ]] && rm -rf "$tmpd" 2>/dev/null || true
   }
+  trap '_f2p_cleanup' INT TERM
 
   t0=$(date +%s 2>/dev/null || echo 0)
   if ! git -C "$repo_root" worktree add --detach "$wt1" "$base_sha" >/dev/null 2>&1; then
@@ -1791,6 +1796,7 @@ f2p_replay_run() { # <id> <dir> <risk> [base-override] -> sets _F2P_STATUS, _F2P
     "$_F2P_ELAPSED" "$(json_escape "$_F2P_DETAIL")" "$(json_escape "$ts_now")" > "$receipt_f"
   printf '%s\t%s\t%s\t%s\n' "$ts_now" "$id" "$_F2P_STATUS" "$_F2P_ELAPSED" >> "$hist_f"
   _f2p_cleanup
+  trap - INT TERM
   [[ "$_F2P_STATUS" == "verified" ]]
 }
 
@@ -2231,7 +2237,7 @@ _cold_hol_g1() { # <d> <id> <risk> <act>
     [[ "$act" -eq 1 ]] && _cold_hol_enforce G1 "$id" "$risk" "00-intent.md lacks 「变更定位卡」 (G-1: goal chain / position / up-downstream / invariants<=5 / non-goals / rollback)" stage
     return 0
   fi
-  p01="${docs_dir:-docs}/project/P01-requirements-master.md"; p12="${docs_dir:-docs}/project/P12-product-context.md"
+  p01="${repo_root:-.}/${docs_dir:-docs}/project/P01-requirements-master.md"; p12="${repo_root:-.}/${docs_dir:-docs}/project/P12-product-context.md"
   if [[ -s "$p01" || -s "$p12" ]]; then
     for tok in $(printf '%s\n' "$sec" | grep -E '目标链' | grep -oE '(REQ|OBJ)-[A-Za-z0-9]+' || true); do
       grep -qF -- "$tok" "$p01" "$p12" 2>/dev/null || msg="${msg}goal-chain anchor $tok not found in P01/P12; "
@@ -2268,7 +2274,7 @@ _cold_hol_g2() { # <d> <id> <risk> <act>
     case "$key" in
       TC-*) _cold_tc_exists "$d/04-test-scripts.md" "$key" || msg="${msg}mapped $key does not exist in 04; " ;;
       *)    { local _mf _mhit=0
-              for _mf in "$d"/*.md "${docs_dir:-docs}/project/"*.md; do
+              for _mf in "$d"/*.md "${repo_root:-.}/${docs_dir:-docs}/project/"*.md; do
                 [[ -f "$_mf" ]] || continue
                 case "$_mf" in */03-modification-plan.md|*/03.5-tasks.md) continue ;; esac
                 if grep -qF -- "$key" "$_mf" 2>/dev/null; then _mhit=1; break; fi
@@ -2291,7 +2297,7 @@ _cold_hol_g3() { # <d> <id> <risk>
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     is_code_path "$f" || continue
-    case "$f" in tests/*|test/*|*.lock|SHA256SUMS) continue ;; esac
+    case "$f" in tests/*|test/*|"${tests_dir:-tests}"/*|*.lock|SHA256SUMS) continue ;; esac
     hit=0
     for tok in $decl; do
       if [[ "$f" == "$tok" || "$f" == "${tok%/}/"* ]]; then hit=1; break; fi
@@ -2464,7 +2470,7 @@ EOF
 }
 
 confirm_context_cmd() { # <user>
-  local user="${1:-}" rr="${repo_root:-.}" pd="${docs_dir:-docs}/project" f p bad=0 tmp sha ts
+  local user="${1:-}" rr="${repo_root:-.}" pd="${repo_root:-.}/${docs_dir:-docs}/project" f p bad=0 tmp sha ts
   [[ -n "$user" ]] || { echo "agent-gate: usage: confirm-context <user>" >&2; exit 2; }
   for f in P02-architecture-master.md P03-interface-registry.md; do
     [[ -s "$pd/$f" ]] || continue
@@ -2505,7 +2511,7 @@ brief_cmd() { # <stage> [CHG]
 }
 
 _cold_ctx_confirmed() { # -> 0 when P12/P02/P03 that exist all carry a matching confirmed-by marker
-  local pd="${docs_dir:-docs}/project" f mk want got any=0
+  local pd="${repo_root:-.}/${docs_dir:-docs}/project" f mk want got any=0
   for f in P12-product-context.md P02-architecture-master.md P03-interface-registry.md; do
     [[ -s "$pd/$f" ]] || continue
     any=1
@@ -2546,7 +2552,7 @@ dispatch_pack_run() { # <stage> <id> — writes the pack + ledger row (plain dis
     printf '%s\n' "$out"
   } > "$dir/$did.md"
   [[ -s "$ledger" ]] || printf 'ts\tchange\tstage\trole\tdispatch_id\tprompt_sha\tgaps\tconfirmed_context\truntime\tmodel_id\n' > "$ledger"
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$id" "$stage" "$(dispatch_role "$stage")" "$did" "$psha" "$gaps_n" "$conf" "${AGENT_GUARD_RUNTIME:-unknown}" "${AGENT_GUARD_MODEL:-unknown}" >> "$ledger"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" "$id" "$stage" "$(dispatch_role "$stage")" "$did" "$psha" "$gaps_n" "$conf" "${AGENT_RUNTIME:-unknown}" "${AGENT_GUARD_MODEL:-unknown}" >> "$ledger"
   printf '%s\n' "$out"
   printf '\ndispatch_id: %s\nprompt_sha: %s  (the reviewer must echo prompt_sha as the FIRST line of its receipt; cite dispatch_id in 07)\n' "$did" "$psha"
 }
@@ -2559,7 +2565,7 @@ docs_snapshot_cmd() { # [CHG] — local archive only, never tracked
   tar -czf "$out" -C "$rr" "${docs_dir:-docs}" 2>/dev/null || { echo "agent-gate: docs-snapshot: tar failed" >&2; exit 2; }
   sha=$(_cold_sha_stdin < "$out")
   printf '%s  %s\n' "$sha" "$(basename "$out")" > "$out.sha256"
-  p10="${docs_dir:-docs}/project/P10-change-ledger.md"
+  p10="${repo_root:-.}/${docs_dir:-docs}/project/P10-change-ledger.md"
   [[ -f "$p10" ]] && printf -- '- docs-snapshot %s sha256=%s at %s\n' "$(basename "$out")" "$sha" "$ts" >> "$p10"
   echo "agent-gate: docs-snapshot $out sha256=$sha (local archive; not tracked, not distributed)"
 }

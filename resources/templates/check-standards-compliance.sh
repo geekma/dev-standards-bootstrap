@@ -110,20 +110,29 @@ DOCS_DIR="${AGENT_GUARD_DOCS_DIR:-$(cfg_path docs docs)}"
 # <docs>/<feature>/，在"变更轨不在 docs 下"的仓库里会把合规产物视同不存在（假红拦截），
 # 三处读取方口径必须一致（v3.15.0 的三脚本同改义务）。
 CHANGE_ROOT="${AGENT_GUARD_CHANGE_ROOT:-$(cfg_path change_root "$DOCS_DIR/changes")}"
+SCRIPTS_DIR="${AGENT_GUARD_SCRIPTS_DIR:-$(cfg_path scripts scripts)}"
+TESTS_DIR="${AGENT_GUARD_TESTS_DIR:-$(cfg_path tests tests)}"
+GITHOOKS_DIR="${AGENT_GUARD_GITHOOKS_DIR:-$(cfg_path githooks .githooks)}"
 # 转义进 ERE 用（目录名可能含点，如 doc.specs）
 DOCS_RE=$(printf '%s' "$DOCS_DIR" | sed 's/[.[\*^$]/\\&/g')
 CHANGE_RE=$(printf '%s' "$CHANGE_ROOT" | sed 's/[.[\*^$]/\\&/g')
+SCRIPTS_RE=$(printf '%s' "$SCRIPTS_DIR" | sed 's/[.[\*^$]/\\&/g')
+TESTS_RE=$(printf '%s' "$TESTS_DIR" | sed 's/[.[\*^$]/\\&/g')
+GITHOOKS_RE=$(printf '%s' "$GITHOOKS_DIR" | sed 's/[.[\*^$]/\\&/g')
+
+_CC_GOV_RE="^(${DOCS_RE}/|\\.github/|\\.agent-governance/|README|AGENTS\\.md|CLAUDE\\.md|GEMINI\\.md|${GITHOOKS_RE}/|\\.agents/|\\.claude/|\\.cursor/|\\.gemini/|\\.opencode/|\\.agent-state/|\\.agent-governance\\.yml$|${SCRIPTS_RE}/agent-gate$|${SCRIPTS_RE}/lib-json\\.sh$|${SCRIPTS_RE}/lib-gate-staged\\.sh$|${SCRIPTS_RE}/lib-gate-cold\\.sh$|${SCRIPTS_RE}/session-gate\\.sh$|${SCRIPTS_RE}/install-hook-adapter$|${SCRIPTS_RE}/install-ci-adapter$|${SCRIPTS_RE}/check-standards-compliance\\.sh$|${SCRIPTS_RE}/stamp-provenance\\.sh$|${SCRIPTS_RE}/generate-reading-pack\\.sh$|${SCRIPTS_RE}/behavior-extract\\.sh$|${SCRIPTS_RE}/ui-probe\\.sh$|${SCRIPTS_RE}/lib-suite-tree-fingerprint\\.sh$|${SCRIPTS_RE}/lib-suite-lock\\.sh$|${SCRIPTS_RE}/shard-sum\\.sh$|${SCRIPTS_RE}/evidence-round\\.sh$|${TESTS_RE}/run-tests\\.sh$|${TESTS_RE}/governance-smoke\\.sh$|${TESTS_RE}/audit-docs-consistency\\.sh$|${TESTS_RE}/fresh-clone-check\\.sh$|${TESTS_RE}/lib/test-harness\\.sh$|${TESTS_RE}/suites/suite-0[1-8]-[a-z]+\\.sh$)"
+_APP_CHANGED_FILES=$(echo "$CHANGED_FILES" | grep -vE "$_CC_GOV_RE" || true)
 
 # 代码路径定义必须与 agent-gate.sh is_code_path() 保持一致（同层守卫，单一口径）：
 # 之前只列 6 种后缀，漏 .sh/.sql/.kt/.rb/.php/.cs/.cpp 等 → 代码变更逃过文档检查。
 # 【同步义务】下方扩展名清单须与 resources/templates/agent-gate.sh 的 is_code_path()
 # 一致——机器双守护：源层 audit A2 + tests/run-tests.sh T12；改其一必须同步改另一。
-CODE_CHANGED=$(echo "$CHANGED_FILES" | grep -E '\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$' || true)
+CODE_CHANGED=$(echo "$_APP_CHANGED_FILES" | grep -E '\.(c|cc|cpp|cs|go|java|js|jsx|kt|kts|php|py|rb|rs|scala|sh|sql|swift|ts|tsx|vue)$' || true)
 _cc_extra_ext=$(cfg_path code_extensions "" 2>/dev/null | tr -d '[:space:]"'"'" || true)
 if [[ -n "$_cc_extra_ext" && "$_cc_extra_ext" =~ ^[A-Za-z0-9_+]+(,[A-Za-z0-9_+]+)*$ ]]; then
   _cc_extra_re="${_cc_extra_ext//,/|}"
   _cc_extra_re="${_cc_extra_re//+/\\+}"
-  _cc_extra_hits=$(echo "$CHANGED_FILES" | grep -E "\.(${_cc_extra_re})$" || true)
+  _cc_extra_hits=$(echo "$_APP_CHANGED_FILES" | grep -E "\.(${_cc_extra_re})$" || true)
   if [[ -n "$_cc_extra_hits" ]]; then
     CODE_CHANGED=$(printf '%s\n%s\n' "$CODE_CHANGED" "$_cc_extra_hits" | grep -v '^$' | awk '!seen[$0]++' || true)
   fi

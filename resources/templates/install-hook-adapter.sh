@@ -513,8 +513,6 @@ oc_clean_repo_litter() { # 终验探针在真实仓根的临时痕——成功/�
   done
 }
 
-oc_ensure_tmp
-
 # 实时探测 runtime 清单与版本（REQ-1038 ①）：homebrew CLI 走 `opencode --version`；
 # Desktop 内置 CLI 走 macOS 实证路径 glob（其余平台尽力探测，未检出即如实报告）。
 # 测试注入：DEV_STANDARDS_OPENCODE_BIN / DEV_STANDARDS_OPENCODE_DESKTOP_BIN（路径不可执行=抑制该项）。
@@ -575,6 +573,7 @@ oc_kill_bg() { # <pidfile>
 
 # 版本探测统一走 XDG 重定向（绝不触碰用户真实 opencode 状态；沙箱/CI 亦不因日志写失败而误判缺版本）
 oc_ver_of() { # <bin> -> version string
+  oc_ensure_tmp
   mkdir -p "$OC_TMP/xdg-v" 2>/dev/null || true
   env XDG_CONFIG_HOME="$OC_TMP/xdg-v/c" XDG_DATA_HOME="$OC_TMP/xdg-v/d" \
       XDG_STATE_HOME="$OC_TMP/xdg-v/s" XDG_CACHE_HOME="$OC_TMP/xdg-v/z" \
@@ -757,6 +756,7 @@ oc_arbitrate() { # <candidates> <runtimes> <label> ; sets OC_WINNER/OC_RESULTS�
 }
 
 adapter_opencode() {
+  oc_ensure_tmp
   OC_WROTE=false
   need_gate
   local runtimes; runtimes="$(detect_opencode_runtimes || true)"
@@ -1340,6 +1340,13 @@ for c in $targets; do
         note "opencode wiring failed"
       fi ;;
     cursor)   static_schema cursor .cursor/hooks.json   && installed=$((installed+1)) || true ;;
+    agents-hooks)
+      if [[ -f .agents/hooks.json ]] && verify_wiring .agents/hooks.json >/dev/null 2>&1; then
+        ok "agents-hooks -> .agents/hooks.json verified"
+        installed=$((installed+1))
+      else
+        note "agents-hooks wiring invalid or incomplete (.agents/hooks.json)"
+      fi ;;
     gemini)   no_hook_surface gemini ;;
     codex)    adapter_codex ;;
   esac

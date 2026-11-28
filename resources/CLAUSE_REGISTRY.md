@@ -90,7 +90,7 @@
 
 ## GATE-E 码映射索引（v3.62.0，REQ-1021）
 
-- 来源唯一权威：`resources/templates/agent-gate.sh` 的 `die "GATE-Exx:` 字符串（dev 份 `scripts/agent-gate` 与模板份单源同文）；语义逐码从 die 字符串提炼，不臆造。
+- 来源唯一权威：`resources/templates/agent-gate.sh` 与懒加载模块 `resources/templates/lib-gate-staged.sh`、`resources/templates/lib-gate-cold.sh` 中的 `die "GATE-Exx:` 字符串（dev 份 `scripts/agent-gate` / `scripts/lib-gate-*.sh` 与模板份单源同文）；语义逐码从 die 字符串提炼，不臆造。
 - 每码一行：码 / 一句话语义 / 落点（模板份函数或节名——**不写行号**，行号漂移，计数断言才稳）。
 - 计数互锁：本节 GATE-E 行数 == 模板 `die "GATE-E[0-9]+` 去重计数，由源层审计断言执法（`tests/audit-standards-src.sh`，源层脚本不随 Skill 下发；「CLAUSE_REGISTRY GATE-E rows == template die codes」）；agent-gate 新增 E 码必须同步加行，废止 E 码必须同步删行。本节只做索引，不复述门禁正文。
 | R66 | 业务合理性终审（§2.5 阶段 8，N1 依据独立性，v3.84.0） | DEVELOPMENT_STANDARDS.md::**业务合理性终审（v3.84.0，CHG-111，N1 依据独立性）** | L2-architecture | 硬 | 结构 | 见证 |
@@ -202,7 +202,7 @@
 | GATE-E101 | 行为清单含 遗漏(missing) 项 | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
 | GATE-E102 | 三方对账孤儿（行为未被任何产物引用且未豁免） | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
 | GATE-E103 | demo_script 声明但 05 缺 REPLAY: 回放证据 | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
-| GATE-E104 | ui_change 但 05 缺逐 UJ 运行痕迹（事故硬门化） | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
+| GATE-E104 | ui_change 但 05 缺逐 UJ 运行痕迹/DOM 几何探针或受控降级声明（事故硬门化） | lib-gate-staged.sh::validate_dimensional_stop()（v3.68.0；Batch F 扩展） |
 | GATE-E105 | chain_change 但缺数据流规格表或表含空单元格 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
 | GATE-E106 | chain_change 但 04 缺否定测试抽查节 | agent-gate.sh::validate_dimensional_begin()（v3.68.0） |
 | GATE-E107 | 07 缺运行时走查节或 ses-/task- 证据 id | agent-gate.sh::validate_dimensional_stop()（v3.68.0） |
@@ -229,7 +229,7 @@
 | GATE-E134 | 治理记录 JSON 同行 `}{` 拼接（缺逗号） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E135 | 治理记录 change_id 无法回读成完整对象（截断/重叠） | agent-gate.sh::validate_governance_state()（v3.90.1，CHG-123，P0-7） |
 | GATE-E136 | `plan` 子命令用法错误（缺变更号 / 变更目录不存在 / 未知选项） | agent-gate.sh::plan 分支（v3.90.2，CHG-124，P1-1） |
-| GATE-E137 | 评审计划要求 deep/高成本模型但无用户确认（AI 不得自行选择） | agent-gate.sh::review_consent_check()（v3.90.4） |
+| GATE-E137 | 评审计划要求 deep/高成本模型或违背模型档位底线但无用户确认（AI 不得自行选择） | lib-gate-staged.sh::die_e137()/review_consent_check()（v3.90.4；v4.17.0 G-13 复用） |
 | GATE-E138 | `review-plan` 子命令用法错误（缺变更号 / 未知选项） | agent-gate.sh::review-plan 分支（v3.90.4） |
 | GATE-E139 | `review-plan --approve` 缺模型 id | agent-gate.sh::review-plan 分支（v3.90.4） |
 | GATE-E127 | 阶段关闭前置缺失（00.5 无确认 / 09 无子 Agent 放行） | agent-gate.sh::stage_close_check()（v3.90.3，CHG-125，P2-1） |
@@ -246,9 +246,9 @@
 | GATE-E146 | 下一阶段首条 Observation 未引用上一阶段回填的总册锚点（漏读） | agent-gate.sh::stage_close_check()（v3.90.5，CHG-126，P2-5） |
 | GATE-E147 | decision 的 `diff_hash` 与现算 diff 不一致且 `PLAN_STRICT=1`（stale 判定） | agent-gate.sh::plan_consume_check()（v3.91.0，CHG-127，G3） |
 | GATE-E148 | `decision.must[]` 非空但 `chosen` 不是 FULL 且 `PLAN_STRICT=1`（硬规则未覆盖） | agent-gate.sh::plan_consume_check()（v3.91.0，CHG-127，G12） |
-| GATE-E150 | 被测核心变更的 05 缺 `red_repro:`/`green_after:` 两行（或占位） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1279） |
-| GATE-E151 | `verification_owner` 缺失或等于 `implementation_owner`（被测核心变更） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1280） |
-| GATE-E152 | `scope_overrun=over` 且无用户确认的 scope（变更范围预算） | agent-gate.sh::scope_overrun_check()（v3.92.0，CHG-128，REQ-1281） |
+| GATE-E150 | 被测核心/red-green 验证的 05 缺有效 `red_repro:`/`green_after:` 或实测失败未分类 | lib-gate-staged.sh::die_e150()/core_gate_check()（v3.92.0；v4.15.0 E-1/E-2 复用） |
+| GATE-E151 | `verification_owner` 缺失或等于 `implementation_owner`（被测核心变更） | lib-gate-staged.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1280） |
+| GATE-E152 | `scope_overrun=over` 且无用户确认的 scope，或变更文件/RTVM 范围超限（范围预算） | lib-gate-staged.sh::die_e152()/scope_overrun_check()（v3.92.0；v4.17.0 G-3 复用） |
 | GATE-E154 | 09 缺「未验证 REQ 清单」或漏列 01.5 验证状态非 ✅ 的 REQ（静默降级） | agent-gate.sh::unverified_req_check()（v3.92.2，CHG-128，REQ-1284） |
 | GATE-E155 | dispatch 用法错误（阶段缺失/非法、变更号缺失或不存在、未知选项）——只报用法，不写文件 | agent-gate.sh::dispatch 子命令（v3.94.0，CHG-131，REQ-1315） |
 | GATE-E153 | 被测核心变更缺 fresh-clone receipt 或 receipt 陈旧/红（环境等价） | agent-gate.sh::core_gate_check()（v3.92.0，CHG-128，REQ-1278） |
@@ -260,11 +260,11 @@
 | GATE-E78 | 未知 stage | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E79 | 未知命令 | agent-gate.sh::命令分发（case "$command"） |
 | GATE-E80 | 02-code-impact-analysis 缺「延伸发现」节 | agent-gate.sh::validate_artifact_content() |
-| GATE-E81 | 01-diagnosis 缺「延伸发现/历史相似检索」节 | agent-gate.sh::validate_governance_state() |
+| GATE-E81 | 01-diagnosis 缺「延伸发现/历史相似检索」节，或 02 同族推演跨家族未覆盖 | lib-gate-staged.sh::die_e81()/validate_governance_state() |
 | GATE-E82 | 专家评审记录缺 agent 签名（platform / model / task） | agent-gate.sh::validate_delivery() |
 | GATE-E83 | 沟通先行门：用户整体确认未记录即生成后续产物 | agent-gate.sh::validate_artifact_content() |
 | GATE-E84 | 02-code-impact-analysis 缺「历史相似检索」节（或未命中声明） | agent-gate.sh::validate_artifact_content() |
-| GATE-E85 | 07-review-report 缺可溯源独立评审签名（task-/ses- id） | agent-gate.sh::validate_delivery() |
+| GATE-E85 | 07-review-report 缺可溯源独立评审签名/跨模型或评审痕迹（task-/ses- id） | lib-gate-staged.sh::die_e85()/validate_delivery() |
 | GATE-E86 | 目录落位声明↔目录/风险一致性 + L0/L1 声明独立目录一律拒（正向并入/反向首个即建）+ 批成员缺自身锚点 fail-closed | agent-gate.sh::validate_governance_state() |
 | GATE-E87 | 缺陷组锚点散落兄弟文档但 01-diagnosis 缺失 | agent-gate.sh::validate_bug_groups() |
 | GATE-E88 | 缺 review_owner（评审主体强制，最低线 L0/L1 亦必填） | agent-gate.sh::validate_governance_state() |

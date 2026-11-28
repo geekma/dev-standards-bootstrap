@@ -9,8 +9,6 @@
 > Generated: 2026-09-22 ｜ Privacy: project and personal identifiers removed
 > **Snapshot scope**: machine-enforcement counts reflect the v3.39-era snapshot; 2026-09-28 recheck — 88 GATE-E codes (v3.62.1), audit groups G1–G10 + source-layer A-group; 2026-11-25 recheck (`v4.10.0+`) — 162 `GATE-E` codes, audit groups `G1–G16` + source-layer `A`-group (stage row #16 below retains the 2026-09 measurement snapshot). Current values per DS footer / CLAUSE_REGISTRY.
 
-> **快照范围**：机校数为 v3.39 时代快照；2026-09-28 复核——88 个 GATE-E 码（v3.62.1）、审计组 G1–G10+源层 A 组；2026-11-25 复核（`v4.10.0+`）——162 个 `GATE-E` 码、审计组 `G1–G16` + 源层 `A` 组（第 16 行仍保留 2026-09 实测期快照）。当前值以 DS 页脚/CLAUSE_REGISTRY 为准。
-
 ## Summary
 
 - Across 20 SDLC stages, the governance layer contributes a **simple average of 44%** — higher than the model (36%) and the Harness (17%).
@@ -42,7 +40,7 @@ Highest value per row in bold.
 | 16 | Compliance docs / audit | 30% | 15% | **55%** | G1–G10 audit groups + provenance stamping; 88 GATE-E `die` enforcement points |
 | 17 | Independent review | **45%** | 10% | **45%** | Tie: model supplies review intelligence; standards supply four-role separation + signature checks |
 | 18 | Knowledge retention | 25% | 5% | **70%** | Mandatory stage 10 + experience ledger + anti-pattern registry |
-| 19 | Cross-session handoff | 20% | 20% | **60%** | 12-volume project master set for cold start; disk as sole authority; ReAct logging |
+| 19 | Cross-session handoff | 20% | 20% | **60%** | 13-volume project master set for cold start; disk as sole authority; ReAct logging |
 | 20 | Session discipline / resource governance | 20% | **25%** | 5% | Largest gap at measurement time — closed by v3.38/v3.39 water-level & telemetry enforcement (see "Evolution note") |
 
 ## 2. Summary comparison
@@ -104,3 +102,4 @@ Highest value per row in bold.
 - **Docs, Windows & CI compatibility (`v4.11`–`v4.12`)**: specs/READMEs synced for `enforcement.mode`, `doctor`, `metrics --summary`, `--dry-run`, `SHA256SUMS`; single-source audit wrapper; root `.gitattributes` locks LF endings, core entry points export `MSYS_NO_PATHCONV=1`, `has_real_python3()` skips the Windows Store stub, `install.sh --as-skill` falls back to a fail-closed copy on Windows/MSYS, `install-hook-adapter` emits a `windows_note`, and CI gains a `windows-smoke` job (`windows-latest`, Git Bash).
 - **Structure & speed (`v4.13`)**: `agent-gate` split into hot / warm (`lib-gate-staged.sh`) / cold layers; `tests/run-tests.sh` becomes a thin dispatcher over `tests/suites/`; the source audit runs as a single-pass engine (measured ~25 s → ~14 s). `v4.13.1` closes the review leftovers (hard-coded T87 section count, test-env leakage, `GATE-E156` never downgraded).
 - **Script layering & distribution boundary (`v4.14`)**: 14 source-only scripts move to `scripts/dev/`, the changelog archive moves to `archive/`, and audit group `A78` pins what `scripts/` may hold and which `install_file` sources stay in its root.
+- **Process authenticity, UI probe, Holistic View & legacy upgrade (`v4.15`–`v4.18`)**: `record-red` classifies real failure classes + `mutation-spot` (`v4.15`); `ui-probe` checks DOM geometry and runtime `.github/` / `.agent-review-models.json` generation (`v4.16`); `seed-context` / `confirm-context` / `brief` / `dispatch --pack` / `docs-snapshot` + `metrics --summary` close holistic context and cost tracking (`v4.17`); `doctor --live --arm|--verify`, `review-models --draft`, `runtime-profile` (`.agent-state/runtime-profile.json`), and `bootstrap --upgrade --dry-run|--rollback` smooth legacy `v3.90+` upgrades (`v4.18`), with parallel 6-shard `evidence-round` hardening in `v4.18.1`.

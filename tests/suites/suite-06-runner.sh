@@ -376,6 +376,12 @@ out=$(scripts/agent-gate --stage staged 2>&1 || true)
 check_output "T52 soft warning fires for UI-path diffs without ui_change" "UX soft warning" "$out"
 }
 
+_t53_refresh_rc() {
+  printf '{"audit_rc":0,"suite_rc":0,"head":"%s","tree_sha":"%s"}\n' \
+    "$(git rev-parse HEAD)" \
+    "$(git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}')" > .agent-state/fresh-clone-receipt.json
+}
+
 section_T53() {
 # ------------------------------------------------ T53 G13/G14 行为面门禁（v3.68.0，CHG-043）
 # TC↔REQ 映射：TC-1128→REQ-1067/1069/1076，TC-1129→REQ-1068，TC-1130→REQ-1067/1070，
@@ -1273,7 +1279,9 @@ out=$(AGENT_GUARD_ENFORCEMENT_MODE=ratchet AGENT_GUARD_RATCHET_SINCE=2026-11-01 
 report "T53 TC-10069 ratchet mode enforces strict on post-since change" 2 "$rc"
 cd "$ROOT"
 rm -rf "$_t53_ef"
+}
 
+section_T53b() {
 # ---- CHG-164 (REQ-1640~1644, DES-1640~1644): E-1/E-2/E-4/E-5/E-6 ----
 # TC-1640a~d & TC-1641a~d: record-red output classification + record-green
 new_repo
@@ -1557,11 +1565,6 @@ chmod +x tests/test_bug.sh
 git add src/app.sh tests/test_bug.sh resources/templates/agent-gate.sh && git commit -qm "chore: base repo for f2p"
 
 # Helper to populate valid L2 delivery docs for CHG-165x fixtures
-_t53_refresh_rc() {
-  printf '{"audit_rc":0,"suite_rc":0,"head":"%s","tree_sha":"%s"}\n' \
-    "$(git rev-parse HEAD)" \
-    "$(git ls-files -z | xargs -0 cksum 2>/dev/null | cksum | awk '{print $1}')" > .agent-state/fresh-clone-receipt.json
-}
 _t53_seed_e3() {
   local cid="$1" risk="$2" sv="$3" cmd="$4" extra09="${5:-}"
   seed_artifacts "$cid" "$risk" claude/s-1 claude/s-2 claude/s-3
@@ -1733,7 +1736,9 @@ _orig_tab_sha=$(cksum src/tabbed.sh | awk '{print $1}')
 scripts/agent-gate mutation-spot --file src/tabbed.sh --cmd "bash tests/test_tabbed.sh" >/dev/null 2>&1
 report "T53 TC-1651c mutation-spot preserves leading Tabs and backslashes (rc0)" 0 $?
 check_output "T53 TC-1651c src/tabbed.sh restored byte-for-byte" "^${_orig_tab_sha}$" "$(cksum src/tabbed.sh | awk '{print $1}')"
+}
 
+section_T53c() {
 # === Batch F (v4.16.0, CHG-166): UI baseline templates, ui-probe, F-2 & F-5 ===
 _t53_write_png_and_probe() { # <chg> <viewport> <tamper_sha> <viol_count> <waiver_expires>
   local _c="$1" _vp="${2:-1280}" _bad_sha="${3:-0}" _vcount="${4:-0}" _wexp="${5:-}"
@@ -2076,7 +2081,9 @@ out=$(AGENT_GUARD_UI_PROBE_MOCK=available scripts/agent-gate --stage stop 2>&1);
 report "T53 TC-1661f L2 passes compliant degraded=manual with WARN (rc0)" 0 "$rc"
 report "T53 TC-1661f logs UI_DEGRADED_MANUAL to gate-friction.tsv" 1 "$(grep -c '^UI_DEGRADED_MANUAL	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
 report "T53 TC-1661f logs UI_MANUAL_WHEN_PROBE_AVAILABLE when probe mock available" 1 "$(grep -c '^UI_MANUAL_WHEN_PROBE_AVAILABLE	' .agent-state/gate-friction.tsv 2>/dev/null || true)"
+}
 
+section_T53d() {
 # === Batch G (v4.17.0, CHG-167): Holistic View, Handoff Brief, Context Pack & Review Metrics ===
 _t53_seed_holistic() { # <chg> <risk> [standards_version_at_begin]
   local _c="$1" _r="$2" _sv="${3:-4.17.0}"
@@ -2672,6 +2679,72 @@ rm -f docs/changes/CHG-1685BT/02-code-impact-analysis.md.bak
 stamp_all docs/changes/CHG-1685BT; _t53_refresh_rc
 out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
 report "T53 TC-1685a G-3 matches backtick-wrapped source path in 02 affected_files (rc0)" 0 "$rc"
+
+# ---- CHG-169 (v4.18.1, REQ-1690~1692): audit fixes & regressions ----
+# TC-1690a: install.sh =*-form flags + auto mode --docs-dir + Windows --as-skill copies tests/ + expanded SHA256SUMS
+_r69_a=$(mktemp -d "${TMPDIR:-/tmp}/chg169-a.XXXXXX")
+( cd "$_r69_a" && git init -q && git config user.email t@t && git config user.name t && echo x>x && git add x && git commit -qm i )
+out=$(bash "$ROOT/scripts/install.sh" --from "$ROOT" --docs-dir=specdocs --layer=core "$_r69_a" 2>&1); rc=$?
+report "T53 TC-1690a install.sh accepts =*-form --docs-dir=specdocs --layer=core (rc0)" 0 "$rc"
+report "T53 TC-1690a install.sh installed into specdocs" 0 "$([[ -f "$_r69_a/specdocs/DEVELOPMENT_STANDARDS.md" ]] && echo 0 || echo 1)"
+out=$(bash "$ROOT/scripts/install.sh" --from "$ROOT" --docs-dir=specdocs --layer=core "$_r69_a" 2>&1)
+check_output "T53 TC-1690a install.sh mode=auto with --docs-dir=specdocs detects upgrade" 'mode=upgrade|up to date|upgrade:' "$out"
+_win_sk=$(mktemp -d "${TMPDIR:-/tmp}/chg169-winsk.XXXXXX")
+rmdir "$_win_sk" 2>/dev/null || true
+out=$(bash -c 'uname() { echo "MINGW64_NT-10.0"; }; export -f uname; bash "'"$ROOT/scripts/install.sh"'" --from "'"$ROOT"'" --as-skill "'"$_win_sk"'"' 2>&1); rc=$?
+report "T53 TC-1690a Windows --as-skill copy mode exits 0" 0 "$rc"
+report "T53 TC-1690a Windows --as-skill copy mode includes tests/run-tests.sh" 0 "$([[ -f "$_win_sk/tests/run-tests.sh" && -f "$_win_sk/tests/suites/suite-01-core.sh" ]] && echo 0 || echo 1)"
+report "T53 TC-1690a SHA256SUMS includes github-*.yml, 4 scripts libs, and tests/suites" 0 "$([[ $(grep -cE 'github-agent-governance\.yml|scripts/lib-suite-lock\.sh|tests/suites/suite-01-core\.sh' "$ROOT/SHA256SUMS" 2>/dev/null || true) -ge 3 ]] && echo 0 || echo 1)"
+rm -rf "$_r69_a" "$_win_sk"
+
+# TC-1691a: uninstall-standards completeness (Tier1/Tier2/Tier3) + bootstrap custom paths transform_src + usage manifest
+_r69_b=$(mktemp -d "${TMPDIR:-/tmp}/chg169-b.XXXXXX")
+( cd "$_r69_b" && git init -q && git config user.email t@t && git config user.name t && echo x>x && git add x && git commit -qm i )
+bash "$ROOT/scripts/bootstrap.sh" --all --docs-dir docs_c --scripts-dir tools_c --tests-dir qa_c "$_r69_b" >/dev/null 2>&1
+report "T53 TC-1691a bootstrap --all custom dirs lands ui-probe & fresh-clone-check" 0 "$([[ -f "$_r69_b/tools_c/ui-probe.sh" && -f "$_r69_b/qa_c/fresh-clone-check.sh" ]] && echo 0 || echo 1)"
+check_output "T53 TC-1691a custom --scripts-dir rewrites eval-cases in github-reviewer-rescore.yml" 'tools_c/eval-cases' "$(cat "$_r69_b/.github/workflows/github-reviewer-rescore.yml" 2>/dev/null || true)"
+check_output "T53 TC-1691a custom --tests-dir rewrites fresh-clone-check in pre-push" 'qa_c/fresh-clone-check\.sh' "$(cat "$_r69_b/.githooks/pre-push" 2>/dev/null || true)"
+check_output "T53 TC-1691a bootstrap --help --guard lists ui-probe.sh" 'ui-probe\.sh' "$(bash "$ROOT/scripts/bootstrap.sh" --help 2>&1)"
+check_output "T53 TC-1691a bootstrap --help --guard lists tests/suites" 'suites/suite-' "$(bash "$ROOT/scripts/bootstrap.sh" --help 2>&1)"
+( cd "$_r69_b" && bash tools_c/uninstall-standards >/dev/null 2>&1 )
+report "T53 TC-1691a uninstall Tier1 removes all 6 guard libs & tests/fresh-clone-check" 0 "$([[ ! -e "$_r69_b/tools_c/evidence-round.sh" && ! -e "$_r69_b/tools_c/behavior-extract.sh" && ! -e "$_r69_b/qa_c/fresh-clone-check.sh" ]] && echo 0 || echo 1)"
+report "T53 TC-1691a uninstall Tier2 cleans untouched 01.5-rtvm-matrix.md" 0 "$([[ ! -e "$_r69_b/docs_c/templates/entry/01.5-rtvm-matrix.md" ]] && echo 0 || echo 1)"
+out_un=$(rm -f "$_r69_b/.agent-governance.yml" && bash "$ROOT/scripts/bootstrap.sh" --all --force "$_r69_b" >/dev/null 2>&1 && cd "$_r69_b" && mkdir -p .agents && printf '{}\n' > .agents/hooks.json && bash scripts/uninstall-standards --dry-run 2>&1)
+check_output "T53 TC-1691a uninstall Tier3 reports STAGE_PLAYBOOK.md" 'STAGE_PLAYBOOK\.md' "$out_un"
+check_output "T53 TC-1691a uninstall Tier3 reports .agent-review-models.example.json" '\.agent-review-models\.example\.json' "$out_un"
+check_output "T53 TC-1691a uninstall Tier3 reports .agents/hooks.json" '\.agents/hooks\.json' "$out_un"
+rm -rf "$_r69_b"
+
+# TC-1692a: agents-hooks adapter + doctor --live usage/stages/portable bash + dispatch runtime + check-standards-compliance exclusion
+_r69_c=$(mktemp -d "${TMPDIR:-/tmp}/chg169-c.XXXXXX")
+( cd "$_r69_c" && git init -q && git config user.email t@t && git config user.name t && echo x>x && git add x && git commit -qm i )
+bash "$ROOT/scripts/bootstrap.sh" --all "$_r69_c" >/dev/null 2>&1
+mkdir -p "$_r69_c/.agents"
+cat > "$_r69_c/.agents/hooks.json" <<'EOF'
+{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"scripts/session-gate.sh start"}]}],"PreToolUse":[{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]}],"Stop":[{"hooks":[{"type":"command","command":"scripts/agent-gate --stage stop"}]}]}}
+EOF
+out=$(cd "$_r69_c" && env -u CLAUDECODE -u CODEX_HOME -u OPENCODE -u CURSOR_AGENT -u GEMINI_CLI bash scripts/install-hook-adapter 2>&1); rc=$?
+report "T53 TC-1692a install-hook-adapter handles agents-hooks-only repo cleanly (rc0)" 0 "$rc"
+out=$(cd "$_r69_c" && bash scripts/agent-gate doctor --live 2>&1); rc=$?
+report "T53 TC-1692a doctor --live without --arm|--verify exits 2" 2 "$rc"
+out=$(cd "$_r69_c" && bash scripts/agent-gate doctor --json 2>&1)
+check_output "T53 TC-1692a doctor core_scripts checks lib-gate-staged" 'lib-gate-staged' "$out"
+report "T53 TC-1692a lib-gate-cold avoids hardcoded /bin/bash -n" 0 "$(grep -c '/bin/bash -n' "$ROOT/resources/templates/lib-gate-cold.sh" || true)"
+mkdir -p "$_r69_c/docs/project" "$_r69_c/docs/changes/CHG-RP/handoffs"
+printf '# P12\n- OBJ: x\n' > "$_r69_c/docs/project/P12-product-context.md"
+printf '# P01\n- REQ-1: x\n' > "$_r69_c/docs/project/P01-requirements-master.md"
+printf '# P02\n- m (src: scripts/agent-gate)\n' > "$_r69_c/docs/project/P02-architecture-master.md"
+printf '# P03\n- i (src: scripts/agent-gate)\n' > "$_r69_c/docs/project/P03-interface-registry.md"
+( cd "$_r69_c" && env AGENT_RUNTIME=windsurf-rt bash scripts/agent-gate confirm-context u >/dev/null 2>&1 && bash scripts/agent-gate start CHG-RP --risk L0 >/dev/null 2>&1 || true )
+out_dp=$(cd "$_r69_c" && AGENT_RUNTIME=windsurf-rt bash scripts/agent-gate dispatch --pack review CHG-RP 2>&1 || true)
+check_output "T53 TC-1692a dispatch --pack logs AGENT_RUNTIME (not unknown)" '	windsurf-rt	' "$(cat "$_r69_c/.agent-state/dispatch-ledger.tsv" 2>/dev/null || true)"
+( cd "$_r69_c" && git add -A && git commit -qnm base && git branch -M main && git checkout -qb pr-gov && echo "# upd" >> scripts/agent-gate && echo "# upd" >> tests/suites/suite-01-core.sh && git add -A && git commit -qnm gov_only ) >/dev/null 2>&1
+out_cc_gov=$(cd "$_r69_c" && bash scripts/check-standards-compliance.sh main 2>&1); rc_cc=$?
+report "T53 TC-1692a check-standards-compliance excludes installed governance scripts/tests (rc0)" 0 "$rc_cc"
+( cd "$_r69_c" && mkdir -p src && echo "echo hi" > src/app.sh && git add -A && git commit -qnm app_src ) >/dev/null 2>&1
+out_cc_src=$(cd "$_r69_c" && bash scripts/check-standards-compliance.sh main 2>&1); rc_cc_src=$?
+report "T53 TC-1692a check-standards-compliance still blocks business src/app.sh without docs (rc1)" 1 "$rc_cc_src"
+rm -rf "$_r69_c"
 }
 
 section_T54() {
@@ -3102,11 +3175,19 @@ section_T57() {
   # hence the attribution baseline is the chain PREFIX T5+T22a. A red prefix means
   # the chain red has the SAME root cause — report it under its own name and do
   # not double-count it as T57's. Only a green prefix + red full chain is T57's.
-  _t57_pre=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a 2>&1); _t57_pre_rc=$?
-  report "T57 TC-1280 前置段 T5+T22a 健康（内层红非 T57 责任）" 0 "$_t57_pre_rc"
-  if [[ "$_t57_pre_rc" -eq 0 ]]; then
-    out=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a,T16 -j 2 2>&1 || true)
-    report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 "$(( $(printf '%s\n' "$out" | grep -cE '^FAIL ') > 0 || $(printf '%s\n' "$out" | grep -cE '^ok ') < 51 ? 1 : 0 ))"
+  # Only run the prefix attribution baseline (T5+T22a) when the full chain fails.
+  out=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a,T16 -j 2 2>&1 || true)
+  _t57_fail_cnt=$(printf '%s\n' "$out" | grep -cE '^FAIL ' || true)
+  _t57_ok_cnt=$(printf '%s\n' "$out" | grep -cE '^ok ' || true)
+  if [[ "$_t57_fail_cnt" -eq 0 && "$_t57_ok_cnt" -ge 51 ]]; then
+    report "T57 TC-1280 前置段 T5+T22a 健康（内层红非 T57 责任）" 0 0
+    report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 0
+  else
+    _t57_pre=$(bash "$ROOT/tests/run-tests.sh" -T T5,T22a 2>&1); _t57_pre_rc=$?
+    report "T57 TC-1280 前置段 T5+T22a 健康（内层红非 T57 责任）" 0 "$_t57_pre_rc"
+    if [[ "$_t57_pre_rc" -eq 0 ]]; then
+      report "T57 TC-1280 CHG-500 chain sections pass under -j (cwd continuity)" 0 1
+    fi
   fi
 }
 

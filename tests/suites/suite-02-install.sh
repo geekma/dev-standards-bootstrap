@@ -105,9 +105,8 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T14 client adapter is rewritten to the custom gate path" 0 $?
   [[ -e "$BT5/.github/workflows/agent-governance.yml" ]]
   report "T14 .github stays at the platform-mandated location" 0 $?
-  bash "$BOOT_SRC" --all --docs-dir doc --scripts-dir tools --tests-dir spec "$BT5" >/dev/null 2>&1
-  report "T14 custom-root install is idempotent" 0 $?
-  out=$(bash "$BOOT_SRC" --all --docs-dir doc --scripts-dir tools --tests-dir spec "$BT5" 2>&1 || true)
+  out=$(bash "$BOOT_SRC" --all --docs-dir doc --scripts-dir tools --tests-dir spec "$BT5" 2>&1); rc=$?
+  report "T14 custom-root install is idempotent" 0 "$rc"
   check_output "T14 custom-root rerun reports up to date (no false drift)" "up to date" "$out"
   rm -rf "$BT5"
   BT6=$(mktemp -d)
@@ -226,7 +225,7 @@ if [[ -f "$BOOT_SRC" ]]; then
     _sh_src=$(mktemp -d); _sh_tgt=$(mktemp -d); _sh_tgt2=$(mktemp -d)
     ( cd "$_sh_tgt" && git init -q && git config user.email t@t && git config user.name t )
     ( cd "$_sh_tgt2" && git init -q && git config user.email t@t && git config user.name t )
-    cp -R "$ROOT/resources" "$ROOT/scripts" "$ROOT/SKILL.md" "$ROOT/SHA256SUMS" "$_sh_src/"
+    cp -R "$ROOT/resources" "$ROOT/scripts" "$ROOT/tests" "$ROOT/SKILL.md" "$ROOT/SHA256SUMS" "$_sh_src/"
     out=$(bash "$_sh_src/scripts/install.sh" --from "$_sh_src" --verify-sha256 --layer core "$_sh_tgt" 2>&1); rc=$?
     report "T14 TC-10073 install.sh --verify-sha256 passes on clean checkout" 0 "$rc"
     echo "# tampered" >> "$_sh_src/scripts/bootstrap.sh"
@@ -267,13 +266,16 @@ if [[ -f "$BOOT_SRC" ]]; then
   # TC-10077 (CHG-156, REQ-1454): release.sh checksums & update-assertion-count enforce 0644
   if [[ -f "$ROOT/scripts/release.sh" && -f "$ROOT/scripts/dev/update-assertion-count.sh" ]]; then
     _perm_d=$(mktemp -d)
-    mkdir -p "$_perm_d/scripts/dev" "$_perm_d/tests" "$_perm_d/resources/templates" "$_perm_d/resources/methodologies" "$_perm_d/.claude-plugin"
+    mkdir -p "$_perm_d/scripts/dev" "$_perm_d/tests/lib" "$_perm_d/tests/suites" "$_perm_d/resources/templates" "$_perm_d/resources/methodologies" "$_perm_d/.claude-plugin"
     cp "$ROOT/SKILL.md" "$ROOT/README.md" "$ROOT/README.zh-CN.md" "$_perm_d/"
     cp "$ROOT/scripts/"*.sh "$_perm_d/scripts/" 2>/dev/null || true
     cp "$ROOT/scripts/dev/"*.sh "$_perm_d/scripts/dev/" 2>/dev/null || true
     cp "$ROOT/resources/"*.md "$_perm_d/resources/" 2>/dev/null || true
     cp "$ROOT/resources/templates/"* "$_perm_d/resources/templates/" 2>/dev/null || true
     cp "$ROOT/resources/methodologies/"*.md "$_perm_d/resources/methodologies/" 2>/dev/null || true
+    cp "$ROOT/tests/"*.sh "$_perm_d/tests/" 2>/dev/null || true
+    cp "$ROOT/tests/lib/"*.sh "$_perm_d/tests/lib/" 2>/dev/null || true
+    cp "$ROOT/tests/suites/"*.sh "$_perm_d/tests/suites/" 2>/dev/null || true
     cp "$ROOT/tests/.suite-baseline" "$ROOT/tests/.audit-baseline" "$ROOT/tests/.audit-assertions" "$_perm_d/tests/" 2>/dev/null || true
     printf '99999\n' > "$_perm_d/tests/.suite-baseline"
     chmod 0600 "$_perm_d/README.md" "$_perm_d/README.zh-CN.md"
@@ -392,7 +394,7 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T15 --check exits 1 on an older target" 1 "$rc"
   check_output "T15 --check says UPGRADE AVAILABLE" "UPGRADE AVAILABLE" "$out"
   # 只读性：--check 不得改动任何文件（比较全部文件的内容指纹）
-  fingerprint() { find "$1" -type f -exec cksum {} \; 2>/dev/null | sort | cksum; }
+  fingerprint() { find "$1" -type f -exec cksum {} + 2>/dev/null | sort | cksum; }
   before=$(fingerprint "$CT")
   bash "$BOOT_SRC" --check "$CT" >/dev/null 2>&1 || true
   after=$(fingerprint "$CT")
@@ -468,11 +470,18 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T15 TC-1483b divergence_guard with archive/ treats the archived row as known (rc 1)" 1 "$_dg_rc"
   rm -rf "$_dg"
 
+  # Prewarm a fresh bootstrap --all repo once (live empty-repo install is already covered by CT and _d1 above)
+  # so D4/D5/D6/D5L/DR/DR3 clone a clean pre-commit/post-commit snapshot instead of re-running bootstrap --all 6x.
+  _t15_uncommitted=$(mktemp -d)
+  ( cd "$_t15_uncommitted" && git init -q && git config user.email t@t && git config user.name t )
+  bash "$BOOT_SRC" --all "$_t15_uncommitted" >/dev/null 2>&1
+  _t15_committed=$(mktemp -d)
+  cp -pR "$_t15_uncommitted/." "$_t15_committed/"
+  ( cd "$_t15_committed" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
+
   # --- D4：--upgrade 保留显式层选择（此前会静默扩为全量 5 层）---
   D4=$(mktemp -d)
-  ( cd "$D4" && git init -q && git config user.email t@t && git config user.name t )
-  bash "$BOOT_SRC" --all "$D4" >/dev/null 2>&1
-  ( cd "$D4" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
+  cp -pR "$_t15_committed/." "$D4/"
   out=$(bash "$BOOT_SRC" --core --upgrade "$D4" 2>&1)
   check_output "T15 --core --upgrade keeps the explicit layer selection (D4)" "applying layers \[core\]" "$out"
   out=$(bash "$BOOT_SRC" --upgrade "$D4" 2>&1)
@@ -481,8 +490,7 @@ if [[ -f "$BOOT_SRC" ]]; then
 
   # --- D5：规范升级日志归 Skill 所有——本地追加行必须被检测（拒绝而非静默覆盖）---
   D5=$(mktemp -d)
-  ( cd "$D5" && git init -q && git config user.email t@t && git config user.name t )
-  bash "$BOOT_SRC" --all "$D5" >/dev/null 2>&1
+  cp -pR "$_t15_uncommitted/." "$D5/"
   printf '| v9.9.9-local | 2026-09-15 | 本仓自定义条目 | 无 |\n' >> "$D5/docs/STANDARDS_CHANGELOG.md"
   # v3.17.0：全新安装后的第一次 commit 不得被门禁判为"源码变更"而拦下。
   # 踩过的坑：新增治理脚本 stamp-provenance.sh 未同步进 agent-gate 的治理工具白名单，
@@ -502,8 +510,7 @@ if [[ -f "$BOOT_SRC" ]]; then
 
   # --- CHG-161 (REQ-1615, TC-1615a): skill 副本缺 archive/ 时，拒绝文案指向重装而不是 --force ---
   D6=$(mktemp -d); D6S=$(mktemp -d)
-  ( cd "$D6" && git init -q && git config user.email t@t && git config user.name t )
-  bash "$BOOT_SRC" --all "$D6" >/dev/null 2>&1
+  cp -pR "$_t15_uncommitted/." "$D6/"
   _c161_hist=$(grep -m1 -oE '^\| v[0-9]+\.[0-9]+\.[0-9]+' "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md")
   printf '%s | 2020-01-01 | 历史行 | 无 |\n' "$_c161_hist" >> "$D6/docs/STANDARDS_CHANGELOG.md"
   ( cd "$D6" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
@@ -516,8 +523,7 @@ if [[ -f "$BOOT_SRC" ]]; then
 
   # D5-archive regression (CHG-154 ITEM-40): archived skill rows (v2.9.0..v4.2.0) in an older target repo must NOT block --upgrade
   D5L=$(mktemp -d)
-  ( cd "$D5L" && git init -q && git config user.email t@t && git config user.name t )
-  bash "$BOOT_SRC" --all "$D5L" >/dev/null 2>&1
+  cp -pR "$_t15_uncommitted/." "$D5L/"
   printf '| v4.2.0 | 2026-10-12 | archived legacy skill row | 无 |\n' >> "$D5L/docs/STANDARDS_CHANGELOG.md"
   ( cd "$D5L" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
   out=$(bash "$BOOT_SRC" --upgrade "$D5L" 2>&1); rc=$?
@@ -526,8 +532,7 @@ if [[ -f "$BOOT_SRC" ]]; then
 
   # TC-10072 (ITEM-49): bootstrap --upgrade --dry-run prints plan and writes ZERO bytes
   DR=$(mktemp -d)
-  ( cd "$DR" && git init -q && git config user.email t@t && git config user.name t )
-  bash "$BOOT_SRC" --all "$DR" >/dev/null 2>&1
+  cp -pR "$_t15_uncommitted/." "$DR/"
   perl -pi -e 's/规范版本：v[0-9.]+/规范版本：v3.0.0/' "$DR/docs/DEVELOPMENT_STANDARDS.md"
   ( cd "$DR" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
   dr_before=$(fingerprint "$DR")
@@ -545,15 +550,14 @@ if [[ -f "$BOOT_SRC" ]]; then
   report "T15 TC-10072 fresh --all --dry-run exits 0 and writes nothing" 1 "$([[ "$rc" -eq 0 && "$dr2_before" == "$dr2_after" ]] && echo 1 || echo 0)"
   rm -rf "$DR2"
   DR3=$(mktemp -d)
-  ( cd "$DR3" && git init -q && git config user.email t@t && git config user.name t )
-  bash "$BOOT_SRC" --all "$DR3" >/dev/null 2>&1
+  cp -pR "$_t15_uncommitted/." "$DR3/"
   perl -0777 -pi -e 's/^paths:\n(?:\s+.*\n)*//m' "$DR3/.agent-governance.yml"
   ( cd "$DR3" && git add -A >/dev/null 2>&1 && git commit -qm init >/dev/null 2>&1 )
   dr3_before=$(fingerprint "$DR3")
   out=$(bash "$BOOT_SRC" --upgrade --dry-run "$DR3" 2>&1); rc=$?
   dr3_after=$(fingerprint "$DR3")
   report "T15 TC-10072 legacy no-paths --upgrade --dry-run writes nothing" 1 "$([[ "$rc" -eq 0 && "$dr3_before" == "$dr3_after" ]] && echo 1 || echo 0)"
-  rm -rf "$DR3"
+  rm -rf "$DR3" "$_t15_uncommitted" "$_t15_committed"
 
   # --- D1：非 git 克隆的 Skill 目录，--self-update 必须显式说明不可用（不得静默成功）---
   NG=$(mktemp -d)

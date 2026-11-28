@@ -1130,7 +1130,7 @@ section_T87() {
   # CHG-159 REQ-1470: pinned literal, not ${#SECTIONS[@]} — an expected value derived
   # from the thing under test can never go red. Adding/removing a section means
   # updating this number on purpose.
-  report "T87 N!=6 keeps the contiguous fallback (5 shards cover all sections)" 100 \
+  report "T87 N!=6 keeps the contiguous fallback (5 shards cover all sections)" 103 \
     "$(for _i in 1 2 3 4 5; do
         AGENT_GUARD_SUITE_SHARD_RESOLVE_ONLY=1 bash tests/run-tests.sh --shard "$_i/5" 2>/dev/null \
           | sed -n 's/^shard-resolve-only: //p'

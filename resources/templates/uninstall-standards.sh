@@ -76,12 +76,14 @@ if [[ "$FORCE" == 1 ]]; then echo "uninstall-standards: --force ON — Tier3 ass
 # own T-sections), so both live in Tier3 (keep & report; --force backup-moves).
 for f in "$SCRIPTS_DIR/agent-gate" "$SCRIPTS_DIR/lib-json.sh" "$SCRIPTS_DIR/lib-gate-staged.sh" "$SCRIPTS_DIR/lib-gate-cold.sh" "$SCRIPTS_DIR/stamp-provenance.sh" "$SCRIPTS_DIR/new-change" \
          "$SCRIPTS_DIR/session-gate.sh" "$SCRIPTS_DIR/install-hook-adapter" "$SCRIPTS_DIR/install-ci-adapter" \
-         "$SCRIPTS_DIR/bug-autointent" "$SCRIPTS_DIR/generate-reading-pack.sh" "$SCRIPTS_DIR/ui-probe.sh" \
+         "$SCRIPTS_DIR/bug-autointent" "$SCRIPTS_DIR/generate-reading-pack.sh" "$SCRIPTS_DIR/behavior-extract.sh" "$SCRIPTS_DIR/ui-probe.sh" \
          "$SCRIPTS_DIR/eval-cases" "$SCRIPTS_DIR/eval-rescore" \
+         "$SCRIPTS_DIR/lib-suite-tree-fingerprint.sh" "$SCRIPTS_DIR/lib-suite-lock.sh" "$SCRIPTS_DIR/shard-sum.sh" "$SCRIPTS_DIR/evidence-round.sh" \
          "$SCRIPTS_DIR/check-standards-compliance.sh"; do
   act_rm "$f"
 done
 act_rm "$TESTS_DIR/governance-smoke.sh"
+act_rm "$TESTS_DIR/fresh-clone-check.sh"
 for f in "$TESTS_DIR/lib/test-harness.sh" \
          "$TESTS_DIR/suites/suite-01-core.sh" "$TESTS_DIR/suites/suite-02-install.sh" \
          "$TESTS_DIR/suites/suite-03-session.sh" "$TESTS_DIR/suites/suite-04-gates.sh" \
@@ -126,7 +128,7 @@ tier2 ".github/workflows/github-reviewer-rescore.yml" "eval-rescore|schedule" "w
 if [[ -d "$DOCS_DIR/templates" ]]; then
   while IFS= read -r f; do
     case "$f" in
-      */entry/*)   tier2 "$f" "__CHANGE_ID__" "entry scaffold" ;;
+      */entry/*)   tier2 "$f" "__CHANGE_ID__|RTVM" "entry scaffold" ;;
       */project/*) tier2 "$f" "独立完整声明|总册编号" "project scaffold" ;;
       *)           tier2 "$f" "agent-gate|stamp-provenance|audit-docs-consistency|__CHANGE_ID__|独立完整声明|总册编号|dev-standards-bootstrap" "template" ;;
     esac
@@ -155,6 +157,7 @@ $DOCS_DIR/DEVELOPMENT_STANDARDS.md
 $DOCS_DIR/CLAUSE_REGISTRY.md
 $DOCS_DIR/STANDARDS_CHANGELOG.md
 $DOCS_DIR/METHODOLOGY.md
+$DOCS_DIR/STAGE_PLAYBOOK.md
 $DOCS_DIR/README.md
 $DOCS_DIR/bugfix-log.md
 $DOCS_DIR/06.5-deployment-config.md
@@ -166,6 +169,8 @@ $DOCS_DIR/project
 $DOCS_DIR/changes
 $DOCS_DIR/bugs
 .agent-governance.yml
+.agent-review-models.example.json
+.agents/hooks.json
 .claude/settings.json
 .cursor/hooks.json
 .gemini/settings.json

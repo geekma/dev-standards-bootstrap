@@ -165,11 +165,13 @@ checksum_files() {
       printf '%s\n' SKILL.md \
         scripts/bootstrap.sh scripts/install.sh scripts/release.sh \
         scripts/friction-report.sh scripts/mcp-governance-server.sh scripts/dev/sync-local-wrappers.sh \
+        scripts/lib-suite-tree-fingerprint.sh scripts/lib-suite-lock.sh scripts/shard-sum.sh scripts/evidence-round.sh \
+        tests/run-tests.sh tests/fresh-clone-check.sh tests/lib/test-harness.sh \
         resources/DEVELOPMENT_STANDARDS.md resources/AGENTS.md resources/CLAUSE_REGISTRY.md \
         resources/METHODOLOGY.md resources/STAGE_PLAYBOOK.md resources/STANDARDS_CHANGELOG.md \
         resources/templates/pre-commit resources/templates/pre-push resources/templates/commit-msg \
         resources/templates/agent-governance.yml
-      for _cf in resources/templates/*.sh; do
+      for _cf in resources/templates/*.sh resources/templates/github-*.yml tests/suites/suite-*.sh; do
         [[ -f "$_cf" ]] && printf '%s\n' "$_cf"
       done
     } | LC_ALL=C sort -u

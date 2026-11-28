@@ -82,7 +82,7 @@ verify_sha256=false
 mode="auto"          # auto | install | upgrade | check
 layers_given=false
 passthrough=()
-pending=""
+pending=""; opt_docs=""
 for arg in "$@"; do
   if [[ -n "$pending" ]]; then
     case "$pending" in
@@ -90,7 +90,7 @@ for arg in "$@"; do
       from)      opt_from="$arg" ;;
       repo)      opt_repo="$arg" ;;
       ref)       opt_ref="$arg" ;;
-      docs-dir)      passthrough+=("--docs-dir=$arg") ;;
+      docs-dir)      opt_docs="$arg"; passthrough+=("--docs-dir=$arg") ;;
       scripts-dir)   passthrough+=("--scripts-dir=$arg") ;;
       tests-dir)     passthrough+=("--tests-dir=$arg") ;;
       githooks-dir)  passthrough+=("--githooks-dir=$arg") ;;
@@ -116,15 +116,20 @@ for arg in "$@"; do
     --repo=*)    opt_repo="${arg#*=}" ;;
     --ref)       pending="ref" ;;
     --ref=*)     opt_ref="${arg#*=}" ;;
-    --docs-dir)     pending="docs-dir" ;;
-    --scripts-dir)  pending="scripts-dir" ;;
-    --tests-dir)    pending="tests-dir" ;;
-    --githooks-dir) pending="githooks-dir" ;;
+    --docs-dir)       pending="docs-dir" ;;
+    --docs-dir=*)     opt_docs="${arg#*=}"; passthrough+=("$arg") ;;
+    --scripts-dir)    pending="scripts-dir" ;;
+    --scripts-dir=*)  passthrough+=("$arg") ;;
+    --tests-dir)      pending="tests-dir" ;;
+    --tests-dir=*)    passthrough+=("$arg") ;;
+    --githooks-dir)   pending="githooks-dir" ;;
+    --githooks-dir=*) passthrough+=("$arg") ;;
     --skills-root)     skills_root_given=true; pending="skills-root" ;;
     --skills-root=*)   skills_root_given=true; opt_skills_root="${arg#*=}" ;;
     --as-skill)        as_skill_given=true; pending="as-skill" ;;
     --as-skill=*)      as_skill_given=true; as_skill="${arg#*=}" ;;
     --layer)        pending="layer" ;;
+    --layer=*)      layers_given=true; passthrough+=("--${arg#*=}") ;;
     -*)          echo "install: unknown flag '$arg'" >&2; usage >&2; exit 2 ;;
     *)           [[ -z "$target" ]] || { echo "install: unexpected extra argument '$arg' (target already '$target')" >&2; exit 2; }
                  target="$arg" ;;
@@ -276,6 +281,7 @@ if [[ -n "$as_skill" ]]; then
       fi
       mkdir -p "$dest" || return 2
       cp -R "$skill_dir/SKILL.md" "$skill_dir/resources" "$skill_dir/scripts" "$dest/" || return 2
+      [[ -d "$skill_dir/tests" ]] && { cp -R "$skill_dir/tests" "$dest/" || return 2; }
       [[ -d "$skill_dir/archive" ]] && { cp -R "$skill_dir/archive" "$dest/" || return 2; }
       [[ -d "$skill_dir/.claude-plugin" ]] && { cp -R "$skill_dir/.claude-plugin" "$dest/" || return 2; }
       [[ -f "$skill_dir/SHA256SUMS" ]] && { cp "$skill_dir/SHA256SUMS" "$dest/" || return 2; }
@@ -348,8 +354,8 @@ if [[ "$mode" == "auto" ]]; then
   # path (diff + --force hint), never a silent overwrite.
   # v3.92.3 fix: paths.docs lives ONLY under paths: (a flat `docs:` scan can hit
   # an unrelated key); AGENT_GUARD_DOCS_DIR is the documented highest priority.
-  tgt_docs="${AGENT_GUARD_DOCS_DIR:-docs}"
-  if [[ -z "${AGENT_GUARD_DOCS_DIR:-}" && -f "$target/.agent-governance.yml" ]]; then
+  tgt_docs="${opt_docs:-${AGENT_GUARD_DOCS_DIR:-docs}}"
+  if [[ -z "${opt_docs:-}" && -z "${AGENT_GUARD_DOCS_DIR:-}" && -f "$target/.agent-governance.yml" ]]; then
     yml_docs=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+docs:[[:space:]]*([^#]*).*$/\1/p' "$target/.agent-governance.yml" 2>/dev/null \
       | head -n 1 | tr -d "[:space:]\"'" || true)
     [[ -z "$yml_docs" ]] || tgt_docs="$yml_docs"

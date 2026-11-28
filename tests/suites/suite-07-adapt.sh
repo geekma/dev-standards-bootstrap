@@ -453,7 +453,7 @@ section_T68() {
     "$([[ $t68_rc -eq 0 && $t68_shard_rc -eq 0 ]] && echo 0 || echo 1)"
   report "T68 N=6 plan keeps the T5/T22a/T16 chain in one shard" 1 \
     "$(printf '%s\n' "$t68_shard" | grep -cE '^shard-resolve-only:.* T5 T22a T16( |$)')"
-  report "T68 N=6 plan covers every section exactly once" 100 \
+  report "T68 N=6 plan covers every section exactly once" 103 \
     "$(printf '%s\n' "$t68_shard" | sed -n 's/^shard-resolve-only: //p' | tr ' ' '\n' | grep -c .)"
   # v3.97.0 (CHG-134, REQ-1344): the plan is machine-written — the BEGIN/END
   # markers must appear exactly once so `scripts/dev/shard-plan.sh --write` can never
