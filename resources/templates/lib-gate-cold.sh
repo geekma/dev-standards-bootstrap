@@ -519,17 +519,21 @@ fix_cmd() { # [chg] — ITEM-28 mechanical auto-fix
   echo "agent-gate: fix applied ($id updates=$fixed)"
 }
 
-review_models_cmd() { # [--discover | --print-contract | --verify [path]]
+review_models_cmd() { # [--discover | --print-contract | --verify [path] | --draft [path]]
   local mode="discover" cfg_arg="" cli clis_json="" raw rt fam cfg_def exists="false"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --discover) mode="discover" ;;
       --print-contract) mode="contract" ;;
+      --draft)
+        mode="draft"
+        if [[ -n "${2:-}" && "${2:-}" != -* ]]; then cfg_arg="$2"; shift; fi
+        ;;
       --verify)
         mode="verify"
         if [[ -n "${2:-}" && "${2:-}" != -* ]]; then cfg_arg="$2"; shift; fi
         ;;
-      -*) echo "agent-gate: review-models: unknown option '$1' (expected --discover|--print-contract|--verify [path])" >&2; exit 2 ;;
+      -*) echo "agent-gate: review-models: unknown option '$1' (expected --discover|--print-contract|--draft [path]|--verify [path])" >&2; exit 2 ;;
       *) cfg_arg="$1" ;;
     esac
     shift
@@ -649,6 +653,30 @@ PY
         ' "$target_cfg" || exit 2
       fi
       echo "agent-gate: review-models verified ($target_cfg)"
+      ;;
+    draft)
+      local out_cfg="${cfg_arg:-$repo_root/.agent-review-models.draft.json}" entries="" now_utc
+      if [[ "$out_cfg" == "$cfg_def" && -e "$out_cfg" ]]; then
+        echo "agent-gate: review-models --draft refuses to overwrite live $out_cfg (write to a draft path instead)" >&2
+        exit 2
+      fi
+      now_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+      for cli in claude codex opencode gemini aider; do
+        command -v "$cli" >/dev/null 2>&1 || continue
+        case "$cli" in
+          claude)   entries="${entries:+${entries},}{\"id\":\"claude-sonnet\",\"provider\":\"anthropic\",\"cli\":\"claude\",\"tier\":\"standard\",\"requires_user_approval\":false,\"roles\":[\"code\",\"architecture\"]}" ;;
+          codex)    entries="${entries:+${entries},}{\"id\":\"gpt-5\",\"provider\":\"openai\",\"cli\":\"codex\",\"tier\":\"standard\",\"requires_user_approval\":false,\"roles\":[\"code\",\"test\"]}" ;;
+          opencode) entries="${entries:+${entries},}{\"id\":\"opencode-default\",\"provider\":\"opencode\",\"cli\":\"opencode\",\"tier\":\"fast\",\"requires_user_approval\":false,\"roles\":[\"code\"]}" ;;
+          gemini)   entries="${entries:+${entries},}{\"id\":\"gemini-2.5-pro\",\"provider\":\"google\",\"cli\":\"gemini\",\"tier\":\"standard\",\"requires_user_approval\":false,\"roles\":[\"architecture\",\"business\"]}" ;;
+          aider)    entries="${entries:+${entries},}{\"id\":\"aider-default\",\"provider\":\"local\",\"cli\":\"aider\",\"tier\":\"fast\",\"requires_user_approval\":false,\"roles\":[\"code\"]}" ;;
+        esac
+      done
+      [[ -n "$entries" ]] || entries='{"id":"manual-reviewer","provider":"unknown","cli":"manual","tier":"fast","requires_user_approval":false,"roles":["code"]}'
+      mkdir -p "$(dirname "$out_cfg")"
+      printf '{"schema_version":"1","status":"draft-unconfirmed","generated_at":"%s","models":[%s]}\n' \
+        "$now_utc" "$entries" > "$out_cfg"
+      chmod 0644 "$out_cfg" 2>/dev/null || true
+      echo "agent-gate: wrote unconfirmed draft to $out_cfg (review and copy to .agent-review-models.json to enable; verify: scripts/agent-gate review-models --verify $out_cfg)"
       ;;
   esac
 }
@@ -1186,16 +1214,229 @@ _emit_metrics_jsonl() {
   fi
 }
 
-doctor_cmd() { # [--json] — ITEM-47 read-only diagnostics
-  local jmode=0 pass=0 warn=0 fail=0 checks_json="" first=1
+_cold_json_field_raw() { # <json> <key> -> raw scalar token without quotes
+  local k="$2"
+  printf '%s' "$1" | tr -d '\n\r' | sed -nE "s/.*\"${k}\"[[:space:]]*:[[:space:]]*([^,}]+).*/\\1/p" | head -1 | sed 's/^[[:space:]]*"//; s/"[[:space:]]*$//; s/[[:space:]]*$//'
+}
+
+_cold_generate_runtime_profile() { # <rt> <fam> [write:1|0] -> JSON line (dynamically probed for any running agent)
+  local rt="${1:-unknown}" fam="${2:-unknown}" do_write="${3:-1}" cfg="" now_utc mid mwin sub hcli bwi="unknown" pm="unknown" evs='"unknown"' cov="unknown" vby="live-probe" safe_rt js
+  cfg="${AGENT_GUARD_HOOK_CONFIG:-}"
+  if [[ -z "$cfg" || ! -f "$cfg" ]]; then
+    cfg=""
+    case "$rt" in
+      claude) [[ -f "$repo_root/.claude/settings.json" ]] && cfg="$repo_root/.claude/settings.json" ;;
+      cursor) [[ -f "$repo_root/.cursor/hooks.json" ]] && cfg="$repo_root/.cursor/hooks.json" ;;
+      agents-hooks) [[ -f "$repo_root/.agents/hooks.json" ]] && cfg="$repo_root/.agents/hooks.json" ;;
+      opencode) [[ -f "$repo_root/.opencode/plugins/dev-standards-gate.js" ]] && cfg="$repo_root/.opencode/plugins/dev-standards-gate.js" ;;
+      codex) fam="git+ci" ;;
+      gemini)
+        if [[ -f "$repo_root/.agents/hooks.json" ]]; then cfg="$repo_root/.agents/hooks.json"
+        else fam="git+ci"
+        fi ;;
+      *)
+        if [[ "$fam" != "git+ci" ]]; then
+          if [[ -f "$repo_root/.agents/hooks.json" ]]; then
+            cfg="$repo_root/.agents/hooks.json"
+          elif [[ "$rt" != "unknown" ]]; then
+            local _sc _s_rt; _s_rt=$(printf '%s' "$rt" | tr -c 'A-Za-z0-9_.-' '_')
+            for _sc in "$repo_root/.${_s_rt}/hooks.json" "$repo_root/.${_s_rt}/settings.json"; do
+              [[ -f "$_sc" ]] && grep -qE 'agent-gate|session-gate' "$_sc" 2>/dev/null && { cfg="$_sc"; break; }
+            done
+          else
+            local _cand
+            for _cand in "$repo_root"/.agents/hooks.json "$repo_root"/.claude/settings.json "$repo_root"/.cursor/hooks.json "$repo_root"/.opencode/plugins/dev-standards-gate.js "$repo_root"/.*.json "$repo_root"/.*/hooks.json "$repo_root"/.*/settings.json; do
+              [[ -f "$_cand" ]] || continue
+              if grep -qE 'agent-gate|session-gate' "$_cand" 2>/dev/null; then cfg="$_cand"; break; fi
+            done
+          fi
+        fi ;;
+    esac
+  fi
+  [[ "$fam" == "unknown" && -n "$cfg" ]] && { case "$cfg" in *.js|*.ts) fam="plugin-api" ;; *) fam="json-hooks" ;; esac; }
+  if [[ -n "$cfg" && -f "$cfg" ]]; then
+    vby="live-probe(${cfg#"$repo_root/"})"
+    if has_real_python3 && [[ "$cfg" == *.json ]]; then
+      local _pout
+      _pout=$(python3 - "$cfg" <<'PY' 2>/dev/null || true
+import json, re, sys
+try:
+    d = json.load(open(sys.argv[1], encoding='utf-8'))
+except Exception:
+    sys.exit(0)
+hooks = d.get("hooks") if isinstance(d, dict) else {}
+if not isinstance(hooks, dict): hooks = {}
+evs = [str(k) for k in hooks.keys()]
+pm = "unknown"
+for st, lst in hooks.items():
+    if not isinstance(lst, list): continue
+    for e in lst:
+        if not isinstance(e, dict): continue
+        m = str(e.get("matcher", "") or "")
+        for hk in (e.get("hooks") if isinstance(e.get("hooks"), list) else [e]):
+            cmd = hk.get("command", "") if isinstance(hk, dict) else ""
+            if "agent-gate" in str(cmd) and "pre-write" in str(cmd):
+                pm = m if m else "all"
+                break
+bwi = '"unknown"'
+if pm not in ("", "unknown"):
+    bwi = "true" if (pm in ("all", "*") or re.search(r'(^|\W)(bash|shell)(\W|$)', pm, re.I)) else "false"
+print(json.dumps(evs, ensure_ascii=False, separators=(',', ':')) + "\t" + pm + "\t" + bwi)
+PY
+)
+      if [[ -n "$_pout" ]]; then
+        evs="${_pout%%$'\t'*}"
+        local _rest="${_pout#*$'\t'}"
+        pm="${_rest%%$'\t'*}"
+        bwi="${_rest#*$'\t'}"
+      fi
+    elif [[ "$cfg" == *.json ]]; then
+      if grep -q 'agent-gate.*pre-write' "$cfg" 2>/dev/null; then
+        pm=$(awk '/"matcher"[[:space:]]*:/{m=$0} /agent-gate.*pre-write/{if (m!=""){print m; exit}}' "$cfg" 2>/dev/null | sed -nE 's/.*"matcher"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' | head -1 || true)
+        [[ -n "$pm" ]] || pm="Edit|Write"
+        local _pm_lc; _pm_lc=$(printf '%s' "$pm" | tr '[:upper:]' '[:lower:]')
+        if [[ "$_pm_lc" =~ (^|[^a-z])(bash|shell)([^a-z]|$) || "$_pm_lc" == "all" ]]; then bwi="true"; else bwi="false"; fi
+      fi
+      evs='[]'
+    else
+      # plugin JS/TS runtime (e.g. opencode plugin): cannot prove bash_write_interception unless explicitly observed
+      evs='["plugin-api"]'; pm="write|edit"; bwi='"unknown"'
+    fi
+  elif [[ "$fam" == "git+ci" ]]; then
+    evs='[]'; pm="none"; bwi="false"; vby="live-probe(git+ci)"
+  fi
+  case "$bwi" in
+    true)  cov="full" ;;
+    false)
+      case "$pm" in
+        ""|none) cov="git-only" ;;
+        unknown) cov="unknown" ;;
+        *)       cov="write-tool-only" ;;
+      esac ;;
+    *)     cov="unknown" ;;
+  esac
+  mid="unknown"; mwin="unknown"
+  if [[ -s "$repo_root/.agent-state/model-profile.json" ]]; then
+    mid=$(_cold_json_field_raw "$(cat "$repo_root/.agent-state/model-profile.json")" model_id)
+    mwin=$(_cold_json_field_raw "$(cat "$repo_root/.agent-state/model-profile.json")" context_window)
+  fi
+  [[ -n "${AGENT_GUARD_MODEL:-}" ]] && mid="$AGENT_GUARD_MODEL"
+  [[ -n "${AGENT_GUARD_CONTEXT_WINDOW:-}" ]] && mwin="$AGENT_GUARD_CONTEXT_WINDOW"
+  [[ -n "$mid" ]] || mid="unknown"; [[ -n "$mwin" ]] || mwin="unknown"
+  hcli="unknown"; [[ "$rt" != "unknown" ]] && command -v "$rt" >/dev/null 2>&1 && hcli="$rt"
+  sub="${AGENT_GUARD_SUBAGENTS:-unknown}"
+  now_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)
+  [[ "$bwi" == "true" || "$bwi" == "false" ]] || bwi='"unknown"'
+  [[ "$sub" == "true" || "$sub" == "false" ]] || sub="\"$(json_escape "$sub")\""
+  js=$(printf '{"schema_version":"1","source":"generated-at-runtime","client":"%s","runtime_family":"%s","hook_events":%s,"pre_write_matcher":"%s","bash_write_interception":%s,"coverage_level":"%s","subagents":%s,"headless_cli":"%s","model_id":"%s","context_window":"%s","verified_at":"%s","verified_by":"%s"}' \
+    "$(json_escape "$rt")" "$(json_escape "$fam")" "$evs" "$(json_escape "$pm")" "$bwi" "$(json_escape "$cov")" \
+    "$sub" "$(json_escape "$hcli")" "$(json_escape "$mid")" "$(json_escape "$mwin")" "$now_utc" "$(json_escape "$vby")")
+  if [[ "$do_write" -eq 1 ]] && mkdir -p "$repo_root/.agent-state/runtime-profiles" 2>/dev/null; then
+    safe_rt=$(printf '%s' "$rt" | tr -c 'A-Za-z0-9_.-' '_')
+    printf '%s\n' "$js" > "$repo_root/.agent-state/runtime-profile.json" 2>/dev/null || true
+    printf '%s\n' "$js" > "$repo_root/.agent-state/runtime-profiles/${safe_rt}.json" 2>/dev/null || true
+  fi
+  printf '%s\n' "$js"
+}
+
+_cold_coverage_level() { # <rt> <fam> -> full | write-tool-only | git-only | unknown (H-3)
+  local rt="${1:-unknown}" fam="${2:-unknown}" bw pm raw_p js
+  if [[ -n "${AGENT_GUARD_RUNTIME_PROFILE:-}" && -s "${AGENT_GUARD_RUNTIME_PROFILE}" ]]; then
+    raw_p=$(tr -d '\n\r' < "${AGENT_GUARD_RUNTIME_PROFILE}" 2>/dev/null || true)
+    bw=$(_cold_json_field_raw "$raw_p" bash_write_interception)
+    pm=$(_cold_json_field_raw "$raw_p" pre_write_matcher)
+    case "$bw" in
+      true)  printf 'full'; return 0 ;;
+      false)
+        case "$pm" in
+          ""|none)  printf 'git-only'; return 0 ;;
+          unknown)  printf 'unknown'; return 0 ;;
+          *)        printf 'write-tool-only'; return 0 ;;
+        esac ;;
+      *)     printf 'unknown'; return 0 ;;
+    esac
+  fi
+  js=$(_cold_generate_runtime_profile "$rt" "$fam" 1)
+  _cold_json_field_raw "$js" coverage_level
+}
+
+runtime_profile_cmd() { # [--json | --no-write] — dynamically generate current agent profile
+  local wr=1 raw rt fam
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --json) jmode=1 ;;
-      -h|--help) echo "Usage: scripts/agent-gate doctor [--json]"; return 0 ;;
-      *) echo "agent-gate: doctor unknown option '$1' (expected --json)" >&2; exit 2 ;;
+      --json) ;;
+      --no-write) wr=0 ;;
+      -h|--help) echo "Usage: scripts/agent-gate runtime-profile [--json] [--no-write]"; return 0 ;;
+      *) echo "agent-gate: runtime-profile unknown option '$1'" >&2; exit 2 ;;
     esac
     shift
   done
+  raw=$(review_runtime_raw)
+  rt=$(printf '%s\n' "$raw" | sed -n 's/^[[:space:]]*runtime:[[:space:]]*\([^ ]*\).*/\1/p' | head -1 || true)
+  fam=$(printf '%s\n' "$raw" | sed -n 's/.*family:[[:space:]]*\([^)]*\)).*/\1/p' | head -1 || true)
+  [[ -n "$rt" && "$rt" != "unknown" ]] || rt="${AGENT_RUNTIME:-unknown}"
+  [[ -n "$fam" ]] || fam="unknown"
+  _cold_generate_runtime_profile "$rt" "$fam" "$wr"
+}
+
+_cold_stat_num() { # <file> <key> -> integer or 0
+  [[ -s "$1" ]] || { printf '0'; return 0; }
+  local v
+  v=$(tr -d '\n\r ' < "$1" 2>/dev/null | sed -nE "s/.*\"${2}\":([0-9]+).*/\\1/p" | head -1 || true)
+  printf '%s' "${v:-0}"
+}
+
+doctor_cmd() { # [--json] [--live [--arm|--verify]] — ITEM-47 + H-1/H-3 diagnostics
+  local jmode=0 live=0 arm=0 verify=0 pass=0 warn=0 fail=0 checks_json="" first=1
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json)   jmode=1 ;;
+      --live)   live=1 ;;
+      --arm)    live=1; arm=1 ;;
+      --verify) live=1; verify=1 ;;
+      -h|--help) echo "Usage: scripts/agent-gate doctor [--json] [--live [--arm|--verify]]"; return 0 ;;
+      *) echo "agent-gate: doctor unknown option '$1' (expected --json|--live|--arm|--verify)" >&2; exit 2 ;;
+    esac
+    shift
+  done
+  local _sf="$repo_root/.agent-state/session-tool-stats.json" _af="$repo_root/.agent-state/doctor-live-arm.json"
+  if [[ "$arm" -eq 1 && "$verify" -eq 1 ]]; then
+    echo "agent-gate: doctor --arm and --verify are mutually exclusive" >&2; exit 2
+  fi
+  if [[ "$arm" -eq 1 ]]; then
+    local bt bn
+    bt=$(_cold_stat_num "$_sf" turns); bn=$(_cold_stat_num "$_sf" total)
+    mkdir -p "$repo_root/.agent-state"
+    printf '{"turns":%s,"total":%s,"armed_at":"%s"}\n' "$bt" "$bn" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$_af"
+    if [[ "$jmode" -eq 1 ]]; then
+      printf '{"armed":true,"turns":%s,"total":%s,"arm_file":"%s"}\n' "$bt" "$bn" "$(json_escape "$_af")"
+    else
+      echo "doctor --live: armed at turns=$bt total=$bn; send a message and run one read tool in your client, then run: $scripts_dir/agent-gate doctor --live --verify"
+    fi
+    return 0
+  fi
+  if [[ "$verify" -eq 1 ]]; then
+    [[ -s "$_af" ]] || { echo "agent-gate: doctor --live --verify requires prior --arm (missing $_af)" >&2; exit 2; }
+    local bt bn ct cn dt dn vst="fail" vrsn="not_triggered" vdet=""
+    bt=$(_cold_stat_num "$_af" turns); bn=$(_cold_stat_num "$_af" total)
+    ct=$(_cold_stat_num "$_sf" turns); cn=$(_cold_stat_num "$_sf" total)
+    dt=$((ct - bt)); dn=$((cn - bn))
+    if [[ "$dt" -eq 1 && "$dn" -eq 1 ]]; then
+      vst="ok"; vrsn="verified"; vdet="hooks fired once (delta_turns=1, delta_total=1)"
+      rm -f "$_af"
+    elif [[ "$dt" -ge 2 || "$dn" -ge 2 ]]; then
+      vrsn="duplicate"; vdet="duplicate hook wiring detected (delta_turns=$dt, delta_total=$dn; expected 1)"
+    else
+      vrsn="not_triggered"; vdet="hooks did not fire (delta_turns=$dt, delta_total=$dn; expected 1)"
+    fi
+    if [[ "$jmode" -eq 1 ]]; then
+      printf '{"status":"%s","reason":"%s","delta_turns":%d,"delta_total":%d,"detail":"%s"}\n' \
+        "$vst" "$vrsn" "$dt" "$dn" "$(json_escape "$vdet")"
+    else
+      printf '%s doctor_live: %s\n' "$vst" "$vdet"
+    fi
+    [[ "$vst" == "ok" ]] && return 0 || return 1
+  fi
   _doc_add() { # <name> <ok|warn|fail> <detail> <fix>
     local n="$1" st="$2" det="$3" fix="$4"
     case "$st" in
@@ -1256,6 +1497,63 @@ doctor_cmd() { # [--json] — ITEM-47 read-only diagnostics
   else
     _doc_add "client_adapter" "warn" "no client hook adapter detected" "scripts/install-hook-adapter"
   fi
+  # H-1 static single-wiring check for .claude/settings.json
+  if [[ -f "$repo_root/.claude/settings.json" ]]; then
+    local _hw_err=""
+    if has_real_python3; then
+      _hw_err=$(python3 - "$repo_root/.claude/settings.json" <<'PY' 2>/dev/null || echo "invalid JSON"
+import json, re, sys
+p = sys.argv[1]
+try:
+    d = json.load(open(p, encoding='utf-8'))
+except Exception:
+    print("invalid JSON"); sys.exit(0)
+hooks = d.get("hooks") or {}
+ANCHOR = '"${CLAUDE_PROJECT_DIR:-.}"/'
+def norm(c):
+    c = c or ""
+    c = re.sub(r'^MSYS_NO_PATHCONV=1\s+(?:"[^"]*?bash(?:\.exe)?"|(?:[^\n]*[/\\\s])?bash(?:\.exe)?)\s+', '', c)
+    c = re.sub(r'^bash\s+', '', c)
+    if c.startswith(ANCHOR): c = c[len(ANCHOR):]
+    return re.sub(r'^\./', '', c)
+WIRINGS = [
+    ("SessionStart", "", "scripts/session-gate.sh start"),
+    ("PreToolUse", "Edit|Write", "scripts/agent-gate --stage pre-write"),
+    ("Stop", "", "scripts/agent-gate --stage stop"),
+    ("UserPromptSubmit", "", "scripts/session-gate.sh count turn"),
+    ("PostToolUse", "Bash|Grep|Glob|Read|Task", "scripts/session-gate.sh count tool -"),
+    ("PreToolUse", "Bash|Edit|Write|Task|Grep|Glob|Read", "scripts/session-gate.sh check"),
+]
+counts = {w: 0 for w in WIRINGS}
+for st, lst in (hooks.items() if isinstance(hooks, dict) else []):
+    if not isinstance(lst, list): continue
+    for e in lst:
+        if not isinstance(e, dict): continue
+        m = e.get("matcher") or ""
+        for hk in e.get("hooks") or []:
+            if isinstance(hk, dict):
+                k = (st, m, norm(hk.get("command")))
+                if k in counts: counts[k] += 1
+dups = [f"{k[0]}({k[1]})={v}" for k, v in counts.items() if v > 1]
+miss = [f"{k[0]}({k[1]})" for k, v in counts.items() if v == 0]
+if dups: print("duplicate hooks: " + ", ".join(dups))
+elif miss: print("missing hooks: " + ", ".join(miss))
+PY
+)
+    else
+      local _pc_cnt
+      _pc_cnt=$(grep -c 'agent-gate --stage pre-write' "$repo_root/.claude/settings.json" 2>/dev/null || true)
+      if [[ "${_pc_cnt:-0}" -gt 1 ]]; then _hw_err="duplicate pre-write hooks ($_pc_cnt)"
+      elif [[ "${_pc_cnt:-0}" -eq 0 ]]; then _hw_err="missing pre-write hook"; fi
+    fi
+    if [[ -z "$_hw_err" ]]; then
+      _doc_add "hook_wiring" "ok" ".claude/settings.json has all 6 hooks wired once" ""
+    else
+      _doc_add "hook_wiring" "fail" "$_hw_err" "$scripts_dir/install-hook-adapter --client claude"
+    fi
+  else
+    _doc_add "hook_wiring" "warn" "no .claude/settings.json to verify" "$scripts_dir/install-hook-adapter"
+  fi
   local _ac_id _ac_ok=0
   _ac_id=$(active_change_quiet)
   if [[ -z "$_ac_id" ]]; then
@@ -1270,6 +1568,31 @@ doctor_cmd() { # [--json] — ITEM-47 read-only diagnostics
       _doc_add "active_change" "fail" "active-change '$_ac_id' points to missing dir/card" "scripts/agent-gate start $_ac_id"
     fi
   fi
+  # H-1 synthetic pre-write probe when no active change is open
+  if [[ -z "$_ac_id" && -f "$_ag_f" ]]; then
+    local _pw_out _pw_rc=0
+    _pw_out=$(cd "$repo_root" && env -u AGENT_GUARD_CHANGE AGENT_GUARD_ENFORCEMENT_MODE=strict bash "$_ag_f" --stage pre-write --file "src/__doctor_probe__.js" 2>&1) || _pw_rc=$?
+    if [[ "$_pw_rc" -ne 0 && "$_pw_out" == *GATE-E* ]]; then
+      _doc_add "prewrite_probe" "ok" "synthetic pre-write blocked cleanly (rc=$_pw_rc)" ""
+    else
+      _doc_add "prewrite_probe" "fail" "synthetic pre-write was NOT blocked (rc=$_pw_rc)" "inspect $scripts_dir/agent-gate --stage pre-write"
+    fi
+  else
+    _doc_add "prewrite_probe" "ok" "skipped while active change '${_ac_id}' is open" ""
+  fi
+  # H-3 hook coverage level transparency
+  local _hc_raw _hc_rt _hc_fam _hc_cov
+  _hc_raw=$(review_runtime_raw)
+  _hc_rt=$(printf '%s\n' "$_hc_raw" | sed -n 's/^[[:space:]]*runtime:[[:space:]]*\([^ ]*\).*/\1/p' | head -1 || true)
+  _hc_fam=$(printf '%s\n' "$_hc_raw" | sed -n 's/.*family:[[:space:]]*\([^)]*\)).*/\1/p' | head -1 || true)
+  [[ -n "$_hc_rt" && "$_hc_rt" != "unknown" ]] || _hc_rt="${AGENT_RUNTIME:-unknown}"
+  [[ -n "$_hc_fam" ]] || _hc_fam="unknown"
+  _hc_cov=$(_cold_coverage_level "$_hc_rt" "$_hc_fam")
+  if [[ "$_hc_cov" == "full" ]]; then
+    _doc_add "hook_coverage" "ok" "runtime=$_hc_rt coverage_level=full" ""
+  else
+    _doc_add "hook_coverage" "warn" "runtime=$_hc_rt coverage_level=$_hc_cov (Bash writes fall back to Git hooks/CI)" "$scripts_dir/agent-gate runtime-profile"
+  fi
   local _em _em_raw="${AGENT_GUARD_ENFORCEMENT_MODE:-}"
   if [[ -z "$_em_raw" && -f "$repo_root/.agent-governance.yml" ]]; then
     _em_raw=$(sed -nE '/^enforcement:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+mode:[[:space:]]*([^#]*).*$/\1/p' "$repo_root/.agent-governance.yml" 2>/dev/null \
@@ -1282,10 +1605,10 @@ doctor_cmd() { # [--json] — ITEM-47 read-only diagnostics
     _doc_add "enforcement_mode" "ok" "mode=$_em" ""
   fi
   if [[ "$jmode" -eq 1 ]]; then
-    printf '{"passed":%d,"warned":%d,"failed":%d,"enforcement_mode":"%s","checks":[%s]}\n' \
-      "$pass" "$warn" "$fail" "$(json_escape "$_em")" "$checks_json"
+    printf '{"passed":%d,"warned":%d,"failed":%d,"enforcement_mode":"%s","coverage_level":"%s","checks":[%s]}\n' \
+      "$pass" "$warn" "$fail" "$(json_escape "$_em")" "$(json_escape "$_hc_cov")" "$checks_json"
   else
-    printf 'doctor: %d ok, %d warn, %d fail (mode=%s)\n' "$pass" "$warn" "$fail" "$_em"
+    printf 'doctor: %d ok, %d warn, %d fail (mode=%s, coverage=%s)\n' "$pass" "$warn" "$fail" "$_em" "$_hc_cov"
   fi
   [[ "$fail" -eq 0 ]]
 }
@@ -1962,7 +2285,7 @@ _cold_hol_g2() { # <d> <id> <risk> <act>
 _cold_hol_g3() { # <d> <id> <risk>
   local d="$1" id="$2" risk="$3" f02="$1/02-code-impact-analysis.md" rr="${repo_root:-.}" decl tok f hit undecl="" add miss=""
   [[ -f "$f02" ]] || return 0
-  decl=$( { _cold_sec "$f02" "受影响文件清单"; { _cold_strip_comments "$f02" | grep -E 'affected_files:' | sed 's/.*affected_files://'; } || true; } | tr ',;' '  ' | sed 's/^[[:space:]]*[-*][[:space:]]*//' )
+  decl=$( { _cold_sec "$f02" "受影响文件清单"; { _cold_strip_comments "$f02" | grep -E 'affected_files:' | sed 's/.*affected_files://'; } || true; } | tr ',;`' '   ' | sed 's/^[[:space:]]*[-*][[:space:]]*//' )
   decl=$(printf '%s\n' "$decl" | tr -s '[:space:]' '\n' | grep -vE '^$|<|^-$|^affected_files:?$' | grep -E '[/.]' || true)
   [[ -n "$decl" ]] || return 0
   while IFS= read -r f; do
@@ -2247,7 +2570,8 @@ Usage:
   scripts/agent-gate begin <change-id>
   scripts/agent-gate end
   scripts/agent-gate metrics [--summary [--json]]
-  scripts/agent-gate doctor [--json]               # read-only governance health diagnostics (v4.10.0)
+  scripts/agent-gate doctor [--json|--live [--arm|--verify [--json]]]  # governance health & live hook wiring verification (v4.10.0/v4.18.0)
+  scripts/agent-gate runtime-profile [--json] [--no-write]  # v4.18.0: dynamically generate runtime capability profile
   scripts/agent-gate session-start          # v3.90.2: write the session handshake (runtime/model/window, P0-1)
   scripts/agent-gate plan <change-id> [--dry-run|--explain]  # v3.90.2: read-only test-scope decision (P1-1/P1-2)
   scripts/agent-gate baseline <change-id> [--write]          # v3.90.5: 5-number baseline snapshot (P0-0)
@@ -2266,7 +2590,7 @@ Usage:
   scripts/agent-gate brief <stage> [CHG]                     # v4.17.0: stage handoff brief with brief_sha (downstream must ack)
   scripts/agent-gate dispatch --pack <stage> [CHG]           # v4.17.0: write the pack + dispatch-ledger row (L2+ refuses on gaps)
   scripts/agent-gate docs-snapshot [CHG]                     # v4.17.0: local sha256 archive of docs/ (not tracked)
-  scripts/agent-gate review-models [--discover|--print-contract|--verify [path]] # v4.7.0: zero-dep review model discovery & schema check (ITEM-17)
+  scripts/agent-gate review-models [--discover|--print-contract|--verify [path]|--draft [path]] # v4.7.0/v4.18.0: zero-dep review model discovery, schema check & unconfirmed draft
   scripts/agent-gate dispatch <stage> [CHG] [--json]   # v3.94.0: read-only P0-P8 dispatch-prompt skeleton (never a gate)
   scripts/agent-gate cost-line <change-id>        # v3.90.2: append the execution-cost line to 09 (P0-15)
   scripts/agent-gate --stage pre-write [--file path]

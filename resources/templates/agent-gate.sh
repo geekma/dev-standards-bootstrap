@@ -375,7 +375,7 @@ validate_freeze_window() {
 }
 
 runtime_status() {
-  local jmode=0 adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin ac_st="" emode="strict" c
+  local jmode=0 adapter="" out rt="unknown" fam="unknown" layers="" enforce="handshake" hand="missing" mid mwin ac_st="" emode="strict" cov="unknown" c
   if [[ "${1:-}" == "--json" ]]; then
     jmode=1
     emode=$(enforcement_mode 2>/dev/null || echo strict)
@@ -391,7 +391,7 @@ runtime_status() {
     fam=$(printf '%s\n' "$out" | sed -n 's/.*family:[[:space:]]*\([^)]*\)).*/\1/p' | head -1)
     layers=$(printf '%s\n' "$out" | sed -n 's/^[[:space:]]*effective layers:[[:space:]]*//p' | head -1)
   fi
-  [[ -n "$rt" ]] || rt="${AGENT_RUNTIME:-unknown}"
+  [[ -n "$rt" && "$rt" != "unknown" ]] || rt="${AGENT_RUNTIME:-unknown}"
   [[ -n "$fam" ]] || fam="unknown"
   [[ "$rt" != "unknown" && -n "$layers" ]] && enforce="hook"
   if ls "$repo_root/.agent-state/runtime/"*.json >/dev/null 2>&1; then hand="present"; fi
@@ -400,14 +400,15 @@ runtime_status() {
     mid=$(sed -n 's/.*"model_id":"\([^"]*\)".*/\1/p' "$repo_root/.agent-state/model-profile.json" | head -1)
     mwin=$(sed -n 's/.*"context_window":\([0-9]*\).*/\1/p' "$repo_root/.agent-state/model-profile.json" | head -1)
   fi
+  cov=$(load_gate_cold && _cold_coverage_level "$rt" "$fam") || cov="unknown"
   if [[ "$jmode" -eq 1 ]]; then
     ac_st=$(active_change_quiet)
-    printf '{"runtime":"%s","family":"%s","enforcement":"%s","enforcement_mode":"%s","layers":"%s","handshake":"%s","model":"%s","window":"%s","active_change":"%s"}\n' \
+    printf '{"runtime":"%s","family":"%s","enforcement":"%s","enforcement_mode":"%s","layers":"%s","handshake":"%s","model":"%s","window":"%s","active_change":"%s","coverage_level":"%s"}\n' \
       "$(json_escape "$rt")" "$(json_escape "$fam")" "$(json_escape "$enforce")" "$(json_escape "$emode")" "$(json_escape "${layers:-none}")" \
-      "$(json_escape "$hand")" "$(json_escape "${mid:-unknown}")" "$(json_escape "${mwin:-unknown}")" "$(json_escape "${ac_st:-}")"
+      "$(json_escape "$hand")" "$(json_escape "${mid:-unknown}")" "$(json_escape "${mwin:-unknown}")" "$(json_escape "${ac_st:-}")" "$(json_escape "${cov:-unknown}")"
     return 0
   fi
-  echo "status: runtime=$rt family=$fam enforcement=$enforce enforcement_mode=$emode layers=${layers:-none}"
+  echo "status: runtime=$rt family=$fam coverage_level=$cov enforcement=$enforce enforcement_mode=$emode layers=${layers:-none}"
   echo "status: handshake=$hand model=${mid:-unknown} window=${mwin:-unknown}"
 }
 

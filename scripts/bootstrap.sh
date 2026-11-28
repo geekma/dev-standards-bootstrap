@@ -93,6 +93,7 @@ Flags (layers; default --core when none given):
   --print-profile-contract [TARGET]  只读探测目标仓后缀/Monorepo/测试目录并输出画像 JSON 契约（ITEM-15）。
   --verify-profile [TARGET]          只读校验 .agent-governance.yml 中 code_extensions 与 scopes 合法性（ITEM-15）。
   --dry-run                          预览安装/升级变更（打印 [dry-run] 计划与统计，不改动目标仓磁盘）。
+  --rollback                         回退最近一次升级快照（支持 --rollback [<id>] <目标> 或 --snapshot <id>）
   --force      覆盖目标仓库中内容不同的既有文件（默认冲突时展示 diff 并拒绝）。
                **不越过派生保护**——--force 的语义是"覆盖内容不同的既有文件"，
                不是"覆盖别人派生出来的资产"。
@@ -130,6 +131,8 @@ EOF
 force=false
 upgrade=false
 dry_run=false
+rollback_mode=false
+opt_snapshot=""
 check_mode=false
 self_update=false
 derived_report=false
@@ -151,6 +154,7 @@ for arg in "$@"; do
       scripts)  opt_scripts="$arg" ;;
       tests)    opt_tests="$arg" ;;
       githooks) opt_githooks="$arg" ;;
+      snapshot) opt_snapshot="$arg" ;;
     esac
     pending=""
     continue
@@ -168,6 +172,9 @@ for arg in "$@"; do
     # and only when the user named no layer at all.
     --upgrade)  upgrade=true ;;
     --dry-run)  dry_run=true ;;
+    --rollback) rollback_mode=true ;;
+    --snapshot) pending=snapshot ;;
+    --snapshot=*) opt_snapshot="${arg#*=}" ;;
     --check)          check_mode=true ;;
     --self-update)    self_update=true ;;
     --derived-report) derived_report=true ;;
@@ -184,11 +191,14 @@ for arg in "$@"; do
     --githooks-dir=*) opt_githooks="${arg#*=}" ;;
     -h|--help)  usage; exit 0 ;;
     -*)         echo "bootstrap: unknown flag '$arg'" >&2; usage >&2; exit 2 ;;
-    *)          target="$arg" ;;
+    *)          if [[ "$rollback_mode" == true && -n "$target" && -z "$opt_snapshot" ]]; then
+                  opt_snapshot="$target"
+                fi
+                target="$arg" ;;
   esac
 done
 if [[ -n "$pending" ]]; then
-  echo "bootstrap: --${pending}-dir requires a path argument" >&2
+  echo "bootstrap: --${pending} requires a path/value argument" >&2
   exit 2
 fi
 if [[ "$upgrade" == true && "$layers_explicit" != true ]]; then
@@ -398,6 +408,38 @@ if [[ "$derived_report" == true ]]; then
       printf '               derived_from=%s  derived_at=%s  derived_from_version=%s\n' "$df" "$da" "$dv"
     done <<< "$rep"
   fi
+  exit 0
+fi
+
+if [[ "$rollback_mode" == true ]]; then
+  _rb_root="$target/.agent-state/upgrade-snapshots"
+  _rb_id="$opt_snapshot"
+  if [[ -z "$_rb_id" ]]; then
+    _rb_id=$(LC_ALL=C ls -1 "$_rb_root" 2>/dev/null | sort | tail -n 1 || true)
+  fi
+  [[ -n "$_rb_id" && -s "$_rb_root/$_rb_id/manifest.tsv" ]] || {
+    echo "bootstrap: --rollback failed — no upgrade snapshot found under $_rb_root" >&2
+    exit 2
+  }
+  _rb_dir="$_rb_root/$_rb_id"
+  _rb_res=0 _rb_rem=0
+  while IFS=$'\t' read -r _rk _rrel; do
+    [[ -n "$_rk" && -n "$_rrel" ]] || continue
+    case "$_rk" in
+      existed)
+        if [[ -f "$_rb_dir/files/$_rrel" ]]; then
+          mkdir -p "$(dirname "$target/$_rrel")"
+          cp -p "$_rb_dir/files/$_rrel" "$target/$_rrel"
+          _rb_res=$(( _rb_res + 1 ))
+        fi ;;
+      added)
+        if [[ -e "$target/$_rrel" ]]; then
+          rm -f "$target/$_rrel"
+          _rb_rem=$(( _rb_rem + 1 ))
+        fi ;;
+    esac
+  done < "$_rb_dir/manifest.tsv"
+  echo "bootstrap: rollback complete from .agent-state/upgrade-snapshots/$_rb_id (restored=$_rb_res removed=$_rb_rem)"
   exit 0
 fi
 
@@ -756,6 +798,38 @@ divergence_guard() { # src dest -> 0 when dest has version rows src lacks
   return 0
 }
 
+_SNAP_DIR=""
+_SNAP_REL=""
+_snap_init() {
+  [[ -n "$_SNAP_DIR" ]] && return 0
+  local _sid
+  _sid="$(date -u +%Y%m%dT%H%M%SZ 2>/dev/null || echo snap)-$$"
+  _SNAP_REL=".agent-state/upgrade-snapshots/$_sid"
+  _SNAP_DIR="$target/$_SNAP_REL"
+  mkdir -p "$_SNAP_DIR/files"
+  : > "$_SNAP_DIR/manifest.tsv"
+  if [[ -f "$(manifest_path)" ]]; then
+    mkdir -p "$_SNAP_DIR/files"
+    cp -p "$(manifest_path)" "$_SNAP_DIR/files/.dev-standards-manifest"
+    printf 'existed\t.dev-standards-manifest\n' >> "$_SNAP_DIR/manifest.tsv"
+  else
+    printf 'added\t.dev-standards-manifest\n' >> "$_SNAP_DIR/manifest.tsv"
+  fi
+}
+
+_snap_before_write() { # <dest_rel> <dest>
+  [[ "$upgrade" == true && "$dry_run" != true ]] || return 0
+  _snap_init
+  awk -F'\t' -v p="$1" '$2==p{f=1;exit} END{exit !f}' "$_SNAP_DIR/manifest.tsv" 2>/dev/null && return 0
+  if [[ -f "$2" ]]; then
+    mkdir -p "$(dirname "$_SNAP_DIR/files/$1")"
+    cp -p "$2" "$_SNAP_DIR/files/$1"
+    printf 'existed\t%s\n' "$1" >> "$_SNAP_DIR/manifest.tsv"
+  else
+    printf 'added\t%s\n' "$1" >> "$_SNAP_DIR/manifest.tsv"
+  fi
+}
+
 install_file() {
   local key="$1" dest_rel="$2" src_rel="$3" chmod_mode="${4:-}"
   local dest="$target/$dest_rel" src="$SKILL_ROOT/$src_rel"
@@ -765,6 +839,7 @@ install_file() {
       if [[ "$key" == "$skip" ]]; then
         echo "live (skip)  $dest_rel"
         skipped=$(( skipped + 1 ))
+        up_kept=$(( up_kept + 1 ))
         return 0
       fi
     done
@@ -779,13 +854,15 @@ install_file() {
       else
         echo "[dry-run] would keep  $dest_rel (user-modified AGENTS.md without managed markers)"
         skipped=$(( skipped + 1 ))
+        up_kept=$(( up_kept + 1 ))
       fi
       return 0
     fi
     local msrc="$dest.merged.tmp"
     if [[ "$PATHS_CUSTOM" == 1 ]]; then transform_src "$src" > "$msrc"; else cp "$src" "$msrc"; fi
     if merge_managed "$msrc" "$dest" > "$msrc.out" && [[ -s "$msrc.out" ]]; then
-      mv "$msrc.out" "$dest" || { rm -f "$msrc" "$msrc.out"; echo "bootstrap: AGENTS.md merge write failed — kept original" >&2; skipped=$(( skipped + 1 )); return 0; }
+      _snap_before_write "$dest_rel" "$dest"
+      mv "$msrc.out" "$dest" || { rm -f "$msrc" "$msrc.out"; echo "bootstrap: AGENTS.md merge write failed — kept original" >&2; skipped=$(( skipped + 1 )); up_kept=$(( up_kept + 1 )); return 0; }
       rm -f "$msrc"
       echo "merged       $dest_rel (managed block updated; user sections outside markers preserved)"
       upgraded=$(( upgraded + 1 ))
@@ -795,6 +872,7 @@ install_file() {
     rm -f "$msrc" "$msrc.out"
     echo "kept (user-modified AGENTS.md without managed markers — content preserved; delete it and re-run to adopt markers)  $dest_rel"
     skipped=$(( skipped + 1 ))
+    up_kept=$(( up_kept + 1 ))
     return 0
   fi
   # Self-evolution contract: never write into a directory that declares
@@ -834,6 +912,7 @@ install_file() {
     if same_as_src "$src" "$dest"; then
       echo "up to date   $dest_rel"
       skipped=$(( skipped + 1 ))
+      up_unchanged=$(( up_unchanged + 1 ))
       if [[ "$dry_run" != true ]]; then
         manifest_record "$dest_rel" "$dest" || { echo "bootstrap: aborting — manifest record failed for $dest_rel" >&2; exit 2; }
       fi
@@ -848,6 +927,7 @@ install_file() {
           upgraded=$(( upgraded + 1 ))
           return 0
         fi
+        _snap_before_write "$dest_rel" "$dest"
         install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
         echo "updated      $dest_rel (upgrade; unchanged since install)"
         upgraded=$(( upgraded + 1 ))
@@ -859,6 +939,7 @@ install_file() {
           overwritten=$(( overwritten + 1 ))
           return 0
         fi
+        _snap_before_write "$dest_rel" "$dest"
         install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
         echo "overwrite    $dest_rel (user-modified since install — --force given; previous content in git history)"
         overwritten=$(( overwritten + 1 ))
@@ -870,6 +951,7 @@ install_file() {
         echo "kept (no install manifest entry — legacy target preserved; run --force once to sync and adopt manifest)  $dest_rel"
       fi
       skipped=$(( skipped + 1 ))
+      up_kept=$(( up_kept + 1 ))
       return 0
     fi
     if [[ "$force" != true ]]; then
@@ -893,6 +975,7 @@ install_file() {
     installed=$(( installed + 1 ))
     return 0
   fi
+  _snap_before_write "$dest_rel" "$dest"
   install_write "$dest_rel" "$dest" "$src" "$chmod_mode" || exit 2
   echo "installed    $dest_rel"
   installed=$(( installed + 1 ))
@@ -902,6 +985,8 @@ installed=0
 overwritten=0
 skipped=0
 upgraded=0
+up_kept=0
+up_unchanged=0
 
 run_layer() {
   local layer="$1"
@@ -1502,7 +1587,7 @@ auto_wire_guard() {
   # v3.90.3 (CHG-125, FU-958): engine self-check + runtime re-probe. Both are
   # read-only and never block the install (a broken engine is a WARN here and a
   # hard failure at the first gate run anyway).
-  if [[ -x "$SCRIPTS_DIR/agent-gate" ]]; then
+  if [[ -x "$target/$SCRIPTS_DIR/agent-gate" ]]; then
     if ( cd "$target" && "$SCRIPTS_DIR/agent-gate" metrics >/dev/null 2>&1 ); then
       echo "engine self-check: agent-gate metrics ok ($SCRIPTS_DIR/agent-gate)"
     else
@@ -1510,12 +1595,17 @@ auto_wire_guard() {
     fi
   fi
   _adapter=""
-  for _c in "$SCRIPTS_DIR/install-hook-adapter" "$SCRIPTS_DIR/install-hook-adapter.sh"; do
-    [[ -x "$_c" ]] && _adapter="$_c" && break
+  for _c in "$target/$SCRIPTS_DIR/install-hook-adapter" "$target/$SCRIPTS_DIR/install-hook-adapter.sh"; do
+    [[ -x "$_c" ]] && _adapter="$SCRIPTS_DIR/$(basename "$_c")" && break
   done
   if [[ -n "$_adapter" ]]; then
     _rt_line=$( cd "$target" && "$_adapter" --detect 2>/dev/null | sed -n 's/^  runtime: //p' | head -1 )
     echo "runtime re-probe: ${_rt_line:-unknown — declare AGENT_RUNTIME if detection cannot see the client}"
+  fi
+  if [[ -x "$target/$SCRIPTS_DIR/agent-gate" ]]; then
+    if ( cd "$target" && "$SCRIPTS_DIR/agent-gate" runtime-profile >/dev/null 2>&1 ); then
+      echo "auto-wired   runtime profile generated (.agent-state/runtime-profile.json)"
+    fi
   fi
 }
 case " $layers " in
@@ -1538,6 +1628,9 @@ if [[ "$upgrade" == true ]]; then
   echo "upgrade-behavior: profile gains schema_version + nine scenario keys; an existing profile block only receives missing keys (user values never rewritten)"
 fi
 
+if [[ "$upgrade" == true ]]; then
+  echo "upgrade summary: added=$installed changed=$((upgraded + overwritten)) kept=$up_kept unchanged=$up_unchanged (snapshot: ${_SNAP_REL:-none}; rollback: bash scripts/bootstrap.sh --rollback $target)"
+fi
 if [[ "$dry_run" == true ]]; then
   echo "bootstrap: dry-run complete (no files modified)."
 fi

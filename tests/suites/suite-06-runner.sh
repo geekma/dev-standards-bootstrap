@@ -2485,6 +2485,193 @@ t_install_session_gate
 printf 'GATE-E150\tCHG-1\tL2\trepro\t2026-11-27T00:00:00Z\n' >> .agent-state/gate-friction.tsv
 out=$(bash scripts/session-gate.sh start 2>&1)
 check_output "T53 TC-1676a X-4 session-gate start surfaces top-refusal self-check" "高频拦截自检|GATE-E150" "$out"
+
+# === Batch H (v4.18.0, CHG-168): Target Runtime Diagnostics, Profiles, Coverage, Upgrade Matrix & Rollback ===
+# TC-1680a: H-1 two-phase doctor --live + static single-wiring & synthetic probe
+new_repo
+mkdir -p .claude src
+cat > .claude/settings.json <<'EOF'
+{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh start"}]}],"PreToolUse":[{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]},{"matcher":"Bash|Edit|Write|Task|Grep|Glob|Read","hooks":[{"type":"command","command":"scripts/session-gate.sh check"}]}],"Stop":[{"hooks":[{"type":"command","command":"scripts/agent-gate --stage stop"}]}],"UserPromptSubmit":[{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh count turn"}]}],"PostToolUse":[{"matcher":"Bash|Grep|Glob|Read|Task","hooks":[{"type":"command","command":"scripts/session-gate.sh count tool -"}]}]}}
+EOF
+git config core.hooksPath .githooks 2>/dev/null || true
+printf '{"turns":2,"total":5}\n' > .agent-state/session-tool-stats.json
+out=$(scripts/agent-gate doctor --live --arm 2>&1); rc=$?
+report "T53 TC-1680a H-1 doctor --live --arm succeeds (rc0)" 0 "$rc"
+report "T53 TC-1680a H-1 doctor-live-arm.json created" 0 "$([[ -s .agent-state/doctor-live-arm.json ]] && echo 0 || echo 1)"
+
+out=$(scripts/agent-gate doctor --live --verify --json 2>&1); rc=$?
+report "T53 TC-1680a H-1 --verify rejects 0 delta (not triggered)" 1 "$rc"
+check_output "T53 TC-1680a H-1 delta=0 mentions not triggered" 'delta_turns":0|not_triggered' "$out"
+
+printf '{"turns":4,"total":7}\n' > .agent-state/session-tool-stats.json
+out=$(scripts/agent-gate doctor --live --verify --json 2>&1); rc=$?
+report "T53 TC-1680a H-1 --verify rejects delta>=2 (duplicate wiring)" 1 "$rc"
+check_output "T53 TC-1680a H-1 delta=2 mentions duplicate" 'duplicate' "$out"
+
+printf '{"turns":3,"total":6}\n' > .agent-state/session-tool-stats.json
+out=$(scripts/agent-gate doctor --live --verify --json 2>&1); rc=$?
+report "T53 TC-1680a H-1 --verify passes on exact delta 1 (rc0)" 0 "$rc"
+
+# duplicate wiring in .claude/settings.json must make static doctor fail
+cat > .claude/settings.json <<'EOF'
+{"hooks":{"PreToolUse":[{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"},{"type":"command","command":"bash scripts/agent-gate --stage pre-write"}]}]}}
+EOF
+out=$(scripts/agent-gate doctor --json 2>&1); rc=$?
+report "T53 TC-1680a H-1 static doctor fails on duplicate pre-write hook (rc1)" 1 "$rc"
+check_output "T53 TC-1680a H-1 doctor names hook_wiring failure" '"name":"hook_wiring","status":"fail"' "$out"
+
+# missing Edit|Write PreToolUse must make static doctor fail
+cat > .claude/settings.json <<'EOF'
+{"hooks":{"SessionStart":[{"matcher":"","hooks":[{"type":"command","command":"scripts/session-gate.sh start"}]}]}}
+EOF
+out=$(scripts/agent-gate doctor --json 2>&1); rc=$?
+report "T53 TC-1680a H-1 static doctor fails when PreToolUse Edit|Write missing (rc1)" 1 "$rc"
+
+# TC-1681a: H-2 dynamic real-time runtime profile generation (no hardcoded static templates) + H-3 coverage_level transparency
+report "T53 TC-1681a H-2 no static hardcoded resources/runtime-profiles dir" 0 "$([[ ! -d "$ROOT/resources/runtime-profiles" ]] && echo 0 || echo 1)"
+
+new_repo
+mkdir -p .agents
+cat > .agents/hooks.json <<'EOF'
+{"hooks":{"PreToolUse":[{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]}]}}
+EOF
+out=$(AGENT_RUNTIME=windsurf-custom scripts/agent-gate runtime-profile 2>&1); rc=$?
+report "T53 TC-1681a H-2 runtime-profile generates dynamically for arbitrary client windsurf-custom (rc0)" 0 "$rc"
+report "T53 TC-1681a H-2 writes .agent-state/runtime-profile.json" 0 "$([[ -s .agent-state/runtime-profile.json ]] && echo 0 || echo 1)"
+check_output "T53 TC-1681a H-2 profile carries generated-at-runtime & verified_at & client" '"source":"generated-at-runtime".*"client":"windsurf-custom".*"coverage_level":"write-tool-only".*"verified_at":' "$out"
+
+out=$(AGENT_RUNTIME=windsurf-custom scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a H-3 Edit|Write reports write-tool-only coverage (never full)" '"coverage_level":"write-tool-only"' "$out"
+
+cat > .agents/hooks.json <<'EOF'
+{"hooks":{"PreToolUse":[{"matcher":"Edit|Write|Bash","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]}]}}
+EOF
+out=$(AGENT_RUNTIME=acme-full scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a H-3 Edit|Write|Bash hook dynamically yields coverage_level full" '"coverage_level":"full"' "$out"
+
+rm -rf .agents
+out=$(AGENT_RUNTIME=codex scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a H-3 codex without hook config reports git-only coverage" '"coverage_level":"git-only"' "$out"
+
+out=$(AGENT_RUNTIME=mystery-agent scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a H-3 unknown agent without hooks reports unknown (never full)" '"bash_write_interception":"unknown"|"coverage_level":"unknown"' "$out"
+
+mkdir -p .claude
+cat > .claude/settings.json <<'EOF'
+{"hooks":{"PreToolUse":[{"matcher":"Edit|Write|Bash","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"}]}]}}
+EOF
+out=$(AGENT_RUNTIME=codex scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a F-2 codex with team .claude/settings.json still reports git-only (never borrows claude full)" '"coverage_level":"git-only"' "$out"
+out=$(AGENT_RUNTIME=mystery-agent scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a F-2 mystery-agent with team .claude/settings.json still reports unknown (never borrows claude full)" '"coverage_level":"unknown"' "$out"
+rm -rf .claude
+
+_rp_custom=$(mktemp "${TMPDIR:-/tmp}/rp-unk.XXXXXX")
+printf '{"client":"custom-unk","bash_write_interception":"unknown","pre_write_matcher":"unknown","verified_at":"2026-11-28"}\n' > "$_rp_custom"
+out=$(AGENT_GUARD_RUNTIME_PROFILE="$_rp_custom" AGENT_RUNTIME=custom-unk scripts/agent-gate status --json 2>&1)
+check_output "T53 TC-1681a H-3 explicit profile override unknown bash_write_interception reports unknown" '"coverage_level":"unknown"' "$out"
+rm -f "$_rp_custom"
+
+# TC-1682a: H-4 review-models --draft
+printf '{"existing":true}\n' > .agent-review-models.json
+out=$(scripts/agent-gate review-models --draft 2>&1); rc=$?
+report "T53 TC-1682a H-4 review-models --draft succeeds (rc0)" 0 "$rc"
+report "T53 TC-1682a H-4 draft file created" 0 "$([[ -s .agent-review-models.draft.json ]] && echo 0 || echo 1)"
+check_output "T53 TC-1682a H-4 draft marked draft-unconfirmed" '"status"[[:space:]]*:[[:space:]]*"draft-unconfirmed"' "$(cat .agent-review-models.draft.json 2>/dev/null || true)"
+check_output "T53 TC-1682a H-4 does not overwrite existing .agent-review-models.json" 'existing' "$(cat .agent-review-models.json)"
+out=$(scripts/agent-gate review-models --verify .agent-review-models.draft.json 2>&1); rc=$?
+report "T53 TC-1682a H-4 generated draft passes review-models --verify (rc0)" 0 "$rc"
+
+# TC-1683a & TC-1684a: H-5 upgrade matrix (v3.90/v4.0/v4.4/v4.10/v4.13) + H-6 snapshot & --rollback + H-7 archive
+_h_src=$(mktemp -d "${TMPDIR:-/tmp}/h-src.XXXXXX")
+mkdir -p "$_h_src/scripts" "$_h_src/archive"
+cp "$ROOT/scripts/bootstrap.sh" "$_h_src/scripts/bootstrap.sh"
+cp "$ROOT/SKILL.md" "$_h_src/SKILL.md"
+cp -R "$ROOT/resources" "$_h_src/resources"
+cp "$ROOT/archive/STANDARDS_CHANGELOG_ARCHIVE.md" "$_h_src/archive/STANDARDS_CHANGELOG_ARCHIVE.md"
+mkdir -p "$_h_src/tests/lib" "$_h_src/tests/suites"
+cp "$ROOT/tests/run-tests.sh" "$ROOT/tests/fresh-clone-check.sh" "$_h_src/tests/"
+cp "$ROOT/tests/lib/test-harness.sh" "$_h_src/tests/lib/"
+cp "$ROOT/tests/suites/"*.sh "$_h_src/tests/suites/"
+cp "$ROOT/scripts/lib-suite-tree-fingerprint.sh" "$ROOT/scripts/lib-suite-lock.sh" "$ROOT/scripts/shard-sum.sh" "$ROOT/scripts/evidence-round.sh" "$_h_src/scripts/"
+
+for _lv in 3.90.0 4.0.0 4.4.0 4.10.0 4.13.0; do
+  _ltgt=$(mktemp -d "${TMPDIR:-/tmp}/h-legacy-${_lv}.XXXXXX")
+  (
+    cd "$_ltgt"
+    git init -q && git config user.email t@x.invalid && git config user.name t
+    mkdir -p docs/templates/entry scripts tests/lib tests/suites .githooks .claude
+    printf 'hi\n' > README.md
+    printf '*规范版本：v%s*\n' "$_lv" > docs/DEVELOPMENT_STANDARDS.md
+    printf '# log\n\n| v%s | 2026-01-01 | legacy | 无 |\n' "$_lv" > docs/STANDARDS_CHANGELOG.md
+    printf 'old gate\n' > scripts/agent-gate
+    cat > .claude/settings.json <<'EOF'
+{"hooks":{"PreToolUse":[{"matcher":"Edit|Write","hooks":[{"type":"command","command":"scripts/agent-gate --stage pre-write"},{"type":"command","command":"bash scripts/agent-gate --stage pre-write"}]}]}}
+EOF
+    git add -A && git commit -qm "legacy-$_lv"
+  )
+  out=$(bash "$_h_src/scripts/bootstrap.sh" --upgrade --dry-run "$_ltgt" 2>&1); rc=$?
+  report "T53 TC-1683a H-6 --dry-run --upgrade (${_lv}) exits 0" 0 "$rc"
+  report "T53 TC-1683a H-6 --dry-run writes no snapshot" 0 "$([[ ! -d "$_ltgt/.agent-state/upgrade-snapshots" ]] && echo 0 || echo 1)"
+
+  if [[ "$_lv" == "4.13.0" ]]; then
+    out=$( cd "${TMPDIR:-/tmp}" && bash "$_h_src/scripts/bootstrap.sh" --upgrade --force "$_ltgt" 2>&1 ); rc=$?
+  else
+    out=$(bash "$_h_src/scripts/bootstrap.sh" --upgrade --force "$_ltgt" 2>&1); rc=$?
+  fi
+  report "T53 TC-1683a H-5 upgrade from legacy v${_lv} exits 0" 0 "$rc"
+  check_output "T53 TC-1683a H-6 upgrade prints summary line (${_lv})" 'upgrade summary:.*added=.*changed=.*kept=.*unchanged=' "$out"
+  out_doc=$(cd "$_ltgt" && scripts/agent-gate doctor --json 2>&1); rc_doc=$?
+  report "T53 TC-1683a H-5 post-upgrade (${_lv}) doctor has 0 fail" 0 "$rc_doc"
+  check_output "T53 TC-1683a H-5 post-upgrade (${_lv}) hook_wiring passes exactly-once" '"name":"hook_wiring","status":"ok"' "$out_doc"
+  if [[ "$_lv" == "4.13.0" ]]; then
+    report "T53 TC-1683a H-2 post-upgrade auto-generates .agent-state/runtime-profile.json" 0 "$([[ -s "$_ltgt/.agent-state/runtime-profile.json" ]] && echo 0 || echo 1)"
+    report "T53 TC-1683a H-6 upgrade creates snapshot dir" 0 "$(ls -d "$_ltgt"/.agent-state/upgrade-snapshots/* >/dev/null 2>&1 && echo 0 || echo 1)"
+    _snap_id=$(basename "$(ls -d "$_ltgt"/.agent-state/upgrade-snapshots/* | head -1)")
+    out_rb=$( cd "${TMPDIR:-/tmp}" && bash "$_h_src/scripts/bootstrap.sh" --rollback "$_snap_id" "$_ltgt" 2>&1 ); rc_rb=$?
+    report "T53 TC-1683a H-6 --rollback exits 0" 0 "$rc_rb"
+    check_output "T53 TC-1683a H-6 --rollback restores pre-upgrade agent-gate" '^old gate$' "$(cat "$_ltgt/scripts/agent-gate")"
+  fi
+  rm -rf "$_ltgt"
+done
+
+# TC-1684a: B0-6/H-7 divergence_guard with archive/, missing archive/ (must point to 重装 skill), and local fake row
+_htgt=$(mktemp -d "${TMPDIR:-/tmp}/h7-tgt.XXXXXX")
+(
+  cd "$_htgt"
+  git init -q && git config user.email t@x.invalid && git config user.name t
+  mkdir -p docs .githooks scripts
+  printf 'hi\n' > README.md
+  printf '*规范版本：v4.4.0*\n' > docs/DEVELOPMENT_STANDARDS.md
+  printf '| v4.4.0 | 2026-11-15 | hist | 无 |\n' > docs/STANDARDS_CHANGELOG.md
+  git add -A && git commit -qm h7
+)
+out=$(bash "$_h_src/scripts/bootstrap.sh" --core --upgrade "$_htgt" 2>&1); rc=$?
+report "T53 TC-1684a H-7 upgrade with archive/ passes historical v4.4.0 row (rc0)" 0 "$rc"
+
+_h_no_arch=$(mktemp -d "${TMPDIR:-/tmp}/h-no-arch.XXXXXX")
+cp -R "$_h_src/." "$_h_no_arch/" && rm -rf "$_h_no_arch/archive"
+(
+  cd "$_htgt" && git reset -q --hard HEAD && printf '| v4.4.0 | 2026-11-15 | hist | 无 |\n' > docs/STANDARDS_CHANGELOG.md && git add -A && git commit -qm reset_h7
+)
+out=$(bash "$_h_no_arch/scripts/bootstrap.sh" --core --upgrade "$_htgt" 2>&1); rc=$?
+report "T53 TC-1684a H-7 missing archive/ refuses upgrade (rc2)" 2 "$rc"
+check_output "T53 TC-1684a H-7 missing archive/ directs to 重装 skill" '重装 skill' "$out"
+
+(
+  cd "$_htgt" && printf '| v9.9.9 | 2026-11-28 | local | 无 |\n' > docs/STANDARDS_CHANGELOG.md && git add -A && git commit -qm local_row
+)
+out=$(bash "$_h_src/scripts/bootstrap.sh" --core --upgrade "$_htgt" 2>&1); rc=$?
+report "T53 TC-1684a H-7 real local row v9.9.9 refused even with archive/ (rc2)" 2 "$rc"
+rm -rf "$_h_src" "$_h_no_arch" "$_htgt"
+
+# TC-1685a: dogfood G-3 backtick stripping in 02 affected_files
+_t53_seed_holistic CHG-1685BT L2 4.17.0
+sed -i.bak '/^affected_files:/d; s/- src\/app.js/- `src\/app.js`/' docs/changes/CHG-1685BT/02-code-impact-analysis.md 2>/dev/null || sed -i '' '/^affected_files:/d; s/- src\/app.js/- `src\/app.js`/' docs/changes/CHG-1685BT/02-code-impact-analysis.md
+rm -f docs/changes/CHG-1685BT/02-code-impact-analysis.md.bak
+stamp_all docs/changes/CHG-1685BT; _t53_refresh_rc
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-1685a G-3 matches backtick-wrapped source path in 02 affected_files (rc0)" 0 "$rc"
 }
 
 section_T54() {
