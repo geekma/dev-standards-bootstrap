@@ -110,7 +110,7 @@ if [[ -f "$BOOT_SRC" ]]; then
   check_output "T14 custom-root rerun reports up to date (no false drift)" "up to date" "$out"
   rm -rf "$BT5"
   BT6=$(mktemp -d)
-  git -C "$BT6" init -q -b master
+  ( cd "$BT6" && git init -q -b master )
   bash "$BOOT_SRC" --guard --pipeline "$BT6" >/dev/null 2>&1
   report "T14 TC-10031 master-branch guard+pipeline install rc0" 0 $?
   grep -q 'branches: \[master\]' "$BT6/.github/workflows/agent-governance.yml" \
@@ -122,13 +122,14 @@ if [[ -f "$BOOT_SRC" ]]; then
   check_output "T14 TC-10031 master-branch rerun reports up to date" "up to date" "$out"
   # TC-10040 (v4.6.0 CHG-151, REQ-1415): linked git worktree (.git is a file)
   BT7=$(mktemp -d)
-  git -C "$BT6" -c user.email=t@t -c user.name=t commit --allow-empty -qm "seed master"
-  git -C "$BT6" worktree add -q -b wt-branch "$BT7" HEAD
+  _bt7_git="$BT7"
+  command -v cygpath >/dev/null 2>&1 && _bt7_git=$(cygpath -m "$BT7")
+  ( cd "$BT6" && git -c user.email=t@t -c user.name=t commit --allow-empty -qm "seed master" && git worktree add -q -b wt-branch "$_bt7_git" HEAD )
   bash "$BOOT_SRC" --guard --pipeline "$BT7" >/dev/null 2>&1
   grep -q 'branches: \[master\]' "$BT7/.github/workflows/agent-governance.yml" \
     && ! grep -q 'branches: \[main\]' "$BT7/.github/workflows/agent-governance.yml"
   report "T14 TC-10040 linked worktree detects master branch (.git file)" 0 $?
-  git -C "$BT6" worktree remove --force "$BT7" 2>/dev/null || rm -rf "$BT7"
+  ( cd "$BT6" && git worktree remove --force "$_bt7_git" 2>/dev/null ) || rm -rf "$BT7"
   rm -rf "$BT6"
   # TC-10043/10044/10045 (v4.7.0 CHG-152, REQ-1418~1420): CI/branch-protection adapter & profile/code_extensions
   BT8=$(mktemp -d)

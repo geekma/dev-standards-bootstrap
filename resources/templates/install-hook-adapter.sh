@@ -179,7 +179,7 @@ print_global_contract() {
     "router_script": [
       "target=\"${1:-${TOOL_FILE_PATH:-}}\"",
       "[ -n \"$target\" ] || exit 0",
-      "repo=$(git -C \"$(dirname \"$target\")\" rev-parse --show-toplevel 2>/dev/null) || exit 0",
+      "repo=$(cd \"$(dirname \"$target\")\" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || exit 0",
       "sdir=$(sed -nE '/^paths:[[:space:]]*$/,/^[^[:space:]#]/s/^[[:space:]]+scripts:[[:space:]]*([^#]*).*$/\\1/p' \"$repo/.agent-governance.yml\" 2>/dev/null | head -1 | tr -d \"[:space:]\\\"'\")",
       "sdir=\"${sdir:-scripts}\"",
       "if [ -x \"$repo/$sdir/agent-gate\" ]; then",

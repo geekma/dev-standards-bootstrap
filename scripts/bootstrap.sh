@@ -582,18 +582,23 @@ detect_default_branch() { # <target> -> branch name (defaults to main)
     printf '%s' "$AGENT_GUARD_DEFAULT_BRANCH"
     return 0
   fi
-  if command -v git >/dev/null 2>&1 && git -C "$t" rev-parse --git-dir >/dev/null 2>&1; then
-    b=$(git -C "$t" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
-    b="${b#origin/}"
-    if [[ -z "$b" ]]; then
-      if git -C "$t" show-ref --verify --quiet refs/heads/main 2>/dev/null; then
-        b="main"
-      elif git -C "$t" show-ref --verify --quiet refs/heads/master 2>/dev/null; then
-        b="master"
-      else
-        b=$(git -C "$t" symbolic-ref --short HEAD 2>/dev/null || true)
+  if command -v git >/dev/null 2>&1 && [[ -d "$t" ]]; then
+    b=$(
+      cd "$t" 2>/dev/null || exit 1
+      git rev-parse --git-dir >/dev/null 2>&1 || exit 1
+      _br=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+      _br="${_br#origin/}"
+      if [[ -z "$_br" ]]; then
+        if git show-ref --verify --quiet refs/heads/main 2>/dev/null; then
+          _br="main"
+        elif git show-ref --verify --quiet refs/heads/master 2>/dev/null; then
+          _br="master"
+        else
+          _br=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+        fi
       fi
-    fi
+      printf '%s' "$_br"
+    ) || b=""
   fi
   case "$b" in ''|*[!A-Za-z0-9._/-]*) b="main" ;; esac
   printf '%s' "$b"

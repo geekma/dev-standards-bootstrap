@@ -121,11 +121,26 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     _t26_full_out=$(cd "$t26_inc" && bash scripts/session-gate.sh start --full 2>&1)
     report "T26 TC-10036 session-gate start --full runs without incremental narrowing" 0 "$(grep -c 'incremental: audited' "$t26_inc/.agent-state/session-gate-last.md" 2>/dev/null || true)"
     rm -rf "$t26_inc"
+    _t26_populate_bin() {
+      local _dir="$1" _c _cp _is_win=0
+      case "$(uname -s 2>/dev/null || true)" in
+        MINGW*|MSYS*|CYGWIN*) _is_win=1 ;;
+      esac
+      for _c in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env git; do
+        _cp=$(command -v "$_c" 2>/dev/null || true)
+        [[ -n "$_cp" ]] || continue
+        if [[ "$_is_win" -eq 1 ]]; then
+          local _dll_dir="/usr/bin"
+          [[ "$_cp" == *"/mingw64/"* ]] && _dll_dir="/mingw64/bin:/usr/bin"
+          printf '#!/usr/bin/sh\nPATH="%s:$PATH" exec "%s" "$@"\n' "$_dll_dir" "$_cp" > "$_dir/$_c"
+          chmod +x "$_dir/$_c"
+        else
+          ln -sf "$_cp" "$_dir/$_c"
+        fi
+      done
+    }
     t26_bin=$(mktemp -d); t26_repo=$(mktemp -d)
-    for _cmd in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env git; do
-      _cmd_path=$(command -v "$_cmd" 2>/dev/null || true)
-      [[ -n "$_cmd_path" ]] && ln -sf "$_cmd_path" "$t26_bin/$_cmd"
-    done
+    _t26_populate_bin "$t26_bin"
     mkdir -p "$t26_repo/scripts" "$t26_repo/.agents"
     cp "$ROOT/resources/templates/install-hook-adapter.sh" "$t26_repo/scripts/install-hook-adapter"
     copy_gate_to "$t26_repo/scripts" agent-gate
@@ -133,7 +148,7 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
     out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/install-hook-adapter --verify-wiring .agents/hooks.json 2>&1)
     check_output "T26 TC-10026 zero-dep PATH --verify-wiring passes" "dynamic wiring verified" "$out"
     # TC-10046 (v4.7.0 CHG-152, REQ-1421): review-models zero-dep PATH discover/contract/verify
-    (cd "$t26_repo" && git init -q && git commit --allow-empty -qm init) >/dev/null 2>&1
+    (cd "$t26_repo" && git init -q && git -c user.email=t@t -c user.name=t commit --allow-empty -qm init) >/dev/null 2>&1
     out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/agent-gate review-models --discover 2>&1)
     check_output "T26 TC-10046 review-models --discover emits detected_clis" '"detected_clis":' "$out"
     out=$(cd "$t26_repo" && PATH="$t26_bin" bash scripts/agent-gate review-models --print-contract 2>&1)
@@ -209,9 +224,13 @@ if [[ -f "$SESSION_GATE_SRC" ]]; then
   report "T26 TC-10057 start scaffolds CHG-1531 directory" 0 "$([[ -s docs/changes/CHG-1531/00-intent.md ]]; echo $?)"
   # FU-15202 review-models awk fallback checks id per object
   _rm_bin=$(mktemp -d)
-  for _c in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env git; do
-    _cp=$(command -v "$_c" 2>/dev/null || true); [[ -n "$_cp" ]] && ln -sf "$_cp" "$_rm_bin/$_c"
-  done
+  if declare -F _t26_populate_bin >/dev/null 2>&1; then
+    _t26_populate_bin "$_rm_bin"
+  else
+    for _c in bash awk grep sed date mkdir tr head cat dirname rm mktemp wc cut sort ls env git; do
+      _cp=$(command -v "$_c" 2>/dev/null || true); [[ -n "$_cp" ]] && ln -sf "$_cp" "$_rm_bin/$_c"
+    done
+  fi
   printf '{"models":[{"id":"ok1","tier":"fast"},{"tier":"standard"}]}\n' > .agent-review-models.json
   PATH="$_rm_bin" bash scripts/agent-gate review-models --verify .agent-review-models.json >/dev/null 2>&1
   report "T26 TC-10062 awk fallback rejects second model object missing id" 2 $?
