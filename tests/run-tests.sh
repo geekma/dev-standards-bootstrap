@@ -188,7 +188,7 @@ _ledger_lock_reclaim() { # <dir> -> 0 when THIS process re-created the lock
 }
 _ledger_lock_acquire() { # -> 0 when this process owns the lock
   local d="${LEDGER_FILE}.lock" i=0 op ls now mt age
-  while [[ "$i" -lt 50 ]]; do
+  while [[ "$i" -lt 200 ]]; do
     if mkdir "$d" 2>/dev/null; then
       _ledger_write_owner "$d"
       _LEDGER_LOCK_MINE=1

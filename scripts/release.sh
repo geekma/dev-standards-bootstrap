@@ -209,6 +209,7 @@ checksums() {
   [[ -s "$sums" ]] || { echo "FAIL SHA256SUMS missing or empty" >&2; return 1; }
   local bad=0 line exp rel got
   while IFS= read -r line; do
+    line="${line%$'\r'}"
     [[ -n "$line" ]] || continue
     exp="${line%% *}"
     rel="${line#*  }"
@@ -221,7 +222,7 @@ checksums() {
     fi
   done < "$sums"
   while IFS= read -r f; do
-    if ! awk -v tgt="$f" 'length($1)==64 && $1 ~ /^[0-9a-f]+$/ && substr($0,67)==tgt {ok=1; exit} END{exit !ok}' "$sums" 2>/dev/null; then
+    if ! awk -v tgt="$f" '{sub(/\r$/, "")} length($1)==64 && $1 ~ /^[0-9a-f]+$/ && substr($0,67)==tgt {ok=1; exit} END{exit !ok}' "$sums" 2>/dev/null; then
       echo "FAIL SHA256SUMS missing tracked entry: $f" >&2; bad=1
     fi
   done < <(checksum_files)

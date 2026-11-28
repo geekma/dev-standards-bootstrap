@@ -122,7 +122,7 @@ if [[ -f "$BOOT_SRC" ]]; then
   check_output "T14 TC-10031 master-branch rerun reports up to date" "up to date" "$out"
   # TC-10040 (v4.6.0 CHG-151, REQ-1415): linked git worktree (.git is a file)
   BT7=$(mktemp -d)
-  git -C "$BT6" commit --allow-empty -qm "seed master"
+  git -C "$BT6" -c user.email=t@t -c user.name=t commit --allow-empty -qm "seed master"
   git -C "$BT6" worktree add -q -b wt-branch "$BT7" HEAD
   bash "$BOOT_SRC" --guard --pipeline "$BT7" >/dev/null 2>&1
   grep -q 'branches: \[master\]' "$BT7/.github/workflows/agent-governance.yml" \

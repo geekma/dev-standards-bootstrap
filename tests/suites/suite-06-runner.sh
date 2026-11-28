@@ -787,16 +787,14 @@ report "T53 TC-10014 E107 stop red: compensation gap non-empty cannot give PASS"
 mv docs/changes/CHG-1060/07.bak docs/changes/CHG-1060/07-review-report.md
 # TC-2384（E158 负例）：01-spec 撤动作全集矩阵节 → 红
 sedi 's/；入口维度：桌面命中\/移动未命中//' docs/changes/CHG-1060/01-spec.md
-scripts/agent-gate --stage stop >/dev/null 2>&1
-report "T53 TC-2384 E158 stop red: 01-spec lacks 动作全集矩阵" 2 $?
-out=$(scripts/agent-gate --stage stop 2>&1 || true)
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-2384 E158 stop red: 01-spec lacks 动作全集矩阵" 2 "$rc"
 check_output "T53 TC-2384 refusal names GATE-E158" "GATE-E158" "$out"
 printf -- '- 入口维度：桌面命中/移动未命中\n' >> docs/changes/CHG-1060/01-spec.md
 # TC-2385（E159 负例）：03.6 撤范式卡引用 → 红；复原 → 全绿收口
 sedi '/仓内同类既有界面/d; /UI 范式卡/d' docs/changes/CHG-1060/03.6-ui-spec.md
-scripts/agent-gate --stage stop >/dev/null 2>&1
-report "T53 TC-2385 E159 stop red: 03.6 lacks 参照界面对照表/范式卡 reference" 2 $?
-out=$(scripts/agent-gate --stage stop 2>&1 || true)
+out=$(scripts/agent-gate --stage stop 2>&1); rc=$?
+report "T53 TC-2385 E159 stop red: 03.6 lacks 参照界面对照表/范式卡 reference" 2 "$rc"
 check_output "T53 TC-2385 refusal names GATE-E159" "GATE-E159" "$out"
 awk 'BEGIN{done=0} /^## 参照界面对照表/ && !done {print; print "- 仓内同类既有界面：未命中（首次 ui_change，P12 UI 范式卡已沉淀）"; print "- UI 范式卡：引用 P12（操作位置/弹窗家法随卡）"; done=1; next} {print}' docs/changes/CHG-1060/03.6-ui-spec.md > docs/changes/CHG-1060/03.6.tmp && mv docs/changes/CHG-1060/03.6.tmp docs/changes/CHG-1060/03.6-ui-spec.md
 scripts/agent-gate --stage stop >/dev/null 2>&1

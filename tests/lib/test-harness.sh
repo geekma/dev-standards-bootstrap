@@ -38,7 +38,11 @@ check_output() { # name pattern actual_output -- pass if pattern matches
 # fixtures run in CI (ubuntu-latest) too, so every new mutation must fall back.
 sedi() { # <script> <files...>
   local s="$1"; shift
-  sed -i '' "$s" "$@" 2>/dev/null || sed -i "$s" "$@"
+  if sed --version >/dev/null 2>&1; then
+    sed -i "$s" "$@"
+  else
+    sed -i '' "$s" "$@"
+  fi
 }
 
 

@@ -219,6 +219,7 @@ if [[ "$verify_sha256" == true ]]; then
   [[ -s "$sums_file" ]] || { echo "install: --verify-sha256 failed: $sums_file missing or empty" >&2; exit 2; }
   _sha_bad=0
   while IFS= read -r _sline; do
+    _sline="${_sline%$'\r'}"
     [[ -n "$_sline" ]] || continue
     _sexp="${_sline%% *}"
     _srel="${_sline#*  }"
